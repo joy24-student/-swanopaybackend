@@ -1,0 +1,31 @@
+// Example Firestore security rules for the admin panel.
+// - Admin users must have a custom claim `admin: true` to read/write merchant metadata and connections.
+// - Public reads for non-sensitive collections can be allowed as needed.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Admin-only collections
+    match /merchants/{merchantId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+
+      match /connections/{connId} {
+        // Admins can read/write; merchants (if authenticated) could also write their own connections via a different frontend.
+        allow read, write: if request.auth != null && request.auth.token.admin == true;
+      }
+    }
+
+    // Platform submissions written by the server (service account) and readable by admins
+    match /platform_submissions/{docId} {
+      allow create: if request.auth != null && request.auth.token.admin == true; // service account will bypass rules
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow delete: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

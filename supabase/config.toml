@@ -1,0 +1,55 @@
+# Supabase Project Configuration Info
+project_id = "swapnopay-enterprise"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public"]
+
+[db]
+port = 54322
+shadow_port = 54320
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "swapnopay://auth-callback"
+additional_redirect_urls = ["swapnopay://auth-callback", "lenden23://auth-callback", "http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+
+[functions.process-sms]
+verify_jwt = false
+
+[functions.create-order]
+verify_jwt = false
+
+[functions.resolve-appeal]
+verify_jwt = false
+
+[functions.oauth-start]
+verify_jwt = false
+
+[functions.oauth-callback]
+verify_jwt = false
+
+[functions.projects]
+verify_jwt = false
+
+[functions.provision]
+verify_jwt = false
+
+[functions.hosted-form]
+verify_jwt = false
+
+[functions.payment-receipt]
+verify_jwt = false

@@ -1,0 +1,53 @@
+{
+  email {$ACME_EMAIL}
+  admin off
+}
+
+swapnopay.top, www.swapnopay.top {
+  root * /srv/web
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer-when-downgrade"
+    -Server
+  }
+  file_server
+  log {
+    output stdout
+    format json
+  }
+}
+
+admin.swapnopay.top {
+  root * /srv/admin
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer-when-downgrade"
+    -Server
+  }
+  try_files {path} /index.html
+  file_server
+  log {
+    output stdout
+    format json
+  }
+}
+
+api.swapnopay.top {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
+  reverse_proxy gateway:8080
+  log {
+    output stdout
+    format json
+  }
+}
+

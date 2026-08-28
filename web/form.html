@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Form Gateway</title>
+  <!-- Outfit Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #5d45ff;
+      --bg-dark: #0f172a;
+      --card-bg: #ffffff;
+      --text-dark: #1e293b;
+      --text-light: #64748b;
+      --border: #e2e8f0;
+      --font: 'Outfit', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: var(--font);
+    }
+
+    body {
+      background-color: #f8fafc;
+      color: var(--text-dark);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .form-container {
+      background: var(--card-bg);
+      border-radius: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 500px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .logo-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .merchant-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .form-title h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin-bottom: 6px;
+    }
+
+    .form-title p {
+      font-size: 13px;
+      color: var(--text-light);
+      line-height: 1.4;
+    }
+
+    /* Dynamic inputs styling */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .field-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dark);
+    }
+
+    .field-label span {
+      color: #ef4444;
+    }
+
+    .input-text, .input-select {
+      width: 100%;
+      height: 48px;
+      padding: 0 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 14px;
+      color: var(--text-dark);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-text:focus, .input-select:focus {
+      border-color: var(--primary);
+    }
+
+    .input-area {
+      width: 100%;
+      height: 100px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 14px;
+      color: var(--text-dark);
+      outline: none;
+      resize: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-area:focus {
+      border-color: var(--primary);
+    }
+
+    /* Choice list options */
+    .option-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-dark);
+      cursor: pointer;
+    }
+
+    .option-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+    }
+
+    /* Question images */
+    .question-image {
+      width: 100%;
+      max-height: 180px;
+      object-fit: cover;
+      border-radius: 12px;
+      margin-top: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .btn-submit {
+      width: 100%;
+      height: 52px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(93, 69, 255, 0.15);
+      transition: opacity 0.2s;
+    }
+
+    .btn-submit:active {
+      opacity: 0.9;
+    }
+
+    .loading-spinner {
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="form-container" id="form-wrap">
+    <!-- Header -->
+    <div class="logo-header">
+      <div class="merchant-logo" id="form-logo">S</div>
+      <div class="form-title">
+        <h2 id="title-text">Payment Form Checkout</h2>
+        <p id="desc-text">Fill in details to proceed with order payment.</p>
+      </div>
+    </div>
+
+    <!-- Fields Holder -->
+    <form id="dynamic-form" onsubmit="handleFormSubmit(event)" style="display: flex; flex-direction: column; gap: 20px;">
+      <div id="fields-container" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Dynamic fields go here -->
+      </div>
+
+      <button type="submit" class="btn-submit" id="submit-btn">
+        <span id="btn-text">Proceed to Pay</span>
+      </button>
+    </form>
+  </div>
+
+  <script>
+    let formId = "";
+    let supabaseUrl = "";
+    let supabaseAnonKey = "";
+    let formConfig = null;
+
+    window.onload = function() {
+      const params = new URLSearchParams(window.location.search);
+      formId = params.get("id") || "demo_form_id";
+      supabaseUrl = params.get("supabase_url") || "https://abc123xyz.supabase.co";
+      supabaseAnonKey = params.get("supabase_anon_key") || "demo_anon_key";
+
+      if (formId !== "demo_form_id" && !supabaseUrl.includes("abc123xyz")) {
+        loadPaymentFormDetails();
+      } else {
+        renderDemoFields();
+      }
+    };
+
+    function loadPaymentFormDetails() {
+      fetch(`${supabaseUrl}/rest/v1/payment_forms?id=eq.${formId}&select=*`, {
+        headers: {
+          "apikey": supabaseAnonKey,
+          "Authorization": `Bearer ${supabaseAnonKey}`
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          formConfig = data[0];
+          renderConfiguredFields(formConfig);
+        }
+      })
+      .catch(err => console.error("Error loading payment form layout config:", err));
+    }
+
+    function renderConfiguredFields(config) {
+      document.getElementById("title-text").innerText = config.title;
+      document.getElementById("desc-text").innerText = config.description || "Fill in details to complete order payment.";
+      
+      const logo = document.getElementById("form-logo");
+      if (config.logo_url) {
+        logo.innerHTML = `<img src="${config.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:16px;" />`;
+      } else {
+        logo.innerText = config.title.charAt(0);
+      }
+
+      document.getElementById("btn-text").innerText = `Pay BDT ${parseFloat(config.amount).toLocaleString()}`;
+
+      const container = document.getElementById("fields-container");
+      container.innerHTML = "";
+
+      // Add a mandatory Payer Customer Phone & Email field (needed for matching/notifications)
+      addMandatoryContactFields(container);
+
+      // Parse JSON fields
+      let fieldsList = [];
+      try {
+        fieldsList = typeof config.fields === "string" ? JSON.parse(config.fields) : config.fields;
+      } catch (e) {
+        fieldsList = config.fields || [];
+      }
+
+      fieldsList.forEach(f => {
+        const group = document.createElement("div");
+        group.className = "field-group";
+
+        const label = document.createElement("label");
+        label.className = "field-label";
+        label.innerHTML = `${f.label} ${f.required ? '<span>*</span>' : ''}`;
+        group.appendChild(label);
+
+        // Optional question image preview
+        if (f.image_url) {
+          const img = document.createElement("img");
+          img.src = f.image_url;
+          img.className = "question-image";
+          group.appendChild(img);
+        }
+
+        if (f.type === "short") {
+          group.innerHTML += `<input type="text" class="input-text" data-field-id="${f.id}" ${f.required ? 'required' : ''} placeholder="Enter answer..." />`;
+        } else if (f.type === "mcq") {
+          let listHtml = `<div class="option-list">`;
+          const opts = f.options || [];
+          opts.forEach((o, index) => {
+            listHtml += `
+              <label class="option-row">
+                <input type="radio" name="field_${f.id}" value="${o}" ${f.required && index === 0 ? 'checked' : ''} />
+                <span>${o}</span>
+              </label>
+            `;
+          });
+          listHtml += `</div>`;
+          group.innerHTML += listHtml;
+        } else if (f.type === "checklist") {
+          let listHtml = `<div class="option-list">`;
+          const opts = f.options || [];
+          opts.forEach(o => {
+            listHtml += `
+              <label class="option-row">
+                <input type="checkbox" name="field_${f.id}" value="${o}" />
+                <span>${o}</span>
+              </label>
+            `;
+          });
+          listHtml += `</div>`;
+          group.innerHTML += listHtml;
+        } else if (f.type === "document") {
+          group.innerHTML += `<input type="file" class="input-text" style="padding-top:12px;" data-field-id="${f.id}" ${f.required ? 'required' : ''} />`;
+        }
+
+        container.appendChild(group);
+      });
+    }
+
+    function addMandatoryContactFields(container) {
+      // Customer Phone Number
+      const groupPhone = document.createElement("div");
+      groupPhone.className = "field-group";
+      groupPhone.innerHTML = `
+        <label class="field-label">Customer Mobile Number <span>*</span></label>
+        <input type="tel" class="input-text" id="customer-phone-input" required placeholder="017xxxxxxxx" />
+      `;
+      container.appendChild(groupPhone);
+
+      // Customer Email Address
+      const groupEmail = document.createElement("div");
+      groupEmail.className = "field-group";
+      groupEmail.innerHTML = `
+        <label class="field-label">Customer Email Address <span>*</span></label>
+        <input type="email" class="input-text" id="customer-email-input" required placeholder="customer@example.com" />
+      `;
+      container.appendChild(groupEmail);
+    }
+
+    function renderDemoFields() {
+      // Basic Demo Sandbox UI
+      const mockConfig = {
+        title: "Registration Fee Portal",
+        description: "Submit details to enroll in the summer workshop series.",
+        amount: 850.00,
+        fields: [
+          { id: "name", type: "short", label: "Full Name", required: true },
+          { id: "workshop", type: "mcq", label: "Select Workshop Track", options: ["AI Engineering", "Web3 Development", "Kotlin Apps"], required: true }
+        ]
+      };
+      renderConfiguredFields(mockConfig);
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      if (formId === "demo_form_id") {
+        alert("Demo checkout form submitted! Redirecting to payment widget sandbox.");
+        window.location.href = `widget.html?order_id=demo_order&amount=850.00&merchant_name=Summer Workshop`;
+        return;
+      }
+
+      const submitBtn = document.getElementById("submit-btn");
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<div class="loading-spinner"></div>`;
+
+      const cusPhone = document.getElementById("customer-phone-input").value.trim();
+      const cusEmail = document.getElementById("customer-email-input").value.trim();
+      
+      // Capture answers
+      const answersMap = {};
+      
+      // Capturing text and document inputs
+      const textFields = document.querySelectorAll("#dynamic-form input[data-field-id], #dynamic-form select[data-field-id]");
+      textFields.forEach(inp => {
+        const id = inp.getAttribute("data-field-id");
+        answersMap[id] = inp.value;
+      });
+
+      // Capturing MCQ radio inputs
+      const radios = document.querySelectorAll("#dynamic-form input[type='radio']:checked");
+      radios.forEach(rad => {
+        const name = rad.getAttribute("name");
+        if (name && name.startsWith("field_")) {
+          const id = name.replace("field_", "");
+          answersMap[id] = rad.value;
+        }
+      });
+
+      // Capturing Checklists checkbox inputs
+      const checkFields = {};
+      const checks = document.querySelectorAll("#dynamic-form input[type='checkbox']:checked");
+      checks.forEach(chk => {
+        const name = chk.getAttribute("name");
+        if (name && name.startsWith("field_")) {
+          const id = name.replace("field_", "");
+          if (!checkFields[id]) checkFields[id] = [];
+          checkFields[id].push(chk.value);
+        }
+      });
+      Object.keys(checkFields).forEach(id => {
+        answersMap[id] = checkFields[id];
+      });
+
+      // Generate random transaction ID
+      const trId = "TX-" + Math.floor(100000 + Math.random() * 900000);
+      const expiry = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
+
+      // 1. Create order record
+      const orderPayload = {
+        merchant_id: formConfig.merchant_id,
+        tran_id: trId,
+        amount: parseFloat(formConfig.amount),
+        cus_phone: cusPhone,
+        cus_email: cusEmail,
+        cus_name: answersMap["name"] || "Guest Payer",
+        status: "PENDING",
+        expires_at: expiry,
+        payment_method: "bKash"
+      };
+
+      fetch(`${supabaseUrl}/rest/v1/orders`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseAnonKey,
+          "Authorization": `Bearer ${supabaseAnonKey}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(orderPayload)
+      })
+      .then(res => res.json())
+      .then(orders => {
+        if (orders && orders.length > 0) {
+          const order = orders[0];
+          
+          // 2. Submit form answers mapping
+          const submissionPayload = {
+            form_id: formId,
+            order_id: order.id,
+            answers: answersMap
+          };
+
+          fetch(`${supabaseUrl}/rest/v1/form_submissions`, {
+            method: "POST",
+            headers: {
+              "apikey": supabaseAnonKey,
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(submissionPayload)
+          })
+          .then(() => {
+            // 3. Redirect to payment widget
+            window.location.href = `widget.html?order_id=${order.id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${formConfig.amount}&merchant_name=${encodeURIComponent(formConfig.title)}&merchant_number=${encodeURIComponent(cusPhone)}`;
+          })
+          .catch(err => {
+            console.error("Error submitting answers:", err);
+            // Fallback redirect
+            window.location.href = `widget.html?order_id=${order.id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${formConfig.amount}`;
+          });
+        }
+      })
+      .catch(err => {
+        console.error("Error creating payment order:", err);
+        alert("Failed to initiate order. Check database configs.");
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>Proceed to Pay</span>`;
+      });
+    }
+  </script>
+</body>
+</html>

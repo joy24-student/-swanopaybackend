@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: SwapnoPay Branded Form Router
+  version: 1.0.0
+servers:
+  - url: https://forms.swapnopay.top
+paths:
+  /health:
+    get:
+      summary: Router health check
+      responses:
+        '200': { description: Router is available }
+  /v1/routes:
+    post:
+      summary: Register or refresh a merchant-owned published form route
+      security: [{ merchantBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [project_url, publishable_key, form_id, slug]
+              properties:
+                project_url: { type: string, format: uri, example: https://abcdefghijklmnopqrst.supabase.co }
+                publishable_key: { type: string, minLength: 20, maxLength: 2048 }
+                form_id: { type: string, format: uuid }
+                slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 100 }
+      responses:
+        '200': { description: Existing route refreshed }
+        '201': { description: Route registered }
+        '401': { description: Merchant session is invalid }
+        '403': { description: Authenticated user does not own the form }
+        '409': { description: Form is not published or route conflicts }
+  /v1/routes/{publicId}:
+    delete:
+      summary: Delete a route after merchant ownership verification
+      security: [{ merchantBearer: [] }]
+      parameters:
+        - in: path
+          name: publicId
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publishable_key]
+              properties:
+                publishable_key: { type: string, minLength: 20, maxLength: 2048 }
+      responses:
+        '204': { description: Route deleted }
+        '401': { description: Merchant session is invalid }
+        '403': { description: Authenticated user does not own the form }
+        '404': { description: Route not found }
+  /f/{publicId}:
+    parameters:
+      - in: path
+        name: publicId
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    get:
+      summary: Render a branded published form or proxy a payment-status request
+      responses:
+        '200': { description: Hosted form HTML or status JSON }
+        '404': { description: Route or published form not found }
+    post:
+      summary: Proxy a form response or private attachment upload
+      responses:
+        '201': { description: Submission accepted }
+        '4XX': { description: Request rejected by the merchant hosted-form API }
+components:
+  securitySchemes:
+    merchantBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Supabase access JWT

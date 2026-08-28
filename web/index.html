@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Developer Center - SwapnoPay Dashboard & Form Builder</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: #060913;
+    }
+    .gradient-bg {
+      background: radial-gradient(circle at 10% 20%, rgba(93, 69, 255, 0.15) 0%, transparent 40%),
+                  radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+    }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen flex flex-col gradient-bg">
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+        <span class="material-symbols-outlined text-white text-xl font-bold">bolt</span>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="font-extrabold text-sm tracking-wide text-white uppercase">SwapnoPay</span>
+          <span class="text-[9px] px-2 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">Developer Console</span>
+        </div>
+        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Enterprise Sandbox v3.1</p>
+      </div>
+    </div>
+
+    <!-- Active Mode Indicator -->
+    <div class="flex items-center gap-4">
+      <!-- Session Status -->
+      <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl py-1.5 px-3.5 text-xs font-bold">
+        <span class="flex h-2 w-2 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span class="text-slate-400" id="connection-status">Sandbox Mode (Offline)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed top-6 right-6 z-50 bg-slate-900 border border-slate-800 py-3 px-5 rounded-2xl shadow-2xl flex items-center gap-2.5 transition-all duration-300 transform translate-y-12 opacity-0 pointer-events-none">
+    <span class="material-symbols-outlined text-emerald-500" id="toast-icon">check_circle</span>
+    <span class="text-xs font-bold text-slate-200" id="toast-message">Copied to clipboard!</span>
+  </div>
+
+  <!-- Workspace Grid Layout -->
+  <div class="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-8 max-w-7xl mx-auto w-full">
+    
+    <!-- LEFT PANEL: Configuration Workspace (Cols 1-7) -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+      
+      <!-- MAIN VIEW SWITCHER TABS -->
+      <div class="grid grid-cols-2 gap-3 p-1.5 bg-slate-950/80 border border-slate-800/80 rounded-2xl">
+        <button id="btn-tab-wizard" onclick="switchMainTab('wizard')" class="py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg">
+          <span class="material-symbols-outlined text-sm">settings_suggest</span>
+          <span>1. Supabase Setup Wizard</span>
+        </button>
+        <button id="btn-tab-forms" onclick="switchMainTab('forms')" class="py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-white">
+          <span class="material-symbols-outlined text-sm">dynamic_form</span>
+          <span>2. Form Builder & Manager</span>
+        </button>
+      </div>
+
+      <!-- VIEW A: SUPABASE SETUP WIZARD -->
+      <div id="section-wizard" class="space-y-6">
+        
+        <!-- Step progress tracker header -->
+        <div class="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-5 backdrop-blur-md shadow-xl flex items-center justify-between">
+          <div>
+            <h2 class="font-extrabold text-sm uppercase tracking-widest text-slate-400 mb-1" id="wizard-progress-title">Wizard Step 1 of 4</h2>
+            <p class="text-xs text-slate-500 font-medium" id="wizard-progress-desc">Execute schema script in database editor.</p>
+          </div>
+          <!-- Progress dots -->
+          <div class="flex gap-2">
+            <span class="w-3.5 h-3.5 rounded-full bg-blue-600 transition-all border border-blue-500" id="wiz-dot-0"></span>
+            <span class="w-3.5 h-3.5 rounded-full bg-slate-800 transition-all border border-slate-700" id="wiz-dot-1"></span>
+            <span class="w-3.5 h-3.5 rounded-full bg-slate-800 transition-all border border-slate-700" id="wiz-dot-2"></span>
+            <span class="w-3.5 h-3.5 rounded-full bg-slate-800 transition-all border border-slate-700" id="wiz-dot-3"></span>
+          </div>
+        </div>
+
+        <!-- STEP CONTENTS -->
+        <div class="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md shadow-xl min-h-[420px] flex flex-col justify-between">
+          
+          <!-- STEP 1: PostgreSQL Schema Scripts -->
+          <div id="wiz-pane-0" class="wiz-pane space-y-4">
+            <div>
+              <div class="flex items-center gap-2 text-blue-400 mb-1">
+                <span class="material-symbols-outlined text-lg">database</span>
+                <h3 class="text-sm font-bold uppercase tracking-wider">Step A: Setup PostgreSQL Schema</h3>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Connect to your own Supabase project dashboard, open the **SQL Editor**, create a new query page, paste the following schema layout, and click **Run**.
+              </p>
+            </div>
+            
+            <div class="relative">
+              <button onclick="copyText('sql-schema-code')" class="absolute top-3 right-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition-all z-10">
+                <span class="material-symbols-outlined text-xs">content_copy</span>
+                <span>Copy SQL</span>
+              </button>
+              <pre class="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 text-[10.5px] text-blue-300 font-mono overflow-x-auto max-h-56 leading-relaxed select-all" id="sql-schema-code">-- Create SwapnoPay Postgres tables
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  amount NUMERIC NOT NULL,
+  status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, PAID, CANCELLED
+  tran_id VARCHAR(50) UNIQUE,
+  cus_phone VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS appeals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id),
+  trx_id VARCHAR(50) NOT NULL,
+  cus_phone VARCHAR(20) NOT NULL,
+  note TEXT,
+  status VARCHAR(30) DEFAULT 'PENDING_REVIEW'
+);</pre>
+            </div>
+          </div>
+
+          <!-- STEP 2: Deploy Edge Gateways -->
+          <div id="wiz-pane-1" class="wiz-pane hidden space-y-4">
+            <div>
+              <div class="flex items-center gap-2 text-indigo-400 mb-1">
+                <span class="material-symbols-outlined text-lg">terminal</span>
+                <h3 class="text-sm font-bold uppercase tracking-wider">Step B: Deploy Edge Gateways</h3>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Initialize and deploy stateless API Edge Functions in your terminal using the Supabase Command Line Interface (CLI).
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <div class="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 text-xs space-y-2">
+                <p class="font-bold text-slate-300">1. Authenticate Supabase CLI:</p>
+                <div class="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-[10.5px] text-slate-400">
+                  <span id="cmd-login">supabase login</span>
+                  <button onclick="copyText('cmd-login')" class="text-blue-500 font-bold hover:underline">Copy</button>
+                </div>
+                
+                <p class="font-bold text-slate-300 pt-2">2. Deploy checking function:</p>
+                <div class="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-[10.5px] text-slate-400">
+                  <span id="cmd-deploy">supabase functions deploy process-sms --project-ref your-ref-id</span>
+                  <button onclick="copyText('cmd-deploy')" class="text-blue-500 font-bold hover:underline">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 3: Live Credentials Connection -->
+          <div id="wiz-pane-2" class="wiz-pane hidden space-y-4">
+            <div>
+              <div class="flex items-center gap-2 text-violet-400 mb-1">
+                <span class="material-symbols-outlined text-lg">vpn_key</span>
+                <h3 class="text-sm font-bold uppercase tracking-wider">Step C: Connect Supabase Credentials</h3>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Connect using 1-Tap Supabase OAuth 2.0 or enter your dynamic Supabase API endpoints manually.
+              </p>
+            </div>
+
+            <!-- 1-Tap OAuth Button -->
+            <div class="bg-gradient-to-r from-emerald-950/60 to-slate-950 border border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div>
+                <h4 class="text-xs font-extrabold text-emerald-400 flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">bolt</span>
+                  <span>1-Tap Supabase OAuth 2.0</span>
+                </h4>
+                <p class="text-[11px] text-slate-400">Log in & authorize via Management API — zero manual tokens.</p>
+              </div>
+              <button onclick="startWebOAuthFlow()" type="button" class="w-full sm:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-sm">login</span>
+                <span>Connect Supabase</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Supabase REST Endpoint URL *</label>
+                <input type="url" id="sb-url" oninput="saveCredentials()" class="bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="https://your-ref-id.supabase.co" value="https://abc123xyz.supabase.co">
+              </div>
+              
+              <div class="flex flex-col gap-1.5">
+                <label class="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Supabase Project Anon Key *</label>
+                <input type="text" id="sb-key" oninput="saveCredentials()" class="bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpX..." value="placeholder_anon_key">
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 4: Real-time SMS Triggers -->
+          <div id="wiz-pane-3" class="wiz-pane hidden space-y-4">
+            <div>
+              <div class="flex items-center gap-2 text-emerald-400 mb-1">
+                <span class="material-symbols-outlined text-lg">sync_alt</span>
+                <h3 class="text-sm font-bold uppercase tracking-wider">Step D: Add Live Database Triggers</h3>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Hook raw SMS logs insert operations to execute processing tasks automatically. Paste this final trigger inside your Supabase SQL window.
+              </p>
+            </div>
+
+            <div class="relative">
+              <button onclick="copyText('sql-trigger-code')" class="absolute top-3 right-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-1 transition-all z-10">
+                <span class="material-symbols-outlined text-xs">content_copy</span>
+                <span>Copy SQL</span>
+              </button>
+              <pre class="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 text-[10.5px] text-emerald-300 font-mono overflow-x-auto max-h-56 leading-relaxed select-all" id="sql-trigger-code">-- Create matching triggers
+CREATE OR REPLACE TRIGGER on_sms_received
+  AFTER INSERT ON sms_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION invoke_process_sms_gateway();</pre>
+            </div>
+          </div>
+
+          <!-- NEXT/PREV NAVIGATION CONTROLS -->
+          <div class="flex justify-between items-center pt-6 border-t border-slate-800/80 mt-6">
+            <button id="wiz-btn-prev" onclick="navigateWizard(-1)" class="flex items-center gap-1.5 py-2.5 px-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition-all cursor-not-allowed" disabled>
+              <span class="material-symbols-outlined text-sm">arrow_back</span>
+              <span>Previous Step</span>
+            </button>
+            <button id="wiz-btn-next" onclick="navigateWizard(1)" class="flex items-center gap-1.5 py-2.5 px-5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/15">
+              <span>Next Step</span>
+              <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW B: FORM BUILDER & MANAGER -->
+      <div id="section-forms" class="hidden space-y-6">
+        
+        <!-- Tab Subnavigation: Forms list vs Create/Edit -->
+        <div class="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-1.5 backdrop-blur-md shadow-xl flex gap-2">
+          <button id="btn-sub-list" onclick="switchFormsSubTab('list')" class="flex-1 py-2 px-3.5 rounded-xl text-xs font-bold bg-slate-950 text-white border border-slate-800/80 transition-all flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-xs">list_alt</span>
+            <span>Form Manager List</span>
+          </button>
+          <button id="btn-sub-edit" onclick="switchFormsSubTab('edit')" class="flex-1 py-2 px-3.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-xs">edit_note</span>
+            <span>Configure & Edit Form</span>
+          </button>
+        </div>
+
+        <!-- FORM LIST CONTAINER -->
+        <div id="forms-list-pane" class="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md shadow-xl min-h-[420px] flex flex-col justify-between">
+          <div>
+            <div class="flex justify-between items-center mb-4">
+              <div>
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-200">Checkout Intake Forms</h3>
+                <p class="text-[11px] text-slate-500 font-medium">Manage and share configured payment forms.</p>
+              </div>
+              <button onclick="createNewFormSetup()" class="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/10">
+                <span class="material-symbols-outlined text-xs">add</span>
+                <span>New Form</span>
+              </button>
+            </div>
+
+            <!-- List of Forms -->
+            <div class="space-y-3" id="form-grid-list">
+              <!-- Rendered via JavaScript -->
+            </div>
+          </div>
+        </div>
+
+        <!-- FORM EDIT & DESIGN PANEL -->
+        <div id="forms-edit-pane" class="hidden bg-slate-900/60 border border-slate-800/80 rounded-3xl p-6 backdrop-blur-md shadow-xl space-y-5">
+          <div>
+            <h3 class="text-sm font-bold uppercase tracking-wider text-slate-200" id="form-editor-title">Configure Form Settings</h3>
+            <p class="text-[11px] text-slate-500 font-medium">Design checkout values. Changes render instantly in the live emulator.</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Merchant Store Name</label>
+              <input type="text" id="merchant-name-input" class="bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="DreamMart" oninput="triggerEmulatorUpdate()">
+            </div>
+            
+            <div class="flex flex-col gap-1">
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Total Amount (BDT)</label>
+              <input type="text" id="order-amount-input" class="bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="1,500.00" oninput="triggerEmulatorUpdate()">
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Receiver Wallet Number</label>
+              <input type="text" id="merchant-number-input" class="bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="017XXXXXXXX" oninput="triggerEmulatorUpdate()">
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Order Ref ID</label>
+              <input type="text" id="order-id-input" class="bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="ORD-5012" oninput="triggerEmulatorUpdate()">
+            </div>
+
+            <div class="flex flex-col gap-1 col-span-2">
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Redirect Success URL</label>
+              <input type="url" id="redirect-success-input" class="bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3.5 outline-none text-xs text-slate-200 focus:border-blue-500 transition-colors" placeholder="https://google.com" oninput="triggerEmulatorUpdate()">
+            </div>
+          </div>
+
+          <!-- Code hook widget links -->
+          <div class="space-y-4 border-t border-slate-800/80 pt-4 mt-4">
+            <div>
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Shareable Checkout URL</label>
+              <div class="flex gap-2 mt-1">
+                <input type="text" id="share-link" readonly class="flex-grow bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-[10px] text-slate-400 outline-none truncate">
+                <button onclick="copyText('share-link', true)" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition-colors shadow-md shadow-blue-500/10">Copy</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-[9px] font-bold tracking-wider text-slate-500 uppercase">Embed HTML snippet</label>
+              <div class="relative mt-1">
+                <button onclick="copyText('embed-code-block')" class="absolute top-2 right-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[9px] font-bold py-1 px-2.5 rounded transition-all">Copy</button>
+                <pre class="bg-slate-950 border border-slate-800/80 rounded-xl p-3 text-[10px] text-indigo-300 font-mono overflow-x-auto leading-relaxed max-h-24 select-all" id="embed-code-block"></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button onclick="saveActiveForm()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-lg transition-colors">
+              Save Form Config
+            </button>
+            <button onclick="switchFormsSubTab('list')" class="py-3 px-5 bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-400 font-bold text-xs rounded-xl transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANEL: Live Mobile Emulator (Cols 8-12) -->
+    <div class="lg:col-span-5 flex flex-col gap-4">
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-4 backdrop-blur-md shadow-xl flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <span class="flex h-2 w-2 relative">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+          </span>
+          <span class="text-xs font-bold text-slate-300">Live Gateway Emulator</span>
+        </div>
+        <button onclick="triggerEmulatorUpdate()" class="text-slate-400 hover:text-white flex items-center transition-colors">
+          <span class="material-symbols-outlined text-base">refresh</span>
+        </button>
+      </div>
+
+      <!-- Iframe device frame simulator wrapper -->
+      <div class="border-4 border-slate-950 rounded-[38px] overflow-hidden aspect-[9/18] max-h-[750px] shadow-2xl relative bg-slate-950/20 shadow-blue-500/5">
+        <iframe src="widget.html" class="w-full h-full border-none" id="emulator-iframe"></iframe>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Configuration states
+    let activeMainTab = "wizard";
+    let activeFormsSubTab = "list";
+    let wizardCurrentStep = 0;
+    
+    // Store credentials state
+    let supabaseUrl = localStorage.getItem("sb_url") || "https://abc123xyz.supabase.co";
+    let supabaseAnonKey = localStorage.getItem("sb_key") || "placeholder_anon_key";
+
+    // Manage custom checkouts list
+    let checkoutForms = [];
+    const defaultForms = [
+      {
+        id: "form_1",
+        name: "Standard checkout Form",
+        merchant: "DreamMart",
+        amount: "1,500.00",
+        number: "01784992118",
+        orderId: "ORD-9022",
+        redirect: "https://google.com"
+      },
+      {
+        id: "form_2",
+        name: "Premium Subscription Page",
+        merchant: "SassCorp",
+        amount: "4,999.00",
+        number: "01822119933",
+        orderId: "SUB-8812",
+        redirect: "https://google.com"
+      }
+    ];
+
+    let editingFormId = null;
+
+    // Load configurations on entry
+    window.addEventListener("DOMContentLoaded", () => {
+      // Set inputs
+      document.getElementById("sb-url").value = supabaseUrl;
+      document.getElementById("sb-key").value = supabaseAnonKey;
+      
+      // Load saved list
+      const savedForms = localStorage.getItem("checkout_forms");
+      if (savedForms) {
+        checkoutForms = JSON.parse(savedForms);
+      } else {
+        checkoutForms = [...defaultForms];
+        localStorage.setItem("checkout_forms", JSON.stringify(checkoutForms));
+      }
+
+      // Initial updates
+      updateWizardProgress();
+      renderFormsList();
+      triggerEmulatorUpdate();
+    });
+
+    // Tab switching
+    function switchMainTab(tab) {
+      activeMainTab = tab;
+      
+      const btnWizard = document.getElementById("btn-tab-wizard");
+      const btnForms = document.getElementById("btn-tab-forms");
+      
+      const secWizard = document.getElementById("section-wizard");
+      const secForms = document.getElementById("section-forms");
+
+      if (tab === "wizard") {
+        btnWizard.className = "py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg";
+        btnForms.className = "py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-white";
+        secWizard.classList.remove("hidden");
+        secForms.classList.add("hidden");
+      } else {
+        btnWizard.className = "py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all text-slate-400 hover:text-white";
+        btnForms.className = "py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg";
+        secWizard.classList.add("hidden");
+        secForms.classList.remove("hidden");
+      }
+    }
+
+    function switchFormsSubTab(tab) {
+      activeFormsSubTab = tab;
+      const btnList = document.getElementById("btn-sub-list");
+      const btnEdit = document.getElementById("btn-sub-edit");
+      
+      const paneList = document.getElementById("forms-list-pane");
+      const paneEdit = document.getElementById("forms-edit-pane");
+
+      if (tab === "list") {
+        btnList.className = "flex-1 py-2 px-3.5 rounded-xl text-xs font-bold bg-slate-950 text-white border border-slate-800/80 transition-all flex items-center justify-center gap-1.5";
+        btnEdit.className = "flex-1 py-2 px-3.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5";
+        paneList.classList.remove("hidden");
+        paneEdit.classList.add("hidden");
+      } else {
+        btnList.className = "flex-1 py-2 px-3.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5";
+        btnEdit.className = "flex-1 py-2 px-3.5 rounded-xl text-xs font-bold bg-slate-950 text-white border border-slate-800/80 transition-all flex items-center justify-center gap-1.5";
+        paneList.classList.add("hidden");
+        paneEdit.classList.remove("hidden");
+      }
+    }
+
+    // Supabase credentials management
+    function saveCredentials() {
+      supabaseUrl = document.getElementById("sb-url").value.trim();
+      supabaseAnonKey = document.getElementById("sb-key").value.trim();
+      
+      localStorage.setItem("sb_url", supabaseUrl);
+      localStorage.setItem("sb_key", supabaseAnonKey);
+
+      const statusEl = document.getElementById("connection-status");
+      if (supabaseUrl && !supabaseUrl.includes("abc123xyz")) {
+        statusEl.innerText = "Connected to Live Supabase";
+      } else {
+        statusEl.innerText = "Sandbox Mode (Offline)";
+      }
+      triggerEmulatorUpdate();
+    }
+
+    // Step navigator
+    function navigateWizard(direction) {
+      const nextStep = wizardCurrentStep + direction;
+      if (nextStep < 0 || nextStep > 3) return;
+
+      // Hide all panels
+      document.querySelectorAll(".wiz-pane").forEach(pane => pane.classList.add("hidden"));
+      
+      wizardCurrentStep = nextStep;
+      
+      // Show active panel
+      document.getElementById(`wiz-pane-${wizardCurrentStep}`).classList.remove("hidden");
+
+      updateWizardProgress();
+    }
+
+    function updateWizardProgress() {
+      // Step headers mapping
+      const stepGuides = [
+        { title: "Wizard Step 1 of 4", desc: "Execute schema script in database editor." },
+        { title: "Wizard Step 2 of 4", desc: "Deploy stateless Edge Functions via Supabase CLI." },
+        { title: "Wizard Step 3 of 4", desc: "Set Supabase API endpoints to enable checkout." },
+        { title: "Wizard Step 4 of 4", desc: "Attach PostgreSQL triggers for matching automated actions." }
+      ];
+
+      document.getElementById("wizard-progress-title").innerText = stepGuides[wizardCurrentStep].title;
+      document.getElementById("wizard-progress-desc").innerText = stepGuides[wizardCurrentStep].desc;
+
+      // Step indicator dots colors
+      for (let i = 0; i <= 3; i++) {
+        const dot = document.getElementById(`wiz-dot-${i}`);
+        if (i === wizardCurrentStep) {
+          dot.className = "w-3.5 h-3.5 rounded-full bg-blue-600 transition-all border border-blue-500";
+        } else if (i < wizardCurrentStep) {
+          dot.className = "w-3.5 h-3.5 rounded-full bg-emerald-600 transition-all border border-emerald-500";
+        } else {
+          dot.className = "w-3.5 h-3.5 rounded-full bg-slate-800 transition-all border border-slate-700";
+        }
+      }
+
+      // Enable/Disable buttons
+      const btnPrev = document.getElementById("wiz-btn-prev");
+      const btnNext = document.getElementById("wiz-btn-next");
+
+      if (wizardCurrentStep === 0) {
+        btnPrev.disabled = true;
+        btnPrev.className = "flex items-center gap-1.5 py-2.5 px-4 bg-slate-950 border border-slate-800 text-xs font-bold text-slate-600 rounded-xl transition-all cursor-not-allowed";
+      } else {
+        btnPrev.disabled = false;
+        btnPrev.className = "flex items-center gap-1.5 py-2.5 px-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer";
+      }
+
+      if (wizardCurrentStep === 3) {
+        btnNext.innerHTML = '<span>Finish Setup</span><span class="material-symbols-outlined text-sm">check</span>';
+        btnNext.onclick = () => switchMainTab("forms");
+      } else {
+        btnNext.innerHTML = '<span>Next Step</span><span class="material-symbols-outlined text-sm">arrow_forward</span>';
+        btnNext.onclick = () => navigateWizard(1);
+      }
+    }
+
+    // Forms list manager renderer
+    function renderFormsList() {
+      const listContainer = document.getElementById("form-grid-list");
+      listContainer.innerHTML = "";
+
+      checkoutForms.forEach(form => {
+        const item = document.createElement("div");
+        item.className = "bg-slate-950 border border-slate-850 hover:border-slate-700 p-4 rounded-2xl flex items-center justify-between transition-all";
+        
+        item.innerHTML = `
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-white">${form.name}</span>
+              <span class="text-[9px] font-black text-blue-400 bg-blue-500/10 border border-blue-500/15 py-0.5 px-2 rounded-full">৳${form.amount} BDT</span>
+            </div>
+            <p class="text-[10px] text-slate-500 font-semibold mt-1">Merchant: ${form.merchant} | Wallet: ${form.number}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="editFormSetup('${form.id}')" class="p-2 hover:bg-slate-900 text-indigo-400 hover:text-indigo-300 rounded-xl transition-colors">
+              <span class="material-symbols-outlined text-base">edit</span>
+            </button>
+            <button onclick="deleteFormSetup('${form.id}')" class="p-2 hover:bg-slate-900 text-rose-400 hover:text-rose-300 rounded-xl transition-colors">
+              <span class="material-symbols-outlined text-base">delete</span>
+            </button>
+          </div>
+        `;
+        listContainer.appendChild(item);
+      });
+    }
+
+    // Create a new empty checkout form config
+    function createNewFormSetup() {
+      editingFormId = "form_" + Date.now();
+      
+      document.getElementById("form-editor-title").innerText = "Design New Checkout Form";
+      document.getElementById("merchant-name-input").value = "";
+      document.getElementById("order-amount-input").value = "1,000.00";
+      document.getElementById("merchant-number-input").value = "";
+      document.getElementById("order-id-input").value = "ORD-" + Math.floor(Math.random() * 9000 + 1000);
+      document.getElementById("redirect-success-input").value = "https://google.com";
+
+      switchFormsSubTab("edit");
+      triggerEmulatorUpdate();
+    }
+
+    // Edit configuration of selected form
+    function editFormSetup(id) {
+      const form = checkoutForms.find(f => f.id === id);
+      if (!form) return;
+
+      editingFormId = id;
+      document.getElementById("form-editor-title").innerText = `Configure: ${form.name}`;
+      
+      document.getElementById("merchant-name-input").value = form.merchant;
+      document.getElementById("order-amount-input").value = form.amount;
+      document.getElementById("merchant-number-input").value = form.number;
+      document.getElementById("order-id-input").value = form.orderId;
+      document.getElementById("redirect-success-input").value = form.redirect;
+
+      switchFormsSubTab("edit");
+      triggerEmulatorUpdate();
+    }
+
+    // Delete selected checkout form
+    function deleteFormSetup(id) {
+      if (!confirm("Are you sure you want to delete this payment form?")) return;
+      checkoutForms = checkoutForms.filter(f => f.id !== id);
+      localStorage.setItem("checkout_forms", JSON.stringify(checkoutForms));
+      renderFormsList();
+      showToast("Form deleted successfully.");
+    }
+
+    // Save active checkout form values
+    function saveActiveForm() {
+      const merchant = document.getElementById("merchant-name-input").value.trim() || "DreamMart";
+      const amount = document.getElementById("order-amount-input").value.trim() || "1,000.00";
+      const number = document.getElementById("merchant-number-input").value.trim() || "017XXXXXXXX";
+      const orderId = document.getElementById("order-id-input").value.trim() || "ORD-5012";
+      const redirect = document.getElementById("redirect-success-input").value.trim() || "https://google.com";
+
+      const existingIndex = checkoutForms.findIndex(f => f.id === editingFormId);
+      const newForm = {
+        id: editingFormId,
+        name: `${merchant} ${amount} Checkout`,
+        merchant: merchant,
+        amount: amount,
+        number: number,
+        orderId: orderId,
+        redirect: redirect
+      };
+
+      if (existingIndex !== -1) {
+        checkoutForms[existingIndex] = newForm;
+      } else {
+        checkoutForms.push(newForm);
+      }
+
+      localStorage.setItem("checkout_forms", JSON.stringify(checkoutForms));
+      renderFormsList();
+      showToast("Checkout Form saved successfully!");
+      switchFormsSubTab("list");
+    }
+
+    // Dynamic emulator updater
+    function triggerEmulatorUpdate() {
+      const merchant = document.getElementById("merchant-name-input").value.trim() || "DreamMart";
+      const amount = document.getElementById("order-amount-input").value.trim() || "1,500.00";
+      const number = document.getElementById("merchant-number-input").value.trim() || "017XXXXXXXX";
+      const orderId = document.getElementById("order-id-input").value.trim() || "ORD-7845";
+      const redirect = document.getElementById("redirect-success-input").value.trim() || "https://google.com";
+
+      const base = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+      const query = `widget.html?order_id=${encodeURIComponent(orderId)}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${encodeURIComponent(amount)}&merchant_name=${encodeURIComponent(merchant)}&merchant_number=${encodeURIComponent(number)}&success_url=${encodeURIComponent(redirect)}`;
+      
+      const fullUrl = base + query;
+      document.getElementById("emulator-iframe").src = fullUrl;
+      document.getElementById("share-link").value = fullUrl;
+
+      // HTML dynamically embed code
+      const snippet = `<!-- SwapnoPay Payment Button Hook -->
+<div id="swapnopay-btn-target"></div>
+<script src="${base}widget.js"><\/script>
+<script>
+  function triggerCheckout() {
+    window.location.href = "${fullUrl}";
+  }
+<\/script>`;
+      document.getElementById("embed-code-block").innerText = snippet;
+    }
+
+    // Toast show helper
+    function showToast(msg) {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-message").innerText = msg;
+      
+      toast.classList.remove("opacity-0", "translate-y-12", "pointer-events-none");
+      toast.classList.add("opacity-100", "translate-y-0");
+
+      setTimeout(() => {
+        toast.classList.add("opacity-0", "translate-y-12", "pointer-events-none");
+        toast.classList.remove("opacity-100", "translate-y-0");
+      }, 2500);
+    }
+
+    // Text copy helper
+    function copyText(id, isInput = false) {
+      let val = "";
+      if (isInput) {
+        val = document.getElementById(id).value;
+      } else {
+        val = document.getElementById(id).innerText;
+      }
+
+      navigator.clipboard.writeText(val).then(() => {
+        showToast("Copied to clipboard successfully!");
+      });
+    }
+
+    // 1-Tap Supabase OAuth PKCE Handler for Web Portal
+    async function startWebOAuthFlow() {
+      try {
+        showToast("Initializing Supabase OAuth 2.0 PKCE...");
+        const controlUrl = "https://api.swapnopay.com";
+        const redirectBack = window.location.href;
+
+        const res = await fetch(`${controlUrl}/functions/v1/oauth-start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: "web_developer_01",
+            redirect_back: redirectBack
+          })
+        });
+
+        const data = await res.json();
+        if (data.authorize_url) {
+          window.location.href = data.authorize_url;
+        } else {
+          alert("OAuth Initialization Error: " + (data.error || "Failed to start flow"));
+        }
+      } catch (err) {
+        alert("Network error: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
