@@ -58,9 +58,9 @@ ufw --force enable
 # ──────────────────────────────────────────────────────────────────────────────
 # [4/8] Install Node.js 20 LTS & PM2
 # ──────────────────────────────────────────────────────────────────────────────
-echo -e "${YELLOW}─── [3/8] Setting up Node.js v20 (LTS) & PM2...${NC}"
-if ! command -v node &> /dev/null || [[ "$(node -v)" != v20* ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+echo -e "${YELLOW}─── [3/8] Setting up Node.js v22 (LTS) & PM2...${NC}"
+if ! command -v node &> /dev/null || [[ "$(node -v)" != v22* ]]; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
 fi
 echo -e "${GREEN}✓ Node.js version:${NC} $(node -v) | ${GREEN}npm:${NC} $(npm -v)"
