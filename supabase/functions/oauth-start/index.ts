@@ -25,8 +25,8 @@ serve(async (req) => {
       });
     }
 
-    const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "swapnopay_client_id";
-    const redirectUri = Deno.env.get("SUPABASE_OAUTH_REDIRECT_URI") || "https://api.swapnopay.com/functions/v1/oauth-callback";
+    const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "5d3dcd9b-1acf-4e31-96d2-d673af42a18b";
+    const redirectUri = Deno.env.get("SUPABASE_OAUTH_REDIRECT_URI") || "https://tldubojeokgyoclxnzkb.supabase.co/functions/v1/oauth-callback";
 
     // 1. Generate Secure State & PKCE
     const stateBytes = new Uint8Array(24);

@@ -24,8 +24,8 @@ async function getValidAccessToken(supabaseClient: any, userId: string): Promise
 
   // Refresh Token Exchange
   console.log("Access token expired. Refreshing token for user:", userId);
-  const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "swapnopay_client_id";
-  const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "swapnopay_client_secret";
+  const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "5d3dcd9b-1acf-4e31-96d2-d673af42a18b";
+  const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "";
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
   const refreshParams = new URLSearchParams();

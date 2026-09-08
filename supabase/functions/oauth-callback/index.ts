@@ -69,9 +69,9 @@ serve(async (req: Request) => {
       .eq("id", tx.id);
 
     // 4. Server-to-Server OAuth Token Exchange with Basic Auth
-    const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "swapnopay_client_id";
-    const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "swapnopay_client_secret";
-    const redirectUri = Deno.env.get("SUPABASE_OAUTH_REDIRECT_URI") || "https://api.swapnopay.com/functions/v1/oauth-callback";
+    const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "5d3dcd9b-1acf-4e31-96d2-d673af42a18b";
+    const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "";
+    const redirectUri = Deno.env.get("SUPABASE_OAUTH_REDIRECT_URI") || "https://tldubojeokgyoclxnzkb.supabase.co/functions/v1/oauth-callback";
 
     const basicAuth = btoa(`${clientId}:${clientSecret}`);
 

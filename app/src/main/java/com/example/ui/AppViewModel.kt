@@ -2868,12 +2868,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val managementProjectsList = MutableStateFlow<List<com.example.data.remote.SupabaseClient.SupabaseProject>>(emptyList())
     val managementApiError = MutableStateFlow<String?>(null)
     val pendingPkceVerifier = MutableStateFlow<String?>(null)
-    val oauthClientId = MutableStateFlow("swapnopay-mobile")
+    val oauthClientId = MutableStateFlow("5d3dcd9b-1acf-4e31-96d2-d673af42a18b")
     val oauthClientSecret = MutableStateFlow("")
 
     enum class OAuthStep { NOT_CONNECTED, ACCOUNT_CONNECTED, PROVISIONING, COMPLETE }
 
-    val controlPlaneUrl = MutableStateFlow("http://10.0.2.2:8000") // Localhost development backend (Android emulator maps 10.0.2.2 to host machine)
+    val controlPlaneUrl = MutableStateFlow("https://api.swapnopay.top")
     val show15DayFeedbackDialog = MutableStateFlow(false)
     val oauthStep = MutableStateFlow(OAuthStep.NOT_CONNECTED)
     val controlPlaneOrgs = MutableStateFlow<List<com.example.data.repository.SupabaseConnectionRepository.OrganizationItem>>(emptyList())
@@ -3041,7 +3041,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSupabaseOAuthFlow(context: android.content.Context, customClientId: String = "") {
-        val targetClientId = if (customClientId.isNotBlank()) customClientId.trim() else oauthClientId.value.ifBlank { "swapnopay-mobile" }
+        val targetClientId = if (customClientId.isNotBlank()) customClientId.trim() else oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         oauthClientId.value = targetClientId
         val pkce = com.example.data.remote.SupabaseClient.generatePkcePair()
         pendingPkceVerifier.value = pkce.codeVerifier
@@ -3067,7 +3067,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleOAuthCodeReceived(code: String) {
         val verifier = pendingPkceVerifier.value ?: ""
-        val clientId = oauthClientId.value.ifBlank { "swapnopay-mobile" }
+        val clientId = oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         val clientSecret = oauthClientSecret.value
 
         isFetchingManagementProjects.value = true
