@@ -18,6 +18,7 @@ import { adminRouter } from './routes/admin.js'
 import { keysRouter } from './routes/keys.js'
 import { shopRouter } from './routes/shop.js'
 import { kycRouter } from './routes/kyc.js'
+import oauthRouter from './routes/oauth.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -323,6 +324,11 @@ app.use('/v1/shop', shopRouter)
 // Merchant & Admin KYC verification routes
 app.use('/v1/kyc', kycRouter)
 app.use('/v1/admin/kyc', kycRouter)
+
+// Supabase OAuth Control Plane (Native VPS backend endpoints)
+app.use('/v1/oauth', oauthRouter)
+app.use('/functions/v1', oauthRouter) // Compatibility alias for /functions/v1/oauth-callback, /functions/v1/oauth-start, etc.
+app.use('/oauth', oauthRouter) // Direct root alias for /oauth/callback
 
 // 404
 app.use((_req, res) => {
