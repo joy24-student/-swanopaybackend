@@ -2879,6 +2879,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val controlPlaneOrgs = MutableStateFlow<List<com.example.data.repository.SupabaseConnectionRepository.OrganizationItem>>(emptyList())
     val controlPlaneProjects = MutableStateFlow<List<com.example.data.repository.SupabaseConnectionRepository.ProjectItem>>(emptyList())
     val selectedControlPlaneProjectRef = MutableStateFlow<String?>(null)
+    val pendingOAuthTxId = MutableStateFlow<String?>(null)
     val provisioningProgress = MutableStateFlow(0.0f)
     val provisioningStatusText = MutableStateFlow("Initializing Provisioning...")
 
@@ -2919,11 +2920,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleControlPlaneOAuthConnected(txId: String) {
         logFirebaseStatus("Received OAuth transaction ID: $txId. Loading projects from Control Plane...")
+        pendingOAuthTxId.value = txId
         oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
-        fetchControlPlaneOrgsAndProjects()
+        fetchControlPlaneOrgsAndProjects(txId)
     }
 
-    fun fetchControlPlaneOrgsAndProjects() {
+    fun fetchControlPlaneOrgsAndProjects(txId: String? = pendingOAuthTxId.value) {
         val userId = activeProfile.value.id.ifBlank { "user_default" }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             isFetchingManagementProjects.value = true
@@ -2931,6 +2933,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             com.example.data.repository.SupabaseConnectionRepository.fetchOrganizationsAndProjects(
                 controlPlaneUrl = controlPlaneUrl.value,
                 userId = userId,
+                txId = txId,
                 onSuccess = { orgs, projects ->
                     viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                         isFetchingManagementProjects.value = false
@@ -2958,6 +2961,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         projectName: String = ""
     ) {
         val userId = activeProfile.value.id.ifBlank { "user_default" }
+        val txId = pendingOAuthTxId.value
         oauthStep.value = OAuthStep.PROVISIONING
         provisioningProgress.value = 0.15f
         provisioningStatusText.value = if (isNew) "Creating new Supabase project..." else "Verifying project..."
@@ -2974,6 +2978,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     userId = userId,
                     orgSlug = effectiveOrg,
                     projectName = name,
+                    txId = txId,
                     onSuccess = { ref -> targetRef = ref },
                     onFailure = { err -> createError = err }
                 )
@@ -3002,6 +3007,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     controlPlaneUrl = controlPlaneUrl.value,
                     userId = userId,
                     projectRef = targetRef,
+                    txId = txId,
                     onSuccess = { healthy -> isHealthy = healthy },
                     onFailure = { isHealthy = false }
                 )
@@ -3017,6 +3023,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 controlPlaneUrl = controlPlaneUrl.value,
                 userId = userId,
                 projectRef = targetRef,
+                txId = txId,
                 onSuccess = { projectUrl, publishableKey ->
                     viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                         provisioningProgress.value = 1.0f

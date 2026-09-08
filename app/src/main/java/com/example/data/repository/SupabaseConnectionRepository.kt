@@ -66,6 +66,7 @@ object SupabaseConnectionRepository {
     suspend fun fetchOrganizationsAndProjects(
         controlPlaneUrl: String,
         userId: String,
+        txId: String? = null,
         onSuccess: (orgs: List<OrganizationItem>, projects: List<ProjectItem>) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -74,6 +75,7 @@ object SupabaseConnectionRepository {
 
         val bodyJson = JSONObject().apply {
             put("user_id", userId)
+            if (!txId.isNullOrBlank()) put("tx_id", txId)
         }.toString()
 
         val request = Request.Builder()
@@ -133,6 +135,7 @@ object SupabaseConnectionRepository {
         orgSlug: String,
         projectName: String,
         dbPassword: String = java.util.UUID.randomUUID().toString().replace("-", "").take(16) + "Aa1!",
+        txId: String? = null,
         onSuccess: (projectRef: String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -141,6 +144,7 @@ object SupabaseConnectionRepository {
 
         val bodyJson = JSONObject().apply {
             put("user_id", userId)
+            if (!txId.isNullOrBlank()) put("tx_id", txId)
             put("action", "CREATE_PROJECT")
             put("organization_slug", orgSlug)
             put("project_name", projectName)
@@ -178,6 +182,7 @@ object SupabaseConnectionRepository {
         controlPlaneUrl: String,
         userId: String,
         projectRef: String,
+        txId: String? = null,
         onSuccess: (isHealthy: Boolean) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -186,6 +191,7 @@ object SupabaseConnectionRepository {
 
         val bodyJson = JSONObject().apply {
             put("user_id", userId)
+            if (!txId.isNullOrBlank()) put("tx_id", txId)
             put("action", "CHECK_HEALTH")
             put("project_ref", projectRef)
         }.toString()
@@ -216,6 +222,7 @@ object SupabaseConnectionRepository {
         controlPlaneUrl: String,
         userId: String,
         projectRef: String,
+        txId: String? = null,
         onSuccess: (projectUrl: String, publishableKey: String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -224,6 +231,7 @@ object SupabaseConnectionRepository {
 
         val bodyJson = JSONObject().apply {
             put("user_id", userId)
+            if (!txId.isNullOrBlank()) put("tx_id", txId)
             put("action", "APPLY_SCHEMA_AND_FINALIZE")
             put("project_ref", projectRef)
         }.toString()
