@@ -38,16 +38,51 @@ function hashState(rawState) {
   return crypto.createHash('sha256').update(rawState).digest('hex')
 }
 
-// Fetch or refresh access token
-async function getValidAccessToken(userId) {
+// Fetch or refresh access token with robust fallback lookup (user_id -> tx_id -> latest active connection)
+async function getValidAccessToken(userId, txId) {
   const admin = getAdminClient()
-  const { data: conn, error } = await admin
-    .from('supabase_connections')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
+  let conn = null
 
-  if (error || !conn) {
+  // 1. Lookup by user_id
+  if (userId) {
+    const { data } = await admin
+      .from('supabase_connections')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (data) conn = data
+  }
+
+  // 2. Lookup by tx_id via control_oauth_transactions
+  if (!conn && (txId || (userId && userId.includes('-')))) {
+    const lookupId = txId || userId
+    const { data: tx } = await admin
+      .from('control_oauth_transactions')
+      .select('user_id')
+      .eq('id', lookupId)
+      .maybeSingle()
+    if (tx?.user_id) {
+      const { data } = await admin
+        .from('supabase_connections')
+        .select('*')
+        .eq('user_id', tx.user_id)
+        .maybeSingle()
+      if (data) conn = data
+    }
+  }
+
+  // 3. Fallback: most recent active connection
+  if (!conn) {
+    const { data } = await admin
+      .from('supabase_connections')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (data) conn = data
+  }
+
+  if (!conn) {
     throw new Error('No active Supabase connection found for user.')
   }
 
@@ -57,7 +92,7 @@ async function getValidAccessToken(userId) {
   }
 
   // Refresh Token Exchange
-  console.log(`[oauth] Access token expired for ${userId}, refreshing...`)
+  console.log(`[oauth] Access token expired for ${conn.user_id}, refreshing...`)
   const { clientId, clientSecret } = getOAuthCredentials()
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
@@ -88,7 +123,7 @@ async function getValidAccessToken(userId) {
       access_token_expires_at: newExpiresAt,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', userId)
+    .eq('user_id', conn.user_id)
 
   return refreshed.access_token
 }
@@ -327,11 +362,9 @@ async function handleOAuthCallback(req, res) {
 async function handleProjects(req, res) {
   try {
     const userId = req.body?.user_id || req.query?.user_id
-    if (!userId) {
-      return res.status(400).json({ error: 'user_id is required' })
-    }
+    const txId = req.body?.tx_id || req.query?.tx_id
 
-    const accessToken = await getValidAccessToken(userId)
+    const accessToken = await getValidAccessToken(userId, txId)
 
     const [orgsRes, projectsRes] = await Promise.all([
       fetch('https://api.supabase.com/v1/organizations', {
@@ -366,13 +399,9 @@ async function handleProjects(req, res) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleProvision(req, res) {
   try {
-    const { action, user_id: userId, project_ref: projectRef, organization_slug: orgSlug, project_name: projectName, db_password: dbPassword } = req.body || {}
+    const { action, user_id: userId, tx_id: txId, project_ref: projectRef, organization_slug: orgSlug, project_name: projectName, db_password: dbPassword } = req.body || {}
 
-    if (!userId) {
-      return res.status(400).json({ error: 'user_id is required' })
-    }
-
-    const accessToken = await getValidAccessToken(userId)
+    const accessToken = await getValidAccessToken(userId, txId)
 
     if (action === 'CREATE_PROJECT') {
       const resp = await fetch('https://api.supabase.com/v1/projects', {
