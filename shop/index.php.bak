@@ -1,0 +1,325 @@
+<?php require_once('header.php'); ?>
+
+<?php
+// Fetch all necessary settings at once
+// Assuming $settings is already fetched in header.php
+$banner_home = $settings['banner_home'] ?? 'default_banner.jpg'; // Example default
+$cta_title = $settings['cta_title'] ?? 'Amazing Deals!';
+$cta_content = $settings['cta_content'] ?? 'Find everything you need at unbeatable prices.';
+$cta_read_more_text = $settings['cta_read_more_text'] ?? 'Shop Now';
+$cta_read_more_url = $settings['cta_read_more_url'] ?? BASE_URL . 'shop.php';
+$cta_photo = $settings['cta_photo'] ?? 'default_cta_bg.jpg';
+$featured_product_title = $settings['featured_product_title'] ?? 'Featured Products';
+$featured_product_subtitle = $settings['featured_product_subtitle'] ?? 'Handpicked for you';
+$latest_product_title = $settings['latest_product_title'] ?? 'New Arrivals';
+$latest_product_subtitle = $settings['latest_product_subtitle'] ?? 'Freshly added to our collection';
+$popular_product_title = $settings['popular_product_title'] ?? 'Popular Products';
+$popular_product_subtitle = $settings['popular_product_subtitle'] ?? 'Most loved by our customers';
+$total_featured_product_home = $settings['total_featured_product_home'] ?? 8;
+$total_latest_product_home = $settings['total_latest_product_home'] ?? 12;
+$total_popular_product_home = $settings['total_popular_product_home'] ?? 12; // Initial load for infinite scroll
+$home_service_on_off = $settings['home_service_on_off'] ?? 1;
+$home_welcome_on_off = $settings['home_welcome_on_off'] ?? 1;
+$home_featured_product_on_off = $settings['home_featured_product_on_off'] ?? 1;
+$home_latest_product_on_off = $settings['home_latest_product_on_off'] ?? 1;
+$home_popular_product_on_off = $settings['home_popular_product_on_off'] ?? 1;
+$review_feature_on_off = $settings['review_feature_on_off'] ?? 1; // Assuming this setting exists
+
+// Helper function to display a product card
+function displayProductCard($row, $pdo) {
+    global $review_feature_on_off; // Access global setting
+
+    // Calculate average rating
+    // Calculate average rating
+$avg_rating = 0;
+$total_reviews_count = 0;
+if ($review_feature_on_off == 1) { // Only fetch reviews if feature is on
+    $statement_rating = $pdo->prepare(
+        "SELECT AVG(rating) AS avg_rating, COUNT(review_id) AS total_count 
+         FROM tbl_review 
+         WHERE product_id=?"
+    );
+    $statement_rating->execute(array($row['p_id']));
+    $rating_result = $statement_rating->fetch(PDO::FETCH_ASSOC);
+    if ($rating_result['total_count'] > 0) {
+        $avg_rating = round($rating_result['avg_rating']); // Round to nearest whole number for star display
+        $total_reviews_count = $rating_result['total_count'];
+    }
+}
+    ?>
+    <div class="product-card-wrapper col-xs-6 col-sm-4 col-md-3">
+        <a href="<?php echo BASE_URL; ?>product.php?id=<?php echo $row['p_id']; ?>" class="product-card">
+            <div class="product-image-container">
+                <img src="<?php echo BASE_URL; ?>assets/uploads/<?php echo htmlspecialchars($row['p_featured_photo']); ?>" alt="<?php echo htmlspecialchars($row['p_name']); ?>" loading="lazy">
+                <?php if($row['p_old_price'] > 0 && $row['p_old_price'] > $row['p_current_price']): ?>
+                    <div class="discount-badge">
+                        <?php echo round((($row['p_old_price'] - $row['p_current_price']) / $row['p_old_price']) * 100); ?>% OFF
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="product-info">
+                <h4 class="product-name"><?php echo htmlspecialchars($row['p_name']); ?></h4>
+                <div class="product-price">
+                    <span class="current-price"><?php echo LANG_VALUE_1; ?><?php echo number_format($row['p_current_price'], 2); ?></span>
+                    <?php if($row['p_old_price'] > 0): ?>
+                        <span class="old-price"><?php echo LANG_VALUE_1; ?><?php echo number_format($row['p_old_price'], 2); ?></span>
+                    <?php endif; ?>
+                </div>
+                <?php if ($review_feature_on_off == 1): ?>
+                    <div class="product-rating">
+                        <?php
+                        if($avg_rating == 0) {
+                            echo '<span class="no-rating">No reviews yet</span>';
+                        } else {
+                            for($i=1;$i<=5;$i++) {
+                                if($i <= $avg_rating) {
+                                    echo '<i class="fa fa-star"></i>';
+                                } else {
+                                    echo '<i class="fa fa-star-o"></i>';
+                                }
+                            }
+                        }
+                        ?>
+                        <?php if ($total_reviews_count > 0): ?>
+                            <span class="review-count">(<?php echo $total_reviews_count; ?>)</span>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <?php if($row['p_qty'] == 0): ?>
+                    <div class="out-of-stock-label">Out Of Stock</div>
+                <?php endif; ?>
+            </div>
+        </a>
+    </div>
+    <?php
+}
+?>
+
+<div class="main-content-area">
+    <!-- Main Slider Section -->
+    <section class="main-slider-section">
+        <div class="container">
+            <div class="owl-carousel owl-theme main-slider-carousel">
+                <!-- Example slides - these would come from your database (tbl_slider or similar) -->
+                <div class="item">
+                    <img src="<?php echo BASE_URL; ?>assets/uploads/slider1.jpg" alt="Slider 1">
+                    <div class="slider-caption">
+                        <h2>Amazing Deals on Electronics</h2>
+                        <p>Up to 50% off on selected items!</p>
+                        <a href="#" class="btn btn-primary">Shop Now</a>
+                    </div>
+                </div>
+                <div class="item">
+                    <img src="<?php echo BASE_URL; ?>assets/uploads/slider2.jpg" alt="Slider 2">
+                    <div class="slider-caption">
+                        <h2>Fashion for Everyone</h2>
+                        <p>New arrivals in clothing and accessories.</p>
+                        <a href="#" class="btn btn-primary">Explore Fashion</a>
+                    </div>
+                </div>
+                <!-- Add more slides dynamically from DB -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Top Categories / Browse by Category -->
+    <section class="top-categories-section section-spacing">
+        <div class="container">
+            <h2 class="section-title">Top Categories 🛍️</h2>
+            <div class="category-grid">
+                <?php
+                $statement_tcat = $pdo->prepare("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC LIMIT 8"); // Limit to show few
+                $statement_tcat->execute();
+                $result_tcat = $statement_tcat->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($result_tcat as $row_tcat):
+                ?>
+                    <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $row_tcat['tcat_id']; ?>&type=top-category" class="category-card">
+                        <img src="<?php echo BASE_URL; ?>assets/uploads/<?php echo htmlspecialchars($row_tcat['tcat_photo'] ?? 'default-category-icon.png'); ?>" alt="<?php echo htmlspecialchars($row_tcat['tcat_name']); ?>">
+                        <h3><?php echo htmlspecialchars($row_tcat['tcat_name']); ?></h3>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Flash Sales / Deals of the Day -->
+    <section class="flash-sales-section section-spacing">
+        <div class="container">
+            <h2 class="section-title">⚡ Flash Sales <span class="countdown" id="flash-sale-countdown"></span></h2>
+            <div class="product-grid owl-carousel owl-theme flash-sale-carousel">
+                <?php
+                // Fetch products marked for flash sale or with special discounts
+                // This would ideally be from a dedicated tbl_flash_sales table
+                $statement_flash = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active = 1 AND p_current_price < p_old_price ORDER BY RAND() LIMIT 8");
+                $statement_flash->execute();
+                $flash_products = $statement_flash->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($flash_products)):
+                    foreach ($flash_products as $row):
+                        displayProductCard($row, $pdo); // Use the helper function
+                    endforeach;
+                else:
+                    echo '<p class="text-center">No flash sales currently active. Stay tuned!</p>';
+                endif;
+                ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Products Section -->
+    <?php if ($home_featured_product_on_off == 1): ?>
+    <section class="featured-products-section section-spacing">
+        <div class="container">
+            <h2 class="section-title"><?php echo htmlspecialchars($featured_product_title); ?></h2>
+            <p class="section-subtitle"><?php echo htmlspecialchars($featured_product_subtitle); ?></p>
+            <div class="product-grid">
+                <?php
+                $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_featured=? AND p_is_active=? ORDER BY p_id DESC LIMIT {$total_featured_product_home}");
+                $statement->execute(array(1, 1));
+                $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($result as $row) {
+                    displayProductCard($row, $pdo); // Use the helper function
+                }
+                ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Latest Products Section -->
+    <?php if ($home_latest_product_on_off == 1): ?>
+    <section class="latest-products-section section-spacing">
+        <div class="container">
+            <h2 class="section-title"><?php echo htmlspecialchars($latest_product_title); ?></h2>
+            <p class="section-subtitle"><?php echo htmlspecialchars($latest_product_subtitle); ?></p>
+            <div class="product-grid">
+                <?php
+                $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=? ORDER BY p_id DESC LIMIT {$total_latest_product_home}");
+                $statement->execute(array(1));
+                $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($result as $row) {
+                    displayProductCard($row, $pdo); // Use the helper function
+                }
+                ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Recommended For You Section (Dynamic via JS/Local Storage) -->
+    <section class="recommendation-section section-spacing" id="recommendation-section" style="display: none;">
+        <div class="container">
+            <h2 class="section-title">Recommended For You</h2>
+            <p class="section-subtitle">Based on your recent searches</p>
+            <div class="product-grid" id="recommended-products-container">
+                <!-- Products loaded via JavaScript -->
+                <div id="recommended-skeleton-loader" class="product-grid skeleton-grid">
+                    <?php for ($i = 0; $i < 4; $i++): // Show 4 skeleton items initially ?>
+                        <div class="product-card-wrapper col-xs-6 col-sm-4 col-md-3">
+                            <div class="product-card skeleton-card">
+                                <div class="skeleton-image-container"></div>
+                                <div class="skeleton-info">
+                                    <div class="skeleton-line skeleton-line-lg"></div>
+                                    <div class="skeleton-line skeleton-line-sm"></div>
+                                    <div class="skeleton-line skeleton-line-price"></div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endfor; ?>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Recently Viewed Items Section (Dynamic via JS/Local Storage) -->
+    <section class="recently-viewed-section section-spacing" id="recently-viewed-section" style="display: none;">
+        <div class="container">
+            <h2 class="section-title">Recently Viewed</h2>
+            <p class="section-subtitle">Products you've checked out recently</p>
+            <div class="product-grid" id="recently-viewed-products-container">
+                <!-- Products loaded via JavaScript -->
+                <div id="recently-viewed-skeleton-loader" class="product-grid skeleton-grid">
+                    <?php for ($i = 0; $i < 4; $i++): // Show 4 skeleton items initially ?>
+                        <div class="product-card-wrapper col-xs-6 col-sm-4 col-md-3">
+                            <div class="product-card skeleton-card">
+                                <div class="skeleton-image-container"></div>
+                                <div class="skeleton-info">
+                                    <div class="skeleton-line skeleton-line-lg"></div>
+                                    <div class="skeleton-line skeleton-line-sm"></div>
+                                    <div class="skeleton-line skeleton-line-price"></div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endfor; ?>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Popular Products Section (Infinite Scroll) -->
+    <?php if ($home_popular_product_on_off == 1): ?>
+    <section class="popular-products-section section-spacing">
+        <div class="container">
+            <h2 class="section-title">Explore More Products</h2>
+            <p class="section-subtitle">Scroll down to discover more amazing items!</p>
+            <div class="product-grid" id="infinite-scroll-container">
+                <?php
+                // Initial load of popular products for infinite scroll
+                $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=? ORDER BY p_total_view DESC LIMIT {$total_popular_product_home}");
+                $statement->execute(array(1));
+                $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($result as $row) {
+                    displayProductCard($row, $pdo); // Use the helper function
+                }
+                ?>
+            </div>
+            <!-- Loading spinner for infinite scroll -->
+            <div id="infinite-scroll-spinner" class="loading-spinner" style="display: none;">
+                <i class="fas fa-spinner fa-spin"></i> Loading More...
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Call to Action Section -->
+    <?php if($home_welcome_on_off == 1): ?>
+    <section class="cta-section section-spacing" style="background-image: url(<?php echo BASE_URL; ?>assets/uploads/<?php echo htmlspecialchars($cta_photo); ?>);">
+        <div class="overlay"></div>
+        <div class="container cta-content">
+            <h2><?php echo htmlspecialchars($cta_title); ?></h2>
+            <p><?php echo htmlspecialchars($cta_content); ?></p>
+            <?php if ($cta_read_more_text && $cta_read_more_url): ?>
+                <a href="<?php echo htmlspecialchars($cta_read_more_url); ?>" class="btn btn-light"><?php echo htmlspecialchars($cta_read_more_text); ?></a>
+            <?php endif; ?>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Services Section -->
+    <?php if($home_service_on_off == 1): ?>
+    <section class="services-section section-spacing">
+        <div class="container">
+            <h2 class="section-title">Our Services</h2>
+            <div class="service-grid">
+                <?php
+                $statement = $pdo->prepare("SELECT * FROM tbl_service ORDER BY id ASC");
+                $statement->execute();
+                $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($result as $row) {
+                    ?>
+                    <div class="service-item" >
+                        <div class="service-icon"><i class="" ></i></div>
+                        <h3><?php echo htmlspecialchars($row['title']); ?></h3>
+                        <p><?php echo htmlspecialchars($row['content']); ?></p>
+                    </div>
+                    <?php
+                }
+                ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+</div> <!-- End .main-content-area -->
+
+<?php require_once('footer.php'); ?>

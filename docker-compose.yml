@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SwapnoPay Backend API & Socket.io Server
+  # ─────────────────────────────────────────────────────────────────────────────
+  swapnopay-backend:
+    build:
+      context: ./swapnopay-backend
+      dockerfile: Dockerfile
+    container_name: swapnopay-backend
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - ADMIN_SUPABASE_URL=${ADMIN_SUPABASE_URL}
+      - ADMIN_SUPABASE_SERVICE_ROLE_KEY=${ADMIN_SUPABASE_SERVICE_ROLE_KEY}
+      - ADMIN_SECRET=${ADMIN_SECRET}
+      - API_KEY_PEPPER=${API_KEY_PEPPER}
+      - PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SwapnoPay Web Frontend (Widget, Forms, Developer Portal)
+  # ─────────────────────────────────────────────────────────────────────────────
+  swapnopay-web:
+    image: nginx:alpine
+    container_name: swapnopay-web
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - swapnopay-backend
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SwapnoPay E-Commerce Web Storefront (PHP 8.2-FPM + PostgreSQL Driver)
+  # ─────────────────────────────────────────────────────────────────────────────
+  shop-php:
+    build:
+      context: ./shop
+      dockerfile: Dockerfile
+    container_name: shop-php
+    restart: always
+    environment:
+      - DB_DRIVER=${DB_DRIVER:-pgsql}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-swapnopay_shop}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASS=${DB_PASS:-}
+      - MERCHANT_ID=${MERCHANT_ID:-}
+    volumes:
+      - ./shop:/var/www/html
+    expose:
+      - "9000"
+

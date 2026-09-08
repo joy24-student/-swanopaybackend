@@ -1,0 +1,199 @@
+# =============================================================================
+# COMPREHENSIVE SEO-FRIENDLY CONFIGURATION
+# =============================================================================
+
+# Enable Rewrite Engine
+RewriteEngine On
+RewriteBase /
+
+# =============================================================================
+# 1. FORCE HTTPS
+# =============================================================================
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# =============================================================================
+# 2. ENFORCE WWW OR NON-WWW (Choose ONE - currently set to NON-WWW)
+# =============================================================================
+# Option A: Force NON-WWW (remove www)
+RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
+RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+# Option B: Force WWW (uncomment if preferred)
+# RewriteCond %{HTTP_HOST} !^www\. [NC]
+# RewriteRule ^(.*)$ https://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# =============================================================================
+# 3. REMOVE TRAILING SLASHES (except for directories)
+# =============================================================================
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.+)/$ /$1 [R=301,L]
+
+# =============================================================================
+# 4. CLEAN URL REWRITES FOR SEO
+# =============================================================================
+
+# Product URL: /product-name-slug-id -> product.php?slug=product-name-slug-id
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^product/([a-z0-9-]+)/?$ product.php?slug=$1 [QSA,L]
+
+# Category URL (Top): /category-name-slug -> product-category.php?slug=category-name-slug&type=top-category
+RewriteRule ^category/([a-z0-9-]+)/?$ product-category.php?slug=$1&type=top-category [QSA,L]
+
+# Category URL (Mid): /category/subcategory-slug -> product-category.php?slug=subcategory-slug&type=mid-category
+RewriteRule ^category/([a-z0-9-]+)/([a-z0-9-]+)/?$ product-category.php?slug=$2&type=mid-category [QSA,L]
+
+# Category URL (End): /category/subcategory/product-type-slug -> product-category.php?slug=product-type-slug&type=end-category
+RewriteRule ^category/([a-z0-9-]+)/([a-z0-9-]+)/([a-z0-9-]+)/?$ product-category.php?slug=$3&type=end-category [QSA,L]
+
+# Search Results: /search/keyword -> search-result.php?q=keyword
+RewriteRule ^search/([^/]+)/?$ search-result.php?q=$1 [QSA,L]
+
+# Pagination: /page/2 -> index.php?page=2
+RewriteRule ^page/([0-9]+)/?$ index.php?page=$1 [QSA,L]
+
+# Category Pagination: /category/name/page/2 -> product-category.php?slug=name&page=2
+RewriteRule ^category/([a-z0-9-]+)/page/([0-9]+)/?$ product-category.php?slug=$1&page=$2 [QSA,L]
+
+# =============================================================================
+# 5. DENY ACCESS TO SENSITIVE FILES AND DIRECTORIES
+# =============================================================================
+<FilesMatch "^\.ht">
+	Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(sql|md|log|env|txt|bak|inc)$">
+	Deny from all
+</FilesMatch>
+
+RewriteRule ^DATABASE(\ |%20)FILE/.*$ - [F,L]
+
+# =============================================================================
+# 6. COMPRESSION (GZIP)
+# =============================================================================
+<IfModule mod_deflate.c>
+	AddOutputFilterByType DEFLATE text/plain
+	AddOutputFilterByType DEFLATE text/html
+	AddOutputFilterByType DEFLATE text/xml
+	AddOutputFilterByType DEFLATE text/css
+	AddOutputFilterByType DEFLATE text/javascript
+	AddOutputFilterByType DEFLATE application/xml
+	AddOutputFilterByType DEFLATE application/xhtml+xml
+	AddOutputFilterByType DEFLATE application/rss+xml
+	AddOutputFilterByType DEFLATE application/javascript
+	AddOutputFilterByType DEFLATE application/x-javascript
+	AddOutputFilterByType DEFLATE application/x-httpd-php
+	AddOutputFilterByType DEFLATE image/svg+xml
+	
+	# Don't compress images and other files already compressed
+	SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|rar|zip|exe|flv|mov|wma|wmv|webp)$ no-gzip dont-vary
+</IfModule>
+
+# =============================================================================
+# 7. BROWSER CACHING HEADERS
+# =============================================================================
+<IfModule mod_expires.c>
+	ExpiresActive On
+	
+	# Default
+	ExpiresDefault "access plus 1 week"
+	
+	# Cache Images
+	ExpiresByType image/jpeg "access plus 1 year"
+	ExpiresByType image/gif "access plus 1 year"
+	ExpiresByType image/png "access plus 1 year"
+	ExpiresByType image/webp "access plus 1 year"
+	ExpiresByType image/svg+xml "access plus 1 year"
+	ExpiresByType image/x-icon "access plus 1 year"
+	ExpiresByType image/x-ms-bmp "access plus 1 year"
+	
+	# Cache CSS
+	ExpiresByType text/css "access plus 1 year"
+	
+	# Cache JavaScript
+	ExpiresByType application/javascript "access plus 1 year"
+	ExpiresByType text/javascript "access plus 1 year"
+	ExpiresByType application/x-javascript "access plus 1 year"
+	
+	# Cache Fonts
+	ExpiresByType font/ttf "access plus 1 year"
+	ExpiresByType font/otf "access plus 1 year"
+	ExpiresByType font/woff "access plus 1 year"
+	ExpiresByType font/woff2 "access plus 1 year"
+	ExpiresByType application/font-woff "access plus 1 year"
+	
+	# Cache Video
+	ExpiresByType video/mp4 "access plus 1 year"
+	ExpiresByType video/webm "access plus 1 year"
+	
+	# Don't cache HTML
+	ExpiresByType text/html "access plus 1 day"
+	ExpiresByType application/xhtml+xml "access plus 1 day"
+	
+	# Don't cache PHP
+	ExpiresByType text/x-php "access plus 0 seconds"
+	ExpiresByType application/x-php "access plus 0 seconds"
+</IfModule>
+
+# =============================================================================
+# 8. CACHE CONTROL HEADERS
+# =============================================================================
+<IfModule mod_headers.c>
+	# Cache Static Assets (1 year)
+	<FilesMatch "\.(jpg|jpeg|png|gif|ico|css|js|ttf|otf|woff|woff2|webp)$">
+		Header set Cache-Control "public, immutable, max-age=31536000"
+		Header set Expires "Wed, 20 Jan 2027 04:20:42 GMT"
+	</FilesMatch>
+	
+	# Cache HTML (1 day)
+	<FilesMatch "\.html$">
+		Header set Cache-Control "public, must-revalidate, max-age=86400"
+	</FilesMatch>
+	
+	# Don't cache PHP files
+	<FilesMatch "\.php$">
+		Header set Cache-Control "no-cache, no-store, must-revalidate"
+		Header set Pragma "no-cache"
+		Header set Expires "0"
+	</FilesMatch>
+	
+	# Add Vary header for compression
+	Header append Vary "Accept-Encoding"
+	
+	# Security Headers
+	Header set X-Content-Type-Options "nosniff"
+	Header set X-Frame-Options "SAMEORIGIN"
+	Header set X-XSS-Protection "1; mode=block"
+	Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# =============================================================================
+# 9. UTF-8 ENCODING
+# =============================================================================
+AddDefaultCharset utf-8
+AddCharset utf-8 .css .js .xml .json
+
+# =============================================================================
+# 10. DISABLE DIRECTORY LISTING
+# =============================================================================
+Options -Indexes
+
+# =============================================================================
+# 11. FILE UPLOAD LIMITS (Prevent large file uploads for security)
+# =============================================================================
+<IfModule mod_php.c>
+	php_value upload_max_filesize 10M
+	php_value post_max_size 10M
+</IfModule>
+
+# =============================================================================
+# 12. ENVIRONMENT-SPECIFIC: Development vs Production
+# =============================================================================
+# For development (set custom header)
+# Header set X-Powered-By "Custom Framework"
+# For production (remove PHP version header)
+<IfModule mod_headers.c>
+	Header unset X-Powered-By
+	Header always unset X-Powered-By
+</IfModule>

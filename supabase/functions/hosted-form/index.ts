@@ -18,12 +18,23 @@ serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: baseHeaders });
   const url = new URL(request.url);
   const slug = url.searchParams.get("slug")?.trim() || "";
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 100) return json({ error: "Invalid form slug" }, 400);
+  const formId = url.searchParams.get("id")?.trim() || "";
+  if (!slug && !formId) return json({ error: "A valid form slug or id parameter is required" }, 400);
 
   const database = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const { data: form, error: formError } = await database.from("payment_forms")
-    .select("id,merchant_id,title,description,slug,fields,products,pages,theme,status,submissions_count,logo_url,banner_url")
-    .eq("slug", slug).maybeSingle();
+  let formQuery = database.from("payment_forms")
+    .select("id,merchant_id,title,description,slug,fields,products,pages,theme,status,submissions_count,total_revenue,logo_url,banner_url");
+
+  if (slug) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(slug) || slug.length > 100) return json({ error: "Invalid form slug" }, 400);
+    formQuery = formQuery.eq("slug", slug);
+  } else if (isUuid(formId)) {
+    formQuery = formQuery.eq("id", formId);
+  } else {
+    return json({ error: "Invalid form identifier" }, 400);
+  }
+
+  const { data: form, error: formError } = await formQuery.maybeSingle();
   if (formError || !form) return json({ error: "Published form not found" }, 404);
 
   if (request.method === "GET" && url.searchParams.get("action") === "attachment") {
@@ -34,18 +45,51 @@ serve(async (request) => {
   if (request.method === "GET" && url.searchParams.get("action") === "status") {
     return paymentStatus(database, form.id, url.searchParams.get("order_id") || "");
   }
+
+  // CSV Backend live record lookup
+  if (request.method === "GET" && url.searchParams.get("action") === "csv_lookup") {
+    return csvLookup(form, url);
+  }
+
+  // Check form closing status (deadline timeline and submission count limit)
+  const theme = asObject(form.theme);
+  const closingStatus = checkFormClosingStatus(form, theme);
+
   if (request.method === "GET") {
-    const theme = asObject(form.theme);
-    if (theme.close_after_limit === true && Number(form.submissions_count || 0) >= Math.max(1, Number(theme.max_responses || 1000))) {
-      return new Response(renderClosedForm(String(form.title || "Form")), { status: 410, headers: htmlHeaders(randomToken()) });
+    if (closingStatus.closed) {
+      return new Response(renderClosedForm(String(form.title || "Form"), closingStatus.message), { status: 410, headers: htmlHeaders(randomToken()) });
     }
+
+    try {
+      await database.rpc("record_hosted_form_view", { p_form_id: form.id });
+    } catch (viewErr) {
+      console.warn("Unable to record view count:", viewErr);
+    }
+    const nonce = randomToken();
+
+    // Check if Custom Web App / Custom HTML mode is enabled
+    const isCustomWebApp = theme.is_custom_web_app === true || theme.isCustomWebApp === true || theme.enable_custom_html === true || theme.enableCustomHtml === true;
+    if (isCustomWebApp) {
+      const { data: merchant } = await database.from("merchants")
+        .select("business_name,phone,business_type,website,email,webhook_secret")
+        .eq("id", form.merchant_id).maybeSingle();
+      const { data: methods } = await database.from("merchant_numbers").select("type")
+        .eq("merchant_id", form.merchant_id).eq("active", true);
+      return new Response(renderCustomWebApp(form, merchant, methods || [], nonce), { headers: htmlHeaders(nonce) });
+    }
+
     const { data: methods } = await database.from("merchant_numbers").select("type")
       .eq("merchant_id", form.merchant_id).eq("active", true);
-    await database.rpc("record_hosted_form_view", { p_form_id: form.id });
-    const nonce = randomToken();
     return new Response(renderForm(form, methods || [], nonce), { headers: htmlHeaders(nonce) });
   }
+
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  // Reject POST submission if form has closed
+  if (closingStatus.closed) {
+    return json({ error: closingStatus.message }, 409);
+  }
+
   if (url.searchParams.get("action") === "upload") return uploadAttachment(database, form, request);
   if (Number(request.headers.get("content-length") || "0") > 65_536) return json({ error: "Submission is too large" }, 413);
 
@@ -57,13 +101,33 @@ serve(async (request) => {
   } catch {
     return json({ error: "Request body must be a valid JSON object" }, 400);
   }
+
+  // Honeypot anti-spam check
+  if (input._hp_check || input._honeypot || input._website_hp) {
+    return json({ error: "Invalid submission" }, 400);
+  }
+
   try {
     const requestId = String(request.headers.get("idempotency-key") || input.request_id || "");
     if (!isUuid(requestId)) return json({ error: "A valid idempotency key is required" }, 400);
     const fields = Array.isArray(form.fields) ? (form.fields as FormField[]).slice(0, 200) : [];
-    const theme = asObject(form.theme);
     const validation = validateAnswers(fields, asObject(input.answers), theme, String(form.id), requestId);
     if (!validation.ok) return json({ error: "Validation failed", fields: validation.errors }, 422);
+
+    // CSV backend record validation on submission
+    const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
+    const enforceCsvMatch = theme.csv_enforce_match === true || theme.enforce_csv_record_exists === true;
+    const lookupFieldId = String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || "");
+    const lookupColumn = String(theme.csv_lookup_column || theme.csvLookupColumn || "");
+    if (enableCsv && enforceCsvMatch && lookupFieldId && lookupColumn) {
+      const submittedLookup = String(validation.answers[lookupFieldId] || "").trim().toLowerCase();
+      const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
+      const parsedCsv = parseCsv(rawCsv);
+      const matched = parsedCsv.rows.some((row) => String(row[lookupColumn] || "").trim().toLowerCase() === submittedLookup);
+      if (!matched) {
+        return json({ error: `No matching record found in database for '${validation.answers[lookupFieldId]}'` }, 422);
+      }
+    }
 
     const name = findAnswer(fields, validation.answers, "NAME").slice(0, 120);
     const phone = findAnswer(fields, validation.answers, "PHONE").replace(/[^0-9+]/g, "").slice(0, 20);
@@ -109,7 +173,7 @@ serve(async (request) => {
     if (error) {
       console.error("Hosted-form transaction failed", error.code, error.message);
       const message = error.message.toLowerCase();
-      if (message.includes("limit reached")) return json({ error: "This form is no longer accepting responses" }, 409);
+      if (message.includes("limit reached")) return json({ error: closingStatus.message || "This form is no longer accepting responses" }, 409);
       if (message.includes("already submitted")) return json({ error: "A response was already submitted from this client" }, 409);
       if (message.includes("payment number")) return json({ error: "The merchant has not configured this payment method" }, 409);
       if (message.includes("gateway is disabled")) return json({ error: "This merchant is not accepting payments right now" }, 409);
@@ -118,7 +182,7 @@ serve(async (request) => {
     }
     const result = Array.isArray(data) ? data[0] : data;
     if (result.created !== false) {
-      const notificationTask = sendSubmissionNotifications(database, form, result, { name, phone, email });
+      const notificationTask = sendSubmissionNotifications(database, form, { ...result, answers: validation.answers }, { name, phone, email });
       const edgeRuntime = (globalThis as any).EdgeRuntime;
       if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(notificationTask);
       else await notificationTask;
@@ -133,6 +197,101 @@ serve(async (request) => {
     return json({ error: "Unable to process this response" }, 500);
   }
 });
+
+function checkFormClosingStatus(form: Json, theme: Json): { closed: boolean; message: string; reason: string } {
+  const defaultMsg = "This form is no longer accepting responses.";
+  const customMsg = String(theme.closed_message || theme.closedMessage || defaultMsg);
+
+  // 1. Max submission response limit
+  const closeAfterLimit = theme.close_after_limit === true || theme.closeAfterLimit === true;
+  const maxResponses = Math.max(1, Number(theme.max_responses || theme.maxResponses || 1000));
+  if (closeAfterLimit && Number(form.submissions_count || 0) >= maxResponses) {
+    return { closed: true, message: customMsg, reason: "limit" };
+  }
+
+  // 2. Closing Timeline Deadline
+  const enableTimeline = theme.enable_closing_timeline === true || theme.enableClosingTimeline === true;
+  const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0);
+  if (enableTimeline && deadlineEpoch > 0 && Date.now() > deadlineEpoch) {
+    return { closed: true, message: customMsg, reason: "deadline" };
+  }
+
+  return { closed: false, message: "", reason: "" };
+}
+
+function parseCsv(raw: string): { headers: string[]; rows: Record<string, string>[] } {
+  if (!raw || !raw.trim()) return { headers: [], rows: [] };
+  const cleanRaw = raw.replace(/^\uFEFF/, "");
+  const lines = cleanRaw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return { headers: [], rows: [] };
+
+  const firstLine = lines[0];
+  const delimiter = (firstLine.includes("\t") && !firstLine.includes(",")) ? "\t" : (firstLine.includes(";") && !firstLine.includes(",")) ? ";" : ",";
+
+  const parseLine = (line: string): string[] => {
+    const entries: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"' || char === "'") {
+        if (inQuotes && line[i + 1] === char) {
+          current += char;
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
+        entries.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    entries.push(current.trim());
+    return entries;
+  };
+
+  const headers = parseLine(lines[0]).map((h) => h.replace(/^["']|["']$/g, "").trim());
+  const rows: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseLine(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] !== undefined ? values[idx].replace(/^["']|["']$/g, "").trim() : "";
+    });
+    rows.push(row);
+  }
+  return { headers, rows };
+}
+
+function csvLookup(form: Json, url: URL): Response {
+  const theme = asObject(form.theme);
+  const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
+  if (!enableCsv) return json({ error: "CSV backend is not enabled for this form" }, 400);
+
+  const query = String(url.searchParams.get("query") || url.searchParams.get("lookup_value") || "").trim();
+  if (!query) return json({ error: "Lookup query parameter is required" }, 400);
+
+  const lookupCol = String(url.searchParams.get("lookup_column") || theme.csv_lookup_column || theme.csvLookupColumn || "").trim();
+  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
+  const parsed = parseCsv(rawCsv);
+  const normalizedQuery = query.toLowerCase();
+
+  const match = parsed.rows.find((row) => {
+    if (lookupCol && row[lookupCol] !== undefined) {
+      return String(row[lookupCol] || "").trim().toLowerCase() === normalizedQuery;
+    }
+    return Object.values(row).some((val) => String(val || "").trim().toLowerCase() === normalizedQuery);
+  });
+
+  return json({
+    ok: true,
+    found: Boolean(match),
+    record: match || null,
+    headers: parsed.headers,
+  }, 200);
+}
 
 async function paymentStatus(database: any, formId: string, orderId: string): Promise<Response> {
   if (!isUuid(orderId)) return json({ error: "Invalid order" }, 400);
@@ -221,8 +380,11 @@ async function sendSubmissionNotifications(
 ): Promise<void> {
   try {
     const theme = asObject(form.theme);
-    const { data: merchant } = await database.from("merchants").select("user_id,business_name")
+    const { data: merchant } = await database.from("merchants")
+      .select("user_id,business_name,webhook_secret")
       .eq("id", form.merchant_id).maybeSingle();
+
+    // 1. In-app merchant notification
     if (merchant?.user_id) {
       await database.from("notifications").insert({
         user_id: merchant.user_id,
@@ -231,7 +393,10 @@ async function sendSubmissionNotifications(
         body: `${customer.name || "Anonymous"} submitted a response${Number(submission.amount || 0) > 0 ? ` for BDT ${Number(submission.amount).toFixed(2)}` : ""}.`,
       });
     }
+
     const jobs: Promise<unknown>[] = [];
+
+    // 2. Email notification via Resend
     const recipientEmail = String(theme.notification_email || "").trim();
     const resendKey = Deno.env.get("RESEND_API_KEY") || "";
     if (theme.email_notifications === true && resendKey && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
@@ -245,10 +410,12 @@ async function sendSubmissionNotifications(
           from: Deno.env.get("FORM_NOTIFICATION_FROM") || "SwapnoPay Forms <forms@swapnopay.com>",
           to: [recipientEmail],
           subject: `New form response: ${String(form.title || "Hosted form").replace(/[\r\n]/g, " ").slice(0, 120)}`,
-          html: `<h2>${safeTitle}</h2><p><strong>${safeCustomer}</strong> submitted a new response.</p><p>Contact: ${safeContact}</p><p>Submission ID: ${escapeHtml(String(submission.submission_id || ""))}</p>`,
+          html: `<h2>${safeTitle}</h2><p><strong>${safeCustomer}</strong> submitted a new response.</p><p>Contact: ${safeContact}</p><p>Amount: BDT ${Number(submission.amount || 0).toFixed(2)}</p><p>Submission ID: ${escapeHtml(String(submission.submission_id || ""))}</p>`,
         }),
       }));
     }
+
+    // 3. SMS notification
     const recipientPhone = String(theme.notification_sms_number || "").replace(/[^0-9+]/g, "");
     const smsUrl = Deno.env.get("FORM_SMS_PROVIDER_URL") || "";
     const smsToken = Deno.env.get("FORM_SMS_PROVIDER_TOKEN") || "";
@@ -264,6 +431,78 @@ async function sendSubmissionNotifications(
         }),
       }));
     }
+
+    // 4. Discord Webhook notification
+    const discordUrl = String(theme.discord_webhook_url || theme.discordWebhookUrl || "").trim();
+    if (discordUrl && safeRedirectUrl(discordUrl)) {
+      jobs.push(fetchWithRetry(discordUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          content: `🔔 **New Form Submission** for **${String(form.title || "Form")}**`,
+          embeds: [{
+            title: String(form.title || "Form Submission"),
+            color: 5983424,
+            fields: [
+              { name: "Customer", value: customer.name || "Anonymous", inline: true },
+              { name: "Phone", value: customer.phone || "Not provided", inline: true },
+              { name: "Amount", value: Number(submission.amount || 0) > 0 ? `BDT ${Number(submission.amount).toFixed(2)}` : "Free", inline: true },
+              { name: "Submission ID", value: String(submission.submission_id || "").slice(0, 36), inline: false },
+            ],
+            timestamp: new Date().toISOString(),
+          }],
+        }),
+      }));
+    }
+
+    // 5. Slack Webhook notification
+    const slackUrl = String(theme.slack_webhook_url || theme.slackWebhookUrl || "").trim();
+    if (slackUrl && safeRedirectUrl(slackUrl)) {
+      jobs.push(fetchWithRetry(slackUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          text: `🔔 New Form Submission: *${String(form.title || "Form")}* from *${customer.name || customer.phone || "Anonymous"}*`,
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*New Form Submission received*\n*Form:* ${escapeHtml(String(form.title || "Form"))}\n*Customer:* ${escapeHtml(customer.name || "Anonymous")} (${escapeHtml(customer.phone || customer.email || "No contact")})\n*Amount:* BDT ${Number(submission.amount || 0).toFixed(2)}`,
+              },
+            },
+          ],
+        }),
+      }));
+    }
+
+    // 6. Generic HTTP Webhook with HMAC-SHA256 signature
+    const genericWebhookUrl = String(theme.webhook_url || theme.webhookUrl || theme.payment_callback_url || "").trim();
+    if (genericWebhookUrl && safeRedirectUrl(genericWebhookUrl)) {
+      const webhookPayload = JSON.stringify({
+        event: "form.submission.created",
+        created_at: new Date().toISOString(),
+        form: { id: form.id, title: form.title, slug: form.slug },
+        submission: {
+          id: submission.submission_id,
+          order_id: submission.order_id,
+          transaction_id: submission.transaction_id,
+          amount: Number(submission.amount || 0),
+          payment_status: submission.payment_status,
+          payment_method: submission.payment_method,
+          answers: submission.answers || {},
+        },
+        customer,
+      });
+      const webhookSecret = String(merchant?.webhook_secret || theme.webhook_secret || "");
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (webhookSecret) {
+        const signature = await hmacSha256(webhookSecret, webhookPayload);
+        headers["x-swapnopay-signature"] = `sha256=${signature}`;
+      }
+      jobs.push(fetchWithRetry(genericWebhookUrl, { method: "POST", headers, body: webhookPayload }));
+    }
+
     const outcomes = await Promise.allSettled(jobs);
     outcomes.filter((item) => item.status === "rejected").forEach((item) => console.error("Form notification delivery failed", (item as PromiseRejectedResult).reason));
   } catch (error) {
@@ -284,6 +523,154 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<void> {
     if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
   throw lastError;
+}
+
+function renderCustomWebApp(form: Json, merchant: Json | null, methodRows: Json[], nonce: string): string {
+  const title = escapeHtml(String(form.title || "Custom Web App"));
+  const description = escapeHtml(String(form.description || ""));
+  const theme = asObject(form.theme);
+  const rawHtml = String(theme.custom_html_content || theme.customHtmlContent || theme.custom_html || `<div class="custom-web-card"><h2>{{form_title}}</h2><p>{{form_description}}</p><div class="merchant-badge">🏪 {{merchant_name}} | 📞 {{merchant_phone}}</div><div class="stats-grid"><div class="stat-box"><span class="stat-num">{{total_products}}</span><span>Products</span></div><div class="stat-box"><span class="stat-num">{{total_customers}}</span><span>Customers</span></div><div class="stat-box"><span class="stat-num">{{total_sales}}</span><span>Total Sales</span></div></div></div>`);
+  const rawCss = sanitizeCss(String(theme.custom_css || theme.customCss || ""));
+  const rawJs = String(theme.custom_js || theme.customJs || "");
+
+  const products = Array.isArray(form.products) ? (form.products as Json[]) : [];
+  const variableMap: Record<string, string> = {
+    merchant_name: String(merchant?.business_name || "SwapnoPay Merchant"),
+    merchant_phone: String(merchant?.phone || ""),
+    business_category: String(merchant?.business_type || "Business"),
+    merchant_website: String(merchant?.website || ""),
+    merchant_email: String(merchant?.email || ""),
+    form_title: String(form.title || ""),
+    form_description: String(form.description || ""),
+    submissions_count: String(form.submissions_count || 0),
+    total_sales: `BDT ${Number(form.total_revenue || 0).toFixed(2)}`,
+    total_products: String(products.length),
+    total_customers: String(form.submissions_count || 0),
+    currency: "BDT",
+    current_time: new Date().toLocaleString("en-US", { timeZone: "Asia/Dhaka" }),
+  };
+
+  const customVars = Array.isArray(theme.custom_variables) ? theme.custom_variables : Array.isArray(theme.customVariables) ? theme.customVariables : [];
+  for (const v of customVars) {
+    const item = asObject(v);
+    const key = String(item.key || "").replace(/[^a-zA-Z0-9_]/g, "");
+    if (key) variableMap[key] = String(item.example_value ?? item.defaultValue ?? "");
+  }
+
+  const resolveVars = (tmpl: string) => tmpl.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) => variableMap[key] ?? "");
+  const resolvedHtml = resolveVars(rawHtml);
+  const resolvedCss = resolveVars(rawCss);
+  const resolvedJs = resolveVars(rawJs);
+
+  const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
+  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
+  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
+  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
+  const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
+  const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
+  const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
+
+  const enableClosing = theme.enable_closing_timeline === true || theme.enableClosingTimeline === true;
+  const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0);
+  const showCountdown = theme.show_countdown_timer !== false && theme.showCountdownTimer !== false;
+  const closedMessage = escapeHtml(String(theme.closed_message || theme.closedMessage || "This form is no longer accepting responses."));
+
+  const closingBannerHtml = enableClosing && showCountdown ? `
+    <div id="form-closing-timer-banner" style="max-width:720px;margin:0 auto 20px auto;background:#FEF3C7;color:#92400E;border:1.5px solid #F59E0B;border-radius:14px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;">
+      <span>⏳ Form Submissions Close In:</span>
+      <span id="countdown-val" style="font-family:monospace;font-size:15px;font-weight:800;color:#B45309;">Loading...</span>
+    </div>
+  ` : "";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <style>
+    :root{--primary:#5B4BDB;--bg:#F6F7FB}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);margin:0;padding:min(24px,5vw);color:#172033}
+    .custom-web-card{max-width:720px;margin:0 auto;background:#fff;border-radius:20px;padding:clamp(18px,4vw,32px);box-shadow:0 10px 35px #17203318}
+    .merchant-badge{display:inline-block;background:#EEF2FF;color:#4F46E5;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;margin:12px 0}
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:20px}
+    .stat-box{background:#F1F5F9;padding:14px;border-radius:12px;text-align:center;font-size:12px}
+    .stat-num{display:block;font-size:20px;font-weight:bold;color:#4F46E5;margin-bottom:4px}
+    button{background:#5B4BDB;color:#fff;border:0;padding:13px 20px;border-radius:10px;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    ${resolvedCss}
+  </style>
+</head>
+<body>
+  ${closingBannerHtml}
+  ${resolvedHtml}
+
+  <script nonce="${nonce}">
+    window.csvBackendData = ${csvDataJson};
+    window.csvLookupColumn = ${csvLookupCol};
+    window.csvTargetLookupFieldId = ${csvTargetLookupId};
+    window.csvColumnMappings = ${csvMappings};
+
+    window.swapnopaySubmit = async function(answers, options) {
+      options = options || {};
+      const requestId = crypto.randomUUID();
+      const payload = {
+        request_id: requestId,
+        answers: answers || {},
+        product_id: options.product_id || null,
+        quantity: options.quantity || 1,
+        amount: options.amount || null,
+        payment_method: options.payment_method || 'AUTO'
+      };
+      const response = await fetch(location.href, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': requestId },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || (data.fields ? Object.values(data.fields)[0] : 'Submission failed'));
+      return data;
+    };
+
+    (function() {
+      const deadlineEpoch = ${deadlineEpoch};
+      const enableTimeline = ${enableClosing};
+      if (enableTimeline && deadlineEpoch > 0) {
+        function updateCountdown() {
+          const now = Date.now();
+          const diff = deadlineEpoch - now;
+          const banner = document.getElementById('form-closing-timer-banner');
+          const val = document.getElementById('countdown-val');
+          if (diff <= 0) {
+            if (val) val.innerText = "EXPIRED";
+            if (banner) {
+              banner.style.background = "#FEE2E2";
+              banner.style.borderColor = "#EF4444";
+              banner.style.color = "#991B1B";
+              banner.innerHTML = "🔒 <strong>${closedMessage}</strong>";
+            }
+            document.querySelectorAll('button[type="submit"], .submit-btn, .pay-btn, .order-btn').forEach(function(b) {
+              b.disabled = true;
+              b.innerText = "Form Closed";
+            });
+          } else {
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            if (val) val.innerText = (d > 0 ? d + "d " : "") + h + "h " + m + "m " + s + "s";
+          }
+        }
+        setInterval(updateCountdown, 1000);
+        updateCountdown();
+      }
+    })();
+
+    ${resolvedJs}
+  </script>
+</body>
+</html>`;
 }
 
 function renderForm(form: Json, methodRows: Json[], nonce: string): string {
@@ -369,8 +756,39 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
     }).join("")
     : `${renderedFields.map((field) => renderConditionalField(field, enforceRequired, requiredIndicator, theme)).join("")}${productInput}${methodInput}${submitButton}`;
 
+  // Hide form header feature
+  const hideHeader = theme.hide_form_header === true || theme.hideFormHeader === true;
+  const headerMarkup = hideHeader ? "" : `
+    ${bannerUrl ? `<img class="banner" src="${escapeHtml(bannerUrl)}" alt="">` : ""}
+    ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="">` : ""}
+    <h1>${title}</h1>
+    ${description ? `<p>${description}</p>` : ""}
+  `;
+
+  // Closing timeline countdown banner
+  const enableClosing = theme.enable_closing_timeline === true || theme.enableClosingTimeline === true;
+  const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0);
+  const showCountdown = theme.show_countdown_timer !== false && theme.showCountdownTimer !== false;
+  const closedMessage = escapeHtml(String(theme.closed_message || theme.closedMessage || "This form is no longer accepting responses."));
+
+  const closingBannerMarkup = enableClosing && showCountdown ? `
+    <div id="form-closing-timer-banner" style="background:#FEF3C7;color:#92400E;border:1.5px solid #F59E0B;border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:13px;margin-bottom:18px;">
+      <span>⏳ Submissions Close In:</span>
+      <span id="countdown-val" style="font-family:monospace;font-size:14px;font-weight:800;color:#B45309;">Loading...</span>
+    </div>
+  ` : "";
+
+  // CSV backend dataset injection
+  const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
+  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
+  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
+  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
+  const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
+  const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
+  const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
+
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
-  :root{--primary:${primary};--bg:${background};--radius:${radius}px}*{box-sizing:border-box}body{font-family:${fontFamily};background:${bodyBackground};background-attachment:fixed;margin:0;padding:min(${pageMargin}px,5vw);color:#172033}.card{max-width:${width}px;margin:auto;background:#fff;padding:clamp(18px,4vw,32px);border-radius:var(--radius);box-shadow:0 10px 35px #17203318}.banner{width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) * .7);margin-bottom:18px}.logo{width:72px;height:72px;object-fit:contain;margin-bottom:12px}h1{margin-top:0}.form-page[hidden],[data-condition-field][hidden]{display:none}label,.label{display:block;margin:14px 0 6px;font-weight:650}input,select,textarea,button{width:100%;padding:13px;border-radius:10px;border:1px solid #ccd2df;font:inherit;background:#fff}textarea{min-height:100px;resize:vertical}button{margin-top:20px;background:var(--primary);color:#fff;border:0;border-radius:${buttonRadius}px;font-weight:750;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.page-nav{display:flex;gap:12px;align-items:center}.page-nav button{flex:1}.secondary{background:#eef1f6;color:#172033}.progress-track{height:8px;background:#eef1f6;border-radius:99px;overflow:hidden;margin:18px 0}.progress-track div{height:100%;background:var(--primary);transition:width .2s ease}.progress-number{color:#667085;font-size:.875rem;font-weight:650;margin:16px 0}.choice{display:flex;gap:8px;align-items:center;margin:8px 0}.choice input{width:auto}.helper{display:block;color:#667085;font-size:.875rem;margin-top:5px}.code-block{margin:14px 0}.error{color:#b42318;margin-top:12px}.success{color:#067647}.payment{background:#f8f7ff;border:1px solid #d9d5ff;border-radius:12px;padding:16px;margin-top:16px;white-space:pre-wrap}</style>${customCss ? `<style>${customCss}</style>` : ""}</head><body><main class="card">${bannerUrl ? `<img class="banner" src="${escapeHtml(bannerUrl)}" alt="">` : ""}${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="">` : ""}<h1>${title}</h1>${description ? `<p>${description}</p>` : ""}${progressMarkup}<form id="form" novalidate>${fieldsMarkup}</form><div id="result" role="status" aria-live="polite"></div></main><script nonce="${nonce}">
+  :root{--primary:${primary};--bg:${background};--radius:${radius}px}*{box-sizing:border-box}body{font-family:${fontFamily};background:${bodyBackground};background-attachment:fixed;margin:0;padding:min(${pageMargin}px,5vw);color:#172033}.card{max-width:${width}px;margin:auto;background:#fff;padding:clamp(18px,4vw,32px);border-radius:var(--radius);box-shadow:0 10px 35px #17203318}.banner{width:100%;max-height:260px;object-fit:cover;border-radius:calc(var(--radius) * .7);margin-bottom:18px}.logo{width:72px;height:72px;object-fit:contain;margin-bottom:12px}h1{margin-top:0}.form-page[hidden],[data-condition-field][hidden]{display:none}label,.label{display:block;margin:14px 0 6px;font-weight:650}input,select,textarea,button{width:100%;padding:13px;border-radius:10px;border:1px solid #ccd2df;font:inherit;background:#fff}textarea{min-height:100px;resize:vertical}button{margin-top:20px;background:var(--primary);color:#fff;border:0;border-radius:${buttonRadius}px;font-weight:750;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.page-nav{display:flex;gap:12px;align-items:center}.page-nav button{flex:1}.secondary{background:#eef1f6;color:#172033}.progress-track{height:8px;background:#eef1f6;border-radius:99px;overflow:hidden;margin:18px 0}.progress-track div{height:100%;background:var(--primary);transition:width .2s ease}.progress-number{color:#667085;font-size:.875rem;font-weight:650;margin:16px 0}.choice{display:flex;gap:8px;align-items:center;margin:8px 0}.choice input{width:auto}.helper{display:block;color:#667085;font-size:.875rem;margin-top:5px}.code-block{margin:14px 0}.error{color:#b42318;margin-top:12px}.success{color:#067647}.payment{background:#f8f7ff;border:1px solid #d9d5ff;border-radius:12px;padding:16px;margin-top:16px;white-space:pre-wrap}</style>${customCss ? `<style>${customCss}</style>` : ""}</head><body><main class="card">${closingBannerMarkup}${headerMarkup}${progressMarkup}<form id="form" novalidate><input type="hidden" name="_hp_check" value="">${fieldsMarkup}</form><div id="result" role="status" aria-live="polite"></div></main><script nonce="${nonce}">
   const form=document.querySelector('#form'),result=document.querySelector('#result'),submit=document.querySelector('#submit');const customTemplate=${JSON.stringify(customTemplate)},customDefaults=${JSON.stringify(customVariableDefaults)},redirectType=${JSON.stringify(redirectType)},redirectUrl=${JSON.stringify(redirectUrl)},redirectDelay=${redirectDelay},openInNewTab=${openInNewTab},timerSeconds=${timerSeconds},waitForPayment=${waitForPayment};
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fieldValue=id=>{const controls=[...document.querySelectorAll('[data-field-id="'+CSS.escape(id)+'"]')].filter(el=>!el.disabled);if(!controls.length)return'';if(controls[0].type==='radio')return controls.find(el=>el.checked)?.value||'';if(controls[0].type==='checkbox')return controls[0].checked?'true':'false';if(controls[0].multiple)return[...controls[0].selectedOptions].map(option=>option.value).join(', ');return controls[0].value||''};
@@ -385,6 +803,84 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
   let uploadInProgress=false;document.querySelectorAll('input[type="file"][data-field-id]').forEach(input=>input.addEventListener('change',()=>{delete input.dataset.uploaded;input.closest('[data-condition-field]')?.querySelector('[data-upload-answer-for="'+CSS.escape(input.dataset.fieldId)+'"]')?.remove()}));form.addEventListener('submit',async event=>{const pending=[...document.querySelectorAll('input[type="file"][data-field-id]')].filter(input=>!input.disabled&&input.files?.length&&!input.dataset.uploaded);if(!pending.length)return;event.preventDefault();event.stopImmediatePropagation();if(uploadInProgress)return;uploadInProgress=true;submit.disabled=true;result.className='';result.textContent='Uploading attachments securely...';try{for(const input of pending){const file=input.files[0],max=Number(input.dataset.maxFileBytes||5242880);if(file.size>max)throw new Error('Attachment exceeds the configured size limit');const uploadUrl=new URL(location.href);uploadUrl.searchParams.set('action','upload');const body=new FormData();body.set('request_id',pendingRequestId);body.set('field_id',input.dataset.fieldId);body.set('file',file);const response=await fetch(uploadUrl,{method:'POST',headers:{'idempotency-key':pendingRequestId},body});const data=await response.json();if(!response.ok)throw new Error(data.error||'Attachment upload failed');input.dataset.uploaded='true';const hidden=document.createElement('input');hidden.type='hidden';hidden.dataset.fieldId=input.dataset.fieldId;hidden.dataset.fieldLabel=input.dataset.fieldLabel;hidden.dataset.fieldType=input.dataset.fieldType;hidden.dataset.uploadAnswerFor=input.dataset.fieldId;hidden.value=JSON.stringify(data.file);input.closest('[data-condition-field]').append(hidden)}uploadInProgress=false;submit.disabled=false;result.textContent='';form.requestSubmit()}catch(error){uploadInProgress=false;submit.disabled=false;result.className='error';result.textContent=error?.message||'Attachment upload failed'}},true);
   if(!waitForPayment)poll=(payload,response)=>{result.className='payment';result.textContent='Your response is recorded. Send BDT '+response.amount+' to '+response.payment_method+' '+response.payment_number+'\nReference: '+response.transaction_id+'\nPayment will be confirmed in the merchant dashboard.'};
   if(timerSeconds>0)setTimeout(()=>{if(!submit.disabled){submit.disabled=true;result.className='error';result.textContent='This response session has expired. Reload the page to start again.'}},timerSeconds*1000);
+
+  // Closing timeline countdown timer in standard form
+  (function() {
+    const deadlineEpoch = ${deadlineEpoch};
+    const enableTimeline = ${enableClosing};
+    if (enableTimeline && deadlineEpoch > 0) {
+      function updateCountdown() {
+        const now = Date.now();
+        const diff = deadlineEpoch - now;
+        const banner = document.getElementById('form-closing-timer-banner');
+        const val = document.getElementById('countdown-val');
+        if (diff <= 0) {
+          if (val) val.innerText = "EXPIRED";
+          if (banner) {
+            banner.style.background = "#FEE2E2";
+            banner.style.borderColor = "#EF4444";
+            banner.style.color = "#991B1B";
+            banner.innerHTML = "🔒 <strong>${closedMessage}</strong>";
+          }
+          if (submit) {
+            submit.disabled = true;
+            submit.style.opacity = '0.5';
+            submit.style.cursor = 'not-allowed';
+            submit.innerText = "Form Closed";
+          }
+        } else {
+          const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          const s = Math.floor((diff % (1000 * 60)) / 1000);
+          if (val) val.innerText = (d > 0 ? d + "d " : "") + h + "h " + m + "m " + s + "s";
+        }
+      }
+      setInterval(updateCountdown, 1000);
+      updateCountdown();
+    }
+  })();
+
+  // CSV backend dataset & autofill
+  (function() {
+    const csvBackendData = ${csvDataJson};
+    const csvLookupCol = ${csvLookupCol};
+    const csvTargetLookupId = ${csvTargetLookupId};
+    const csvColumnMappings = ${csvMappings};
+
+    if (csvBackendData.length > 0 && csvLookupCol && csvTargetLookupId) {
+      const lookupInput = document.querySelector('[data-field-id="' + CSS.escape(csvTargetLookupId) + '"]');
+      if (lookupInput) {
+        let timer;
+        lookupInput.addEventListener('input', () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            const query = (lookupInput.value || '').trim().toLowerCase();
+            if (!query) {
+              lookupInput.style.borderColor = '';
+              return;
+            }
+            const matched = csvBackendData.find(row => String(row[csvLookupCol] || '').trim().toLowerCase() === query);
+            if (matched) {
+              Object.entries(csvColumnMappings).forEach(([colName, fieldId]) => {
+                if (fieldId === csvTargetLookupId) return;
+                const targetEl = document.querySelector('[data-field-id="' + CSS.escape(fieldId) + '"]');
+                if (targetEl && matched[colName] !== undefined) {
+                  targetEl.value = matched[colName];
+                  targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                  targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+              });
+              lookupInput.style.borderColor = '#10B981';
+            } else {
+              lookupInput.style.borderColor = '';
+            }
+          }, 250);
+        });
+      }
+    }
+  })();
+
   form.addEventListener('submit',event=>{if(!form.checkValidity()){event.preventDefault();event.stopImmediatePropagation();form.reportValidity()}},true);
   let pendingRequestId=crypto.randomUUID();form.addEventListener('submit',async event=>{event.preventDefault();submit.disabled=true;result.className='';result.textContent='Submitting securely…';const values=new FormData(form),answers={};document.querySelectorAll('[data-field-id]').forEach(el=>{if(el.type==='checkbox'){answers[el.dataset.fieldId]=el.checked?'true':'false'}else if(el.type==='radio'){if(el.checked)answers[el.dataset.fieldId]=el.value}else{answers[el.dataset.fieldId]=el.value}});const requestId=pendingRequestId;const payload={request_id:requestId,answers,product_id:values.get('product_id'),quantity:values.get('quantity'),payment_method:values.get('payment_method')};try{const response=await fetch(location.href,{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestId},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok){const fieldMessage=data.fields&&typeof data.fields==='object'?Object.values(data.fields)[0]:'';result.className='error';result.textContent=fieldMessage||data.error||'Submission failed';submit.disabled=false;return}pendingRequestId=crypto.randomUUID();document.querySelectorAll('input[type="file"][data-field-id]').forEach(input=>delete input.dataset.uploaded);document.querySelectorAll('[data-upload-answer-for]').forEach(input=>input.remove());if(!data.payment_required){complete(payload,data);return}result.className='payment';result.textContent='Send BDT '+data.amount+' to '+data.payment_method+' '+data.payment_number+'\nReference: '+data.transaction_id+'\nWaiting for payment confirmation…';poll(payload,data)}catch(_){result.className='error';result.textContent='Network error. Please retry; the idempotency key prevents duplicates.';submit.disabled=false}});
   </script></body></html>`;
@@ -420,7 +916,7 @@ function renderField(field: FormField, enforceRequired: boolean, requiredIndicat
   if (type === "RADIO") { const options = Array.isArray(field.options) ? field.options : []; return `<fieldset><legend class="label">${shownLabel}</legend>${options.map((option, index) => `<label class="choice"><input type="radio" name="field_${id}" value="${escapeHtml(String(option))}" ${data}${required && index === 0 ? " required" : ""}${String(option) === String(field.default_value || "") ? " checked" : ""}>${escapeHtml(String(option))}</label>`).join("")}${helper}</fieldset>`; }
   if (["CHECKBOX", "TOGGLE"].includes(type)) return `<label class="choice"><input id="${id}" type="checkbox" ${data}${required}${String(field.default_value || "").toLowerCase() === "true" ? " checked" : ""}>${shownLabel}</label>${helper}`;
   if (["ADDRESS", "NOTES"].includes(type)) return `<label for="${id}">${shownLabel}</label><textarea id="${id}" placeholder="${placeholder}" ${data}${required}${lengthRules}>${defaultValue}</textarea>${helper}`;
-  const inputType = type === "EMAIL" ? "email" : type === "PHONE" ? "tel" : ["CUSTOM_AMOUNT", "QUANTITY"].includes(type) ? "number" : type === "WEBSITE" ? "url" : "text";
+  const inputType = type === "DATE" ? "date" : type === "EMAIL" ? "email" : type === "PHONE" ? "tel" : ["CUSTOM_AMOUNT", "QUANTITY"].includes(type) ? "number" : type === "WEBSITE" ? "url" : "text";
   let min = field.min_value === null || field.min_value === undefined ? NaN : Number(field.min_value);
   let max = field.max_value === null || field.max_value === undefined ? NaN : Number(field.max_value);
   if (type === "QUANTITY") {
@@ -502,7 +998,11 @@ function validateAnswers(fields: FormField[], input: Json, theme: Json, formId: 
 function findAnswer(fields: FormField[], answers: Json, type: string): string { const field = fields.find((item) => String(item.type || "").toUpperCase() === type); return field ? String(answers[String(field.id)] || "") : ""; }
 function conditionMatches(field: FormField, answers: Json): boolean { const dependsOn = String(field.depends_on_field_id || ""); if (!dependsOn) return true; const actual = String(answers[dependsOn] ?? ""), expected = String(field.condition_value ?? ""); switch (String(field.condition_operator || "EQUALS").toUpperCase()) { case "NOT_EQUALS": return actual !== expected; case "CONTAINS": return actual.includes(expected); default: return actual === expected; } }
 function shuffle<T>(items: T[]): T[] { const copy = [...items]; for (let index = copy.length - 1; index > 0; index--) { const random = new Uint32Array(1); crypto.getRandomValues(random); const target = random[0] % (index + 1); [copy[index], copy[target]] = [copy[target], copy[index]]; } return copy; }
-function renderClosedForm(title: string): string { return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body><main><h1>${escapeHtml(title)}</h1><p>This form is no longer accepting responses.</p></main></body></html>`; }
+function renderClosedForm(title: string, message: string = "This form is no longer accepting responses."): string {
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} — Closed</title><style>body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#F6F7FB;margin:0;padding:24px;display:flex;align-items:center;justify-content:center;min-height:90vh;color:#1E293B}.card{background:#fff;border-radius:20px;padding:36px 32px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.06);text-align:center}.icon{font-size:48px;margin-bottom:16px}h1{font-size:1.5rem;margin:0 0 12px 0;color:#0F172A}p{font-size:1rem;color:#64748B;line-height:1.6;margin:0}</style></head><body><main class="card"><div class="icon">🔒</div><h1>${safeTitle}</h1><p>${safeMessage}</p></main></body></html>`;
+}
 function asObject(value: unknown): Json { return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {}; }
 function parseObject(value: string): Json { try { return asObject(JSON.parse(value)); } catch { return {}; } }
 function parseArray(value: string): string[] { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
@@ -519,6 +1019,12 @@ function sanitizeCustomHtml(value: string): string { return value.slice(0, 200_0
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!)); }
 function clientAddress(request: Request): string { return (request.headers.get("x-forwarded-for") || request.headers.get("cf-connecting-ip") || "unknown").split(",")[0].trim(); }
 async function sha256(value: string): Promise<string> { const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
+async function hmacSha256(secret: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(data));
+  return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function randomToken(): string { return crypto.randomUUID().replaceAll("-", ""); }
 function isUuid(value: string): boolean { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function htmlHeaders(nonce: string): HeadersInit { return { ...baseHeaders, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; img-src https: data:; form-action 'self'; base-uri 'none'; frame-ancestors https:` }; }

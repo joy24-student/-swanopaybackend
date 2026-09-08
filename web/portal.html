@@ -4,20 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SwapnoPay Developer Console & Sandbox</title>
-  <!-- Outfit Font -->
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- SEO & OpenGraph Meta Tags -->
+  <meta name="description" content="SwapnoPay Enterprise Developer Console, Live API Explorer, Interactive MFS Sandbox Simulator, Webhook Payload Inspector, and Code Generator.">
+  <meta name="theme-color" content="#08090d">
+  
+  <!-- Fonts: Outfit & Fira Code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
   <style>
     :root {
-      --bg-dark: #0b0f19;
-      --bg-card: #121824;
-      --border: #1e293b;
-      --primary: #0056ff;
-      --primary-glow: rgba(0, 86, 255, 0.15);
-      --success: #00c853;
+      --bg-dark: #08090d;
+      --bg-card: #11141f;
+      --bg-card-hover: #171b2a;
+      --bg-input: #0b0d14;
+      --border: rgba(250, 204, 21, 0.15);
+      --border-hover: rgba(250, 204, 21, 0.35);
+      --primary: #ca8a04;
+      --primary-gold: #facc15;
+      --primary-glow: rgba(250, 204, 21, 0.15);
+      --purple: #8b5cf6;
+      --purple-glow: rgba(139, 92, 246, 0.18);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.18);
       --warning: #f59e0b;
       --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.18);
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
+      --text-dim: #64748b;
     }
 
     * {
@@ -25,6 +42,7 @@
       margin: 0;
       padding: 0;
       font-family: 'Outfit', sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
 
     body {
@@ -36,73 +54,110 @@
       overflow-x: hidden;
     }
 
-    /* Top Header */
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track { background: #08090d; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary-gold); }
+
+    /* Header Navbar */
     header {
       background: var(--bg-card);
       border-bottom: 1px solid var(--border);
-      padding: 14px 24px;
+      padding: 14px 28px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       position: sticky;
       top: 0;
       z-index: 100;
+      backdrop-filter: blur(14px);
     }
 
     .brand-wrap {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
     }
 
     .brand-logo {
-      width: 32px;
-      height: 32px;
-      background: var(--success);
-      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #facc15, #ca8a04);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #fff;
+      color: #000;
       font-weight: 800;
-      font-size: 18px;
+      font-size: 20px;
+      box-shadow: 0 0 18px var(--primary-glow);
+    }
+
+    .brand-title-wrap {
+      display: flex;
+      flex-direction: column;
     }
 
     .brand-title {
       font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      color: #fff;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--primary-gold);
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
     }
 
     .app-select-wrap {
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #090d16;
+      background: var(--bg-input);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 6px 12px;
+      border-radius: 10px;
+      padding: 7px 14px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
+      color: var(--text-main);
       cursor: pointer;
+      transition: all 0.2s;
+    }
+    .app-select-wrap:hover {
+      border-color: var(--border-hover);
     }
 
     .env-toggle-wrap {
       display: flex;
       gap: 4px;
-      background: #090d16;
+      background: var(--bg-input);
       border: 1px solid var(--border);
       padding: 4px;
-      border-radius: 8px;
+      border-radius: 10px;
     }
 
     .env-btn {
-      padding: 6px 12px;
+      padding: 6px 14px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
       border: none;
-      border-radius: 6px;
+      border-radius: 7px;
       cursor: pointer;
       background: transparent;
       color: var(--text-muted);
@@ -110,31 +165,33 @@
     }
 
     .env-btn.active.sandbox {
-      background: rgba(245, 158, 11, 0.15);
-      color: var(--warning);
-      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.18);
+      color: var(--primary-gold);
+      border: 1px solid rgba(250, 204, 21, 0.35);
+      box-shadow: 0 0 10px rgba(250, 204, 21, 0.15);
     }
 
     .env-btn.active.live {
-      background: rgba(0, 200, 83, 0.15);
+      background: var(--success-glow);
       color: var(--success);
-      border: 1px solid rgba(0, 200, 83, 0.3);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      box-shadow: 0 0 10px var(--success-glow);
     }
 
-    /* Layout Frame */
+    /* Layout Structure */
     .console-layout {
       flex: 1;
       display: flex;
     }
 
-    /* Sidebar Menu */
+    /* Sidebar Navigation */
     .sidebar {
-      width: 240px;
+      width: 250px;
       background: var(--bg-card);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      padding: 24px 16px;
+      padding: 24px 14px;
       gap: 6px;
     }
 
@@ -143,9 +200,17 @@
         width: 70px;
         padding: 16px 8px;
       }
-      .sidebar span {
-        display: none;
-      }
+      .sidebar span:not(.menu-icon) { display: none; }
+      .sidebar-heading { display: none; }
+    }
+
+    .sidebar-heading {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      padding: 12px 14px 4px 14px;
     }
 
     .menu-item {
@@ -154,145 +219,164 @@
       gap: 12px;
       padding: 12px 16px;
       border-radius: 10px;
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 500;
       color: var(--text-muted);
       cursor: pointer;
       transition: all 0.2s ease;
       text-decoration: none;
+      border: 1px solid transparent;
     }
 
     .menu-item:hover {
-      background: #172033;
+      background: var(--bg-card-hover);
       color: var(--text-main);
+      border-color: rgba(255, 255, 255, 0.05);
     }
 
     .menu-item.active {
       background: var(--primary-glow);
-      color: var(--primary);
-      border: 1px solid rgba(0, 86, 255, 0.25);
+      color: var(--primary-gold);
+      border-color: var(--border-hover);
+      font-weight: 600;
     }
 
     .menu-icon {
       font-size: 16px;
+      width: 20px;
+      display: inline-block;
+      text-align: center;
     }
 
-    /* Viewport Panel */
+    /* Active Viewport Content Panel */
     .viewport {
       flex: 1;
       padding: 32px;
       overflow-y: auto;
-      max-width: 1200px;
+      max-width: 1320px;
       margin: 0 auto;
       width: 100%;
     }
 
-    .panel-view {
-      display: none;
-    }
+    .panel-view { display: none; }
+    .panel-view.active { display: block; animation: fadeIn 0.25s ease-out; }
 
-    .panel-view.active {
-      display: block;
-      animation: slideIn 0.3s ease;
-    }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(12px); }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Dashboard Metrics grids */
+    /* Metric Cards Grid */
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
       gap: 20px;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
     .metric-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px;
+      border-radius: 16px;
+      padding: 22px;
       display: flex;
       flex-direction: column;
       gap: 8px;
       position: relative;
       overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-hover);
     }
 
-    .metric-card::after {
+    .metric-card::before {
       content: '';
       position: absolute;
       top: 0;
       left: 0;
       width: 4px;
       height: 100%;
-      background: var(--accent, var(--primary));
+      background: var(--accent, var(--primary-gold));
     }
 
     .metric-title {
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
       color: var(--text-muted);
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
     }
 
     .metric-val {
-      font-size: 28px;
-      font-weight: 700;
+      font-size: 30px;
+      font-weight: 800;
       color: var(--text-main);
+      letter-spacing: -0.5px;
     }
 
     .metric-trend {
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
     }
 
     .trend-up { color: var(--success); }
-    .trend-down { color: var(--danger); }
+    .trend-down { color: var(--warning); }
 
-    /* Glassmorphism containers */
+    /* Glassmorphic Container Cards */
     .glass-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 24px;
+      border-radius: 18px;
+      padding: 26px;
       margin-bottom: 24px;
+      position: relative;
+    }
+
+    .card-header-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
     }
 
     .section-title {
       font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 6px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .section-subtitle {
       font-size: 13px;
       color: var(--text-muted);
+      margin-top: 4px;
       margin-bottom: 20px;
+      line-height: 1.5;
     }
 
-    /* Timeline Styles */
+    /* Timeline Stepper */
     .timeline {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
       position: relative;
-      padding-left: 24px;
-      margin-top: 10px;
+      padding-left: 28px;
+      margin-top: 12px;
     }
 
     .timeline::before {
       content: '';
       position: absolute;
-      top: 0;
-      left: 7px;
-      bottom: 0;
+      top: 6px;
+      left: 9px;
+      bottom: 6px;
       width: 2px;
       background: var(--border);
     }
@@ -306,182 +390,214 @@
 
     .timeline-dot {
       position: absolute;
-      left: -23px;
-      top: 4px;
-      width: 16px;
-      height: 16px;
+      left: -27px;
+      top: 2px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
-      background: var(--border);
-      border: 3px solid var(--bg-card);
+      background: var(--bg-dark);
+      border: 3px solid var(--border);
       z-index: 2;
+      transition: all 0.3s;
     }
 
     .timeline-item.completed .timeline-dot {
       background: var(--success);
-      box-shadow: 0 0 0 4px rgba(0, 200, 83, 0.15);
+      border-color: var(--success);
+      box-shadow: 0 0 10px var(--success-glow);
     }
 
     .timeline-item.active .timeline-dot {
-      background: var(--primary);
-      box-shadow: 0 0 0 4px rgba(0, 86, 255, 0.15);
+      background: var(--primary-gold);
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
     }
 
     .timeline-header {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
+      color: var(--text-main);
     }
 
     .timeline-time {
-      font-size: 10px;
+      font-size: 11.5px;
       color: var(--text-muted);
     }
 
-    /* Forms */
+    /* Form Fields & Controls */
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
+      gap: 18px;
+      margin-bottom: 18px;
     }
 
-    @media (max-width: 480px) {
+    @media (max-width: 600px) {
       .form-row { grid-template-columns: 1fr; }
     }
 
     .form-group {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 7px;
     }
 
-    .form-group.full-width {
-      grid-column: span 2;
-    }
+    .form-group.full-width { grid-column: 1 / -1; }
 
     label {
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
       color: var(--text-muted);
+      letter-spacing: 0.6px;
     }
 
     input, select, textarea {
-      background: #090d16;
+      background: var(--bg-input);
       border: 1px solid var(--border);
       color: #fff;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 13px;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 13.5px;
       outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    input:focus, select:focus {
-      border-color: var(--primary);
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary-gold);
+      box-shadow: 0 0 12px var(--primary-glow);
     }
 
     .btn {
-      background: var(--primary);
-      color: #fff;
+      background: linear-gradient(135deg, #facc15, #ca8a04);
+      color: #000;
       border: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 700;
       cursor: pointer;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
 
-    .btn:hover { background: #0041d0; }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
 
-    /* Sandbox Simulator Grid */
+    .btn-secondary {
+      background: #1e293b;
+      color: #fff;
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: #273549;
+      border-color: var(--border-hover);
+    }
+
+    /* Sandbox Grid */
     .sim-grid {
       display: grid;
-      grid-template-columns: 1.5fr 1fr;
+      grid-template-columns: 1.4fr 1fr;
       gap: 24px;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 840px) {
       .sim-grid { grid-template-columns: 1fr; }
     }
 
     .action-button-list {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
+      gap: 14px;
+    }
+
+    @media (max-width: 480px) {
+      .action-button-list { grid-template-columns: 1fr; }
     }
 
     .sim-btn {
-      background: #1e293b;
+      background: #161b26;
       border: 1px solid var(--border);
       color: #fff;
-      padding: 14px;
-      border-radius: 10px;
+      padding: 16px;
+      border-radius: 12px;
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       text-align: left;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       transition: all 0.2s ease;
     }
 
     .sim-btn:hover {
-      background: #273549;
-      border-color: var(--primary);
+      background: #1d2332;
+      border-color: var(--primary-gold);
+      transform: translateY(-2px);
     }
 
     .sim-btn-badge {
-      font-size: 9px;
-      font-weight: 600;
+      font-size: 9.5px;
+      font-weight: 700;
       background: var(--bg-dark);
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 20px;
+      margin-top: 4px;
+      display: inline-block;
+      color: var(--text-muted);
     }
 
-    /* Code Snippets & Tabs */
+    /* Code Block & Tabs */
     .code-tabs {
       display: flex;
       gap: 6px;
-      background: #090d16;
-      padding: 4px;
-      border-radius: 8px;
-      margin-bottom: 12px;
+      background: var(--bg-input);
+      padding: 5px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
     }
 
     .tab-btn {
       background: transparent;
       border: none;
       color: var(--text-muted);
-      padding: 6px 12px;
+      padding: 7px 14px;
       font-size: 12px;
       font-weight: 600;
-      border-radius: 6px;
+      border-radius: 7px;
       cursor: pointer;
+      transition: all 0.2s;
     }
 
     .tab-btn.active {
-      background: var(--border);
-      color: #fff;
+      background: var(--primary-gold);
+      color: #000;
+      font-weight: 700;
     }
 
     .code-block-wrap {
-      background: #090d16;
+      background: #05070c;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
+      border-radius: 12px;
+      padding: 18px;
       position: relative;
     }
 
     .code-block-wrap pre {
-      font-family: monospace;
-      font-size: 12px;
+      font-family: 'Fira Code', monospace;
+      font-size: 12.5px;
       color: #38bdf8;
       overflow-x: auto;
       white-space: pre-wrap;
+      line-height: 1.6;
     }
 
     .copy-btn {
@@ -490,24 +606,38 @@
       right: 12px;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      color: #fff;
-      padding: 4px 8px;
+      color: var(--primary-gold);
+      padding: 5px 10px;
       border-radius: 6px;
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      border-color: var(--primary-gold);
+      background: var(--bg-card-hover);
     }
 
-    /* Live Terminal Console Log */
+    /* Terminal Console Stream */
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .terminal-logs {
-      background: #05070c;
+      background: #040508;
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 16px;
-      font-family: monospace;
-      font-size: 11px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11.5px;
       color: #a7f3d0;
-      height: 220px;
+      height: 250px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -516,15 +646,17 @@
 
     .terminal-line {
       display: flex;
-      gap: 8px;
+      gap: 10px;
+      line-height: 1.5;
     }
 
-    .log-time { color: var(--text-muted); }
-    .log-warn { color: var(--warning); }
-    .log-err { color: var(--danger); }
-    .log-ok { color: var(--success); }
+    .log-time { color: var(--text-dim); }
+    .log-warn { color: var(--warning); font-weight: 600; }
+    .log-err { color: var(--danger); font-weight: 600; }
+    .log-ok { color: var(--success); font-weight: 600; }
+    .log-info { color: #60a5fa; font-weight: 600; }
 
-    /* Webhook Ledger List */
+    /* Webhook Ledger Table */
     .ledger-table {
       width: 100%;
       border-collapse: collapse;
@@ -533,79 +665,158 @@
 
     .ledger-table th, .ledger-table td {
       text-align: left;
-      padding: 12px;
+      padding: 14px 16px;
       border-bottom: 1px solid var(--border);
+    }
+
+    .ledger-table tr {
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .ledger-table tbody tr:hover {
+      background: var(--bg-card-hover);
     }
 
     .ledger-table th {
       color: var(--text-muted);
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
     }
 
     .status-badge {
       display: inline-block;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
     }
 
-    .status-badge.ok { background: rgba(0, 200, 83, 0.15); color: var(--success); }
-    .status-badge.warn { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-    .status-badge.err { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+    .status-badge.ok { background: var(--success-glow); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .status-badge.warn { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .status-badge.err { background: var(--danger-glow); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
 
-    /* Status indicator grid */
+    /* Operational Status Grid */
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 16px;
     }
 
-    @media (max-width: 600px) {
-      .status-grid { grid-template-columns: 1fr 1fr; }
-    }
-
     .status-item {
-      background: var(--bg-card);
+      background: var(--bg-input);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
+      border-radius: 12px;
+      padding: 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-weight: 600;
+      font-size: 13px;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       background: var(--success);
-      box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2);
+      box-shadow: 0 0 10px var(--success-glow);
     }
+
+    /* Api key card */
+    .key-box {
+      background: var(--bg-input);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--primary-gold);
+    }
+
+    /* Payload Inspector Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-hover);
+      border-radius: 18px;
+      width: 90%;
+      max-width: 680px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--primary-gold);
+      color: #fff;
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 999;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
   </style>
 </head>
 <body>
 
-  <!-- Top Navigation Header -->
+  <!-- Top Header Navigation -->
   <header>
     <div class="brand-wrap">
       <div class="brand-logo">S</div>
-      <div class="brand-title">SwapnoPay</div>
+      <div class="brand-title-wrap">
+        <div class="brand-title">SwapnoPay Console</div>
+        <div class="brand-subtitle">Developer Portal & Sandbox</div>
+      </div>
       <div class="app-select-wrap">
-        💼 DreamMart Dev App ▾
+        💼 DreamMart Store App ▾
       </div>
     </div>
     
-    <div class="env-toggle-wrap">
-      <button class="env-btn active sandbox" onclick="setEnv('sandbox')">Sandbox</button>
-      <button class="env-btn live" onclick="setEnv('live')">Live Mode</button>
+    <div class="header-actions">
+      <button class="btn btn-secondary" style="padding: 7px 14px; font-size: 12px;" onclick="openWidgetPreview()">Live Widget Preview 📱</button>
+      <div class="env-toggle-wrap">
+        <button class="env-btn active sandbox" onclick="setEnv('sandbox')">Sandbox Mode</button>
+        <button class="env-btn live" onclick="setEnv('live')">Live Mode</button>
+      </div>
     </div>
   </header>
 
-  <!-- Console Layout Frame -->
+  <!-- Main Console Layout Frame -->
   <div class="console-layout">
-    <!-- Sidebar Menu -->
+    
+    <!-- Sidebar Navigation -->
     <div class="sidebar">
+      <div class="sidebar-heading">Workspaces</div>
       <a href="#" class="menu-item active" onclick="switchView('dashboard', this)">
         <span class="menu-icon">📊</span> <span>Dashboard</span>
       </a>
@@ -621,71 +832,161 @@
       <a href="#" class="menu-item" onclick="switchView('playground', this)">
         <span class="menu-icon">🛠</span> <span>SDK Playground</span>
       </a>
+
+      <div class="sidebar-heading">Logs & Audits</div>
       <a href="#" class="menu-item" onclick="switchView('webhooks', this)">
-        <span class="menu-icon">⚓</span> <span>Webhook Logs</span>
+        <span class="menu-icon">⚓</span> <span>Webhook Ledger</span>
+      </a>
+      <a href="#" class="menu-item" onclick="switchView('docs', this)">
+        <span class="menu-icon">📖</span> <span>Documentation</span>
       </a>
     </div>
 
-    <!-- Active Viewport Panel -->
+    <!-- Active Viewport Content Panel -->
     <div class="viewport">
       
       <!-- VIEW: DASHBOARD -->
       <div class="panel-view active" id="view-dashboard">
+        
+        <!-- Metrics Grid -->
         <div class="metric-grid">
-          <div class="metric-card" style="--accent: var(--primary)">
+          <div class="metric-card" style="--accent: var(--primary-gold)">
             <div class="metric-title">API Volume (24h)</div>
-            <div class="metric-val">1,245</div>
-            <div class="metric-trend trend-up">▲ 12.4% vs yesterday</div>
+            <div class="metric-val" id="met-api-vol">1,482</div>
+            <div class="metric-trend trend-up">▲ 14.8% vs yesterday</div>
           </div>
           <div class="metric-card" style="--accent: var(--success)">
-            <div class="metric-title">Success Rate</div>
-            <div class="metric-val">99.8%</div>
-            <div class="metric-trend trend-up">▲ 0.2% vs last week</div>
+            <div class="metric-title">Match Success Rate</div>
+            <div class="metric-val" id="met-success-rate">99.85%</div>
+            <div class="metric-trend trend-up">▲ 0.15% vs last week</div>
           </div>
           <div class="metric-card" style="--accent: var(--warning)">
-            <div class="metric-title">Avg Latency</div>
-            <div class="metric-val">124ms</div>
-            <div class="metric-trend trend-down">▼ 8ms vs average</div>
+            <div class="metric-title">Avg Webhook Latency</div>
+            <div class="metric-val" id="met-latency">48ms</div>
+            <div class="metric-trend trend-down">▼ 12ms faster</div>
           </div>
-          <div class="metric-card" style="--accent: var(--danger)">
-            <div class="metric-title">Dispute Appeals</div>
-            <div class="metric-val">3</div>
-            <div class="metric-trend trend-down">▼ 2 pending review</div>
+          <div class="metric-card" style="--accent: var(--purple)">
+            <div class="metric-title">Active Devices</div>
+            <div class="metric-val" id="met-devices">2 Online</div>
+            <div class="metric-trend trend-up">● bKash + Nagad SIMs</div>
           </div>
         </div>
 
+        <!-- Channel Status Monitor Bar -->
         <div class="glass-card">
-          <h3 class="section-title">Operational Health Indicators</h3>
-          <p class="section-subtitle">Real-time status updates of active payment gateway channels.</p>
+          <h3 class="section-title">📱 MFS Channel Health & Ping Latencies</h3>
+          <p class="section-subtitle">Real-time monitoring of recipient SIM channels and gateway routing health.</p>
           
           <div class="status-grid">
             <div class="status-item">
-              <span>API Gateway</span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:#ec4899; font-weight:700">bKash</span>
+                <span style="font-size:10px; color:var(--text-dim)">(01712345678)</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--success)">18ms</span>
+                <div class="status-dot"></div>
+              </div>
+            </div>
+            <div class="status-item">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:#f97316; font-weight:700">Nagad</span>
+                <span style="font-size:10px; color:var(--text-dim)">(01812345678)</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--success)">24ms</span>
+                <div class="status-dot"></div>
+              </div>
+            </div>
+            <div class="status-item">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:#a855f7; font-weight:700">Rocket</span>
+                <span style="font-size:10px; color:var(--text-dim)">(01912345678)</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--success)">19ms</span>
+                <div class="status-dot"></div>
+              </div>
+            </div>
+            <div class="status-item">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="color:#3b82f6; font-weight:700">Upay</span>
+                <span style="font-size:10px; color:var(--text-dim)">(01612345678)</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--success)">22ms</span>
+                <div class="status-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- API Credentials Box -->
+        <div class="glass-card">
+          <h3 class="section-title">🔑 Sandbox & Live API Credentials</h3>
+          <p class="section-subtitle">Use these API keys for client widget initialization and server HMAC signature verification.</p>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Publishable API Key (Client Widget)</label>
+              <div class="key-box">
+                <span id="key-pk">pk_sandbox_swapnopay_88f92a1109</span>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText('pk_sandbox_swapnopay_88f92a1109')">Copy</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Secret API Key (Server Webhooks)</label>
+              <div class="key-box">
+                <span id="key-sk">sk_sandbox_swapnopay_99a83b2201</span>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText('sk_sandbox_swapnopay_99a83b2201')">Copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Operational Health Indicators -->
+        <div class="glass-card">
+          <h3 class="section-title">⚡ Core Platform Health</h3>
+          <p class="section-subtitle">Real-time status monitor of SwapnoPay backend components.</p>
+          
+          <div class="status-grid">
+            <div class="status-item">
+              <span>API Gateway Router</span>
               <div class="status-dot"></div>
             </div>
             <div class="status-item">
-              <span>Realtime Websockets</span>
+              <span>Realtime Socket.io Engine</span>
               <div class="status-dot"></div>
             </div>
             <div class="status-item">
-              <span>PostgreSQL Engine</span>
+              <span>PostgreSQL / Admin Supabase</span>
               <div class="status-dot"></div>
             </div>
             <div class="status-item">
-              <span>SMS Receiver Terminal</span>
+              <span>SMS Automation Receiver</span>
               <div class="status-dot"></div>
             </div>
           </div>
         </div>
 
+        <!-- Terminal Console Stream -->
         <div class="glass-card">
-          <h3 class="section-title">Console Terminal Output</h3>
-          <p class="section-subtitle">Live standard console stream of mock system matches and requests.</p>
+          <div class="terminal-header">
+            <div>
+              <h3 class="section-title">🖥 Live Console Terminal Stream</h3>
+              <p class="section-subtitle" style="margin-bottom: 0;">Real-time output log stream of mock requests and verification events.</p>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <input type="text" id="terminal-search" placeholder="Filter console logs..." oninput="filterConsoleLogs()" style="padding: 5px 10px; font-size: 11px; width: 180px;">
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="clearConsole()">Clear</button>
+            </div>
+          </div>
+          
           <div class="terminal-logs" id="terminal-console">
             <div class="terminal-line">
-              <span class="log-time">[20:17:56]</span>
+              <span class="log-time">[00:00:00]</span>
               <span class="log-ok">[OK]</span>
-              <span>SwapnoPay console sandbox initialized successfully. Ready.</span>
+              <span>SwapnoPay Developer Console initialized. Ready for API testing and SMS simulation.</span>
             </div>
           </div>
         </div>
@@ -694,30 +995,34 @@
       <!-- VIEW: ONBOARDING WIZARD -->
       <div class="panel-view" id="view-wizard">
         <div class="glass-card">
-          <h3 class="section-title">Merchant Onboarding Wizard</h3>
-          <p class="section-subtitle">Follow these 4 progressive steps to verify your first merchant checkout call.</p>
+          <h3 class="section-title">⚡ Merchant Integration Onboarding Wizard</h3>
+          <p class="section-subtitle">Follow these 4 steps to test and launch your automated MFS checkout integration.</p>
           
           <div class="timeline">
-            <div class="timeline-item completed">
+            <div class="timeline-item completed" id="wiz-step1">
               <div class="timeline-dot"></div>
               <span class="timeline-header">1. Create Developer Application</span>
-              <span class="timeline-time">Completed on project initialization</span>
+              <span class="timeline-time">Completed on project initialization (App ID: app_dreammart_01)</span>
             </div>
             <div class="timeline-item active" id="wiz-step2">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">2. Link Supabase Endpoint Credentials</span>
-              <span class="timeline-time" id="wiz-step2-status">Pending - Enter secrets in SDK Playground</span>
+              <span class="timeline-header">2. Register Merchant Gateway Configuration</span>
+              <span class="timeline-time" id="wiz-step2-status">Pending - Configure MFS receiving numbers in API Explorer</span>
             </div>
             <div class="timeline-item" id="wiz-step3">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">3. Perform Test Payment in Sandbox</span>
-              <span class="timeline-time" id="wiz-step3-status">Pending - Trigger mock payment event</span>
+              <span class="timeline-header">3. Perform Test Payment in Sandbox Simulator</span>
+              <span class="timeline-time" id="wiz-step3-status">Pending - Trigger mock bKash or Nagad SMS broadcast</span>
             </div>
             <div class="timeline-item" id="wiz-step4">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">4. Receive Verified Webhook PAID Event Callback</span>
-              <span class="timeline-time" id="wiz-step4-status">Pending - Waiting for matching pipeline</span>
+              <span class="timeline-header">4. Verify Signature & Webhook Delivery</span>
+              <span class="timeline-time" id="wiz-step4-status">Pending - Awaiting automated webhook dispatch</span>
             </div>
+          </div>
+
+          <div style="margin-top: 24px;">
+            <button class="btn" onclick="switchView('sandbox', document.querySelectorAll('.menu-item')[2])">Run Interactive Sandbox Test 🧪</button>
           </div>
         </div>
       </div>
@@ -725,128 +1030,164 @@
       <!-- VIEW: SANDBOX SIMULATOR -->
       <div class="panel-view" id="view-sandbox">
         <div class="sim-grid">
+          
           <div class="control-col">
+            <!-- MFS Broadcast Simulators -->
             <div class="glass-card">
-              <h3 class="section-title">MFS SMS Broadcast Simulators</h3>
-              <p class="section-subtitle">Click to trigger simulated SMS transactions, parsing flows, and database writes.</p>
+              <h3 class="section-title">📱 MFS SMS Broadcast Simulators</h3>
+              <p class="section-subtitle">Simulate incoming mobile operator SMS broadcasts to test real-time matching.</p>
               
+              <div class="form-row" style="margin-bottom: 16px;">
+                <div class="form-group">
+                  <label>Simulated Amount (BDT)</label>
+                  <input type="text" id="sim-input-amount" value="1500.00">
+                </div>
+                <div class="form-group">
+                  <label>Customer Mobile Phone</label>
+                  <input type="text" id="sim-input-phone" value="01712345678">
+                </div>
+              </div>
+
               <div class="action-button-list">
                 <button class="sim-btn" onclick="triggerMfsSim('bKash')">
-                  <span>📱</span>
+                  <span style="font-size: 20px;">📱</span>
                   <div>
-                    <h5 style="font-weight:600">bKash Payment</h5>
-                    <span class="sim-btn-badge">Traditional SMS</span>
+                    <h5 style="font-weight:700">bKash Payment</h5>
+                    <span class="sim-btn-badge" style="color: #ec4899;">Received Tk 1,500</span>
                   </div>
                 </button>
+                
                 <button class="sim-btn" onclick="triggerMfsSim('bKash-cashin')">
-                  <span>📱</span>
+                  <span style="font-size: 20px;">📲</span>
                   <div>
-                    <h5 style="font-weight:600">bKash Cash-In</h5>
-                    <span class="sim-btn-badge">New Format</span>
+                    <h5 style="font-weight:700">bKash Cash-In</h5>
+                    <span class="sim-btn-badge" style="color: #ec4899;">Cash-In Format</span>
                   </div>
                 </button>
+
                 <button class="sim-btn" onclick="triggerMfsSim('Nagad')">
-                  <span>🍊</span>
+                  <span style="font-size: 20px;">🍊</span>
                   <div>
-                    <h5 style="font-weight:600">Nagad Payment</h5>
-                    <span class="sim-btn-badge">Money Received</span>
+                    <h5 style="font-weight:700">Nagad Payment</h5>
+                    <span class="sim-btn-badge" style="color: #f97316;">Money Received</span>
                   </div>
                 </button>
+
                 <button class="sim-btn" onclick="triggerMfsSim('Rocket')">
-                  <span>🔮</span>
+                  <span style="font-size: 20px;">🔮</span>
                   <div>
-                    <h5 style="font-weight:600">Rocket Cash-In</h5>
-                    <span class="sim-btn-badge">A/C Masked</span>
+                    <h5 style="font-weight:700">Rocket Cash-In</h5>
+                    <span class="sim-btn-badge" style="color: #a855f7;">Masked Account</span>
                   </div>
                 </button>
               </div>
             </div>
 
+            <!-- Dispute & Error Edge Case Simulator -->
             <div class="glass-card">
-              <h3 class="section-title">Manual Dispute Appeals & Errors Simulators</h3>
-              <p class="section-subtitle">Test edge cases, expiration parameters, and dispute resolutions.</p>
+              <h3 class="section-title">⚖ Dispute & Edge Case Simulators</h3>
+              <p class="section-subtitle">Test order expiration timeouts, failed verification, and dispute resolution.</p>
               
               <div class="action-button-list">
-                <button class="sim-btn" style="border-color: var(--danger)" onclick="triggerMfsSim('fail')">
-                  <span>❌</span>
+                <button class="sim-btn" style="border-color: rgba(239, 68, 68, 0.4)" onclick="triggerMfsSim('fail')">
+                  <span style="font-size: 20px;">❌</span>
                   <div>
-                    <h5 style="font-weight:600">Trigger Fail Order</h5>
-                    <span class="sim-btn-badge" style="color:var(--danger)">EXPIRY Timeout</span>
+                    <h5 style="font-weight:700">Trigger Timeout / Fail</h5>
+                    <span class="sim-btn-badge" style="color: var(--danger)">Order Expiration</span>
                   </div>
                 </button>
-                <button class="sim-btn" style="border-color: var(--warning)" onclick="triggerMfsSim('appeal')">
-                  <span>⚖</span>
+
+                <button class="sim-btn" style="border-color: rgba(245, 158, 11, 0.4)" onclick="triggerMfsSim('appeal')">
+                  <span style="font-size: 20px;">⚖</span>
                   <div>
-                    <h5 style="font-weight:600">Dispute Appeal</h5>
-                    <span class="sim-btn-badge" style="color:var(--warning)">Submit TrxID</span>
+                    <h5 style="font-weight:700">Submit Dispute Appeal</h5>
+                    <span class="sim-btn-badge" style="color: var(--warning)">Manual Review</span>
                   </div>
                 </button>
               </div>
             </div>
           </div>
 
+          <!-- Order Lifecycle Timeline -->
           <div class="timeline-col">
             <div class="glass-card" style="height: 100%;">
-              <h3 class="section-title">Order Lifecycle Event Timeline</h3>
-              <p class="section-subtitle">Real-time status matching tracks of your payment flow.</p>
+              <h3 class="section-title">⏱ Order Lifecycle Pipeline</h3>
+              <p class="section-subtitle">Track status transitions in real time as SMS events are parsed.</p>
               
               <div class="timeline" id="live-timeline">
                 <div class="timeline-item active" id="time-step1">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">Order Created (PENDING)</span>
+                  <span class="timeline-header">1. Order Created (PENDING)</span>
                   <span class="timeline-time">Waiting for matching MFS broadcast</span>
                 </div>
                 <div class="timeline-item" id="time-step2">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">SMS Received by App</span>
-                  <span class="timeline-time">Simulating device reader intercept</span>
+                  <span class="timeline-header">2. SMS Intercepted by App</span>
+                  <span class="timeline-time">Parsing TrxID & amount via Regex</span>
                 </div>
                 <div class="timeline-item" id="time-step3">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">Payment Matched</span>
-                  <span class="timeline-time">Triggering atomic SQL procedure</span>
+                  <span class="timeline-header">3. Transaction Matched (PAID)</span>
+                  <span class="timeline-time">Executing atomic SQL update</span>
                 </div>
                 <div class="timeline-item" id="time-step4">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">Webhook PAID Callback Sent</span>
-                  <span class="timeline-time">Dispatched to WooCommerce/Server</span>
+                  <span class="timeline-header">4. Webhook Dispatched</span>
+                  <span class="timeline-time">Signed HMAC SHA256 payload sent</span>
                 </div>
               </div>
             </div>
           </div>
+
         </div>
       </div>
 
       <!-- VIEW: API EXPLORER -->
       <div class="panel-view" id="view-explorer">
         <div class="glass-card">
-          <h3 class="section-title">Interactive API Request Explorer</h3>
-          <p class="section-subtitle">Configure request payloads and execute live HTTP endpoints directly from the console.</p>
-          
-          <div class="form-row">
+          <div class="card-header-flex">
+            <div>
+              <h3 class="section-title">🔎 Interactive API Endpoint Explorer</h3>
+              <p class="section-subtitle" style="margin-bottom: 0;">Test SwapnoPay API endpoints live directly inside your browser console.</p>
+            </div>
+            <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="exportOpenApiSpec()">Export OpenAPI Spec 📄</button>
+          </div>
+
+          <div class="form-row" style="margin-top: 16px;">
             <div class="form-group">
-              <label>API Endpoint Target</label>
+              <label>Select Endpoint Route</label>
               <select id="exp-path" onchange="loadExplorerTemplate()">
-                <option value="/functions/v1/create-order">POST /functions/v1/create-order</option>
-                <option value="/functions/v1/resolve-appeal">POST /functions/v1/resolve-appeal</option>
+                <option value="/v1/payment/config">GET /v1/payment/config (Fetch Gateway Config)</option>
+                <option value="/v1/payment/merchant-config">POST /v1/payment/merchant-config (Sync Numbers & QR)</option>
+                <option value="/v1/payment/verify">POST /v1/payment/verify (Verify SMS Transaction)</option>
+                <option value="/v1/payment/merchant-qr-codes">POST /v1/payment/merchant-qr-codes (Save QR Code)</option>
+                <option value="/functions/v1/create-order">POST /functions/v1/create-order (Create Order)</option>
+                <option value="/functions/v1/resolve-appeal">POST /functions/v1/resolve-appeal (Resolve Dispute)</option>
               </select>
             </div>
             <div class="form-group">
               <label>Authorization Header Key</label>
-              <input type="text" id="exp-auth" value="sk_live_swapnopay_secret_placeholder">
+              <input type="text" id="exp-auth" value="sk_sandbox_swapnopay_secret_key">
             </div>
             <div class="form-group full-width">
               <label>JSON Request Body Payload</label>
-              <textarea id="exp-body" rows="6" style="font-family: monospace; font-size: 12px; color: #38bdf8;"></textarea>
+              <textarea id="exp-body" rows="7" style="font-family: 'Fira Code', monospace; font-size: 12px; color: var(--primary-gold);"></textarea>
             </div>
           </div>
 
-          <button class="btn" onclick="executeApiRequest()">Execute Request ⚡</button>
+          <div style="display: flex; gap: 12px;">
+            <button class="btn" onclick="executeApiRequest()">Execute Endpoint Call ⚡</button>
+            <button class="btn btn-secondary" onclick="loadExplorerTemplate()">Reset Template</button>
+          </div>
 
           <div style="margin-top: 24px;">
-            <label>API Response Block</label>
-            <div class="code-block-wrap" style="margin-top: 6px;">
-              <pre id="exp-response">Click "Execute Request" to dispatch API call...</pre>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label>API Response Output</label>
+              <span id="exp-response-status" class="status-badge ok" style="display: none;">HTTP 200 OK (48ms)</span>
+            </div>
+            <div class="code-block-wrap">
+              <button class="copy-btn" onclick="copyText(document.getElementById('exp-response').innerText)">Copy JSON</button>
+              <pre id="exp-response">Click "Execute Endpoint Call" to dispatch request...</pre>
             </div>
           </div>
         </div>
@@ -855,25 +1196,25 @@
       <!-- VIEW: SDK PLAYGROUND -->
       <div class="panel-view" id="view-playground">
         <div class="glass-card">
-          <h3 class="section-title">Developer SDK Playground</h3>
-          <p class="section-subtitle">Configure parameters and instantly synchronize checkout code integrations.</p>
+          <h3 class="section-title">🛠 Interactive SDK & Code Generator</h3>
+          <p class="section-subtitle">Customize parameters to dynamically generate complete checkout code for your tech stack.</p>
           
           <div class="form-row">
             <div class="form-group">
               <label>Amount (BDT)</label>
-              <input type="text" id="sdk-amount" value="1,500.00" oninput="updateSdkCodes()">
+              <input type="text" id="sdk-amount" value="1500.00" oninput="updateSdkCodes()">
             </div>
             <div class="form-group">
               <label>Order Reference ID</label>
               <input type="text" id="sdk-order-id" value="ORD-7845" oninput="updateSdkCodes()">
             </div>
             <div class="form-group">
-              <label>Customer Mobile</label>
+              <label>Customer Phone</label>
               <input type="text" id="sdk-phone" value="01712345678" oninput="updateSdkCodes()">
             </div>
             <div class="form-group">
               <label>Webhook Callback URL</label>
-              <input type="text" id="sdk-callback" value="https://mystore.com/webhook" oninput="updateSdkCodes()">
+              <input type="text" id="sdk-callback" value="https://mystore.com/api/webhook" oninput="updateSdkCodes()">
             </div>
           </div>
 
@@ -883,11 +1224,16 @@
             <button class="tab-btn" onclick="switchSdkLang('python', this)">Python</button>
             <button class="tab-btn" onclick="switchSdkLang('go', this)">Go</button>
             <button class="tab-btn" onclick="switchSdkLang('curl', this)">cURL</button>
+            <button class="tab-btn" onclick="switchSdkLang('html', this)">HTML Widget</button>
           </div>
 
           <div class="code-block-wrap">
             <button class="copy-btn" onclick="copySdkCode()">Copy Code</button>
-            <pre id="sdk-code-block">// Code updates dynamically based on parameters...</pre>
+            <pre id="sdk-code-block">// Code generates dynamically...</pre>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <button class="btn btn-secondary" onclick="runSdkSnippetTest()">Test Run Snippet Output 🚀</button>
           </div>
         </div>
       </div>
@@ -895,9 +1241,17 @@
       <!-- VIEW: WEBHOOK LOGS -->
       <div class="panel-view" id="view-webhooks">
         <div class="glass-card">
-          <h3 class="section-title">Webhook Callback Logs Ledger</h3>
-          <p class="section-subtitle">Inspect deliveries, response latencies, and signature verify logs.</p>
-          
+          <div class="card-header-flex">
+            <div>
+              <h3 class="section-title">⚓ Webhook Event Delivery Ledger</h3>
+              <p class="section-subtitle" style="margin-bottom: 0;">Inspect payload dispatches, HTTP status responses, and HMAC signatures. Click any row to inspect full payload.</p>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="exportWebhookLedger()">Export CSV 📊</button>
+              <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="triggerMfsSim('bKash')">Trigger Test Webhook</button>
+            </div>
+          </div>
+
           <table class="ledger-table">
             <thead>
               <tr>
@@ -905,21 +1259,98 @@
                 <th>Target Webhook URL</th>
                 <th>Event Type</th>
                 <th>HTTP Status</th>
-                <th>Response Time</th>
+                <th>Latency</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="webhook-logs-table">
               <tr>
-                <td colspan="5" style="text-align: center; color: var(--text-muted);">No webhook events logged yet in this session.</td>
+                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 32px;">
+                  No webhook events logged yet in this session. Run a Sandbox simulation to trigger deliveries.
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
 
+      <!-- VIEW: DOCUMENTATION -->
+      <div class="panel-view" id="view-docs">
+        <div class="glass-card">
+          <h3 class="section-title">📖 SwapnoPay Developer Documentation</h3>
+          <p class="section-subtitle">Complete reference guide for integrating automated MFS payments, webhooks, and dispute resolution.</p>
+          
+          <div style="display: flex; flex-direction: column; gap: 20px; line-height: 1.6; color: var(--text-muted); font-size: 13.5px;">
+            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
+              <h4 style="color: #fff; margin-bottom: 8px; font-size: 15px;">1. System Architecture Overview</h4>
+              <p>SwapnoPay acts as an automated middleware bridge between your e-commerce platform and Android smartphones carrying mobile banking SIMs (bKash, Nagad, Rocket, Upay). SMS messages received by the Android app are matched against pending merchant orders in 1 to 3 seconds.</p>
+            </div>
+
+            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
+              <h4 style="color: #fff; margin-bottom: 8px; font-size: 15px;">2. Authentication & Headers</h4>
+              <p>All server-to-server API requests must include your <code>sk_live_...</code> Secret API key in the authorization header:</p>
+              <pre style="font-family: 'Fira Code', monospace; color: var(--primary-gold); margin-top: 8px; background: #040508; padding: 10px; border-radius: 8px; font-size: 12px;">Authorization: Bearer sk_live_swapnopay_secret_key</pre>
+            </div>
+
+            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
+              <h4 style="color: #fff; margin-bottom: 8px; font-size: 15px;">3. Webhook Signature Verification</h4>
+              <p>To ensure security, incoming webhook callbacks from SwapnoPay include an <code>x-swapnopay-signature</code> HMAC SHA-256 header signed using your merchant secret. Always verify signature header before marking orders fulfilled.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
+  <!-- Live Checkout Widget Preview Modal -->
+  <div class="modal-overlay" id="widget-modal">
+    <div class="modal-box" style="max-width: 520px; padding: 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+        <h4 style="color:#fff; font-weight:700">📱 Live SwapnoPay Checkout Widget Preview</h4>
+        <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="closeWidgetPreview()">✕ Close</button>
+      </div>
+      <iframe src="widget.html?merchant_id=00000000-0000-0000-0000-000000000001&amount=1500.00&order_id=ORD-7845" 
+              style="width:100%; height:540px; border:none; border-radius:14px; background:#000;"></iframe>
+    </div>
+  </div>
+
+  <!-- Payload Inspector Modal -->
+  <div class="modal-overlay" id="payload-modal">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+        <h4 style="color:#fff; font-weight:700">⚓ Webhook Event Payload Inspector</h4>
+        <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="closePayloadModal()">✕ Close</button>
+      </div>
+      
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label>Event Type & ID</label>
+          <div class="key-box" id="inspect-event-id">evt_payment_success_99a81</div>
+        </div>
+        <div>
+          <label>Dispatched HTTP Headers</label>
+          <div class="code-block-wrap" style="padding:10px;"><pre id="inspect-headers" style="font-size:11px;"></pre></div>
+        </div>
+        <div>
+          <label>JSON Webhook Body</label>
+          <div class="code-block-wrap" style="padding:10px;"><pre id="inspect-body" style="font-size:11px;"></pre></div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:8px;">
+          <button class="btn" onclick="replayWebhookEvent()">Replay Webhook Callback 🔄</button>
+          <button class="btn btn-secondary" onclick="copyText(document.getElementById('inspect-body').innerText)">Copy Payload JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="toast" id="toast">
+    <span id="toast-icon">✨</span>
+    <span id="toast-msg">Notification message</span>
+  </div>
+
+  <!-- Portal Script -->
   <script src="portal.js"></script>
 </body>
 </html>

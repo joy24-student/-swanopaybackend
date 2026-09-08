@@ -1,6 +1,7 @@
 const ROUTE_PREFIX = "form-route:";
+const SLUG_PREFIX = "slug-route:";
 const MAX_REGISTRATION_BYTES = 16_384;
-const ALLOWED_PROXY_QUERY = new Set(["action", "order_id", "submission_id", "field_id"]);
+const ALLOWED_PROXY_QUERY = new Set(["action", "order_id", "submission_id", "field_id", "query", "lookup_value", "lookup_column", "slug", "id"]);
 
 export default {
   async fetch(request, env) {
@@ -17,8 +18,8 @@ export default {
       if (request.method === "DELETE" && managementMatch) {
         return deleteRoute(request, env, managementMatch[1].toLowerCase());
       }
-      const publicMatch = url.pathname.match(/^\/f\/([0-9a-f]{32})\/?$/i);
-      if (publicMatch) return proxyHostedForm(request, env, publicMatch[1].toLowerCase());
+      const publicMatch = url.pathname.match(/^\/f\/([a-zA-Z0-9_-]{3,100})\/?$/i);
+      if (publicMatch) return proxyHostedForm(request, env, publicMatch[1]);
       if (request.method === "GET" && url.pathname === "/") {
         return html("SwapnoPay Forms", "Open the complete form link supplied by the merchant.", 200);
       }
@@ -48,6 +49,7 @@ async function registerRoute(request, env) {
 
   const publicId = formId.replaceAll("-", "");
   const key = ROUTE_PREFIX + publicId;
+  const slugKey = SLUG_PREFIX + slug;
   const existing = await env.FORM_ROUTES.get(key, { type: "json" });
   if (existing && (existing.projectUrl !== projectUrl || existing.formId !== formId)) {
     return json({ error: "Public route collision" }, 409);
@@ -64,8 +66,9 @@ async function registerRoute(request, env) {
     updatedAt: now,
   };
   await env.FORM_ROUTES.put(key, JSON.stringify(route));
+  await env.FORM_ROUTES.put(slugKey, JSON.stringify(route));
   const publicOrigin = normalizePublicOrigin(env.PUBLIC_ORIGIN) || new URL(request.url).origin;
-  return json({ public_id: publicId, public_url: `${publicOrigin}/f/${publicId}` }, existing ? 200 : 201, {
+  return json({ public_id: publicId, public_url: `${publicOrigin}/f/${publicId}`, slug_url: `${publicOrigin}/f/${slug}` }, existing ? 200 : 201, {
     "Cache-Control": "no-store",
   });
 }
@@ -82,12 +85,17 @@ async function deleteRoute(request, env, publicId) {
   const verified = await verifyMerchantForm(route.projectUrl, publishableKey, bearer, route.formId, route.slug, false);
   if (!verified.ok) return json({ error: verified.error }, verified.status);
   await env.FORM_ROUTES.delete(key);
+  if (route.slug) await env.FORM_ROUTES.delete(SLUG_PREFIX + route.slug);
   return new Response(null, { status: 204, headers: securityHeaders({ "Cache-Control": "no-store" }) });
 }
 
-async function proxyHostedForm(request, env, publicId) {
+async function proxyHostedForm(request, env, identifier) {
   if (!["GET", "POST"].includes(request.method)) return json({ error: "Method not allowed" }, 405);
-  const route = await env.FORM_ROUTES.get(ROUTE_PREFIX + publicId, { type: "json", cacheTtl: 60 });
+  const cleanId = String(identifier || "").toLowerCase().trim();
+  let route = await env.FORM_ROUTES.get(ROUTE_PREFIX + cleanId, { type: "json", cacheTtl: 60 });
+  if (!route) {
+    route = await env.FORM_ROUTES.get(SLUG_PREFIX + cleanId, { type: "json", cacheTtl: 60 });
+  }
   if (!route || !normalizeProjectUrl(route.projectUrl) || !normalizeSlug(route.slug)) {
     return html("Form not found", "This form link is invalid or no longer active.", 404);
   }

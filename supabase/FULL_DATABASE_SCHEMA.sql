@@ -779,3 +779,399 @@ CREATE POLICY "Service Role full access on supabase_connections"
 CREATE POLICY "Users read own connection status"
     ON supabase_connections FOR SELECT
     USING (auth.uid()::text = user_id);
+
+-- ============================================================================
+-- 23. Single-Merchant Storefront Schema & Realtime Integration (Migration 15)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.store_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID REFERENCES public.merchants(id) ON DELETE CASCADE NOT NULL,
+  store_name TEXT NOT NULL DEFAULT 'My Online Store',
+  store_slug TEXT UNIQUE NOT NULL,
+  tagline TEXT,
+  logo_url TEXT,
+  favicon_url TEXT,
+  banner_url TEXT,
+  currency_code TEXT NOT NULL DEFAULT 'BDT',
+  currency_symbol TEXT NOT NULL DEFAULT '৳',
+  contact_email TEXT,
+  contact_phone TEXT,
+  address TEXT,
+  meta_title TEXT,
+  meta_description TEXT,
+  meta_keywords TEXT,
+  facebook_url TEXT,
+  instagram_url TEXT,
+  whatsapp_number TEXT,
+  cod_enabled BOOLEAN NOT NULL DEFAULT true,
+  bkash_enabled BOOLEAN NOT NULL DEFAULT true,
+  nagad_enabled BOOLEAN NOT NULL DEFAULT true,
+  rocket_enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_store_settings_slug ON public.store_settings(store_slug);
+
+CREATE TABLE IF NOT EXISTS public.categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID REFERENCES public.merchants(id) ON DELETE CASCADE NOT NULL,
+  parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  photo_url TEXT,
+  display_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(merchant_id, slug)
+);
+CREATE INDEX IF NOT EXISTS idx_categories_parent ON public.categories(parent_id);
+
+ALTER TABLE IF EXISTS public.products
+  ADD COLUMN IF NOT EXISTS slug TEXT,
+  ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS featured_image TEXT,
+  ADD COLUMN IF NOT EXISTS short_description TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS total_views BIGINT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.product_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
+  photo_url TEXT NOT NULL,
+  display_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_product_photos_pid ON public.product_photos(product_id);
+
+ALTER TABLE IF EXISTS public.orders
+  ADD COLUMN IF NOT EXISTS order_number TEXT,
+  ADD COLUMN IF NOT EXISTS shipping_address TEXT,
+  ADD COLUMN IF NOT EXISTS shipping_city TEXT,
+  ADD COLUMN IF NOT EXISTS subtotal NUMERIC(12,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS shipping_cost NUMERIC(12,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS order_status TEXT DEFAULT 'PENDING' CHECK (order_status IN ('PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
+  ADD COLUMN IF NOT EXISTS customer_note TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_orders_order_number ON public.orders(order_number);
+
+CREATE TABLE IF NOT EXISTS public.order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES public.orders(id) ON DELETE CASCADE NOT NULL,
+  product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
+  variant_id UUID REFERENCES public.product_variants(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  size TEXT,
+  color TEXT,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price NUMERIC(12,2) NOT NULL,
+  total_price NUMERIC(12,2) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON public.order_items(order_id);
+
+CREATE TABLE IF NOT EXISTS public.customer_carts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID REFERENCES public.merchants(id) ON DELETE CASCADE NOT NULL,
+  session_id TEXT NOT NULL,
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
+  variant_id UUID REFERENCES public.product_variants(id) ON DELETE SET NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price NUMERIC(12,2) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_carts_session ON public.customer_carts(session_id);
+
+CREATE TABLE IF NOT EXISTS public.coupons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID REFERENCES public.merchants(id) ON DELETE CASCADE NOT NULL,
+  code TEXT NOT NULL,
+  discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+  discount_value NUMERIC(12,2) NOT NULL,
+  minimum_order NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  usage_limit INT NOT NULL DEFAULT 0,
+  used_count INT NOT NULL DEFAULT 0,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(merchant_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS public.shipping_methods (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  merchant_id UUID REFERENCES public.merchants(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  cost NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  estimated_delivery_days TEXT NOT NULL DEFAULT '2-3 Days',
+  is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS public.product_reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID REFERENCES public.products(id) ON DELETE CASCADE NOT NULL,
+  customer_name TEXT NOT NULL,
+  rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  review_text TEXT,
+  is_approved BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_pid ON public.product_reviews(product_id);
+
+CREATE OR REPLACE FUNCTION public.handle_order_stock_decrement()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE public.products
+  SET stock_quantity = GREATEST(0, stock_quantity - NEW.quantity)
+  WHERE id = NEW.product_id;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_order_items_stock_decrement ON public.order_items;
+CREATE TRIGGER trg_order_items_stock_decrement
+AFTER INSERT ON public.order_items
+FOR EACH ROW EXECUTE FUNCTION public.handle_order_stock_decrement();
+
+CREATE OR REPLACE FUNCTION public.notify_merchant_new_order()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  SELECT user_id INTO v_user_id FROM public.merchants WHERE id = NEW.merchant_id;
+  
+  INSERT INTO public.notifications (
+    user_id,
+    type,
+    title,
+    body,
+    read,
+    created_at
+  ) VALUES (
+    v_user_id,
+    'NEW_ORDER',
+    'New Order: ' || COALESCE(NEW.order_number, NEW.tran_id),
+    'Total: ৳' || COALESCE(NEW.total_amount, NEW.amount) || ' from ' || NEW.cus_name || ' (' || COALESCE(NEW.payment_method, 'COD') || ')',
+    false,
+    now()
+  );
+
+  BEGIN
+    INSERT INTO public.merchant_notifications (
+      merchant_id,
+      type,
+      title,
+      message,
+      severity,
+      entity_type,
+      entity_id
+    ) VALUES (
+      NEW.merchant_id,
+      'NEW_ORDER',
+      'New Order: ' || COALESCE(NEW.order_number, NEW.tran_id),
+      'Total: ৳' || COALESCE(NEW.total_amount, NEW.amount) || ' from ' || NEW.cus_name || ' (' || COALESCE(NEW.payment_method, 'COD') || ')',
+      'HIGH',
+      'order',
+      NEW.id::text
+    );
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_orders_notify_merchant ON public.orders;
+CREATE TRIGGER trg_orders_notify_merchant
+AFTER INSERT ON public.orders
+FOR EACH ROW EXECUTE FUNCTION public.notify_merchant_new_order();
+
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_carts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shipping_methods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_reviews ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Storefront settings read" ON public.store_settings;
+CREATE POLICY "Storefront settings read" ON public.store_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Storefront categories read" ON public.categories;
+CREATE POLICY "Storefront categories read" ON public.categories FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Storefront products read" ON public.products;
+CREATE POLICY "Storefront products read" ON public.products FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Storefront photos read" ON public.product_photos;
+CREATE POLICY "Storefront photos read" ON public.product_photos FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Storefront shipping read" ON public.shipping_methods;
+CREATE POLICY "Storefront shipping read" ON public.shipping_methods FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Storefront reviews read" ON public.product_reviews;
+CREATE POLICY "Storefront reviews read" ON public.product_reviews FOR SELECT USING (is_approved = true);
+
+DROP POLICY IF EXISTS "Storefront carts manage" ON public.customer_carts;
+CREATE POLICY "Storefront carts manage" ON public.customer_carts FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Storefront order items insert" ON public.order_items;
+CREATE POLICY "Storefront order items insert" ON public.order_items FOR INSERT WITH CHECK (true);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'order_items') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+  END IF;
+END $$;
+
+-- Hosted Form Functions & Triggers
+create or replace function public.record_hosted_form_view(p_form_id uuid)
+returns void language sql security definer set search_path = public as $$
+  update public.payment_forms set views_count = views_count + 1
+    where id = p_form_id and status = 'PUBLISHED';
+$$;
+
+create or replace function public.create_hosted_form_submission(
+  p_form_id uuid, p_request_id uuid, p_customer_name text, p_customer_phone text,
+  p_customer_email text, p_amount numeric, p_payment_method text,
+  p_payment_required boolean, p_answers jsonb, p_client_hash text
+) returns table(
+  submission_id uuid, order_id uuid, transaction_id text, payment_status text,
+  amount numeric, payment_number text, payment_method text, expires_at timestamptz, created boolean
+)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_form public.payment_forms%rowtype;
+  v_existing public.form_submissions%rowtype;
+  v_order_id uuid;
+  v_submission_id uuid;
+  v_transaction_id text;
+  v_number text;
+  v_method text;
+  v_expires_at timestamptz;
+  v_deadline_epoch bigint;
+begin
+  if p_request_id is null then raise exception 'request_id is required'; end if;
+  select * into v_form from public.payment_forms
+    where id = p_form_id and status = 'PUBLISHED' for update;
+  if not found then raise exception 'published form not found'; end if;
+
+  select * into v_existing from public.form_submissions
+    where form_id = p_form_id and request_id = p_request_id;
+  if found then
+    return query select v_existing.id, v_existing.order_id, o.tran_id,
+      v_existing.payment_status, v_existing.amount_bdt, n.number,
+      v_existing.payment_method, o.expires_at, false
+      from (select 1) seed
+      left join public.orders o on o.id = v_existing.order_id
+      left join public.merchant_numbers n on n.merchant_id = v_form.merchant_id
+        and n.type = v_existing.payment_method and n.active = true
+      order by n.is_default desc nulls last limit 1;
+    return;
+  end if;
+
+  if coalesce((v_form.theme ->> 'close_after_limit')::boolean, false)
+     and (select count(*) from public.form_submissions where form_id = p_form_id)
+       >= greatest(coalesce((v_form.theme ->> 'max_responses')::integer, 1000), 1) then
+    raise exception 'form response limit reached';
+  end if;
+
+  if (coalesce((v_form.theme ->> 'enable_closing_timeline')::boolean, false)
+      or coalesce((v_form.theme ->> 'enableClosingTimeline')::boolean, false)) then
+    v_deadline_epoch := nullif(coalesce(v_form.theme ->> 'closing_deadline_epoch', v_form.theme ->> 'closingDeadlineEpoch'), '')::bigint;
+    if v_deadline_epoch is not null and v_deadline_epoch > 0
+       and (extract(epoch from now()) * 1000)::bigint > v_deadline_epoch then
+      raise exception 'form response limit reached: deadline expired';
+    end if;
+  end if;
+
+  if (coalesce((v_form.theme ->> 'one_response_per_user')::boolean, false)
+      or coalesce((v_form.theme ->> 'oneResponsePerUser')::boolean, false))
+     and nullif(p_client_hash, '') is not null
+     and exists (select 1 from public.form_submissions where form_id = p_form_id and client_hash = p_client_hash) then
+    raise exception 'response already submitted';
+  end if;
+
+  if p_payment_required then
+    if p_amount is null or p_amount <= 0 or p_amount > 10000000 then raise exception 'invalid payment amount'; end if;
+    if nullif(trim(p_customer_phone), '') is null then raise exception 'phone is required for payment'; end if;
+    select mn.number, mn.type into v_number, v_method from public.merchant_numbers mn
+      where mn.merchant_id = v_form.merchant_id and mn.active = true
+        and (upper(coalesce(p_payment_method, 'AUTO')) = 'AUTO' or upper(mn.type) = upper(p_payment_method))
+      order by mn.is_default desc, mn.created_at asc limit 1;
+    if v_number is null then raise exception 'payment number is not configured'; end if;
+
+    v_order_id := gen_random_uuid();
+    v_transaction_id := 'FORM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+    v_expires_at := now() + interval '15 minutes';
+    insert into public.orders(
+      id, merchant_id, tran_id, amount, cus_phone, cus_email, cus_name,
+      product_name, product_category, status, payment_method, callback_url, expires_at, metadata
+    ) values (
+      v_order_id, v_form.merchant_id, v_transaction_id, p_amount, trim(p_customer_phone),
+      nullif(trim(p_customer_email), ''), nullif(trim(p_customer_name), ''),
+      v_form.title, 'HOSTED_FORM', 'PENDING', v_method,
+      case when coalesce((v_form.theme ->> 'payment_callback_enabled')::boolean, false)
+        then nullif(v_form.theme ->> 'payment_callback_url', '') else null end,
+      v_expires_at, jsonb_build_object('form_id', p_form_id, 'request_id', p_request_id)
+    );
+  else
+    v_method := 'None';
+  end if;
+
+  v_submission_id := gen_random_uuid();
+  insert into public.form_submissions(
+    id, form_id, order_id, request_id, client_hash, customer_name, customer_phone,
+    customer_email, amount_bdt, payment_method, payment_status, answers
+  ) values (
+    v_submission_id, p_form_id, v_order_id, p_request_id, nullif(p_client_hash, ''),
+    nullif(trim(p_customer_name), ''), nullif(trim(p_customer_phone), ''),
+    nullif(trim(p_customer_email), ''), coalesce(p_amount, 0), v_method,
+    case when p_payment_required then 'PENDING' else 'NOT_REQUIRED' end,
+    coalesce(p_answers, '{}'::jsonb)
+  );
+
+  update public.payment_forms set submissions_count = submissions_count + 1, updated_at = now() where id = p_form_id;
+  return query select v_submission_id, v_order_id, v_transaction_id,
+    case when p_payment_required then 'PENDING' else 'NOT_REQUIRED' end,
+    coalesce(p_amount, 0), v_number, v_method, v_expires_at, true;
+end;
+$$;
+
+revoke all on function public.create_hosted_form_submission(uuid,uuid,text,text,text,numeric,text,boolean,jsonb,text) from public, anon, authenticated;
+grant execute on function public.create_hosted_form_submission(uuid,uuid,text,text,text,numeric,text,boolean,jsonb,text) to service_role;
+
+create or replace function public.sync_hosted_form_payment_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_form_id uuid;
+begin
+  if old.status is distinct from new.status and new.status in ('PAID', 'EXPIRED', 'CANCELLED') then
+    update public.form_submissions
+      set payment_status = case new.status when 'PAID' then 'PAID' else 'FAILED' end,
+          trx_id = coalesce(new.matched_trx_id, trx_id)
+      where order_id = new.id and payment_status = 'PENDING'
+      returning form_id into v_form_id;
+    if new.status = 'PAID' and v_form_id is not null then
+      update public.payment_forms set total_revenue = total_revenue + new.amount, updated_at = now()
+        where id = v_form_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_hosted_form_payment_status_trigger on public.orders;
+create trigger sync_hosted_form_payment_status_trigger
+after update of status on public.orders for each row
+execute function public.sync_hosted_form_payment_status();
+
+

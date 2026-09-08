@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Upay Brand Royal Blue background (#004B87) -->
+    <path
+        android:fillColor="#004B87"
+        android:pathData="M12,108 h96 c6.627,0 12,-5.373 12,-12 V12 c0,-6.627 -5.373,-12 -12,-12 H12 C5.373,0 0,5.373 0,12 v84 c0,6.627 5.373,12 12,12 z" />
+    
+    <!-- Bold 'u' custom brand typography design (Gold #FFC72C) -->
+    <path
+        android:fillColor="#FFC72C"
+        android:pathData="M38,40 H48 V65 C48,72 53,77 60,77 C67,77 72,72 72,65 V40 H82 V65 C82,78 72,88 60,88 C48,88 38,78 38,65 V40 Z" />
+        
+    <!-- Custom Upay brand dot / circular accent (White #FFFFFF) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M82,30 A5,5 0,1,1 82,40 A5,5 0,1,1 82,30 Z" />
+</vector>

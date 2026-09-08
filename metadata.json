@@ -1,0 +1,6 @@
+{
+  "name": "SmartPay Merchant",
+  "description": "Enterprise-grade mobile banking SMS payment automation system for bKash, Nagad, and Rocket.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

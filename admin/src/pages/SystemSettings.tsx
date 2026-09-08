@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ref, set, onValue } from 'firebase/database';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { rtdb, db } from '../firebaseConfig';
+import { adminSupabase } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 
 export interface FaqItem {
@@ -22,11 +20,13 @@ export interface ArticleItem {
 }
 
 export interface VideoTutorial {
+  id?: string;
   title: string;
   description: string;
   videoUrl: string;
   duration: string;
-  thumbnailUrl: string;
+  thumbnailUrl?: string;
+  category?: string;
 }
 
 export interface SystemRemoteConfig {
@@ -41,12 +41,202 @@ export interface SystemRemoteConfig {
   support_hours: string;
   system_notice: string;
   video_tutorial: VideoTutorial;
+  video_tutorials: VideoTutorial[];
+  api_documentation: string;
   faqs: FaqItem[];
   guides: GuideItem[];
   articles: ArticleItem[];
   ticket_categories: string[];
   last_updated?: number;
 }
+
+export const DEFAULT_API_DOCS_MARKDOWN = `# SwapnoPay Developer API & Webhook Specification (v2.0 Production)
+
+Welcome to the SwapnoPay Official API Documentation. SwapnoPay is an enterprise-grade payment aggregation and automated SMS reconciliation gateway supporting bKash, Nagad, Rocket, and Upay across Personal, Merchant, and Agent numbers.
+
+---
+
+## 1. Base URLs & Environments
+
+- **Production Gateway**: \`https://pay.swapnopay.top\`
+- **Supabase Edge Functions**: \`https://<your-project>.supabase.co/functions/v1\`
+- **WebSocket Gateway**: \`wss://pay.swapnopay.top\`
+- **Sandbox Testing**: Enable Test Mode in your merchant dashboard to simulate carrier SMS triggers.
+
+---
+
+## 2. Authentication & Headers
+
+All requests to the SwapnoPay API must include either your API Secret Key or a valid Supabase JWT Bearer token:
+
+| Header Name | Type | Description |
+|---|---|---|
+| \`X-Admin-Secret\` | string | Your platform or merchant API secret key. |
+| \`Authorization\` | string | \`Bearer <JWT_TOKEN>\` for authenticated merchant sessions. |
+| \`apikey\` | string | Supabase anon/publishable key for client-side queries. |
+| \`Idempotency-Key\` | string (UUID) | Unique request token to prevent double-charging or duplicate order creation. |
+| \`Content-Type\` | string | Must be \`application/json\`. |
+
+---
+
+## 3. Core API Endpoints
+
+### 3.1 Create Payment Order
+Create a new checkout session and obtain a hosted payment URL.
+
+- **Method**: \`POST\`
+- **Endpoint**: \`/v1/payment/create\`
+- **Edge Function Alternative**: \`POST /functions/v1/create-order\`
+
+#### Request Body:
+\`\`\`json
+{
+  "order_id": "ORD-2026-9812",
+  "amount": 1250.00,
+  "currency": "BDT",
+  "customer_name": "Tanvir Hasan",
+  "customer_email": "tanvir@example.com",
+  "customer_phone": "01712963652",
+  "payment_method": "bKash",
+  "redirect_url": "https://merchant.example.com/checkout/success",
+  "cancel_url": "https://merchant.example.com/checkout/cancel",
+  "webhook_url": "https://merchant.example.com/api/webhooks/swapnopay"
+}
+\`\`\`
+
+#### Response (200 OK):
+\`\`\`json
+{
+  "status": "SUCCESS",
+  "code": 200,
+  "message": "Payment session initialized successfully",
+  "data": {
+    "order_id": "ORD-2026-9812",
+    "payment_url": "https://pay.swapnopay.top/pay/ORD-2026-9812",
+    "assigned_gateway_number": "01784992118",
+    "gateway_type": "bKash Personal",
+    "payable_amount": 1250.00,
+    "expires_at": "2026-09-07T21:15:00Z"
+  }
+}
+\`\`\`
+
+---
+
+### 3.2 Verify Payment & SMS Match
+Verify incoming carrier transaction details against pending orders.
+
+- **Method**: \`POST\`
+- **Endpoint**: \`/v1/payment/verify\`
+
+#### Request Body:
+\`\`\`json
+{
+  "order_id": "ORD-2026-9812",
+  "tran_id": "9H8B7G6F5E",
+  "sender_phone": "01712963652",
+  "amount": 1250.00,
+  "payment_method": "bKash"
+}
+\`\`\`
+
+#### Response (200 OK):
+\`\`\`json
+{
+  "status": "PAID",
+  "order_id": "ORD-2026-9812",
+  "trx_id": "9H8B7G6F5E",
+  "verified": true,
+  "matched_at": "2026-09-07T20:16:30Z"
+}
+\`\`\`
+
+---
+
+### 3.3 Query Order Status
+Poll or inspect live order settlement status.
+
+- **Method**: \`GET\`
+- **Endpoint**: \`/v1/payment/status/{orderId}\`
+
+---
+
+### 3.4 Hosted Form Dynamic Submission
+Submit custom dynamic fields and uploaded proof attachments.
+
+- **Method**: \`POST\`
+- **Endpoint**: \`/v1/hosted-form/submit\`
+
+---
+
+## 4. Webhooks & HMAC Signature Security
+
+SwapnoPay sends instant JSON HTTP POST notifications whenever an order changes state.
+
+### 4.1 Signature Header
+Every webhook request contains an HMAC SHA-256 signature:
+\`\`\`http
+X-Signature: sha256=4f6a9e1029c8b3...
+\`\`\`
+
+### 4.2 Webhook Event: \`payment.paid\`
+\`\`\`json
+{
+  "event": "payment.paid",
+  "timestamp": "2026-09-07T20:16:30Z",
+  "data": {
+    "order_id": "ORD-2026-9812",
+    "status": "PAID",
+    "amount": 1250.00,
+    "currency": "BDT",
+    "payment_method": "bKash",
+    "trx_id": "9H8B7G6F5E",
+    "sender_phone": "01712963652"
+  }
+}
+\`\`\`
+
+### 4.3 HMAC Verification Examples
+
+#### Node.js / Express:
+\`\`\`javascript
+const crypto = require('crypto');
+
+function verifySwapnoPayWebhook(rawBody, signatureHeader, secret) {
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+}
+\`\`\`
+
+#### Python / Flask / FastAPI:
+\`\`\`python
+import hmac, hashlib
+
+def verify_swapnopay_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    expected = "sha256=" + hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+\`\`\`
+
+#### PHP:
+\`\`\`php
+function verifySwapnoPayWebhook($rawBody, $signatureHeader, $secret) {
+    $expected = 'sha256=' . hash_hmac('sha256', $rawBody, $secret);
+    return hash_equals($expected, $signatureHeader);
+}
+\`\`\`
+
+---
+
+## 5. Error Codes
+
+| Error Code | HTTP Status | Description |
+|---|---|---|
+| \`ERR_INVALID_HMAC\` | 401 | Webhook signature verification failed. Verify your secret. |
+| \`ERR_ORDER_EXPIRED\` | 400 | Payment window expired (default 10 min). |
+| \`ERR_DUPLICATE_IDEMPOTENCY\` | 409 | Request with this Idempotency-Key already processed. |
+| \`ERR_INSUFFICIENT_AMOUNT\` | 422 | Paid amount less than order invoice. |
+| \`ERR_GATEWAY_OFFLINE\` | 503 | No Android receiver device online for requested number. |
+`;
 
 const DEFAULT_CONFIG: SystemRemoteConfig = {
   developer_portal_url: "https://developer.swapnopay.app",
@@ -60,12 +250,49 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
   support_hours: "24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)",
   system_notice: "Welcome to SwapnoPay! Automatic SMS matching and merchant ledger active.",
   video_tutorial: {
-    title: "Complete Automatic Matching Walkthrough",
-    description: "Step-by-step video guide to configure SMS listener, match payments, and link webhooks.",
-    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "3:45 min",
-    thumbnailUrl: ""
+    id: "vid_bkash",
+    title: "bKash Automatic SMS Matching",
+    description: "Setup automated order matching with personal & merchant SIM.",
+    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    duration: "5:24 min",
+    thumbnailUrl: "",
+    category: "Automation"
   },
+  video_tutorials: [
+    {
+      id: "vid_bkash",
+      title: "bKash Automatic SMS Matching",
+      description: "Setup automated order matching with personal & merchant SIM.",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      duration: "5:24 min",
+      category: "Automation"
+    },
+    {
+      id: "vid_sms_app",
+      title: "SMS Gateway Background Service",
+      description: "Configure battery optimization, background service & permissions.",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      duration: "3:15 min",
+      category: "Setup"
+    },
+    {
+      id: "vid_woo",
+      title: "WooCommerce & Webhooks Setup",
+      description: "Install SwapnoPay WordPress plugin and configure instant IPN webhooks.",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      duration: "4:50 min",
+      category: "Integration"
+    },
+    {
+      id: "vid_postgres",
+      title: "Supabase Database & API Keys",
+      description: "Manage API secret keys, RLS security policies, and edge functions.",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      duration: "6:10 min",
+      category: "Security"
+    }
+  ],
+  api_documentation: "",
   faqs: [
     { question: "Do I need a merchant account?", answer: "No, SmartPay fully supports Personal, Agent, and Merchant accounts for bKash, Nagad, and Rocket." },
     { question: "How fast does automatic matching take?", answer: "Typically 1 to 3 seconds after the mobile operator SMS is received on your Android device." },
@@ -110,62 +337,58 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
 
 export default function SystemSettings() {
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'links' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets'>('links');
+  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets'>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const configRef = ref(rtdb, 'platform_owner/system_config');
-    const unsub = onValue(configRef, (snap) => {
-      if (snap.exists()) {
-        const val = snap.val();
-        setConfig({
-          ...DEFAULT_CONFIG,
-          ...val,
-          video_tutorial: { ...DEFAULT_CONFIG.video_tutorial, ...(val.video_tutorial || {}) },
-          faqs: Array.isArray(val.faqs) ? val.faqs : DEFAULT_CONFIG.faqs,
-          guides: Array.isArray(val.guides) ? val.guides : DEFAULT_CONFIG.guides,
-          articles: Array.isArray(val.articles) ? val.articles : DEFAULT_CONFIG.articles,
-          ticket_categories: Array.isArray(val.ticket_categories) ? val.ticket_categories : DEFAULT_CONFIG.ticket_categories
-        });
-      } else {
-        loadFirestoreConfig();
+    (async () => {
+      try {
+        const { data } = await adminSupabase
+          .from('showcase_config')
+          .select('value')
+          .eq('key', 'system_config')
+          .single();
+        if (data?.value) {
+          const val = data.value;
+          setConfig({
+            ...DEFAULT_CONFIG,
+            ...val,
+            video_tutorial: { ...DEFAULT_CONFIG.video_tutorial, ...(val.video_tutorial || {}) },
+            video_tutorials: Array.isArray(val.video_tutorials) && val.video_tutorials.length > 0 ? val.video_tutorials : DEFAULT_CONFIG.video_tutorials,
+            api_documentation: typeof val.api_documentation === 'string' ? val.api_documentation : DEFAULT_CONFIG.api_documentation,
+            faqs: Array.isArray(val.faqs) ? val.faqs : DEFAULT_CONFIG.faqs,
+            guides: Array.isArray(val.guides) ? val.guides : DEFAULT_CONFIG.guides,
+            articles: Array.isArray(val.articles) ? val.articles : DEFAULT_CONFIG.articles,
+            ticket_categories: Array.isArray(val.ticket_categories) ? val.ticket_categories : DEFAULT_CONFIG.ticket_categories
+          });
+        }
+      } catch (e) {
+        console.warn('Supabase showcase_config read warning:', e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, (err) => {
-      console.warn('RTDB system_config read error:', err);
-      loadFirestoreConfig();
-      setLoading(false);
-    });
+    })();
 
-    return () => unsub();
+    const channel = adminSupabase
+      .channel('showcase_system_config')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.system_config' },
+        (payload: any) => {
+          if (payload.new?.value) {
+            const val = payload.new.value;
+            setConfig(prev => ({ ...prev, ...val }));
+          }
+        })
+      .subscribe();
+
+    return () => { adminSupabase.removeChannel(channel); };
   }, []);
-
-  const loadFirestoreConfig = async () => {
-    try {
-      const snap = await getDoc(doc(db, 'system_config', 'links_and_support'));
-      if (snap.exists()) {
-        const val = snap.data() as any;
-        setConfig({
-          ...DEFAULT_CONFIG,
-          ...val,
-          video_tutorial: { ...DEFAULT_CONFIG.video_tutorial, ...(val.video_tutorial || {}) },
-          faqs: Array.isArray(val.faqs) ? val.faqs : DEFAULT_CONFIG.faqs,
-          guides: Array.isArray(val.guides) ? val.guides : DEFAULT_CONFIG.guides,
-          articles: Array.isArray(val.articles) ? val.articles : DEFAULT_CONFIG.articles,
-          ticket_categories: Array.isArray(val.ticket_categories) ? val.ticket_categories : DEFAULT_CONFIG.ticket_categories
-        });
-      }
-    } catch (e) {
-      console.error('Firestore config load error:', e);
-    }
-  };
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSaving(true);
-    setStatusMsg('Broadcasting all links and support content to Firebase...');
+    setStatusMsg('Saving system configuration to Supabase...');
 
     try {
       const payload: SystemRemoteConfig = {
@@ -173,22 +396,37 @@ export default function SystemSettings() {
         last_updated: Date.now()
       };
 
-      await set(ref(rtdb, 'platform_owner/system_config'), payload);
-      await set(ref(rtdb, 'platform_owner/support_content'), payload);
-      await set(ref(rtdb, 'system_config'), payload);
+      const { error } = await adminSupabase
+        .from('showcase_config')
+        .upsert({ key: 'system_config', value: payload, updated_at: new Date().toISOString() });
 
-      try {
-        await setDoc(doc(db, 'system_config', 'links_and_support'), payload, { merge: true });
-        await setDoc(doc(db, 'system_config', 'support_content'), payload, { merge: true });
-      } catch (_) {}
+      if (error) throw error;
 
-      setStatusMsg('✅ Successfully saved and broadcasted to all Android app screens in real-time!');
+      setStatusMsg('✅ Successfully saved and broadcasted via Supabase Realtime!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('❌ Failed to save: ' + err.message);
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleAddVideoTutorial = () => {
+    const newVid: VideoTutorial = {
+      id: "vid_" + Date.now(),
+      title: "New Video Tutorial #" + ((config.video_tutorials || []).length + 1),
+      description: "Step-by-step instructions for integration.",
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      duration: "3:00 min",
+      category: "General"
+    };
+    const updated = [...(config.video_tutorials || []), newVid];
+    setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+  };
+
+  const handleRemoveVideoTutorial = (index: number) => {
+    const updated = (config.video_tutorials || []).filter((_, i) => i !== index);
+    setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
   };
 
   const handleAddFaq = () => {
@@ -287,8 +525,9 @@ export default function SystemSettings() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { key: 'links', label: '💻 Developer Portal Links' },
+          { key: 'api_docs', label: '📚 API Documentation CMS' },
+          { key: 'video', label: '🎥 Video Tutorials (' + ((config.video_tutorials || []).length) + ')' },
           { key: 'support_contacts', label: '📞 Support Contacts' },
-          { key: 'video', label: '🎥 Video Tutorial' },
           { key: 'faqs', label: '❓ FAQs (' + config.faqs.length + ')' },
           { key: 'guides', label: '📖 Guides (' + config.guides.length + ')' },
           { key: 'articles', label: '📄 Help Articles (' + config.articles.length + ')' },
@@ -447,69 +686,232 @@ export default function SystemSettings() {
           </div>
         )}
 
+        {activeTab === 'api_docs' && (
+          <div className="card" style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>📚 Developer API Documentation (Markdown CMS)</h3>
+                <span style={{ fontSize: 12, color: '#64748B' }}>
+                  Edit the comprehensive API specification. Changes are immediately synced to both the Android App Developer Portal (One-Click Copy & Reference) and the Web Docs Portal.
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, api_documentation: DEFAULT_API_DOCS_MARKDOWN })}
+                  style={{
+                    background: '#EEF2FF',
+                    color: '#4F46E5',
+                    border: '1px solid #C7D2FE',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 700
+                  }}
+                >
+                  Load Exhaustive API Docs Template 📄
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, api_documentation: '' })}
+                  style={{
+                    background: '#F1F5F9',
+                    color: '#64748B',
+                    border: '1px solid #CBD5E1',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}
+                >
+                  Clear (Use System Default)
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 12, color: '#64748B' }}>
+              <span>Character Count: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).length}</strong></span>
+              <span>Lines: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).split('\n').length}</strong></span>
+              <span>Status: <strong style={{ color: config.api_documentation ? '#10B981' : '#64748B' }}>{config.api_documentation ? 'Custom CMS Override Active' : 'System Default Active'}</strong></span>
+            </div>
+
+            <textarea
+              className="input"
+              value={config.api_documentation}
+              onChange={(e) => setConfig({ ...config, api_documentation: e.target.value })}
+              placeholder="Leave empty to use built-in exhaustive API specification, or enter customized Markdown documentation here..."
+              style={{
+                minHeight: 450,
+                fontFamily: 'Fira Code, monospace',
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                background: '#0F172A',
+                color: '#38BDF8',
+                border: '1px solid #334155'
+              }}
+            />
+          </div>
+        )}
+
         {activeTab === 'video' && (
           <div className="card" style={{ marginBottom: 18 }}>
-            <h3 style={{ marginTop: 0 }}>🎥 Video Tutorial Configuration</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Video Title *
-                </label>
-                <input
-                  className="input"
-                  value={config.video_tutorial.title}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    video_tutorial: { ...config.video_tutorial, title: e.target.value }
-                  })}
-                  placeholder="Video Title..."
-                  required
-                />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Video Description
-                </label>
-                <textarea
-                  className="input"
-                  value={config.video_tutorial.description}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    video_tutorial: { ...config.video_tutorial, description: e.target.value }
-                  })}
-                  placeholder="Video description..."
-                  style={{ minHeight: 60, fontFamily: 'inherit' }}
-                />
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Video URL / Stream Link (MP4 or YouTube) *
-                </label>
-                <input
-                  className="input"
-                  value={config.video_tutorial.videoUrl}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    video_tutorial: { ...config.video_tutorial, videoUrl: e.target.value }
-                  })}
-                  placeholder="https://example.com/video.mp4"
-                  required
-                />
+                <h3 style={{ margin: 0 }}>🎥 Video Integration Tutorials Manager</h3>
+                <span style={{ fontSize: 12, color: '#64748B' }}>
+                  Manage video tutorials shown on the Android Developer Portal and Web Documentation. Supports YouTube URLs and MP4 direct streams.
+                </span>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Video Duration Badge
-                </label>
-                <input
-                  className="input"
-                  value={config.video_tutorial.duration}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    video_tutorial: { ...config.video_tutorial, duration: e.target.value }
-                  })}
-                  placeholder="3:45 min"
-                />
-              </div>
+              <button
+                type="button"
+                className="button"
+                onClick={handleAddVideoTutorial}
+                style={{ background: '#10B981', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                + Add Video Tutorial
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {(config.video_tutorials || []).map((vid: VideoTutorial, index: number) => (
+                <div key={vid.id || index} style={{ padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#4F46E5', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                        {index + 1}
+                      </span>
+                      <strong style={{ fontSize: 14, color: '#1E293B' }}>{vid.title || 'Untitled Tutorial'}</strong>
+                      {vid.category && (
+                        <span style={{ background: '#EEF2FF', color: '#4F46E5', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                          {vid.category}
+                        </span>
+                      )}
+                      {vid.duration && (
+                        <span style={{ background: '#FEF3C7', color: '#B45309', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                          ⏱ {vid.duration}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {vid.videoUrl && (
+                        <a
+                          href={vid.videoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            background: '#F1F5F9',
+                            color: '#0284C7',
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          ▶ Test Link
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVideoTutorial(index)}
+                        style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
+                        Video Title *
+                      </label>
+                      <input
+                        className="input"
+                        value={vid.title}
+                        onChange={(e) => {
+                          const updated = [...(config.video_tutorials || [])];
+                          updated[index] = { ...updated[index], title: e.target.value };
+                          setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+                        }}
+                        placeholder="e.g. bKash Automatic Matching Guide"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
+                        Category
+                      </label>
+                      <input
+                        className="input"
+                        value={vid.category || ''}
+                        onChange={(e) => {
+                          const updated = [...(config.video_tutorials || [])];
+                          updated[index] = { ...updated[index], category: e.target.value };
+                          setConfig({ ...config, video_tutorials: updated });
+                        }}
+                        placeholder="e.g. Automation, Gateways, Setup"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
+                        Duration Badge
+                      </label>
+                      <input
+                        className="input"
+                        value={vid.duration}
+                        onChange={(e) => {
+                          const updated = [...(config.video_tutorials || [])];
+                          updated[index] = { ...updated[index], duration: e.target.value };
+                          setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+                        }}
+                        placeholder="e.g. 5:24 min"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
+                        Video URL / YouTube Link *
+                      </label>
+                      <input
+                        className="input"
+                        value={vid.videoUrl}
+                        onChange={(e) => {
+                          const updated = [...(config.video_tutorials || [])];
+                          updated[index] = { ...updated[index], videoUrl: e.target.value };
+                          setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+                        }}
+                        placeholder="https://www.youtube.com/watch?v=... or direct MP4 URL"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
+                      Description
+                    </label>
+                    <textarea
+                      className="input"
+                      value={vid.description}
+                      onChange={(e) => {
+                        const updated = [...(config.video_tutorials || [])];
+                        updated[index] = { ...updated[index], description: e.target.value };
+                        setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+                      }}
+                      placeholder="Step-by-step video instructions..."
+                      style={{ minHeight: 50, fontFamily: 'inherit' }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -531,7 +933,7 @@ export default function SystemSettings() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {config.faqs.map((faq, index) => (
+              {config.faqs.map((faq: FaqItem, index: number) => (
                 <div key={index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <strong style={{ fontSize: 13, color: '#1E293B' }}>Question #{index + 1}</strong>
@@ -588,7 +990,7 @@ export default function SystemSettings() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {config.guides.map((guide, index) => (
+              {config.guides.map((guide: GuideItem, index: number) => (
                 <div key={index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <strong style={{ fontSize: 13, color: '#1E293B' }}>Step #{index + 1}</strong>
@@ -645,7 +1047,7 @@ export default function SystemSettings() {
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {config.articles.map((art, index) => (
+              {config.articles.map((art: ArticleItem, index: number) => (
                 <div key={art.id || index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <strong style={{ fontSize: 13, color: '#1E293B' }}>Article #{index + 1} ({art.id})</strong>
@@ -661,7 +1063,7 @@ export default function SystemSettings() {
                     <input
                       className="input"
                       value={art.title}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const updated = [...config.articles];
                         updated[index].title = e.target.value;
                         setConfig({ ...config, articles: updated });
@@ -671,7 +1073,7 @@ export default function SystemSettings() {
                     <input
                       className="input"
                       value={art.category}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const updated = [...config.articles];
                         updated[index].category = e.target.value;
                         setConfig({ ...config, articles: updated });
@@ -682,7 +1084,7 @@ export default function SystemSettings() {
                   <textarea
                     className="input"
                     value={art.content}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
                       const updated = [...config.articles];
                       updated[index].content = e.target.value;
                       setConfig({ ...config, articles: updated });
@@ -713,7 +1115,7 @@ export default function SystemSettings() {
               </button>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {config.ticket_categories.map((cat, index) => (
+              {config.ticket_categories.map((cat: string, index: number) => (
                 <div
                   key={index}
                   style={{

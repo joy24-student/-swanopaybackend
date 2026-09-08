@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Secure Checkout - SwapnoPay</title>
+  <meta name="description" content="SwapnoPay Secure Checkout — Fast and safe mobile payment gateway for Bangladesh">
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
@@ -13,6 +14,31 @@
     }
     .dashed-border {
       border: 2px dashed #cbd5e1;
+    }
+  </style>
+    .merchant-avatar-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+    .avatar-fallback {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 16px;
+      color: #fff;
+    }
+    @keyframes offlinePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .offline-pulse {
+      animation: offlinePulse 2s ease-in-out infinite;
     }
   </style>
 </head>
@@ -26,9 +52,24 @@
       <div>
         
         <!-- Header Brand Info -->
+        <!-- Merchant Offline Banner (shown when device_active=false) -->
+        <div id="merchant-offline-banner" class="hidden mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div class="flex items-start gap-2.5">
+            <span class="text-amber-500 text-lg offline-pulse">⚠️</span>
+            <div class="flex-grow">
+              <p class="text-[11px] font-bold text-amber-900 mb-0.5">Merchant Device Offline</p>
+              <p class="text-[10px] text-amber-700 mb-2">The merchant's device is currently offline. Payments may not be verified automatically.</p>
+              <div class="flex gap-2">
+                <button onclick="retryDeviceCheck()" class="text-[10px] font-bold bg-amber-500 text-white px-2.5 py-1 rounded-lg hover:bg-amber-600 transition-colors">Retry</button>
+                <a id="merchant-contact-btn" href="#" class="text-[10px] font-bold bg-white border border-amber-300 text-amber-700 px-2.5 py-1 rounded-lg hover:bg-amber-50 transition-colors">Call Merchant</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="flex justify-between items-center mb-6">
           <div class="flex items-center gap-2">
-            <div class="w-10 h-10 bg-[#3D2C1A] rounded-lg flex items-center justify-center text-white font-black text-lg" id="avatar">D</div>
+            <div id="avatar" class="avatar-fallback bg-[#3D2C1A]">D</div>
             <div>
               <div class="flex items-center gap-1">
                 <h1 class="font-bold text-gray-900 text-sm md:text-base" id="merchant-name">DreamMart</h1>
@@ -334,13 +375,87 @@
         <span class="text-xs font-bold text-gray-700">SwapnoPay Secured</span>
       </div>
 
+      <!-- MERCHANT OFFLINE FULL OVERLAY -->
+      <div class="hidden absolute inset-0 bg-white flex flex-col z-50 p-5 md:p-6" id="merchant-offline-view">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-3 w-full mb-6">
+          <div class="flex items-center gap-2">
+            <div id="offline-avatar" class="avatar-fallback bg-gray-800 text-sm">M</div>
+            <div>
+              <h1 class="text-xs font-black text-gray-900" id="offline-merchant-name">Merchant</h1>
+              <p class="text-[9px] text-gray-400">SwapnoPay Payment Gateway</p>
+            </div>
+          </div>
+          <img alt="SwapnoPay" class="h-9 object-contain" src="logo_branding.png"/>
+        </div>
+
+        <div class="flex flex-col items-center justify-center text-center flex-grow py-4">
+          <div class="w-16 h-16 bg-amber-50 border-2 border-amber-200 rounded-full flex items-center justify-center mb-4 offline-pulse">
+            <span class="text-3xl">📵</span>
+          </div>
+          <h2 class="text-base font-black text-gray-900 mb-2">Merchant Device Offline</h2>
+          <p class="text-xs text-gray-500 max-w-[280px] leading-relaxed mb-6">
+            The merchant's payment device is currently offline. Automatic payment verification is unavailable right now.
+          </p>
+
+          <div class="w-full bg-amber-50 border border-amber-100 rounded-xl p-4 text-left mb-4">
+            <h3 class="text-[11px] font-bold text-amber-900 mb-2">What you can do:</h3>
+            <ul class="space-y-1.5 text-[11px] text-amber-700">
+              <li class="flex items-center gap-1.5"><span>📞</span> Contact the merchant directly to confirm the payment</li>
+              <li class="flex items-center gap-1.5"><span>🔄</span> Try again in a few minutes when the device comes online</li>
+              <li class="flex items-center gap-1.5"><span>⚖️</span> Submit an appeal with your transaction screenshot</li>
+            </ul>
+          </div>
+
+          <!-- Interactive "Notify Me When Online" card -->
+          <div class="w-full bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 text-left mb-4 shadow-sm">
+            <div class="flex items-center gap-1.5 mb-1.5">
+              <span class="text-blue-600 text-sm">🔔</span>
+              <h3 class="text-[11px] font-bold text-blue-900">Get Notified When Merchant is Back Online</h3>
+            </div>
+            <p class="text-[10px] text-blue-700 mb-2.5 leading-relaxed">
+              Enter your email below. We'll immediately send you a direct link to return and complete your payment the second the merchant's device reconnects.
+            </p>
+            <div id="device-alert-subscribe-box">
+              <div class="flex flex-col sm:flex-row gap-1.5">
+                <input type="email" id="device-alert-customer-email" placeholder="Enter your email (e.g. name@mail.com)" class="flex-grow text-[11px] px-3 py-2 bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800" />
+                <button id="btn-subscribe-device-alert" onclick="subscribeForDeviceOnlineAlert()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-2 rounded-lg text-[11px] transition-colors flex items-center justify-center gap-1 whitespace-nowrap shadow-sm">
+                  <span id="alert-sub-btn-text">🔔 Notify Me</span>
+                  <div id="alert-sub-spinner" class="hidden w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </button>
+              </div>
+              <p id="device-alert-error" class="hidden text-[10px] text-red-600 mt-1 font-medium"></p>
+            </div>
+            <div id="device-alert-success-box" class="hidden text-center py-1.5 bg-green-50 border border-green-200 rounded-lg mt-2">
+              <span class="text-green-700 font-bold text-[11px] flex items-center justify-center gap-1">
+                <span>✅</span> Subscribed! We will email you the moment the merchant is online.
+              </span>
+            </div>
+          </div>
+
+          <p class="text-[9px] text-gray-400 mb-4" id="offline-last-seen-text"></p>
+        </div>
+
+        <div class="space-y-2 w-full">
+          <button onclick="retryDeviceCheck()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors text-xs flex items-center justify-center gap-2">
+            <span id="retry-btn-text">🔄 Retry Connection</span>
+            <div class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" id="retry-spinner"></div>
+          </button>
+          <a id="offline-contact-btn" href="#" class="block w-full py-3 text-center text-amber-600 font-bold border border-amber-200 rounded-xl hover:bg-amber-50 transition-colors text-xs">
+            📞 Call Merchant
+          </a>
+          <button onclick="proceedDespiteOffline()" class="w-full py-2 text-[11px] text-gray-400 hover:text-gray-600 font-semibold transition-colors">
+            Proceed anyway (manual verification)
+          </button>
+        </div>
+      </div>
+
       <!-- SUCCESS RECEIPT OVERLAY -->
       <div class="hidden absolute inset-0 bg-white flex flex-col justify-between z-50 p-5 md:p-6" id="success-view">
         
         <!-- Top header success -->
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 w-full">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white font-black text-sm" id="success-avatar">D</div>
+            <div id="success-avatar" class="avatar-fallback bg-gray-900 text-sm">D</div>
             <div>
               <h1 class="text-xs font-black text-gray-900" id="success-merchant-name">DreamMart</h1>
               <p class="text-[9px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
@@ -404,7 +519,7 @@
         <!-- Top header cancel -->
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 w-full">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white font-black text-xs" id="cancel-avatar">D</div>
+            <div id="cancel-avatar" class="avatar-fallback bg-gray-900 text-xs">D</div>
             <div>
               <h1 class="text-xs font-black text-gray-900" id="cancel-merchant-name">DreamMart</h1>
               <p class="text-[9px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
@@ -459,7 +574,7 @@
         <!-- Top header cancelled -->
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 w-full">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white font-black text-xs" id="cancelled-avatar">D</div>
+            <div id="cancelled-avatar" class="avatar-fallback bg-gray-900 text-xs">D</div>
             <div>
               <h1 class="text-xs font-black text-gray-900" id="cancelled-merchant-name">DreamMart</h1>
               <p class="text-[9px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
@@ -494,7 +609,7 @@
         <!-- Top header processing -->
         <div class="flex items-center justify-between border-b border-gray-100 pb-3 w-full mb-6">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white font-black text-xs" id="proc-avatar">D</div>
+            <div id="proc-avatar" class="avatar-fallback bg-gray-900 text-xs">D</div>
             <div>
               <h1 class="text-xs font-black text-gray-900" id="proc-merchant-name">DreamMart</h1>
               <p class="text-[9px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
@@ -573,6 +688,8 @@
     </button>
   </div>
 
+  <!-- Socket.io client for real-time payment status from SwapnoPay backend -->
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
   <script src="widget.js"></script>
 </body>
 </html>

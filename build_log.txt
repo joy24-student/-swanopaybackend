@@ -1,0 +1,39 @@
+
+D:\d\lenden23>if "Windows_NT" == "Windows_NT" setlocal
+
+D:\d\lenden23>set DIRNAME=D:\d\lenden23\ 
+
+D:\d\lenden23>if "D:\d\lenden23\" == "" set DIRNAME=. 
+
+D:\d\lenden23>set APP_BASE_NAME=gradlew 
+
+D:\d\lenden23>set APP_HOME=D:\d\lenden23\ 
+
+D:\d\lenden23>for %i in ("D:\d\lenden23\") do set APP_HOME=%~fi 
+
+D:\d\lenden23>set APP_HOME=D:\d\lenden23\ 
+
+D:\d\lenden23>set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m" 
+
+D:\d\lenden23>if defined JAVA_HOME goto findJavaFromJavaHome 
+
+D:\d\lenden23>set JAVA_HOME=D:\java jdk 
+
+D:\d\lenden23>set JAVA_EXE=D:\java jdk/bin/java.exe 
+
+D:\d\lenden23>if exist "D:\java jdk/bin/java.exe" goto execute 
+
+D:\d\lenden23>"D:\java jdk/bin/java.exe" "-Xmx64m" "-Xms64m"   "-Dorg.gradle.appname=gradlew" -jar "D:\d\lenden23\\gradle\wrapper\gradle-wrapper.jar" :app:compileDebugKotlin --no-daemon 
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.6.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Reusing configuration cache.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:kspDebugKotlin UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE

@@ -40,11 +40,24 @@
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
       border: 1px solid var(--border);
       width: 100%;
-      max-width: 500px;
+      max-width: 540px;
       padding: 32px;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 20px;
+    }
+
+    .countdown-banner {
+      background: #FEF3C7;
+      color: #92400E;
+      border: 1.5px solid #F59E0B;
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 13px;
     }
 
     .logo-header {
@@ -72,7 +85,7 @@
     }
 
     .form-title h2 {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
       color: var(--text-dark);
       margin-bottom: 6px;
@@ -81,10 +94,9 @@
     .form-title p {
       font-size: 13px;
       color: var(--text-light);
-      line-height: 1.4;
+      line-height: 1.5;
     }
 
-    /* Dynamic inputs styling */
     .field-group {
       display: flex;
       flex-direction: column;
@@ -111,23 +123,24 @@
       font-size: 14px;
       color: var(--text-dark);
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
     .input-text:focus, .input-select:focus {
       border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(93, 69, 255, 0.1);
     }
 
     .input-area {
       width: 100%;
-      height: 100px;
+      height: 90px;
       padding: 12px 16px;
       border: 1px solid var(--border);
       border-radius: 12px;
       font-size: 14px;
       color: var(--text-dark);
       outline: none;
-      resize: none;
+      resize: vertical;
       transition: border-color 0.2s;
     }
 
@@ -135,7 +148,6 @@
       border-color: var(--primary);
     }
 
-    /* Choice list options */
     .option-list {
       display: flex;
       flex-direction: column;
@@ -157,7 +169,6 @@
       accent-color: var(--primary);
     }
 
-    /* Question images */
     .question-image {
       width: 100%;
       max-height: 180px;
@@ -165,6 +176,30 @@
       border-radius: 12px;
       margin-top: 4px;
       border: 1px solid var(--border);
+    }
+
+    .method-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .method-card {
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .method-card.active {
+      border-color: var(--primary);
+      background: #EEF2FF;
+      color: var(--primary);
     }
 
     .btn-submit {
@@ -180,12 +215,14 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(93, 69, 255, 0.15);
+      box-shadow: 0 4px 14px rgba(93, 69, 255, 0.2);
       transition: opacity 0.2s;
     }
 
-    .btn-submit:active {
-      opacity: 0.9;
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
     }
 
     .loading-spinner {
@@ -197,6 +234,19 @@
       animation: spin 0.8s linear infinite;
     }
 
+    .closed-state {
+      text-align: center;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .closed-state .icon {
+      font-size: 48px;
+    }
+
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -206,8 +256,11 @@
 <body>
 
   <div class="form-container" id="form-wrap">
+    <!-- Countdown Banner (if configured) -->
+    <div id="countdown-banner-holder"></div>
+
     <!-- Header -->
-    <div class="logo-header">
+    <div class="logo-header" id="header-section">
       <div class="merchant-logo" id="form-logo">S</div>
       <div class="form-title">
         <h2 id="title-text">Payment Form Checkout</h2>
@@ -216,9 +269,20 @@
     </div>
 
     <!-- Fields Holder -->
-    <form id="dynamic-form" onsubmit="handleFormSubmit(event)" style="display: flex; flex-direction: column; gap: 20px;">
+    <form id="dynamic-form" onsubmit="handleFormSubmit(event)" style="display: flex; flex-direction: column; gap: 18px;">
       <div id="fields-container" style="display: flex; flex-direction: column; gap: 16px;">
         <!-- Dynamic fields go here -->
+      </div>
+
+      <!-- Payment Method Selection -->
+      <div class="field-group" id="method-section">
+        <label class="field-label">Payment Method <span>*</span></label>
+        <div class="method-selector" id="method-selector">
+          <div class="method-card active" data-method="bKash" onclick="selectPaymentMethod('bKash')">bKash</div>
+          <div class="method-card" data-method="Nagad" onclick="selectPaymentMethod('Nagad')">Nagad</div>
+          <div class="method-card" data-method="Rocket" onclick="selectPaymentMethod('Rocket')">Rocket</div>
+          <div class="method-card" data-method="Upay" onclick="selectPaymentMethod('Upay')">Upay</div>
+        </div>
       </div>
 
       <button type="submit" class="btn-submit" id="submit-btn">
@@ -228,26 +292,46 @@
   </div>
 
   <script>
-    let formId = "";
+    let formIdentifier = "";
     let supabaseUrl = "";
     let supabaseAnonKey = "";
     let formConfig = null;
+    let selectedMethod = "bKash";
+    let csvBackendData = [];
+    let csvLookupColumn = "";
+    let csvTargetFieldId = "";
+    let csvColumnMappings = {};
 
     window.onload = function() {
       const params = new URLSearchParams(window.location.search);
-      formId = params.get("id") || "demo_form_id";
-      supabaseUrl = params.get("supabase_url") || "https://abc123xyz.supabase.co";
-      supabaseAnonKey = params.get("supabase_anon_key") || "demo_anon_key";
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const routeIdentifier = (pathParts[0] === 'f' || pathParts[0] === 'form' || pathParts[0] === 'forms') ? pathParts[1] : '';
 
-      if (formId !== "demo_form_id" && !supabaseUrl.includes("abc123xyz")) {
+      formIdentifier = params.get("slug") || params.get("id") || routeIdentifier || "demo_form_id";
+      supabaseUrl = params.get("supabase_url") || window.SUPABASE_URL || "https://abc123xyz.supabase.co";
+      supabaseAnonKey = params.get("supabase_anon_key") || window.SUPABASE_ANON_KEY || "demo_anon_key";
+
+      if (formIdentifier !== "demo_form_id" && !supabaseUrl.includes("abc123xyz")) {
         loadPaymentFormDetails();
       } else {
         renderDemoFields();
       }
     };
 
+    function isUuid(val) {
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    }
+
+    function selectPaymentMethod(method) {
+      selectedMethod = method;
+      document.querySelectorAll('.method-card').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-method') === method);
+      });
+    }
+
     function loadPaymentFormDetails() {
-      fetch(`${supabaseUrl}/rest/v1/payment_forms?id=eq.${formId}&select=*`, {
+      const filter = isUuid(formIdentifier) ? `id=eq.${formIdentifier}` : `slug=eq.${encodeURIComponent(formIdentifier)}`;
+      fetch(`${supabaseUrl}/rest/v1/payment_forms?${filter}&select=*`, {
         headers: {
           "apikey": supabaseAnonKey,
           "Authorization": `Bearer ${supabaseAnonKey}`
@@ -258,28 +342,93 @@
         if (data && data.length > 0) {
           formConfig = data[0];
           renderConfiguredFields(formConfig);
+        } else {
+          document.getElementById("form-wrap").innerHTML = `
+            <div class="closed-state">
+              <div class="icon">🔍</div>
+              <h2>Form Not Found</h2>
+              <p>The form link may be incorrect or no longer active.</p>
+            </div>
+          `;
         }
       })
-      .catch(err => console.error("Error loading payment form layout config:", err));
+      .catch(err => {
+        console.error("Error loading payment form:", err);
+      });
     }
 
     function renderConfiguredFields(config) {
-      document.getElementById("title-text").innerText = config.title;
-      document.getElementById("desc-text").innerText = config.description || "Fill in details to complete order payment.";
-      
-      const logo = document.getElementById("form-logo");
-      if (config.logo_url) {
-        logo.innerHTML = `<img src="${config.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:16px;" />`;
-      } else {
-        logo.innerText = config.title.charAt(0);
+      const theme = config.theme && typeof config.theme === 'object' ? config.theme : {};
+
+      // Check closing timeline and response limits
+      const isLimitClosed = theme.close_after_limit === true && Number(config.submissions_count || 0) >= Math.max(1, Number(theme.max_responses || 1000));
+      const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0);
+      const isTimelineClosed = (theme.enable_closing_timeline === true || theme.enableClosingTimeline === true) && deadlineEpoch > 0 && Date.now() > deadlineEpoch;
+
+      if (isLimitClosed || isTimelineClosed) {
+        const closedMsg = theme.closed_message || theme.closedMessage || "This form is no longer accepting responses.";
+        document.getElementById("form-wrap").innerHTML = `
+          <div class="closed-state">
+            <div class="icon">🔒</div>
+            <h2>${config.title || "Form Closed"}</h2>
+            <p>${closedMsg}</p>
+          </div>
+        `;
+        return;
       }
 
-      document.getElementById("btn-text").innerText = `Pay BDT ${parseFloat(config.amount).toLocaleString()}`;
+      // Hide header if configured
+      if (theme.hide_form_header === true || theme.hideFormHeader === true) {
+        document.getElementById("header-section").style.display = "none";
+      } else {
+        document.getElementById("title-text").innerText = config.title;
+        document.getElementById("desc-text").innerText = config.description || "Fill in details to complete order payment.";
+        const logo = document.getElementById("form-logo");
+        if (config.logo_url) {
+          logo.innerHTML = `<img src="${config.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:16px;" />`;
+        } else {
+          logo.innerText = (config.title || 'S').charAt(0);
+        }
+      }
+
+      // Primary color styling
+      const primaryColor = theme.primaryColorHex || theme.primary_color || '#5d45ff';
+      document.documentElement.style.setProperty('--primary', primaryColor);
+
+      // Countdown Timer Banner
+      if ((theme.enable_closing_timeline || theme.enableClosingTimeline) && deadlineEpoch > 0 && (theme.show_countdown_timer !== false && theme.showCountdownTimer !== false)) {
+        const bannerHolder = document.getElementById("countdown-banner-holder");
+        bannerHolder.innerHTML = `
+          <div class="countdown-banner" id="countdown-banner">
+            <span>⏳ Submissions Close In:</span>
+            <span id="countdown-val" style="font-family:monospace;font-size:14px;font-weight:700;">Loading...</span>
+          </div>
+        `;
+        const bannerInterval = setInterval(() => {
+          const diff = deadlineEpoch - Date.now();
+          const valEl = document.getElementById("countdown-val");
+          if (diff <= 0) {
+            clearInterval(bannerInterval);
+            if (valEl) valEl.innerText = "EXPIRED";
+            const btn = document.getElementById("submit-btn");
+            if (btn) { btn.disabled = true; btn.innerText = "Form Closed"; }
+          } else {
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            if (valEl) valEl.innerText = (d > 0 ? d + "d " : "") + h + "h " + m + "m " + s + "s";
+          }
+        }, 1000);
+      }
+
+      // Button Text
+      const amountVal = parseFloat(config.amount || 0);
+      document.getElementById("btn-text").innerText = amountVal > 0 ? `Pay BDT ${amountVal.toLocaleString()}` : "Submit Response";
 
       const container = document.getElementById("fields-container");
       container.innerHTML = "";
 
-      // Add a mandatory Payer Customer Phone & Email field (needed for matching/notifications)
       addMandatoryContactFields(container);
 
       // Parse JSON fields
@@ -296,10 +445,9 @@
 
         const label = document.createElement("label");
         label.className = "field-label";
-        label.innerHTML = `${f.label} ${f.required ? '<span>*</span>' : ''}`;
+        label.innerHTML = `${f.label} ${f.required || f.isRequired ? '<span>*</span>' : ''}`;
         group.appendChild(label);
 
-        // Optional question image preview
         if (f.image_url) {
           const img = document.createElement("img");
           img.src = f.image_url;
@@ -307,25 +455,42 @@
           group.appendChild(img);
         }
 
-        if (f.type === "short") {
-          group.innerHTML += `<input type="text" class="input-text" data-field-id="${f.id}" ${f.required ? 'required' : ''} placeholder="Enter answer..." />`;
-        } else if (f.type === "mcq") {
+        const fType = String(f.type || 'TEXT').toUpperCase();
+        if (fType === "DATE") {
+          group.innerHTML += `<input type="date" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || 'YYYY-MM-DD'}" />`;
+        } else if (fType === "DROPDOWN") {
+          let selHtml = `<select class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''}>`;
+          selHtml += `<option value="">${f.placeholder || 'Select an option'}</option>`;
+          (f.options || []).forEach(o => {
+            selHtml += `<option value="${o}">${o}</option>`;
+          });
+          selHtml += `</select>`;
+          group.innerHTML += selHtml;
+        } else if (fType === "SHORT" || fType === "TEXT" || fType === "NAME") {
+          group.innerHTML += `<input type="text" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || 'Enter answer...'}" />`;
+        } else if (fType === "PHONE") {
+          group.innerHTML += `<input type="tel" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || '017xxxxxxxx'}" />`;
+        } else if (fType === "EMAIL") {
+          group.innerHTML += `<input type="email" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || 'name@example.com'}" />`;
+        } else if (fType === "CUSTOM_AMOUNT" || fType === "QUANTITY") {
+          group.innerHTML += `<input type="number" step="${fType === 'QUANTITY' ? '1' : '0.01'}" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || '0'}" />`;
+        } else if (fType === "ADDRESS" || fType === "NOTES") {
+          group.innerHTML += `<textarea class="input-area" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || 'Enter details...'}"></textarea>`;
+        } else if (fType === "MCQ" || fType === "RADIO") {
           let listHtml = `<div class="option-list">`;
-          const opts = f.options || [];
-          opts.forEach((o, index) => {
+          (f.options || []).forEach((o, index) => {
             listHtml += `
               <label class="option-row">
-                <input type="radio" name="field_${f.id}" value="${o}" ${f.required && index === 0 ? 'checked' : ''} />
+                <input type="radio" name="field_${f.id}" value="${o}" ${(f.required || f.isRequired) && index === 0 ? 'checked' : ''} />
                 <span>${o}</span>
               </label>
             `;
           });
           listHtml += `</div>`;
           group.innerHTML += listHtml;
-        } else if (f.type === "checklist") {
+        } else if (fType === "CHECKLIST" || fType === "CHECKBOX" || fType === "MULTI_SELECT") {
           let listHtml = `<div class="option-list">`;
-          const opts = f.options || [];
-          opts.forEach(o => {
+          (f.options || []).forEach(o => {
             listHtml += `
               <label class="option-row">
                 <input type="checkbox" name="field_${f.id}" value="${o}" />
@@ -335,16 +500,77 @@
           });
           listHtml += `</div>`;
           group.innerHTML += listHtml;
-        } else if (f.type === "document") {
-          group.innerHTML += `<input type="file" class="input-text" style="padding-top:12px;" data-field-id="${f.id}" ${f.required ? 'required' : ''} />`;
+        } else if (fType === "TOGGLE") {
+          group.innerHTML += `
+            <label class="option-row" style="cursor:pointer;">
+              <input type="checkbox" data-field-id="${f.id}" value="true" />
+              <span>${f.placeholder || 'Enable'}</span>
+            </label>
+          `;
+        } else if (fType === "DOCUMENT" || fType === "FILE_UPLOAD" || fType === "CAMERA_UPLOAD") {
+          group.innerHTML += `<input type="file" class="input-text" style="padding-top:10px;" data-field-id="${f.id}" ${f.type === 'CAMERA_UPLOAD' ? 'capture="environment" accept="image/*"' : ''} />`;
+        } else {
+          group.innerHTML += `<input type="text" class="input-text" data-field-id="${f.id}" ${f.required || f.isRequired ? 'required' : ''} placeholder="${f.placeholder || 'Enter value...'}" />`;
         }
 
         container.appendChild(group);
       });
+
+      // Setup CSV Backend Autofill
+      if (theme.enable_csv_backend || theme.enableCsvBackend) {
+        setupCsvBackendAutofill(theme);
+      }
+    }
+
+    function setupCsvBackendAutofill(theme) {
+      csvLookupColumn = String(theme.csv_lookup_column || theme.csvLookupColumn || "").trim();
+      csvTargetFieldId = String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || "").trim();
+      csvColumnMappings = theme.csv_column_mappings || theme.csvColumnMappings || {};
+      const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
+
+      if (!rawCsv || !csvLookupColumn || !csvTargetFieldId) return;
+
+      const lines = rawCsv.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(l => l.trim().length > 0);
+      if (lines.length <= 1) return;
+
+      const headers = lines[0].split(",").map(h => h.replace(/^["']|["']$/g, "").trim());
+      csvBackendData = [];
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(",");
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = parts[idx] ? parts[idx].replace(/^["']|["']$/g, "").trim() : "";
+        });
+        csvBackendData.push(row);
+      }
+
+      // Attach listener
+      const targetInput = document.querySelector(`[data-field-id="${csvTargetFieldId}"]`);
+      if (targetInput) {
+        let debounceTimer;
+        targetInput.addEventListener('input', () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            const query = (targetInput.value || '').trim().toLowerCase();
+            if (!query) return;
+            const match = csvBackendData.find(r => String(r[csvLookupColumn] || '').trim().toLowerCase() === query);
+            if (match) {
+              targetInput.style.borderColor = '#10B981';
+              Object.entries(csvColumnMappings).forEach(([colHeader, targetId]) => {
+                const el = document.querySelector(`[data-field-id="${targetId}"]`);
+                if (el && match[colHeader] !== undefined) {
+                  el.value = match[colHeader];
+                }
+              });
+            } else {
+              targetInput.style.borderColor = '';
+            }
+          }, 250);
+        });
+      }
     }
 
     function addMandatoryContactFields(container) {
-      // Customer Phone Number
       const groupPhone = document.createElement("div");
       groupPhone.className = "field-group";
       groupPhone.innerHTML = `
@@ -353,34 +579,31 @@
       `;
       container.appendChild(groupPhone);
 
-      // Customer Email Address
       const groupEmail = document.createElement("div");
       groupEmail.className = "field-group";
       groupEmail.innerHTML = `
-        <label class="field-label">Customer Email Address <span>*</span></label>
-        <input type="email" class="input-text" id="customer-email-input" required placeholder="customer@example.com" />
+        <label class="field-label">Customer Email Address</label>
+        <input type="email" class="input-text" id="customer-email-input" placeholder="customer@example.com" />
       `;
       container.appendChild(groupEmail);
     }
 
     function renderDemoFields() {
-      // Basic Demo Sandbox UI
       const mockConfig = {
         title: "Registration Fee Portal",
         description: "Submit details to enroll in the summer workshop series.",
         amount: 850.00,
         fields: [
-          { id: "name", type: "short", label: "Full Name", required: true },
-          { id: "workshop", type: "mcq", label: "Select Workshop Track", options: ["AI Engineering", "Web3 Development", "Kotlin Apps"], required: true }
+          { id: "name", type: "SHORT", label: "Full Name", required: true },
+          { id: "track", type: "MCQ", label: "Select Workshop Track", options: ["AI Engineering", "Web3 Development", "Kotlin Apps"], required: true }
         ]
       };
       renderConfiguredFields(mockConfig);
     }
 
-    function handleFormSubmit(e) {
+    async function handleFormSubmit(e) {
       e.preventDefault();
-      if (formId === "demo_form_id") {
-        alert("Demo checkout form submitted! Redirecting to payment widget sandbox.");
+      if (formIdentifier === "demo_form_id") {
         window.location.href = `widget.html?order_id=demo_order&amount=850.00&merchant_name=Summer Workshop`;
         return;
       }
@@ -390,108 +613,111 @@
       submitBtn.innerHTML = `<div class="loading-spinner"></div>`;
 
       const cusPhone = document.getElementById("customer-phone-input").value.trim();
-      const cusEmail = document.getElementById("customer-email-input").value.trim();
+      const cusEmail = (document.getElementById("customer-email-input")?.value || "").trim();
       
-      // Capture answers
       const answersMap = {};
-      
-      // Capturing text and document inputs
-      const textFields = document.querySelectorAll("#dynamic-form input[data-field-id], #dynamic-form select[data-field-id]");
-      textFields.forEach(inp => {
-        const id = inp.getAttribute("data-field-id");
-        answersMap[id] = inp.value;
+      document.querySelectorAll("#dynamic-form input[data-field-id], #dynamic-form select[data-field-id], #dynamic-form textarea[data-field-id]").forEach(inp => {
+        const fId = inp.getAttribute("data-field-id");
+        if (inp.type === 'checkbox') {
+          answersMap[fId] = inp.checked ? 'true' : 'false';
+        } else {
+          answersMap[fId] = inp.value;
+        }
       });
 
-      // Capturing MCQ radio inputs
-      const radios = document.querySelectorAll("#dynamic-form input[type='radio']:checked");
-      radios.forEach(rad => {
+      document.querySelectorAll("#dynamic-form input[type='radio']:checked").forEach(rad => {
         const name = rad.getAttribute("name");
+        if (name && name.startsWith("field_")) answersMap[name.replace("field_", "")] = rad.value;
+      });
+
+      document.querySelectorAll("#dynamic-form input[type='checkbox']:checked").forEach(cb => {
+        const name = cb.getAttribute("name");
         if (name && name.startsWith("field_")) {
-          const id = name.replace("field_", "");
-          answersMap[id] = rad.value;
+          const fId = name.replace("field_", "");
+          answersMap[fId] = answersMap[fId] ? `${answersMap[fId]}, ${cb.value}` : cb.value;
         }
       });
 
-      // Capturing Checklists checkbox inputs
-      const checkFields = {};
-      const checks = document.querySelectorAll("#dynamic-form input[type='checkbox']:checked");
-      checks.forEach(chk => {
-        const name = chk.getAttribute("name");
-        if (name && name.startsWith("field_")) {
-          const id = name.replace("field_", "");
-          if (!checkFields[id]) checkFields[id] = [];
-          checkFields[id].push(chk.value);
+      const requestId = crypto.randomUUID();
+      const edgeEndpoint = `${supabaseUrl}/functions/v1/hosted-form?slug=${encodeURIComponent(formConfig?.slug || formIdentifier)}`;
+
+      try {
+        // Attempt edge function submission
+        const response = await fetch(edgeEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseAnonKey,
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+            "idempotency-key": requestId
+          },
+          body: JSON.stringify({
+            request_id: requestId,
+            answers: answersMap,
+            payment_method: selectedMethod
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.order_id) {
+          window.location.href = `widget.html?order_id=${data.order_id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${data.amount}&merchant_name=${encodeURIComponent(formConfig.title)}`;
+          return;
         }
-      });
-      Object.keys(checkFields).forEach(id => {
-        answersMap[id] = checkFields[id];
-      });
 
-      // Generate random transaction ID
-      const trId = "TX-" + Math.floor(100000 + Math.random() * 900000);
-      const expiry = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
+        if (response.ok && !data.payment_required) {
+          document.getElementById("form-wrap").innerHTML = `
+            <div class="closed-state">
+              <div class="icon" style="color:#10B981">✓</div>
+              <h2>Response Recorded!</h2>
+              <p>Thank you. Your response has been submitted successfully.</p>
+            </div>
+          `;
+          return;
+        }
 
-      // 1. Create order record
-      const orderPayload = {
-        merchant_id: formConfig.merchant_id,
-        tran_id: trId,
-        amount: parseFloat(formConfig.amount),
-        cus_phone: cusPhone,
-        cus_email: cusEmail,
-        cus_name: answersMap["name"] || "Guest Payer",
-        status: "PENDING",
-        expires_at: expiry,
-        payment_method: "bKash"
-      };
+        throw new Error(data.error || "Submission failed");
+      } catch (err) {
+        console.warn("Edge function submission failed, falling back to RPC:", err.message);
 
-      fetch(`${supabaseUrl}/rest/v1/orders`, {
-        method: "POST",
-        headers: {
-          "apikey": supabaseAnonKey,
-          "Authorization": `Bearer ${supabaseAnonKey}`,
-          "Content-Type": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify(orderPayload)
-      })
-      .then(res => res.json())
-      .then(orders => {
-        if (orders && orders.length > 0) {
-          const order = orders[0];
-          
-          // 2. Submit form answers mapping
-          const submissionPayload = {
-            form_id: formId,
-            order_id: order.id,
-            answers: answersMap
-          };
-
-          fetch(`${supabaseUrl}/rest/v1/form_submissions`, {
+        // Fallback to RPC create_hosted_form_submission
+        try {
+          const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/create_hosted_form_submission`, {
             method: "POST",
             headers: {
+              "Content-Type": "application/json",
               "apikey": supabaseAnonKey,
-              "Authorization": `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json"
+              "Authorization": `Bearer ${supabaseAnonKey}`
             },
-            body: JSON.stringify(submissionPayload)
-          })
-          .then(() => {
-            // 3. Redirect to payment widget
-            window.location.href = `widget.html?order_id=${order.id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${formConfig.amount}&merchant_name=${encodeURIComponent(formConfig.title)}&merchant_number=${encodeURIComponent(cusPhone)}`;
-          })
-          .catch(err => {
-            console.error("Error submitting answers:", err);
-            // Fallback redirect
-            window.location.href = `widget.html?order_id=${order.id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${formConfig.amount}`;
+            body: JSON.stringify({
+              p_form_id: formConfig.id,
+              p_request_id: requestId,
+              p_customer_name: answersMap["name"] || "Customer",
+              p_customer_phone: cusPhone,
+              p_customer_email: cusEmail,
+              p_amount: parseFloat(formConfig.amount || 0),
+              p_payment_method: selectedMethod,
+              p_payment_required: parseFloat(formConfig.amount || 0) > 0,
+              p_answers: answersMap,
+              p_client_hash: "web-client"
+            })
           });
+
+          const rpcData = await rpcRes.json();
+          const record = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+
+          if (rpcRes.ok && record?.order_id) {
+            window.location.href = `widget.html?order_id=${record.order_id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${record.amount}&merchant_name=${encodeURIComponent(formConfig.title)}`;
+            return;
+          }
+
+          throw new Error(record?.error || "RPC submission failed");
+        } catch (rpcErr) {
+          alert(`Submission failed: ${rpcErr.message || err.message}`);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `<span>Proceed to Pay</span>`;
         }
-      })
-      .catch(err => {
-        console.error("Error creating payment order:", err);
-        alert("Failed to initiate order. Check database configs.");
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `<span>Proceed to Pay</span>`;
-      });
+      }
     }
   </script>
 </body>

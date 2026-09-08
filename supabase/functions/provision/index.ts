@@ -9,12 +9,55 @@ const corsHeaders = {
 async function getAccessToken(supabaseClient: any, userId: string): Promise<string> {
   const { data: conn, error } = await supabaseClient
     .from("supabase_connections")
-    .select("encrypted_access_token")
+    .select("*")
     .eq("user_id", userId)
     .single();
 
-  if (error || !conn) throw new Error("Connection not found");
-  return conn.encrypted_access_token;
+  if (error || !conn) {
+    throw new Error("No active Supabase connection found for user.");
+  }
+
+  const isExpired = new Date(conn.access_token_expires_at) <= new Date(Date.now() + 60000); // 1-min buffer
+  if (!isExpired && conn.encrypted_access_token) {
+    return conn.encrypted_access_token;
+  }
+
+  // Refresh Token Exchange
+  console.log("Access token expired. Refreshing token for user:", userId);
+  const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "swapnopay_client_id";
+  const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "swapnopay_client_secret";
+  const basicAuth = btoa(`${clientId}:${clientSecret}`);
+
+  const refreshParams = new URLSearchParams();
+  refreshParams.append("grant_type", "refresh_token");
+  refreshParams.append("refresh_token", conn.encrypted_refresh_token);
+
+  const res = await fetch("https://api.supabase.com/v1/oauth/token", {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${basicAuth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: refreshParams.toString(),
+  });
+
+  const refreshed = await res.json();
+  if (!res.ok || !refreshed.access_token) {
+    throw new Error(`Token Refresh Failed: ${refreshed.error_description || "Invalid refresh token"}`);
+  }
+
+  const newExpiresAt = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString();
+  await supabaseClient
+    .from("supabase_connections")
+    .update({
+      encrypted_access_token: refreshed.access_token,
+      encrypted_refresh_token: refreshed.refresh_token || conn.encrypted_refresh_token,
+      access_token_expires_at: newExpiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+
+  return refreshed.access_token;
 }
 
 function generateSecurePassword(): string {
@@ -636,6 +679,12 @@ begin
        >= greatest(coalesce((v_form.theme ->> 'max_responses')::integer, 1000), 1) then
     raise exception 'form response limit reached';
   end if;
+  if (coalesce((v_form.theme ->> 'enable_closing_timeline')::boolean, false)
+      or coalesce((v_form.theme ->> 'enableClosingTimeline')::boolean, false))
+     and nullif(coalesce(v_form.theme ->> 'closing_deadline_epoch', v_form.theme ->> 'closingDeadlineEpoch'), '')::bigint > 0
+     and (extract(epoch from now()) * 1000)::bigint > coalesce(v_form.theme ->> 'closing_deadline_epoch', v_form.theme ->> 'closingDeadlineEpoch')::bigint then
+    raise exception 'form response limit reached: deadline expired';
+  end if;
   if coalesce((v_form.theme ->> 'one_response_per_user')::boolean, false)
      and nullif(p_client_hash, '') is not null
      and exists (select 1 from public.form_submissions where form_id = p_form_id and client_hash = p_client_hash) then
@@ -810,6 +859,166 @@ begin
 end;
 $$;
 
+create or replace function public.match_payment_atomic(
+  p_order_id uuid,
+  p_payment_amount numeric,
+  p_sender_number text,
+  p_trx_id text,
+  p_sms_hash text,
+  p_sms_log_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+declare v_merchant_id uuid; v_sender_digits text;
+begin
+  v_sender_digits := regexp_replace(coalesce(p_sender_number,''), '[^0-9]', '', 'g');
+  if length(v_sender_digits) < 10 then raise exception 'Full sender number is required for automatic matching'; end if;
+  v_sender_digits := right(v_sender_digits,10);
+
+  select o.merchant_id into v_merchant_id
+  from public.orders o join public.sms_logs s on s.id=p_sms_log_id and s.merchant_id=o.merchant_id
+  where o.id=p_order_id and o.status='PENDING' and o.expires_at>=now() and o.amount=p_payment_amount
+    and right(regexp_replace(o.cus_phone,'[^0-9]','','g'),10)=v_sender_digits
+    and s.processed=false and s.sms_hash=p_sms_hash and s.parsed_amount=p_payment_amount
+    and right(regexp_replace(s.parsed_sender,'[^0-9]','','g'),10)=v_sender_digits
+    and s.parsed_trx_id=p_trx_id
+  for update of o,s;
+  if not found then raise exception 'Order or SMS log is no longer eligible for matching'; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_merchant_id::text||':'||p_trx_id,0));
+  if exists(select 1 from public.payments where merchant_id=v_merchant_id and trx_id=p_trx_id) then
+    raise exception 'Provider transaction ID was already processed';
+  end if;
+  update public.orders set status='PAID',paid_at=now(),sender_number=p_sender_number,matched_trx_id=p_trx_id where id=p_order_id;
+  insert into public.payments(merchant_id,trx_id,amount,sender_number,sms_hash,status,matched_order_id)
+    values(v_merchant_id,p_trx_id,p_payment_amount,p_sender_number,p_sms_hash,'MATCHED',p_order_id);
+  update public.sms_logs set processed=true,status='matched' where id=p_sms_log_id;
+end;
+$$;
+
+create or replace function public.match_payment_manual(
+  p_order_id uuid,
+  p_payment_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_payment_amount numeric;
+  v_sender_number text;
+  v_trx_id text;
+  v_sms_hash text;
+  v_merchant_id uuid;
+begin
+  select amount, sender_number, trx_id, sms_hash, merchant_id
+  into v_payment_amount, v_sender_number, v_trx_id, v_sms_hash, v_merchant_id
+  from public.payments
+  where id = p_payment_id and status = 'UNMATCHED';
+
+  if not found then
+    raise exception 'Payment log not found or already matched.';
+  end if;
+
+  update public.orders set
+    status = 'PAID',
+    paid_at = now(),
+    sender_number = v_sender_number,
+    matched_trx_id = v_trx_id,
+    manual_match = true
+  where id = p_order_id and status = 'PENDING';
+
+  update public.payments set
+    status = 'MATCHED',
+    matched_order_id = p_order_id
+  where id = p_payment_id;
+end;
+$$;
+
+create or replace function public.resolve_appeal_atomic(
+  p_appeal_id uuid,
+  p_action text,
+  p_order_id uuid,
+  p_resolved_by uuid
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_merchant_id uuid;
+  v_appeal public.appeals%rowtype;
+  v_order public.orders%rowtype;
+begin
+  if p_action not in ('APPROVED', 'REJECTED') then
+    raise exception 'Invalid appeal action';
+  end if;
+
+  select id into v_merchant_id from public.merchants where user_id = p_resolved_by;
+  if v_merchant_id is null then raise exception 'Merchant not found'; end if;
+
+  select * into v_appeal from public.appeals
+  where id = p_appeal_id and order_id = p_order_id and status = 'PENDING_REVIEW'
+  for update;
+  if not found then raise exception 'Appeal is not pending for this order'; end if;
+
+  select * into v_order from public.orders
+  where id = p_order_id and merchant_id = v_merchant_id
+  for update;
+  if not found then raise exception 'Order does not belong to merchant'; end if;
+
+  if p_action = 'APPROVED' and v_order.status <> 'PENDING' then
+    raise exception 'Only a pending order can be approved';
+  end if;
+
+  update public.appeals
+  set status = p_action, resolved_at = now(), resolved_by = p_resolved_by
+  where id = p_appeal_id;
+
+  if p_action = 'APPROVED' then
+    update public.orders
+    set status = 'PAID', paid_at = now(),
+        sender_number = coalesce(v_appeal.cus_phone, v_order.cus_phone),
+        matched_trx_id = v_appeal.trx_id, manual_match = true
+    where id = p_order_id;
+
+    update public.payments
+    set status = 'MATCHED', matched_order_id = p_order_id
+    where merchant_id = v_merchant_id and trx_id = v_appeal.trx_id;
+
+    if not found then
+      insert into public.payments
+        (merchant_id, trx_id, amount, sender_number, sms_timestamp, sms_hash, status, matched_order_id)
+      values
+        (v_merchant_id, v_appeal.trx_id, v_order.amount,
+         coalesce(v_appeal.cus_phone, v_order.cus_phone), now(),
+         encode(digest('appeal:' || p_appeal_id::text, 'sha256'), 'hex'),
+         'MATCHED', p_order_id);
+    end if;
+  end if;
+end;
+$$;
+
+create or replace function public.check_order_rate_limit(
+  p_merchant_id uuid,
+  p_client_hash text,
+  p_limit integer default 30,
+  p_window_seconds integer default 60
+) returns boolean language plpgsql security definer set search_path = public as $$
+declare
+  v_count integer;
+begin
+  if p_client_hash is null or length(p_client_hash) <> 64
+     or p_limit < 1 or p_window_seconds < 1 then
+    raise exception 'Invalid rate-limit parameters';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_merchant_id::text || ':' || p_client_hash, 0));
+  delete from public.order_rate_limits
+  where merchant_id = p_merchant_id and client_hash = p_client_hash
+    and created_at < now() - make_interval(secs => p_window_seconds);
+
+  select count(*) into v_count
+  from public.order_rate_limits
+  where merchant_id = p_merchant_id and client_hash = p_client_hash;
+
+  if v_count >= p_limit then return false; end if;
+  insert into public.order_rate_limits(merchant_id, client_hash)
+  values (p_merchant_id, p_client_hash);
+  return true;
+end;
+$$;
+
 -- Permissions & Grants
 revoke all on function public.current_merchant_id() from public, anon;
 grant execute on function public.current_merchant_id() to authenticated, service_role;
@@ -830,7 +1039,6 @@ revoke all on function public.claim_payment_receipts(integer,integer) from publi
 grant execute on function public.claim_payment_receipts(integer,integer) to service_role;
 revoke all on function public.complete_payment_receipt(uuid,boolean,jsonb,text) from public, anon, authenticated;
 grant execute on function public.complete_payment_receipt(uuid,boolean,jsonb,text) to service_role;
-grant execute on function public.get_daily_revenue(uuid) to authenticated, service_role;
 grant execute on function public.cancel_order(uuid) to authenticated, service_role;
 grant execute on function public.extend_order(uuid, bigint) to authenticated, service_role;
 
@@ -1060,6 +1268,19 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user_id);
+
+      // Sync active credentials to merchant_gateway_settings
+      await supabaseClient
+        .from("merchant_gateway_settings")
+        .upsert(
+          {
+            merchant_id: user_id,
+            supabase_url: projectUrl,
+            supabase_anon_key: publishableKey,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "merchant_id" }
+        );
 
       return new Response(
         JSON.stringify({

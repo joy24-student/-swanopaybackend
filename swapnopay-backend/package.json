@@ -1,0 +1,26 @@
+{
+  "name": "swapnopay-backend",
+  "version": "1.0.0",
+  "description": "SwapnoPay central payment processing backend — Express.js + Socket.io",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "@supabase/supabase-js": "^2.44.4",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.3.1",
+    "dotenv": "^16.4.5",
+    "uuid": "^10.0.0",
+    "nodemailer": "^6.9.14"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

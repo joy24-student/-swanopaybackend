@@ -12,9 +12,13 @@ captures/
 *.jks
 *.keystore
 debug.keystore
+*.apk
 *.log
 node_modules/
-admin/node_modules/
-gateway-service/node_modules/
-form-router/node_modules/
+**/node_modules/
+vendor/
+shop/vendor/
+swapnopay-backend/uploads/
+hs_err_pid*
+replay_pid*
 

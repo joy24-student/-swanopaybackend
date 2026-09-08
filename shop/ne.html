@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Checkout</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6c63ff;
+            --primary-dark: #564fd8;
+            --secondary: #ff6584;
+            --dark: #2a2d3b;
+            --darker: #1e2029;
+            --light: #f8f9fc;
+            --border: #e1e5f1;
+            --success: #4ade80;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #38bdf8;
+            --radius: 16px;
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #f5f7ff 0%, #f0f4ff 100%);
+            color: var(--dark);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header and progress */
+        .checkout-header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease;
+        }
+
+        .checkout-header h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .checkout-header p {
+            color: #6b7280;
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            max-width: 700px;
+            margin: 30px auto;
+            position: relative;
+        }
+
+        .progress-steps::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 0;
+            height: 4px;
+            width: 100%;
+            background: var(--border);
+            z-index: 1;
+        }
+
+        .progress-bar {
+            position: absolute;
+            top: 15px;
+            left: 0;
+            height: 4px;
+            width: 66%;
+            background: var(--primary);
+            z-index: 2;
+            transition: var(--transition);
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 3;
+        }
+
+        .step-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            margin-bottom: 8px;
+            transition: var(--transition);
+        }
+
+        .step.active .step-icon {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        .step.completed .step-icon {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+
+        .step-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .step.active .step-label {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Checkout layout */
+        .checkout-layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        @media (min-width: 992px) {
+            .checkout-layout {
+                grid-template-columns: 7fr 5fr;
+            }
+        }
+
+        /* Cards */
+        .checkout-card {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 30px;
+            margin-bottom: 25px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .checkout-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .checkout-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--primary), var(--secondary));
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--darker);
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title i {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Order items table */
+        .order-items {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .order-items th {
+            text-align: left;
+            padding: 12px 15px;
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: var(--darker);
+            border-bottom: 2px solid var(--border);
+        }
+
+        .order-items td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .product-cell {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .product-image {
+            width: 70px;
+            height: 70px;
+            border-radius: 12px;
+            object-fit: cover;
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+
+        .product-image:hover {
+            transform: scale(1.05);
+        }
+
+        .product-info {
+            line-height: 1.4;
+        }
+
+        .product-name {
+            font-weight: 600;
+            color: var(--darker);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .product-name:hover {
+            color: var(--primary);
+        }
+
+        .product-meta {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        /* Address section */
+        .address-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 25px;
+        }
+
+        @media (min-width: 768px) {
+            .address-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .address-box {
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .address-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            color: var(--darker);
+            font-weight: 600;
+        }
+
+        .address-title i {
+            color: var(--primary);
+        }
+
+        .address-details p {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .address-details strong {
+            min-width: 100px;
+            color: var(--darker);
+        }
+
+        /* Order summary */
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px dashed var(--border);
+        }
+
+        .summary-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--darker);
+        }
+
+        /* Coupon section */
+        .coupon-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .form-control {
+            flex: 1;
+            padding: 14px 20px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.1);
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(108, 99, 255, 0.3);
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Payment methods */
+        .payment-methods {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .payment-card {
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            background: white;
+        }
+
+        .payment-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-3px);
+        }
+
+        .payment-card.active {
+            border-color: var(--primary);
+            background: rgba(108, 99, 255, 0.05);
+        }
+
+        .payment-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+
+        .payment-name {
+            font-weight: 600;
+            color: var(--darker);
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(108, 99, 255, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(108, 99, 255, 0);
+            }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        /* Footer */
+        .checkout-footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="checkout-header">
+            <h1>Secure Checkout</h1>
+            <p>Complete your purchase with confidence - your information is protected with bank-grade security</p>
+            
+            <div class="progress-steps">
+                <div class="progress-bar"></div>
+                <div class="step completed">
+                    <div class="step-icon"><i class="fas fa-shopping-cart"></i></div>
+                    <div class="step-label">Cart</div>
+                </div>
+                <div class="step active">
+                    <div class="step-icon"><i class="fas fa-truck"></i></div>
+                    <div class="step-label">Shipping</div>
+                </div>
+                <div class="step">
+                    <div class="step-icon"><i class="fas fa-credit-card"></i></div>
+                    <div class="step-label">Payment</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="checkout-layout">
+            <!-- Left Column -->
+            <div class="checkout-main">
+                <!-- Order Details -->
+                <div class="checkout-card">
+                    <h2 class="section-title"><i class="fas fa-receipt"></i> Order Details</h2>
+                    <table class="order-items">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Qty</th>
+                                <th class="text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <div class="product-cell">
+                                        <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8cHJvZHVjdHxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60" alt="Product" class="product-image">
+                                        <div class="product-info">
+                                            <a href="#" class="product-name">Wireless Bluetooth Headphones</a>
+                                            <div class="product-meta">
+                                                <span>Color: Black</span> | 
+                                                <span>Size: Medium</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$89.99</td>
+                                <td class="text-center">1</td>
+                                <td class="text-right">$89.99</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="product-cell">
+                                        <img src="https://images.unsplash.com/photo-1546868871-7041f2a55e12?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mzh8fHByb2R1Y3R8ZW58MHx8MHx8fDA%3D&auto=format&fit=crop&w=500&q=60" alt="Product" class="product-image">
+                                        <div class="product-info">
+                                            <a href="#" class="product-name">Premium Smart Watch</a>
+                                            <div class="product-meta">
+                                                <span>Color: Silver</span> | 
+                                                <span>Size: One Size</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$129.99</td>
+                                <td class="text-center">1</td>
+                                <td class="text-right">$129.99</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="product-cell">
+                                        <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cHJvZHVjdHxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&w=500&q=60" alt="Product" class="product-image">
+                                        <div class="product-info">
+                                            <a href="#" class="product-name">Elegant Minimalist Watch</a>
+                                            <div class="product-meta">
+                                                <span>Color: Rose Gold</span> | 
+                                                <span>Size: Adjustable</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>$149.99</td>
+                                <td class="text-center">2</td>
+                                <td class="text-right">$299.98</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Address Information -->
+                <div class="checkout-card">
+                    <h2 class="section-title"><i class="fas fa-map-marker-alt"></i> Address Information</h2>
+                    <div class="address-grid">
+                        <div class="address-box">
+                            <div class="address-title">
+                                <i class="fas fa-home"></i>
+                                <h3>Billing Address</h3>
+                            </div>
+                            <div class="address-details">
+                                <p><strong>Name:</strong> John Anderson</p>
+                                <p><strong>Company:</strong> Tech Solutions Inc.</p>
+                                <p><strong>Phone:</strong> (555) 123-4567</p>
+                                <p><strong>Address:</strong> 123 Commerce Street, Suite 45</p>
+                                <p><strong>City:</strong> San Francisco</p>
+                                <p><strong>State:</strong> California</p>
+                                <p><strong>ZIP:</strong> 94105</p>
+                                <p><strong>Country:</strong> United States</p>
+                            </div>
+                        </div>
+                        
+                        <div class="address-box">
+                            <div class="address-title">
+                                <i class="fas fa-truck"></i>
+                                <h3>Shipping Address</h3>
+                            </div>
+                            <div class="address-details">
+                                <p><strong>Name:</strong> John Anderson</p>
+                                <p><strong>Company:</strong> Tech Solutions Inc.</p>
+                                <p><strong>Phone:</strong> (555) 123-4567</p>
+                                <p><strong>Address:</strong> 123 Commerce Street, Suite 45</p>
+                                <p><strong>City:</strong> San Francisco</p>
+                                <p><strong>State:</strong> California</p>
+                                <p><strong>ZIP:</strong> 94105</p>
+                                <p><strong>Country:</strong> United States</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column -->
+            <div class="checkout-sidebar">
+                <!-- Order Summary -->
+                <div class="checkout-card">
+                    <h2 class="section-title"><i class="fas fa-file-invoice"></i> Order Summary</h2>
+                    <div class="summary-item">
+                        <span>Subtotal:</span>
+                        <span>$519.96</span>
+                    </div>
+                    <div class="summary-item">
+                        <span>Shipping:</span>
+                        <span>$12.99</span>
+                    </div>
+                    <div class="summary-item">
+                        <span>Tax:</span>
+                        <span>$41.60</span>
+                    </div>
+                    <div class="summary-item text-success" style="color: #4ade80;">
+                        <span>Discount (SUMMER15):</span>
+                        <span>-$78.00</span>
+                    </div>
+                    <div class="summary-total">
+                        <span>Total:</span>
+                        <span>$496.55</span>
+                    </div>
+                </div>
+                
+                <!-- Coupon -->
+                <div class="checkout-card">
+                    <h2 class="section-title"><i class="fas fa-tag"></i> Apply Coupon</h2>
+                    <div class="coupon-form">
+                        <input type="text" class="form-control" placeholder="Enter coupon code">
+                        <button class="btn btn-primary">Apply</button>
+                    </div>
+                    <p style="margin-top: 15px; color: #4ade80; font-weight: 500;">
+                        <i class="fas fa-check-circle"></i> Coupon applied! You saved $78.00
+                    </p>
+                </div>
+                
+                <!-- Payment Method -->
+                <div class="checkout-card">
+                    <h2 class="section-title"><i class="fas fa-credit-card"></i> Payment Method</h2>
+                    
+                    <div class="payment-methods">
+                        <div class="payment-card active">
+                            <div class="payment-icon"><i class="fab fa-cc-paypal"></i></div>
+                            <div class="payment-name">PayPal</div>
+                        </div>
+                        <div class="payment-card">
+                            <div class="payment-icon"><i class="fas fa-university"></i></div>
+                            <div class="payment-name">Bank</div>
+                        </div>
+                        <div class="payment-card">
+                            <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                            <div class="payment-name">Cash</div>
+                        </div>
+                        <div class="payment-card">
+                            <div class="payment-icon"><i class="fas fa-credit-card"></i></div>
+                            <div class="payment-name">Card</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin: 25px 0;">
+                        <button class="btn btn-primary btn-block pulse">
+                            <i class="fas fa-lock"></i> Secure Checkout - $496.55
+                        </button>
+                    </div>
+                    
+                    <div style="text-align: center; color: #6b7280; font-size: 0.9rem;">
+                        <p><i class="fas fa-shield-alt"></i> Secure SSL Encryption</p>
+                        <p><i class="fas fa-sync-alt"></i> 30-Day Money Back Guarantee</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="checkout-footer">
+            <p>© 2023 ModernShop. All rights reserved. | Privacy Policy | Terms of Service</p>
+        </div>
+    </div>
+
+    <script>
+        // Payment card selection
+        document.querySelectorAll('.payment-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.payment-card').forEach(c => {
+                    c.classList.remove('active');
+                });
+                card.classList.add('active');
+            });
+        });
+        
+        // Animate elements on scroll
+        document.addEventListener('DOMContentLoaded', () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = 1;
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, { threshold: 0.1 });
+            
+            document.querySelectorAll('.checkout-card').forEach(card => {
+                card.style.opacity = 0;
+                card.style.transform = 'translateY(20px)';
+                card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(card);
+            });
+        });
+    </script>
+</body>
+</html>

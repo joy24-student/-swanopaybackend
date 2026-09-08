@@ -1,0 +1,49 @@
+# ===========================================================================
+# ROBOTS.TXT - SEO-FRIENDLY ROBOT DIRECTIVES
+# ===========================================================================
+# This file controls how search engine crawlers can access your website
+
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /payment/
+Disallow: /assets/uploads/
+Disallow: /assets/temp/
+Disallow: /DATABASE\ FILE/
+Disallow: /vendor/
+Disallow: /?id=
+Disallow: /*?
+Disallow: /search?
+Disallow: /cart
+Disallow: /checkout
+Disallow: /login
+Disallow: /registration
+Disallow: /forget-password
+Disallow: /reset-password
+Disallow: /customer-profile
+Disallow: /customer-orders
+Disallow: /order-detail
+
+# Allow specific important directories
+Allow: /assets/images/
+Allow: /assets/css/
+Allow: /assets/js/
+Allow: /product-photos/
+
+# Google-specific rules
+User-agent: Googlebot
+Allow: /
+
+# Bing-specific rules
+User-agent: Bingbot
+Allow: /
+
+# Set crawl delay for all bots
+Request-rate: 1/1s
+
+# Sitemap location (important for SEO!)
+Sitemap: https://yourdomain.com/sitemap.xml
+Sitemap: https://yourdomain.com/sitemap-products.xml
+Sitemap: https://yourdomain.com/sitemap-categories.xml
+
+# Comment: Last updated: 2026-01-21

@@ -36,7 +36,7 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-For a brand-new project, apply `supabase/FULL_DATABASE_SCHEMA.sql`, migration 10, and migration 11. Existing projects must apply migrations 09-11 after migrations 01-08. The normal `supabase db push` command applies the ordered migration set automatically. Migration 11 makes the merchant database the payment source of truth, persists gateway policy, and creates the idempotent payment-receipt outbox.
+For a brand-new project, apply `supabase/FULL_DATABASE_SCHEMA.sql` and migrations 10-13. Existing projects must apply migrations 09-13 after migrations 01-08. The normal `supabase db push` command applies the ordered migration set automatically. Migration 11 makes the merchant database the payment source of truth, persists gateway policy, and creates the idempotent payment-receipt outbox. Migration 12 adds guarded inventory/POS and finance operations; migration 13 adds durable merchant notifications, audited stock adjustments, protected finance writes, and the final production constraints.
 
 Set Edge Function secrets and deploy the functions:
 
@@ -83,6 +83,14 @@ official MFS SMS / approved appeal
 The Oracle API cannot mark an order paid. It accepts only the fixed, enrolled-project receipt event produced after the merchant database commit, enforces idempotency and per-merchant quotas, and stores delivery/message IDs without storing arbitrary email HTML. Deploy it with [`deploy/oracle/README.md`](deploy/oracle/README.md). Configure Google Workspace SPF, DKIM, and DMARC before enabling live receipts.
 
 The Android Payment Gateway Setup screen writes non-secret limits, callback URLs, and receipt preferences to `payment_gateway_settings` under tenant RLS. Active bKash, Nagad, Rocket, and Upay methods come from real `merchant_numbers`; provider/Gmail/API secrets are server-managed and are not editable or displayed on the phone.
+
+## Operational data guarantees
+
+- DPS, loan, EMI/installment, POS, ledger, stock, and notification data is merchant-scoped in both Room and Supabase.
+- POS checkout, stock adjustment, product stock-in, ledger balance changes, finance account creation, and installment payment use idempotent database RPCs. The Android client never derives a trusted merchant ID or performs a payment-state transition.
+- Inventory quantities are derived from audited movements. A product with stock, variants, or movement history cannot be deleted from the app.
+- PDF invoices can be printed or shared through Android's system print/share facilities. Ledger and finance exports are generated from the active merchant's filtered records.
+- Production releases require HTTPS. Cleartext traffic, local-LAN HTTP endpoints, service-role keys, Gmail credentials, and payment-provider secrets are not accepted by the mobile client.
 
 ## Branded hosted form domain
 

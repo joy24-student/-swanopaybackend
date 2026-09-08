@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- Dutch-Bangla Bank Rocket brand background (Deep Purple/Violet #8C2D8C) -->
+    <path
+        android:fillColor="#8C2D8C"
+        android:pathData="M12,108 h96 c6.627,0 12,-5.373 12,-12 V12 c0,-6.627 -5.373,-12 -12,-12 H12 C5.373,0 0,5.373 0,12 v84 c0,6.627 5.373,12 12,12 z" />
+    
+    <!-- Rocket Main Body (White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,25 C54,38 52,50 52,65 C52,72 54,77 56,80 L64,80 C66,77 68,72 68,65 C68,50 66,38 60,25 Z" />
+    
+    <!-- Rocket Window (Dutch-Bangla Bank Rocket Purple #8C2D8C) -->
+    <path
+        android:fillColor="#8C2D8C"
+        android:pathData="M60,38 A5,5 0,1,1 60,48 A5,5 0,1,1 60,38 Z" />
+
+    <!-- Rocket Fins (Light Pink/Crimson highlight #E03E96) -->
+    <path
+        android:fillColor="#E03E96"
+        android:pathData="M52,65 L44,75 L52,76 Z" />
+    <path
+        android:fillColor="#E03E96"
+        android:pathData="M68,65 L76,75 L68,76 Z" />
+
+    <!-- Fire Flame (Gold/Orange spark #FF9900) -->
+    <path
+        android:fillColor="#FF9900"
+        android:pathData="M57,80 L60,93 L63,80 Z" />
+</vector>

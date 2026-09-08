@@ -34,7 +34,11 @@ serve(async (req: Request) => {
     const bearerKey = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.substring(7).trim() : "";
     const xApiKey = req.headers.get("x-api-key")?.trim() || "";
 
-    const secretKey = (body.merchantSecret || body.apiKey || xApiKey || bearerKey)?.trim();
+    // Prioritize header-based API key authentication over request body credentials
+    const secretKey = (xApiKey || bearerKey || body.apiKey || body.merchantSecret)?.trim();
+    if (!xApiKey && !bearerKey && (body.apiKey || body.merchantSecret)) {
+      console.warn("[create-order] Security notice: API key provided in body. Pass via X-API-Key or Authorization header instead.");
+    }
 
     const { 
       tran_id, 
@@ -44,9 +48,9 @@ serve(async (req: Request) => {
       cus_name,
       product_name, 
       callback_url, 
-      success_url,
-      fail_url,
-      cancel_url,
+      success_url, 
+      fail_url, 
+      cancel_url, 
       payment_method 
     } = body;
 
@@ -90,11 +94,17 @@ serve(async (req: Request) => {
       .eq("webhook_secret", secretKey)
       .maybeSingle();
 
-    if (!merchant && !merchantErr) {
-      const apiKeyLookup = await supabase.from("merchants")
-        .select("id, default_number").eq("api_key", secretKey).maybeSingle();
-      merchant = apiKeyLookup.data;
-      merchantErr = apiKeyLookup.error;
+    if (!merchant) {
+      try {
+        const apiKeyLookup = await supabase.from("merchants")
+          .select("id, default_number").eq("api_key", secretKey).maybeSingle();
+        if (!apiKeyLookup.error && apiKeyLookup.data) {
+          merchant = apiKeyLookup.data;
+          merchantErr = null;
+        }
+      } catch {
+        // Table does not contain optional api_key column
+      }
     }
 
     if (merchantErr || !merchant) {

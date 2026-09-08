@@ -1,0 +1,371 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SuperApp — Dashboard (Professional)</title>  <!-- Fonts & Icons -->  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+e2YkG6v8g4hI7f8v7kqFqg0C3gq4e8p+3hZ+3j3w=" crossorigin=""/>  <!-- Chart.js for professional charts -->  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j6k5wQk3l0w4f2g7g1a2b3c4d5e6f7g8h9i0j1k=" crossorigin=""></script>  <style>
+    /* ================= THEME ================= */
+    :root{
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --muted: #6b7280;
+      --text: #0f1724;
+      --accent: #2563eb; /* blue */
+      --accent-2: #06b6d4; /* teal */
+      --success: #10b981;
+      --danger: #ef4444;
+      --shadow: 0 8px 28px rgba(15,23,42,0.06);
+      --glass: rgba(255,255,255,0.7);
+      --radius: 12px;
+    }
+    [data-theme="dark"]{
+      --bg: #071126;
+      --panel: #0b1220;
+      --muted: #9aa8bf;
+      --text: #e6f0ff;
+      --accent: #60a5fa;
+      --accent-2: #2dd4bf;
+      --success: #34d399;
+      --danger: #fb7185;
+      --shadow: 0 8px 28px rgba(2,6,23,0.7);
+      --glass: rgba(255,255,255,0.03);
+    }
+
+    /* ================= BASE ================= */
+    *{box-sizing:border-box}
+    html,body{height:100%;}
+    body{
+      margin:0; font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial; background:var(--bg); color:var(--text);
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    }
+
+    /* ================= LAYOUT ================= */
+    .app{display:grid; grid-template-columns:260px 1fr; gap:20px; min-height:100vh;}
+    .app.collapsed{grid-template-columns:80px 1fr}
+
+    /* ---------------- SIDEBAR ---------------- */
+    .sidebar{background:linear-gradient(180deg,#071a52, #0b2140); padding:18px; color:#fff; height:100vh; position:sticky; top:0; border-radius:0}
+    .brand{display:flex; gap:12px; align-items:center; margin-bottom:18px}
+    .logo{width:48px; height:48px; border-radius:10px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); display:flex; align-items:center; justify-content:center; font-weight:700}
+    .brand .title{font-weight:700; font-size:16px}
+    .brand .sub{font-size:12px; color:rgba(255,255,255,0.8)}
+
+    nav.nav{margin-top:8px}
+    nav.nav a{display:flex; gap:12px; align-items:center; padding:10px; border-radius:10px; color:rgba(255,255,255,0.95); text-decoration:none; margin-bottom:6px}
+    nav.nav a:hover{background:rgba(255,255,255,0.04)}
+    nav.nav a.active{background:rgba(255,255,255,0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.02)}
+    .nav .ico{width:36px; height:36px; display:grid; place-items:center; background:rgba(255,255,255,0.02); border-radius:8px; font-size:16px}
+
+    .sidebar .footer{position:absolute; left:18px; right:18px; bottom:18px; display:flex; gap:8px; align-items:center}
+    .ghost{background:transparent; border:1px solid rgba(255,255,255,0.06); padding:8px 10px; border-radius:8px; color:rgba(255,255,255,0.9); cursor:pointer}
+
+    /* ---------------- MAIN ---------------- */
+    .main{padding:28px}
+    .top{display:flex; justify-content:space-between; align-items:center; gap:12px}
+
+    .search{display:flex; align-items:center; gap:12px; background:var(--panel); padding:10px 12px; border-radius:12px; box-shadow:var(--shadow); min-width:420px}
+    .search input{border:0; outline:0; background:transparent; font-size:14px; width:100%}
+
+    .actions{display:flex; gap:10px; align-items:center}
+    .btn{background:var(--panel); padding:10px 12px; border-radius:10px; box-shadow:var(--shadow); border:1px solid rgba(0,0,0,0.04); cursor:pointer}
+    .avatar{width:44px; height:44px; border-radius:50%; overflow:hidden}
+    .avatar img{width:100%; height:100%; object-fit:cover}
+
+    /* ---------------- GRID ---------------- */
+    .row{display:grid; grid-template-columns: 1fr 360px; gap:18px; margin-top:18px}
+    @media(max-width:1000px){ .row{grid-template-columns:1fr} .search{min-width:200px} }
+
+    .card{background:var(--panel); border-radius:12px; padding:16px; box-shadow:var(--shadow)}
+
+    /* KPI grid */
+    .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+    @media(max-width:900px){ .kpis{grid-template-columns:repeat(2,1fr)} }
+    .kpi{padding:14px; border-radius:10px}
+    .kpi .value{font-weight:700; font-size:18px}
+    .kpi .label{font-size:13px; color:var(--muted)}
+
+    /* Services */
+    .services{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:12px}
+    .service{display:flex; gap:12px; align-items:center; padding:12px; border-radius:10px; cursor:pointer; transition:transform .12s}
+    .service:hover{transform:translateY(-6px)}
+    .s-ico{width:44px; height:44px; border-radius:10px; display:grid; place-items:center; font-size:20px}
+
+    /* Table */
+    table{width:100%; border-collapse:collapse; font-size:14px}
+    thead th{color:var(--muted); font-weight:600; font-size:13px; text-align:left; padding:10px 12px}
+    tbody tr{border-top:1px solid rgba(0,0,0,0.04)}
+    td{padding:12px}
+
+    .badge{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; font-weight:600}
+    .badge.green{background:linear-gradient(90deg,var(--success), #34d399); color:white}
+    .badge.yellow{background:linear-gradient(90deg,#f59e0b,#fbbf24); color:white}
+    .badge.red{background:linear-gradient(90deg,var(--danger), #fb7185); color:white}
+
+    /* small widgets */
+    .map-placeholder{height:260px; border-radius:10px; overflow:hidden}
+    #map{width:100%; height:100%}
+
+    /* footer */
+    .footer{margin-top:18px; display:flex; justify-content:space-between; color:var(--muted); font-size:13px}
+
+    /* responsive mobile bottom nav */
+    .mobile-nav{display:none}
+    @media(max-width:720px){ .sidebar{display:none} .app{grid-template-columns:1fr} .mobile-nav{position:fixed; bottom:12px; left:12px; right:12px; display:flex; gap:8px; justify-content:space-between; z-index:999} }
+
+    /* utility */
+    .muted{color:var(--muted)}
+    .flex{display:flex; align-items:center}
+    .space{flex:1}
+
+  </style></head>
+<body data-theme="light">
+  <div class="app" id="app"><!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">SA</div>
+    <div>
+      <div class="title">SuperApp</div>
+      <div class="sub">Local services • 5km</div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <a href="#" class="active"><div class="ico">🏠</div><div>Dashboard</div></a>
+    <a href="#"><div class="ico">🛒</div><div>Marketplace</div></a>
+    <a href="#"><div class="ico">👨‍⚕️</div><div>Professionals</div></a>
+    <a href="#"><div class="ico">🚑</div><div>Emergency</div></a>
+    <a href="#"><div class="ico">🚕</div><div>Transport</div></a>
+    <a href="#"><div class="ico">🍔</div><div>Food</div></a>
+    <a href="#"><div class="ico">📊</div><div>Analytics</div></a>
+    <a href="#"><div class="ico">⚙️</div><div>Settings</div></a>
+  </nav>
+
+  <div class="footer">
+    <button class="ghost" id="collapseBtn">⬅️</button>
+    <button class="ghost" id="themeBtn">🌙</button>
+    <div class="space"></div>
+    <div style="font-size:12px; opacity:0.9">v1.3</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="top">
+    <div class="flex">
+      <div class="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 21l-4.35-4.35" stroke="#9aa6bb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="11" cy="11" r="6" stroke="#9aa6bb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></circle></svg>
+        <input id="search" placeholder="Search shops, services or orders..." />
+      </div>
+      <div style="width:12px"></div>
+      <button class="btn" id="createBtn">➕ Create</button>
+    </div>
+
+    <div class="actions">
+      <div class="btn" id="notif">🔔 <span class="muted" style="margin-left:8px">4</span></div>
+      <div class="btn">EN</div>
+      <div class="avatar"><img src="https://i.pravatar.cc/150?img=32" alt="profile"></div>
+    </div>
+  </div>
+
+  <!-- KPI and charts -->
+  <div class="card" style="margin-top:18px">
+    <div class="kpis">
+      <div class="kpi">
+        <div class="value">৳ 215,480</div>
+        <div class="label">Total Revenue</div>
+      </div>
+      <div class="kpi">
+        <div class="value">2,340</div>
+        <div class="label">Orders (30d)</div>
+      </div>
+      <div class="kpi">
+        <div class="value">9,120</div>
+        <div class="label">Active Users</div>
+      </div>
+      <div class="kpi">
+        <div class="value">94%</div>
+        <div class="label">Satisfaction</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:18px; margin-top:16px; align-items:center; flex-wrap:wrap">
+      <div style="flex:1; min-width:300px">
+        <canvas id="revenueChart" style="height:130px"></canvas>
+      </div>
+
+      <div style="width:320px">
+        <h4 style="margin:0 0 8px 0">Top Categories</h4>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <div class="badge green">E‑Commerce</div>
+          <div class="badge" style="background:linear-gradient(90deg,#60a5fa,#34d399); color:white">Food</div>
+          <div class="badge" style="background:linear-gradient(90deg,#06b6d4,#06b6d4); color:white">Transport</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="row">
+    <section>
+
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+          <h3 style="margin:0">Quick Services</h3>
+          <div class="muted">Tap to manage</div>
+        </div>
+        <div class="services">
+          <div class="service"><div class="s-ico" style="background:linear-gradient(90deg,#fff7ed,#ffedd5)">🛒</div><div><strong>Marketplace</strong><div class="muted">Local shops</div></div></div>
+          <div class="service"><div class="s-ico" style="background:linear-gradient(90deg,#eef2ff,#e0e7ff)">👨‍⚕️</div><div><strong>Doctors</strong><div class="muted">Appointments</div></div></div>
+          <div class="service"><div class="s-ico" style="background:linear-gradient(90deg,#ecfccb,#d9f99d)">🧰</div><div><strong>Home Services</strong><div class="muted">Plumbers, electricians</div></div></div>
+          <div class="service"><div class="s-ico" style="background:linear-gradient(90deg,#fff1f2,#ffe4e6)">🍔</div><div><strong>Food</strong><div class="muted">Delivery & pickup</div></div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+          <h3 style="margin:0">Recent Orders</h3>
+          <div class="muted">Updated just now</div>
+        </div>
+
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr><th>Order</th><th>Customer</th><th>Type</th><th>Amount</th><th>Status</th></tr>
+            </thead>
+            <tbody id="orders">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <aside>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+          <div>
+            <h4 style="margin:0">Live Map</h4>
+            <div class="muted" style="font-size:13px">Nearby professionals & active orders</div>
+          </div>
+          <div class="badge yellow">Live</div>
+        </div>
+        <div class="map-placeholder card" style="padding:0">
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h4 style="margin:0 0 8px 0">Notifications</h4>
+        <ul class="muted" style="padding-left:16px; margin-top:8px">
+          <li>New order #1104 — Marketplace</li>
+          <li>Ambulance requested — Zone 2</li>
+          <li>Driver arrived for #1098</li>
+        </ul>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h4 style="margin:0 0 8px 0">Settings</h4>
+        <label class="flex" style="gap:10px"><input type="checkbox" id="autoAccept" checked/> <span class="muted">Auto-accept orders</span></label>
+        <label class="flex" style="gap:10px; margin-top:6px"><input type="checkbox" id="maintenance"/> <span class="muted">Maintenance mode</span></label>
+      </div>
+
+    </aside>
+  </div>
+
+  <div class="footer">
+    <div>© SuperApp 2025 • Built for local communities</div>
+    <div class="muted">Support: support@superapp.local</div>
+  </div>
+
+</main>
+
+<!-- MOBILE NAV -->
+<div class="mobile-nav">
+  <button class="btn">🏠</button>
+  <button class="btn">🛒</button>
+  <button class="btn">➕</button>
+  <button class="btn">🔔</button>
+  <button class="btn">👤</button>
+</div>
+
+  </div>  <script>
+    // ================= Interactivity =================
+    const app = document.getElementById('app');
+    const collapseBtn = document.getElementById('collapseBtn');
+    const themeBtn = document.getElementById('themeBtn');
+    const body = document.body;
+
+    collapseBtn.addEventListener('click', ()=>{
+      app.classList.toggle('collapsed');
+    });
+    themeBtn.addEventListener('click', ()=>{
+      const t = body.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      body.setAttribute('data-theme', t);
+      themeBtn.textContent = t === 'dark' ? '☀️' : '🌙';
+    });
+
+    document.getElementById('notif').addEventListener('click', ()=>alert('You have 4 new notifications'));
+    document.getElementById('createBtn').addEventListener('click', ()=>alert('Create new listing / promo / service'));
+
+    // ================ Orders table (demo data) ================
+    const ordersData = [
+      {id:'#1104', customer:'Rafi', type:'Food', amount:'৳ 420', status:'Delivered'},
+      {id:'#1103', customer:'Sumi', type:'Transport', amount:'৳ 220', status:'On route'},
+      {id:'#1102', customer:'Mamun', type:'Marketplace', amount:'৳ 1,200', status:'Preparing'},
+      {id:'#1101', customer:'Hasan', type:'Emergency', amount:'৳ 0', status:'Responding'},
+    ];
+
+    const ordersTbody = document.getElementById('orders');
+    ordersData.forEach(o=>{
+      const tr = document.createElement('tr');
+      const statusClass = o.status === 'Delivered' ? 'green' : (o.status === 'On route' || o.status === 'Preparing' ? 'yellow' : 'red');
+      tr.innerHTML = `<td>${o.id}</td><td>${o.customer}</td><td>${o.type}</td><td>${o.amount}</td><td><span class=\"badge ${statusClass}\">${o.status}</span></td>`;
+      ordersTbody.appendChild(tr);
+    });
+
+    // ================ Revenue Chart (Chart.js) ================
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    const revenueChart = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels:['Jul 4','Jul 11','Jul 18','Jul 25','Aug 1','Aug 8','Aug 15'],
+        datasets:[{
+          label:'Revenue (৳)',
+          data:[12000,15000,14000,18000,21000,19000,23000],
+          fill:true,
+          tension:0.3,
+          borderColor:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2563eb',
+          backgroundColor: 'rgba(37,99,235,0.08)',
+          pointRadius:3
+        }]
+      },
+      options:{
+        plugins:{legend:{display:false}},
+        scales:{y:{beginAtZero:false, grid:{color:'rgba(0,0,0,0.04)'}}, x:{grid:{display:false}}},
+        responsive:true,
+        maintainAspectRatio:false
+      }
+    });
+
+    // ================ Leaflet map demo ================
+    const map = L.map('map', {zoomControl:false}).setView([23.7,90.4], 12); // Dhaka-ish default
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
+    const demoMarkers = [
+      {pos:[23.745,90.388], label:'Delivery #1104'},
+      {pos:[23.72,90.38], label:'Driver A'},
+      {pos:[23.69,90.42], label:'Ambulance'}
+    ];
+    demoMarkers.forEach(m=>L.marker(m.pos).addTo(map).bindPopup(m.label));
+
+    // ================= Search quick demo =================
+    const searchEl = document.getElementById('search');
+    searchEl.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){
+        alert('Search: '+searchEl.value);
+      }
+    });
+
+  </script></body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E-Commerce Home</title>
+
+<style>
+:root{
+  --primary:#ff3b3b;
+  --bg:#f4f4f4;
+  --card:#ffffff;
+  --muted:#777;
+  --radius:14px;
+}
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body{
+  background:var(--bg);
+  color:#111;
+}
+
+/* ================= Banner ================= */
+.banner img{
+  width:100%;
+  display:block;
+}
+
+/* ================= Features ================= */
+.features{
+  background:var(--card);
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+  padding:16px;
+}
+
+.feature{
+  text-align:center;
+  font-size:13px;
+  background:#f7f7f7;
+  padding:14px 8px;
+  border-radius:var(--radius);
+  font-weight:500;
+}
+
+/* ================= Section Title ================= */
+.section-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:16px;
+}
+
+.section-header h2{
+  font-size:18px;
+}
+
+.section-header span{
+  color:var(--primary);
+  font-size:14px;
+}
+
+/* ================= Flash Sale ================= */
+.flash-sale{
+  background:var(--card);
+  margin-top:10px;
+}
+
+.products{
+  display:flex;
+  gap:14px;
+  padding:0 16px 16px;
+  overflow-x:auto;
+}
+
+.products::-webkit-scrollbar{
+  display:none;
+}
+
+.product{
+  min-width:160px;
+  background:#fafafa;
+  border-radius:var(--radius);
+  padding:12px;
+}
+
+.product img{
+  width:100%;
+  border-radius:10px;
+}
+
+.price{
+  color:var(--primary);
+  font-weight:700;
+  margin-top:8px;
+}
+
+.sold{
+  font-size:12px;
+  color:var(--muted);
+}
+
+/* ================= Categories ================= */
+.categories{
+  background:var(--card);
+  margin-top:10px;
+  padding-bottom:20px;
+}
+
+.category-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px;
+  padding:0 16px;
+}
+
+.category{
+  background:#f7f7f7;
+  border-radius:var(--radius);
+  padding:22px 10px;
+  text-align:center;
+  font-size:14px;
+  font-weight:500;
+}
+
+/* ================= Desktop Enhancement ================= */
+@media(min-width:768px){
+  .features{
+    grid-template-columns:repeat(8,1fr);
+  }
+  .category-grid{
+    grid-template-columns:repeat(6,1fr);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- Banner -->
+<section class="banner">
+  <img src="https://via.placeholder.com/1200x220/ff3b3b/ffffff?text=MEGA+SALE" alt="Banner">
+</section>
+
+<!-- Features -->
+<section class="features">
+  <div class="feature">Earn Coins</div>
+  <div class="feature">Low Price</div>
+  <div class="feature">Beauty</div>
+  <div class="feature">Buy More</div>
+  <div class="feature">New</div>
+  <div class="feature">Free Delivery</div>
+  <div class="feature">Freebie</div>
+  <div class="feature">Mall</div>
+</section>
+
+<!-- Flash Sale -->
+<section class="flash-sale">
+  <div class="section-header">
+    <h2>Flash Sale</h2>
+    <span>Shop More ›</span>
+  </div>
+
+  <div class="products">
+    <div class="product">
+      <img src="https://via.placeholder.com/200">
+      <div class="price">৳520</div>
+      <div class="sold">221 Sold</div>
+    </div>
+
+    <div class="product">
+      <img src="https://via.placeholder.com/200">
+      <div class="price">৳99</div>
+      <div class="sold">553 Sold</div>
+    </div>
+
+    <div class="product">
+      <img src="https://via.placeholder.com/200">
+      <div class="price">৳499</div>
+      <div class="sold">8 Stock Left</div>
+    </div>
+  </div>
+</section>
+
+<!-- Categories -->
+<section class="categories">
+  <div class="section-header">
+    <h2>Popular Categories</h2>
+    <span>Scroll More ›</span>
+  </div>
+
+  <div class="category-grid">
+    <div class="category">Electronics</div>
+    <div class="category">Fashion</div>
+    <div class="category">Mobile</div>
+    <div class="category">Beauty</div>
+    <div class="category">Home</div>
+    <div class="category">Sports</div>
+  </div>
+</section>
+
+</body>
+</html>

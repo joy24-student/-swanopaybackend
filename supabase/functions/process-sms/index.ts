@@ -132,7 +132,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Failed atomic update" }), { status: 500 });
     }
 
-    // 4. Send Webhook notification (Async)
+    // 4. Send Webhook notification to merchant callback_url (Async)
     if (order.callback_url && isSafePublicHttpsUrl(order.callback_url)) {
       try {
         await sendWebhook(order, parsed_trx_id, parsed_amount, parsed_sender, supabase);
@@ -141,9 +141,66 @@ serve(async (req) => {
       }
     }
 
+    // 5. Notify SwapnoPay Backend (Socket.io payment_status event + email receipts)
+    const backendUrl = Deno.env.get("SWAPNOPAY_BACKEND_URL");
+    const backendWebhookSecret = Deno.env.get("SWAPNOPAY_BACKEND_WEBHOOK_SECRET");
+    if (backendUrl && backendWebhookSecret) {
+      try {
+        // Fetch merchant email for receipt delivery
+        const { data: merchantFull } = await supabase
+          .from("merchants")
+          .select("email, business_name")
+          .eq("id", merchant_id)
+          .single();
+
+        // Fetch gateway settings for redirect URLs
+        const { data: gws } = await supabase
+          .from("payment_gateway_settings")
+          .select("success_callback_url,failure_callback_url,cancel_callback_url,merchant_receipt_email")
+          .eq("merchant_id", merchant_id)
+          .maybeSingle();
+
+        const backendPayload = {
+          order_id: order.id,
+          tran_id: order.tran_id,
+          status: "PAID",
+          amount: parsed_amount,
+          currency: "BDT",
+          payment_method: order.payment_method || "bKash",
+          sender_number: parsed_sender,
+          trx_id: parsed_trx_id,
+          payment_time: new Date().toISOString(),
+          merchant_id: merchant_id,
+          project_ref: Deno.env.get("SUPABASE_URL")?.match(/https:\/\/([^.]+)/)?.[1] || "unknown",
+          merchant_name: merchantFull?.business_name || "Merchant",
+          merchant_email: gws?.merchant_receipt_email || merchantFull?.email || null,
+          cus_name: order.cus_name,
+          cus_email: order.cus_email,
+          cus_phone: order.cus_phone,
+          product_name: order.product_name,
+          verification: "ATOMIC_SMS_MATCH",
+          success_url: order.success_url || gws?.success_callback_url || null,
+          fail_url: order.fail_url || gws?.failure_callback_url || null,
+          cancel_url: order.cancel_url || gws?.cancel_callback_url || null,
+        };
+
+        await fetch(`${backendUrl}/v1/payment/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-secret": backendWebhookSecret,
+          },
+          body: JSON.stringify(backendPayload),
+          signal: AbortSignal.timeout(8000),
+        });
+        console.log(`SwapnoPay backend notified for order: ${order.id}`);
+      } catch (backendErr) {
+        // Non-blocking — log but don't fail the match
+        console.error("SwapnoPay backend notification failed:", backendErr);
+      }
+    }
+
     // A database trigger now enqueues the receipt after this atomic PAID commit.
-    // The receipt worker handles retries and covers both automatic matches and
-    // merchant-approved appeals without storing mail credentials in this project.
     return new Response(JSON.stringify({ status: "matched", order_id: order.id }), { status: 200 });
 
   } catch (err) {
