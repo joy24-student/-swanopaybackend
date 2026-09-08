@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark scroll-smooth">
+<html lang="en" class="scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1188,18 +1188,31 @@ print("Payment URL:", payment.url)</pre>
       });
     }
 
-    // Theme Switcher
-    function toggleTheme() {
+    // Theme Switcher — default is light mode; persists via localStorage
+    function applyTheme(isDark) {
       const html = document.documentElement;
       const knob = document.getElementById('theme-toggle-knob');
-      if (html.classList.contains('dark')) {
-        html.classList.remove('dark');
-        knob.style.transform = 'translateX(0px)';
-      } else {
+      if (isDark) {
         html.classList.add('dark');
-        knob.style.transform = 'translateX(24px)';
+        if (knob) knob.style.transform = 'translateX(24px)';
+      } else {
+        html.classList.remove('dark');
+        if (knob) knob.style.transform = 'translateX(0px)';
       }
     }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const next = !isDark;
+      localStorage.setItem('sp-theme', next ? 'dark' : 'light');
+      applyTheme(next);
+    }
+
+    // Restore saved preference on load (default: light)
+    (function () {
+      const saved = localStorage.getItem('sp-theme');
+      applyTheme(saved === 'dark');
+    })();
 
     // Interactive Payment Simulation
     function runPaymentSimulation() {
