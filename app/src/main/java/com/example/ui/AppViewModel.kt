@@ -3468,6 +3468,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     customVariables = field.optJSONArray("custom_variables")?.let { variables ->
                         List(variables.length()) { variables.optString(it) }.filter(String::isNotBlank)
                     } ?: emptyList(),
+                    customVariableAssignments = field.optJSONObject("custom_variable_assignments")?.let { obj ->
+                        buildMap {
+                            for (key in obj.keys()) {
+                                val value = obj.optString(key)
+                                if (value.isNotBlank()) put(key, value)
+                            }
+                        }
+                    } ?: field.optJSONObject("customVariableAssignments")?.let { obj ->
+                        buildMap {
+                            for (key in obj.keys()) {
+                                val value = obj.optString(key)
+                                if (value.isNotBlank()) put(key, value)
+                            }
+                        }
+                    } ?: emptyMap(),
                     mediaUrl = field.optString("media_url"),
                     mediaAltText = field.optString("media_alt_text"),
                     mediaHeightDp = field.optInt("media_height_dp", 180),
@@ -3790,6 +3805,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("custom_code_html", field.customCodeHtml)
                     put("custom_code_css", field.customCodeCss)
                     put("custom_variables", org.json.JSONArray(field.customVariables))
+                    put("custom_variable_assignments", org.json.JSONObject().apply {
+                        field.customVariableAssignments.forEach { (key, value) -> put(key, value) }
+                    })
                     put("media_url", field.mediaUrl)
                     put("media_alt_text", field.mediaAltText)
                     put("media_height_dp", field.mediaHeightDp)
@@ -10079,6 +10097,7 @@ data class FormFieldItem(
     var customCodeHtml: String = "",
     var customCodeCss: String = "",
     var customVariables: List<String> = emptyList(),
+    var customVariableAssignments: Map<String, String> = emptyMap(),
 
     // Validation & Constraint Rules
     var validationRegex: String = "",

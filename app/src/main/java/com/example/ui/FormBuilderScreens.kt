@@ -1877,6 +1877,9 @@ private fun CustomCodeBlockEditor(
     var css by remember(field.id) { mutableStateOf(field.customCodeCss) }
     var usedVariables by remember(field.id) { mutableStateOf(field.customVariables) }
     var variableMenuExpanded by remember(field.id) { mutableStateOf(false) }
+    var assignmentDialogOpen by remember(field.id) { mutableStateOf(false) }
+    var assignmentName by remember(field.id) { mutableStateOf("") }
+    var assignmentExpression by remember(field.id) { mutableStateOf(availableVariables.firstOrNull() ?: "") }
     var uploadedName by remember(field.id) { mutableStateOf("") }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -1955,9 +1958,75 @@ private fun CustomCodeBlockEditor(
                                 }
                             )
                         }
+                        Divider()
+                        DropdownMenuItem(
+                            text = { Text("Assign new variable", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Outlined.EditNote, null, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                assignmentName = ""
+                                assignmentExpression = availableVariables.firstOrNull() ?: ""
+                                assignmentDialogOpen = true
+                                variableMenuExpanded = false
+                            }
+                        )
                     }
                 }
             }
+        }
+        if (assignmentDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { assignmentDialogOpen = false },
+                title = { Text("Assign response variable") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = assignmentName,
+                            onValueChange = { assignmentName = it.filter { c -> c.isLetterOrDigit() || c == '_' } },
+                            label = { Text("Variable name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = assignmentExpression,
+                            onValueChange = { assignmentExpression = it },
+                            label = { Text("Value / variable expression") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = "Example: {{field_name}} or a fixed value like BDT 500",
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val normalizedName = assignmentName.trim().ifBlank { return@TextButton }
+                        val variableTag = "{{${normalizedName}}}"
+                        val nextAssignments = field.customVariableAssignments.toMutableMap()
+                        nextAssignments[normalizedName] = assignmentExpression.trim()
+                        html = if (html.contains(variableTag)) html else if (html.isBlank()) variableTag else "$html $variableTag"
+                        usedVariables = (usedVariables + variableTag).distinct()
+                        assignmentDialogOpen = false
+                        onUpdate(
+                            field.copy(
+                                customCodeHtml = html,
+                                customCodeCss = css,
+                                customVariables = usedVariables,
+                                customVariableAssignments = nextAssignments
+                            )
+                        )
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { assignmentDialogOpen = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
         if (uploadedName.isNotBlank()) {
             Text("Imported $uploadedName", fontSize = 11.sp, color = Color(0xFF10B981), fontWeight = FontWeight.SemiBold)
