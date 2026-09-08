@@ -308,8 +308,8 @@
       const routeIdentifier = (pathParts[0] === 'f' || pathParts[0] === 'form' || pathParts[0] === 'forms') ? pathParts[1] : '';
 
       formIdentifier = params.get("slug") || params.get("id") || routeIdentifier || "demo_form_id";
-      supabaseUrl = params.get("supabase_url") || window.SUPABASE_URL || "https://abc123xyz.supabase.co";
-      supabaseAnonKey = params.get("supabase_anon_key") || window.SUPABASE_ANON_KEY || "demo_anon_key";
+      supabaseUrl = params.get("supabase_url") || window.SUPABASE_URL || "https://tldubojeokgyoclxnzkb.supabase.co";
+      supabaseAnonKey = params.get("supabase_anon_key") || window.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0";
 
       if (formIdentifier !== "demo_form_id" && !supabaseUrl.includes("abc123xyz")) {
         loadPaymentFormDetails();

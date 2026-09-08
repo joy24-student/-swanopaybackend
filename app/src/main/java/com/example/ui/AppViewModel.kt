@@ -5755,8 +5755,14 @@ function executePayment() {
             }
             val active = repository.getActiveSupabaseProfile()
             if (active != null) {
-                val safeActive = active.copy(serviceRoleKey = "")
-                if (active.serviceRoleKey.isNotEmpty()) repository.insertSupabaseProfile(safeActive)
+                val effective = if (active.supabaseUrl.isBlank() || active.supabaseUrl.contains("abc123xyz") || active.supabaseUrl.contains("def456uvw")) {
+                    active.copy(
+                        supabaseUrl = "https://tldubojeokgyoclxnzkb.supabase.co",
+                        anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
+                    ).also { repository.insertSupabaseProfile(it) }
+                } else active
+                val safeActive = effective.copy(serviceRoleKey = "")
+                if (effective.serviceRoleKey.isNotEmpty()) repository.insertSupabaseProfile(safeActive)
                 activateLocalProfileForBackend(safeActive)
                 _activeSupabaseProfile.value = safeActive
                 supabaseUrl.value = safeActive.supabaseUrl
@@ -5765,8 +5771,8 @@ function executePayment() {
                 val isReal = safeActive.supabaseUrl.isNotEmpty() && safeActive.supabaseUrl != "https://abc123xyz.supabase.co" && safeActive.supabaseUrl != "https://def456uvw.supabase.co"
                 supabaseConnected.value = isReal
                 supabaseSetupProgress.value = if (isReal) 9 else 0
-                _supabaseUrlInput.value = active.supabaseUrl
-                _supabaseAnonKeyInput.value = active.anonKey
+                _supabaseUrlInput.value = safeActive.supabaseUrl
+                _supabaseAnonKeyInput.value = safeActive.anonKey
                 scheduleSupabaseSessionRefresh(safeActive)
             } else {
                 val first = repository.observeSupabaseProfiles().firstOrNull()?.firstOrNull()

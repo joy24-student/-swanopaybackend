@@ -665,6 +665,18 @@ class AppRepository(private val context: Context) {
     // Prepopulate database with realistic business data so the user gets an immediately usable, gorgeous UI
     suspend fun prepopulateIfEmpty() {
         if (dao.getMerchantProfile() == null) dao.insertMerchantProfile(profiles.first())
+        if (dao.getActiveSupabaseProfile() == null) {
+            insertSupabaseProfile(
+                SupabaseProfileEntity(
+                    id = "00000000-0000-0000-0000-000000000001",
+                    businessName = "SwapnoPay Main Cloud",
+                    supabaseUrl = "https://tldubojeokgyoclxnzkb.supabase.co",
+                    anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0",
+                    serviceRoleKey = "",
+                    isActive = true
+                )
+            )
+        }
         if (dao.getAllMfsPatterns().isEmpty()) {
             dao.insertMfsPatterns(
                 listOf(
