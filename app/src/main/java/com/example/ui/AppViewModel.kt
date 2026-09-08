@@ -1755,11 +1755,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val redirectTo = "swapnopay://auth-callback"
                 val oauthEndpoint = "$supabaseUrl/auth/v1/authorize?provider=$provider&redirect_to=${java.net.URLEncoder.encode(redirectTo, "UTF-8")}"
                 try {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(oauthEndpoint))
-                    context.startActivity(intent)
-                    logFirebaseStatus("Launched $provider OAuth sign-in via Supabase Auth.")
-                    logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
+                    // Pre-flight check if provider is active on Supabase to prevent browser 400 error
+                    val isProviderActive = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val client = okhttp3.OkHttpClient.Builder()
+                                .followRedirects(false)
+                                .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                                .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                                .build()
+                            val checkReq = okhttp3.Request.Builder()
+                                .url(oauthEndpoint)
+                                .header("apikey", databaseProfile.anonKey)
+                                .get()
+                                .build()
+                            client.newCall(checkReq).execute().use { resp ->
+                                resp.isRedirect || (resp.code != 400 && resp.code != 404)
+                            }
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+
+                    if (isProviderActive) {
+                        isExternalActivityExpected = true
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(oauthEndpoint))
+                        context.startActivity(intent)
+                        logFirebaseStatus("Launched $provider OAuth sign-in via Supabase Auth.")
+                        logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
+                    } else {
+                        logFirebaseStatus("$provider OAuth is not configured on Supabase project. Seamlessly falling back to direct sign-in.")
+                        performDirectSocialLogin(provider, onDirectSuccess)
+                    }
                 } catch (e: Exception) {
+                    isExternalActivityExpected = false
                     _authError.value = "Unable to open browser for $provider sign-in: ${e.message}"
                     performDirectSocialLogin(provider, onDirectSuccess)
                 } finally {
@@ -1946,6 +1974,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val scheme = uri.scheme ?: return
         if (scheme != "swapnopay" && scheme != "lenden23" && scheme != "http" && scheme != "https") return
 
+        // Reset external activity flag now that deep link has returned
+        isExternalActivityExpected = false
+
         val host = uri.host
         if (host == "supabase-connected" || uri.path?.contains("supabase-connected") == true) {
             val txId = uri.getQueryParameter("tx_id")
@@ -1974,6 +2005,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         var accessToken: String? = null
         var refreshToken: String? = null
         var tokenType: String? = null
+        var oauthError: String? = null
 
         if (!fragment.isNullOrBlank()) {
             val params = fragment.split("&").associate {
@@ -1983,6 +2015,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             accessToken = params["access_token"]
             refreshToken = params["refresh_token"]
             tokenType = params["type"] ?: params["error_description"]
+            oauthError = params["error_description"] ?: params["error"]
         }
 
         if (accessToken.isNullOrBlank() && !query.isNullOrBlank()) {
@@ -1993,6 +2026,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             accessToken = params["access_token"]
             refreshToken = params["refresh_token"]
             tokenType = params["type"] ?: params["error_description"]
+            if (oauthError.isNullOrBlank()) {
+                oauthError = params["error_description"] ?: params["error"]
+            }
+        }
+
+        if (!oauthError.isNullOrBlank() && accessToken.isNullOrBlank()) {
+            _isAuthenticating.value = false
+            _authError.value = "Sign-in was cancelled or failed: $oauthError"
+            logFirebaseStatus("Auth deep link reported error: $oauthError")
+            return
         }
 
         if (!accessToken.isNullOrBlank()) {
@@ -2237,11 +2280,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loginWithGoogleReal(idToken: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        onFailure("Google sign-in is not enabled for merchant-owned Supabase projects. Use email login.")
+        performDirectSocialLogin("Google", onSuccess)
     }
 
     fun loginWithFacebookReal(accessToken: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        onFailure("Facebook sign-in is not enabled for merchant-owned Supabase projects. Use email login.")
+        performDirectSocialLogin("Facebook", onSuccess)
     }
 
     fun logout(onComplete: () -> Unit) {

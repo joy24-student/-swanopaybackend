@@ -138,7 +138,14 @@ fi
 
 # Start/Restart via PM2
 pm2 delete swapnopay-backend 2>/dev/null || true
-pm2 start ecosystem.config.js --env production
+if [ -f ecosystem.config.cjs ]; then
+    pm2 start ecosystem.config.cjs --env production
+elif [ -f ecosystem.config.js ]; then
+    cp ecosystem.config.js ecosystem.config.cjs
+    pm2 start ecosystem.config.cjs --env production
+else
+    pm2 start src/index.js --name swapnopay-backend
+fi
 pm2 save
 
 # ──────────────────────────────────────────────────────────────────────────────
