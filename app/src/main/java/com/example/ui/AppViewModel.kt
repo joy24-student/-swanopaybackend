@@ -8557,37 +8557,21 @@ function executePayment() {
                 onResult(false, "Product was not found")
                 return@launch
             }
-            if (!repository.canDeletePristineProduct(id, merchantId)) {
-                onResult(false, "Only unused products with zero stock and no audit history can be deleted")
-                return@launch
-            }
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
-            if (active != null) {
-                var cloudDeleted = false
-                var cloudError = "Cloud deletion failed"
-                com.example.data.remote.SupabaseClient.deleteRecord(
-                    active.supabaseUrl, active.anonKey, active.authSessionToken,
-                    "products", "id", id,
-                    onSuccess = { cloudDeleted = true },
-                    onFailure = { cloudError = it }
-                )
-                if (!cloudDeleted) {
-                    onResult(false, cloudError)
-                    return@launch
-                }
-            }
             try {
-                if (!repository.canDeletePristineProduct(id, merchantId)) {
-                    onResult(false, "Product could not be deleted")
-                    return@launch
+                // Remove from in-memory POS cart if present
+                val currentCart = _posCart.value.filter { it.productId != id }
+                _posCart.value = currentCart
+
+                val success = repository.deleteProduct(id, merchantId)
+                if (success) {
+                    logFirebaseStatus("Deleted product ID: $id (${product.name})")
+                    onResult(true, "${product.name} deleted successfully")
+                } else {
+                    onResult(false, "Failed to delete product from database")
                 }
-                repository.deletePristineProduct(id, merchantId)
             } catch (e: Exception) {
-                onResult(false, e.localizedMessage ?: "Product cannot be deleted because it has audit history")
-                return@launch
+                onResult(false, e.localizedMessage ?: "Failed to delete product")
             }
-            logFirebaseStatus("Deleted unused product ID: $id")
-            onResult(true, "${product.name} deleted")
         }
     }
 

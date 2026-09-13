@@ -311,6 +311,19 @@ interface AppDao {
     @Query("DELETE FROM products WHERE id = :id AND merchantId = :merchantId")
     suspend fun deleteProductById(id: String, merchantId: String): Int
 
+    @Query("DELETE FROM stock_transactions WHERE productId = :id AND merchantId = :merchantId")
+    suspend fun deleteStockTransactionsByProductId(id: String, merchantId: String): Int
+
+    @Query("DELETE FROM product_variants WHERE productId = :id AND merchantId = :merchantId")
+    suspend fun deleteProductVariantsByProductId(id: String, merchantId: String): Int
+
+    @Transaction
+    suspend fun deleteProductCascade(id: String, merchantId: String): Boolean {
+        deleteStockTransactionsByProductId(id, merchantId)
+        deleteProductVariantsByProductId(id, merchantId)
+        return deleteProductById(id, merchantId) > 0
+    }
+
     @Query("SELECT COUNT(*) FROM stock_transactions WHERE productId = :id AND merchantId = :merchantId")
     suspend fun countProductStockTransactions(id: String, merchantId: String): Int
 

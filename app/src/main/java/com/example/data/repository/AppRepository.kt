@@ -858,6 +858,15 @@ class AppRepository(private val context: Context) {
         dao.deletePristineProduct(id, merchantId)
         deleteProductFromSupabase(id)
     }
+    suspend fun deleteProduct(id: String, merchantId: String): Boolean {
+        val localDeleted = dao.deleteProductCascade(id, merchantId)
+        try {
+            deleteProductFromSupabase(id)
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Supabase deleteProduct failed: ${e.message}")
+        }
+        return localDeleted
+    }
     suspend fun saveProductImages(product: ProductItemEntity, previous: String) = dao.updateProductMedia(product.id, product.merchantId, product.imageUrl, product.storefrontDetailsJson, previous)
     suspend fun canDeletePristineProduct(id: String, merchantId: String) = dao.canDeletePristineProduct(id, merchantId)
     suspend fun updateProductWithStockAdjustment(
