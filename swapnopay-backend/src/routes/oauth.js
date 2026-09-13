@@ -5,6 +5,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import { getAdminClient } from '../services/adminSupabase.js'
+import { provisionProject } from '../services/provisionService.js'
 
 const router = Router()
 
@@ -439,32 +440,17 @@ async function handleProvision(req, res) {
       return res.json({ status: isHealthy ? 'ACTIVE_HEALTHY' : 'PROVISIONING' })
     }
 
-    if (action === 'APPLY_SCHEMA_AND_FINALIZE') {
+    if (
+      action === 'APPLY_SCHEMA_AND_FINALIZE' ||
+      action === 'AUTO_SETUP' ||
+      action === 'BOOTSTRAP_PROJECT' ||
+      action === 'REPAIR_PROJECT'
+    ) {
       if (!projectRef) return res.status(400).json({ error: 'project_ref is required' })
 
-      // Get API keys for project (with retry if newly provisioned)
-      let anonKey = ''
-      for (let kAttempt = 0; kAttempt < 5; kAttempt++) {
-        try {
-          const keysResp = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          })
-          if (keysResp.ok) {
-            const keys = await keysResp.json()
-            if (Array.isArray(keys) && keys.length > 0) {
-              const anonObj = keys.find((k) => k.name === 'anon' || k.name === 'publishable') || keys[0]
-              anonKey = anonObj?.api_key || anonObj?.key || ''
-              if (anonKey) break
-            }
-          }
-        } catch (e) {
-          console.warn('[oauth-provision] API key fetch attempt failed:', kAttempt, e.message)
-        }
-        if (kAttempt < 4) await new Promise((r) => setTimeout(r, 2000))
-      }
-
-      const projectUrl = `https://${projectRef}.supabase.co`
-      return res.json({ project_url: projectUrl, publishable_key: anonKey, status: 'READY' })
+      console.log(`[oauth-provision] Running 100% automated provisioning pipeline for ${projectRef} (${action})...`)
+      const provisionResult = await provisionProject({ projectRef, accessToken, userId })
+      return res.json(provisionResult)
     }
 
     return res.status(400).json({ error: `Unsupported action: ${action}` })
@@ -593,6 +579,38 @@ async function handleSocialLogin(req, res) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 6. AUTO-SETUP & BOOTSTRAP (/bootstrap, /auto-setup)
+// ──────────────────────────────────────────────────────────────────────────────
+async function handleBootstrap(req, res) {
+  try {
+    const { user_id: userId, tx_id: txId, project_ref: projectRef } = req.body || {}
+    const accessToken = await getValidAccessToken(userId, txId)
+
+    let targetRef = projectRef
+    if (!targetRef && userId) {
+      const admin = getAdminClient()
+      const { data: conn } = await admin
+        .from('supabase_connections')
+        .select('selected_project_ref')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (conn?.selected_project_ref) targetRef = conn.selected_project_ref
+    }
+
+    if (!targetRef) {
+      return res.status(400).json({ error: 'project_ref is required or must be linked to user_id' })
+    }
+
+    console.log(`[oauth-bootstrap] Bootstrapping project ${targetRef} for user ${userId || 'anonymous'}...`)
+    const result = await provisionProject({ projectRef: targetRef, accessToken, userId })
+    return res.json(result)
+  } catch (err) {
+    console.error('[oauth-bootstrap] Error:', err)
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Routes Mapping (Supporting both /v1/oauth/* and /functions/v1/*)
 // ──────────────────────────────────────────────────────────────────────────────
 router.all('/start', handleOAuthStart)
@@ -603,6 +621,8 @@ router.get('/oauth-callback', handleOAuthCallback)
 
 router.all('/projects', handleProjects)
 router.all('/provision', handleProvision)
+router.all('/bootstrap', handleBootstrap)
+router.all('/auto-setup', handleBootstrap)
 
 router.post('/social-login', handleSocialLogin)
 router.get('/social-login', (req, res) => res.status(405).json({ error: 'Use POST for social login' }))

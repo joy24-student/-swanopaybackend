@@ -3257,6 +3257,59 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun triggerAutoSetupConnectedDatabase(onComplete: ((Boolean, String) -> Unit)? = null) {
+        val currentUrl = supabaseUrl.value.ifBlank { _activeSupabaseProfile.value?.supabaseUrl ?: "" }
+        val extractedRef = if (currentUrl.contains("supabase.co")) {
+            currentUrl.substringAfter("https://").substringBefore(".supabase.co").trim()
+        } else ""
+
+        val targetRef = (selectedControlPlaneProjectRef.value ?: "").ifBlank { extractedRef }
+        val userId = activeProfile.value.id.ifBlank { "user_default" }
+        val txId = pendingOAuthTxId.value
+
+        if (targetRef.isBlank()) {
+            val msg = "Please enter or connect a valid Supabase project reference"
+            managementApiError.value = msg
+            onComplete?.invoke(false, msg)
+            return
+        }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                isRunningSystemTest.value = true
+                logFirebaseStatus("Starting 100% automated database tables, storage buckets, realtime & functions setup for $targetRef...")
+            }
+
+            com.example.data.repository.SupabaseConnectionRepository.applySchemaAndFinalize(
+                controlPlaneUrl = controlPlaneUrl.value,
+                userId = userId,
+                projectRef = targetRef,
+                txId = txId,
+                onSuccess = { projectUrl, pubKey ->
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        isRunningSystemTest.value = false
+                        logFirebaseStatus("Database tables, buckets, realtime & edge functions provisioned successfully!")
+                        if (pubKey.isNotBlank()) {
+                            supabaseUrl.value = projectUrl
+                            supabaseAnonKey.value = pubKey
+                            setSupabaseUrlInput(projectUrl)
+                            setSupabaseAnonKeyInput(pubKey)
+                        }
+                        runSupabaseSystemTest()
+                        onComplete?.invoke(true, "Database tables, buckets, realtime & edge functions provisioned successfully!")
+                    }
+                },
+                onFailure = { err ->
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        isRunningSystemTest.value = false
+                        managementApiError.value = err
+                        onComplete?.invoke(false, err)
+                    }
+                }
+            )
+        }
+    }
+
     fun startSupabaseOAuthFlow(context: android.content.Context, customClientId: String = "") {
         val targetClientId = if (customClientId.isNotBlank()) customClientId.trim() else oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         oauthClientId.value = targetClientId
@@ -7655,10 +7708,46 @@ function executePayment() {
     private val _lastScannedQrStatus = MutableStateFlow<String?>(null)
     val lastScannedQrStatus: StateFlow<String?> = _lastScannedQrStatus.asStateFlow()
 
+    fun addProductToPosCart(product: ProductItemEntity, qty: Double = 1.0) {
+        val currentList = _posCart.value.toMutableList()
+        val existingIndex = currentList.indexOfFirst { it.productId == product.id }
+        if (existingIndex >= 0) {
+            val item = currentList[existingIndex]
+            if (product.stockQuantity > 0.0 && item.quantity + qty > product.stockQuantity) {
+                _lastScannedQrStatus.value = "Stock limit reached for ${product.name} (Available: ${product.stockQuantity.toInt()})"
+                return
+            }
+            currentList[existingIndex] = item.copy(quantity = item.quantity + qty)
+        } else {
+            if (product.stockQuantity <= 0.0) {
+                _lastScannedQrStatus.value = "${product.name} is out of stock"
+                // Still allow adding if merchant wants, but warn them
+            }
+            currentList.add(
+                PosCartItem(
+                    variantId = product.id,
+                    productId = product.id,
+                    qrCode = product.qrCode ?: product.code ?: "",
+                    productName = product.name,
+                    variantName = product.unit.ifBlank { "Standard" },
+                    category = product.category ?: "General",
+                    askingPrice = if (product.askingPrice > 0.0) product.askingPrice else product.salePrice,
+                    sellingPrice = product.salePrice,
+                    costPrice = product.purchasePrice,
+                    quantity = qty
+                )
+            )
+        }
+        _posCart.value = currentList
+        _lastScannedQrStatus.value = "Added ${product.name} to cart"
+        logFirebaseStatus("POS Cart: Added ${product.name} (qty: $qty)")
+    }
+
     fun scanQrCodeToPosCart(scannedQr: String) {
         if (scannedQr.trim().isEmpty()) return
         viewModelScope.launch {
-            val variant = repository.getVariantByQrCode(scannedQr.trim(), activeProfile.value.id)
+            val trimmed = scannedQr.trim()
+            val variant = repository.getVariantByQrCode(trimmed, activeProfile.value.id)
             if (variant != null) {
                 val parentProd = products.value.find { it.id == variant.productId }
                 val prodName = parentProd?.name ?: "Unknown Product"
@@ -7698,8 +7787,19 @@ function executePayment() {
                 _lastScannedQrStatus.value = "Scanned: $prodName (${variant.variantName}) - ৳${variant.salePrice}"
                 logFirebaseStatus("POS QR Scan Success: Added ${variant.variantName} of $prodName to cart.")
             } else {
-                _lastScannedQrStatus.value = "❌ No product variant found matching QR: $scannedQr"
-                logFirebaseStatus("POS QR Scan Failed: Code $scannedQr not registered.")
+                // Check if code matches a base product (code, qrCode, or id)
+                val baseProd = products.value.find {
+                    (it.code != null && it.code.equals(trimmed, ignoreCase = true)) ||
+                    (it.qrCode != null && it.qrCode.equals(trimmed, ignoreCase = true)) ||
+                    it.id.equals(trimmed, ignoreCase = true)
+                }
+                if (baseProd != null) {
+                    addProductToPosCart(baseProd, 1.0)
+                    _lastScannedQrStatus.value = "Scanned: ${baseProd.name} - ৳${baseProd.salePrice}"
+                } else {
+                    _lastScannedQrStatus.value = "❌ No product found matching code: $trimmed"
+                    logFirebaseStatus("POS QR Scan Failed: Code $trimmed not registered.")
+                }
             }
         }
     }
@@ -7711,8 +7811,14 @@ function executePayment() {
             if (newQty <= 0) {
                 currentList.removeAt(index)
             } else {
-                val available = productVariants.value.firstOrNull { it.id == variantId }?.stockQuantity ?: 0.0
-                if (newQty <= available) {
+                val item = currentList[index]
+                val variant = productVariants.value.firstOrNull { it.id == variantId }
+                val available = if (variant != null) {
+                    variant.stockQuantity
+                } else {
+                    products.value.firstOrNull { it.id == item.productId }?.stockQuantity ?: Double.MAX_VALUE
+                }
+                if (newQty <= available || available <= 0.0) {
                     currentList[index] = currentList[index].copy(quantity = newQty)
                 } else {
                     _lastScannedQrStatus.value = "Only ${available.toInt()} unit(s) are available"
@@ -7758,11 +7864,12 @@ function executePayment() {
             }
 
             val movements = cartItems.map { item ->
+                val isRealVariant = productVariants.value.any { it.id == item.variantId }
                 StockTransactionEntity(
                     id = java.util.UUID.randomUUID().toString(),
                     merchantId = merchantId,
                     productId = item.productId,
-                    variantId = item.variantId,
+                    variantId = if (isRealVariant) item.variantId else null,
                     type = "out",
                     quantity = item.quantity,
                     price = item.sellingPrice,
@@ -8118,22 +8225,27 @@ function executePayment() {
     fun addCustomer(
         name: String,
         phone: String,
-        initialBalance: Double,
+        initialBalance: Double = 0.0,
         status: String = "VIP",
-        id: String = java.util.UUID.randomUUID().toString()
+        id: String = java.util.UUID.randomUUID().toString(),
+        address: String? = null,
+        onResult: ((Boolean, String, CustomerEntity?) -> Unit)? = null
     ) {
-        if (name.isBlank() || phone.filter(Char::isDigit).length < 10 || !initialBalance.isFinite()) {
-            logFirebaseStatus("Customer rejected: valid name, phone, and balance are required.")
+        if (name.isBlank() || !initialBalance.isFinite()) {
+            val message = "Customer name is required and balance must be finite"
+            logFirebaseStatus("Customer rejected: $message")
+            onResult?.invoke(false, message, null)
             return
         }
+        val cleanPhone = phone.trim()
         viewModelScope.launch {
             val customer = CustomerEntity(
                 id = id,
                 merchantId = activeProfile.value.id,
-                name = name,
-                phone = phone,
+                name = name.trim(),
+                phone = cleanPhone,
                 email = null,
-                address = null,
+                address = address?.trim()?.ifBlank { null },
                 openingBalance = initialBalance,
                 currentBalance = initialBalance,
                 status = status
@@ -8147,6 +8259,7 @@ function executePayment() {
                     put("id", customer.id)
                     put("name", customer.name)
                     put("phone", customer.phone)
+                    put("address", customer.address ?: org.json.JSONObject.NULL)
                     put("opening_balance", customer.openingBalance)
                     put("current_balance", customer.currentBalance)
                     put("status", customer.status)
@@ -8157,6 +8270,7 @@ function executePayment() {
                     { logFirebaseStatus("Customer saved locally; cloud sync failed: $it") }
                 )
             }
+            onResult?.invoke(true, "Customer added successfully", customer)
         }
     }
 
@@ -8270,9 +8384,37 @@ function executePayment() {
             return
         }
         viewModelScope.launch {
-            val normalizedCode = code?.trim()?.ifBlank { null }
-            if (normalizedCode != null && repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
-                onResult(false, "SKU / QR code is already assigned to another product")
+            val normalizedCode = code?.trim()?.ifBlank { null } ?: "PRD-${System.currentTimeMillis() % 1000000}"
+            if (repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
+                // If collision or already exists, generate random
+                val fallbackCode = "PRD-${java.util.UUID.randomUUID().toString().take(6).uppercase()}"
+                val prod = ProductItemEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    merchantId = activeProfile.value.id,
+                    name = name.trim(),
+                    code = fallbackCode,
+                    category = category?.trim()?.ifBlank { "General" },
+                    purchasePrice = purchasePrice,
+                    salePrice = salePrice,
+                    stockQuantity = 0.0,
+                    unit = unit.trim(),
+                    qrCode = fallbackCode,
+                    costPrice = purchasePrice,
+                    askingPrice = salePrice,
+                    imageUrl = storefront.featuredImage?.preview,
+                    storefrontDetailsJson = storefront.json().toString()
+                )
+                val openingMovement = if (stock > 0.0) StockTransactionEntity(
+                    merchantId = prod.merchantId, productId = prod.id, type = "in", quantity = stock,
+                    price = purchasePrice, referenceNote = "Opening stock"
+                ) else null
+                try {
+                    repository.createProductWithOpeningStock(prod, openingMovement)
+                } catch (e: Exception) {
+                    onResult(false, e.localizedMessage ?: "Product could not be saved")
+                    return@launch
+                }
+                onResult(true, "${prod.name} added to inventory")
                 return@launch
             }
             val prod = ProductItemEntity(

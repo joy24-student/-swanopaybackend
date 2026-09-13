@@ -47,7 +47,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
     val transactions by viewModel.ledgerTransactions.collectAsState()
     val profile by viewModel.activeProfile.collectAsState()
     val dark by viewModel.isDarkMode.collectAsState()
-    var tab by rememberSaveable { mutableStateOf(initialTab) }
+    var tab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
     var range by rememberSaveable { mutableStateOf("ALL") }
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf("BALANCE_DESC") }

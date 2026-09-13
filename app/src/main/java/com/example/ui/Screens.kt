@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
@@ -867,8 +867,8 @@ fun AppNavigation(viewModel: AppViewModel) {
         "SupabaseSetupGuide" -> SupabaseSetupGuideScreen(viewModel)
         "Backup", "BackupAndRestore", "BackupAndRestoreScreen", "BackupRestore" -> BackupAndRestoreScreen(viewModel)
         "KycVerification", "KYC", "MerchantKYC", "VerifyAccount" -> KycVerificationScreen(viewModel)
-        "CustomerLedger" -> ProductionLedgersScreen(viewModel, initialTab = "CUSTOMER")
-        "SupplierLedger" -> ProductionLedgersScreen(viewModel, initialTab = "SUPPLIER")
+        "CustomerLedger", "CustomerList", "Customers", "Customer", "CustomerManagement", "CustomerDue" -> ProductionLedgersScreen(viewModel, initialTab = "CUSTOMER")
+        "SupplierLedger", "SupplierList", "Suppliers", "Supplier", "SupplierManagement", "SupplierPayable" -> ProductionLedgersScreen(viewModel, initialTab = "SUPPLIER")
         "Inventory" -> InventoryScreen(viewModel)
         "ExpenseSales" -> ExpenseSalesScreen(viewModel)
         "Loans", "LoanScreen", "BusinessLoans" -> DpsAndLoansScreen(viewModel, initialTab = "LOANS")
@@ -7370,6 +7370,7 @@ fun GatewayStatusRow(name: String, color: Color, paymentsCount: Int) {
 @Composable
 fun SetupScreen(viewModel: AppViewModel) {
     val languageState by viewModel.language.collectAsState()
+    val isBangla = languageState == "bn" || languageState == "Bangla"
     val supabaseUrl by viewModel.supabaseUrl.collectAsState()
     val supabaseAnonKey by viewModel.supabaseAnonKey.collectAsState()
     val supabaseConnectionName by viewModel.supabaseConnectionName.collectAsState()
@@ -8045,6 +8046,16 @@ fun SetupScreen(viewModel: AppViewModel) {
                                 }
                             }
                         }
+                    }
+
+                    // One-Click Auto-Setup & Repair Database Card
+                    item {
+                        AutoSetupDatabaseCard(
+                            viewModel = viewModel,
+                            isDarkMode = isDarkMode,
+                            isBangla = isBangla,
+                            isRunningSystemTest = isRunningSystemTest
+                        )
                     }
 
                     // Setup Checklist Title & Progress
@@ -16953,7 +16964,7 @@ fun DashboardScreen(viewModel: AppViewModel) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                modifier = Modifier.clickable { viewModel.navigateTo("Transactions") }
+                                modifier = Modifier.clickable { viewModel.navigateTo("SalesHistory") }
                             ) {
                                 Text("View All", fontSize = 13.sp, color = goldAccent, fontWeight = FontWeight.SemiBold)
                                 Icon(Icons.Default.ChevronRight, null, tint = goldAccent, modifier = Modifier.size(14.dp))
@@ -25147,7 +25158,17 @@ fun InventoryScreen(viewModel: AppViewModel) {
     }
 
     Scaffold(
-        containerColor = bgCanvas
+        containerColor = bgCanvas,
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showAddDialog = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black) },
+                text = { Text("নতুন পণ্য (Add Product)", fontWeight = FontWeight.Bold, color = Color.Black) },
+                containerColor = yellowPrimary,
+                contentColor = Color.Black,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -25867,14 +25888,18 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     onClick = {
                         val name = newProdName.trim()
                         if (name.isBlank()) {
-                            Toast.makeText(context, "Product name is required", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Product name is required (পণ্যের নাম লিখুন)", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
-                        val buyPrice = newProdBuyPrice.toDoubleOrNull()
                         val sellPrice = newProdSellPrice.toDoubleOrNull()
+                        if (sellPrice == null || sellPrice < 0.0) {
+                            Toast.makeText(context, "Please enter a valid Sale Price (বিক্রয়মূল্য দিন)", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        val buyPrice = newProdBuyPrice.toDoubleOrNull() ?: 0.0
                         val stock = newProdStock.toDoubleOrNull() ?: 0.0
-                        if (buyPrice == null || sellPrice == null || buyPrice < 0.0 || sellPrice < 0.0 || stock < 0.0) {
-                            Toast.makeText(context, "Enter valid buy price, sale price and opening stock", Toast.LENGTH_SHORT).show()
+                        if (buyPrice < 0.0 || stock < 0.0) {
+                            Toast.makeText(context, "Price and stock cannot be negative", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
                         val code = newProdCode.trim().ifEmpty { null }
@@ -30532,695 +30557,7 @@ fun StockInQrScreen(viewModel: AppViewModel) {
 // OFFLINE POS CHECKOUT SCREEN (NewSale) — PIXEL PERFECT DARK GOLD DESIGN
 // ═══════════════════════════════════════════════════════════════════════════
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PosCheckoutScreen(viewModel: AppViewModel) {
-    val posCart by viewModel.posCart.collectAsState()
-    val customers by viewModel.customers.collectAsState()
-    val isDarkMode by viewModel.isDarkMode.collectAsState()
-    SideEffect { isDarkModeGlobal = isDarkMode }
-
-    var searchQuery by remember { mutableStateOf("") }
-    var checkoutPaymentType by remember { mutableStateOf("Cash") } // "Cash", "MFS", "Card", "Inventory"
-    var selectedCustomerId by remember { mutableStateOf<String?>(null) }
-    var selectedCustomerName by remember { mutableStateOf("Walk-in Customer") }
-    var selectedCustomerPhone by remember { mutableStateOf("") }
-    var showCustomerDialog by remember { mutableStateOf(false) }
-    var showDiscountDialog by remember { mutableStateOf(false) }
-
-    var completedOrderSummary by remember { mutableStateOf<JSONObject?>(null) }
-
-    // Dynamic color theme definitions matching pixel-perfect white mood image
-    val bgCanvas = if (isDarkMode) Color(0xFF090806) else Color(0xFFFFFFFF)
-    val cardBg = if (isDarkMode) Color(0xFF13100C) else Color(0xFFFFFFFF)
-    val cardBorder = if (isDarkMode) Color(0xFF2C2213) else Color(0xFFE2E8F0)
-    val primaryText = if (isDarkMode) Color.White else Color(0xFF0F172A)
-    val secondaryText = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF64748B)
-    val headerLabelColor = if (isDarkMode) Color(0xFFE5A93C) else Color(0xFF64748B)
-
-    val yellowPrimary = if (isDarkMode) Color(0xFFE5A93C) else Color(0xFFFFC800)
-    val yellowLightBg = if (isDarkMode) Color(0xFF2B200E) else Color(0xFFFFFBEB)
-    val stepperMinusBg = if (isDarkMode) Color(0xFF261F13) else Color(0xFFF8FAFC)
-    val discountRed = Color(0xFFDC2626)
-
-    val cartDisplayList = posCart
-
-    val totalItemCount = cartDisplayList.sumOf { it.quantity.toInt() }
-    val calculatedSubtotal = cartDisplayList.sumOf { it.sellingPrice * it.quantity }
-    var discountAmount by remember { mutableStateOf(0.0) }
-    val calculatedTotal = (calculatedSubtotal - discountAmount).coerceAtLeast(0.0)
-
-    androidx.activity.compose.BackHandler {
-        viewModel.navigateTo("Dashboard")
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bgCanvas)
-    ) {
-        Scaffold(
-            containerColor = bgCanvas,
-            topBar = {
-                GradientTopBar(
-                    title = "New Sale",
-                    subtitle = "Create new sale and add items",
-                    onBack = { viewModel.navigateTo("Dashboard") },
-                    actions = {
-                        TopHeaderActionPill(
-                            text = "Items ($totalItemCount)",
-                            icon = Icons.Outlined.ShoppingCart,
-                            onClick = { viewModel.navigateTo("SalesHistory") }
-                        )
-                        TopHeaderActionPill(
-                            text = "History",
-                            icon = Icons.Outlined.History,
-                            onClick = { viewModel.navigateTo("Sales") }
-                        )
-                    }
-                )
-            },
-            bottomBar = {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = cardBg,
-                    shadowElevation = 8.dp,
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                "TOTAL AMOUNT",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = secondaryText,
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                "৳ ${String.format("%,.2f", calculatedTotal)}",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = primaryText
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                viewModel.checkoutPosCart(
-                                    paymentType = checkoutPaymentType,
-                                    customerId = selectedCustomerId,
-                                    discount = discountAmount,
-                                    onSuccess = { orderId, totalAmt ->
-                                        val summaryObj = JSONObject().apply {
-                                            put("orderId", orderId)
-                                            put("totalAmount", totalAmt)
-                                            put("paymentType", checkoutPaymentType)
-                                            put("itemCount", totalItemCount)
-                                            put("discount", discountAmount)
-                                        }
-                                        completedOrderSummary = summaryObj
-                                    },
-                                    onError = { err ->
-                                        viewModel.logFirebaseStatus("POS Checkout error: $err")
-                                    }
-                                )
-                            },
-                            modifier = Modifier.height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
-                            contentPadding = PaddingValues(horizontal = 20.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text("Confirm Sale", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        ) { padding ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
-            ) {
-
-                // ── 1. SEARCH & SCAN INPUT ──────────────────────────────────────
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "SEARCH & SCAN INPUT",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = headerLabelColor,
-                            letterSpacing = 1.2.sp
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("Enter SKU / Product Name / Barcode", fontSize = 12.sp, color = secondaryText) },
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = secondaryText) },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = cardBg,
-                                    unfocusedContainerColor = cardBg,
-                                    focusedBorderColor = yellowPrimary,
-                                    unfocusedBorderColor = cardBorder,
-                                    focusedTextColor = primaryText,
-                                    unfocusedTextColor = primaryText
-                                ),
-                                singleLine = true
-                            )
-
-                            Button(
-                                onClick = { viewModel.navigateTo("QrScanner") },
-                                modifier = Modifier.height(52.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
-                                contentPadding = PaddingValues(horizontal = 16.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                                    Text("Scan QR", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── 2. CART ITEMS ──────────────────────────────────────────────
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "CART ITEMS ($totalItemCount)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = headerLabelColor,
-                            letterSpacing = 1.2.sp
-                        )
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = cardBg),
-                            border = BorderStroke(1.dp, cardBorder)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                cartDisplayList.forEachIndexed { index, item ->
-                                    if (index > 0) {
-                                        HorizontalDivider(color = cardBorder)
-                                    }
-
-                                    val itemImgUrl = if (item.productName.contains("Shirt", ignoreCase = true)) {
-                                        "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=400&q=80"
-                                    } else {
-                                        "https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=400&q=80"
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Product Image Thumbnail
-                                        Box(
-                                            modifier = Modifier
-                                                .size(64.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isDarkMode) Color(0xFF1E1911) else Color(0xFFF1F5F9))
-                                                .border(BorderStroke(1.dp, cardBorder), RoundedCornerShape(10.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (!itemImgUrl.isNullOrEmpty()) {
-                                                coil.compose.AsyncImage(
-                                                    model = itemImgUrl,
-                                                    contentDescription = item.productName,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.ShoppingBag,
-                                                    contentDescription = "Product Image",
-                                                    tint = primaryText.copy(alpha = 0.5f),
-                                                    modifier = Modifier.size(28.dp)
-                                                )
-                                            }
-                                        }
-
-                                        // Column Details + Stepper
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = item.productName,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = primaryText
-                                            )
-                                            Text(
-                                                text = item.variantName,
-                                                fontSize = 12.sp,
-                                                color = secondaryText
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = "৳ ${String.format("%,.2f", item.sellingPrice)}",
-                                                    fontSize = 13.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = primaryText
-                                                )
-
-                                                // Stepper
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(stepperMinusBg)
-                                                            .border(BorderStroke(1.dp, cardBorder), RoundedCornerShape(6.dp))
-                                                            .clickable {
-                                                                if (posCart.isNotEmpty()) {
-                                                                    viewModel.updatePosCartItemQuantity(item.variantId, item.quantity - 1.0)
-                                                                }
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text("-", color = primaryText, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                    }
-
-                                                    Text(
-                                                        text = "${item.quantity.toInt()}",
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = primaryText
-                                                    )
-
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(yellowLightBg)
-                                                            .border(BorderStroke(1.dp, yellowPrimary), RoundedCornerShape(6.dp))
-                                                            .clickable {
-                                                                if (posCart.isNotEmpty()) {
-                                                                    viewModel.updatePosCartItemQuantity(item.variantId, item.quantity + 1.0)
-                                                                }
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text("+", color = if (isDarkMode) yellowPrimary else Color(0xFFB45309), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                                    }
-                                                }
-
-                                                Text(
-                                                    text = "= ৳ ${String.format("%,.2f", item.sellingPrice * item.quantity)}",
-                                                    fontSize = 13.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = primaryText
-                                                )
-
-                                                Icon(
-                                                    Icons.Default.DeleteOutline,
-                                                    contentDescription = "Delete",
-                                                    tint = secondaryText,
-                                                    modifier = Modifier
-                                                        .size(20.dp)
-                                                        .clickable {
-                                                            if (posCart.isNotEmpty()) {
-                                                                viewModel.updatePosCartItemQuantity(item.variantId, 0.0)
-                                                            }
-                                                        }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── 3. CUSTOMER ASSIGNMENT ────────────────────────────────────
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "CUSTOMER ASSIGNMENT",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = headerLabelColor,
-                            letterSpacing = 1.2.sp
-                        )
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = cardBg),
-                            border = BorderStroke(1.dp, cardBorder)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isDarkMode) Color(0xFF231B0E) else Color(0xFF475569)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                                    }
-
-                                    Column {
-                                        Text(
-                                            text = "Customer: $selectedCustomerName",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = primaryText
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = selectedCustomerPhone,
-                                            fontSize = 12.sp,
-                                            color = secondaryText
-                                        )
-                                    }
-                                }
-
-                                Surface(
-                                    modifier = Modifier.clickable { showCustomerDialog = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = cardBg,
-                                    border = BorderStroke(1.dp, yellowPrimary)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text("Change", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryText)
-                                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = primaryText, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── 4. PAYMENT METHOD ──────────────────────────────────────────
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "PAYMENT METHOD",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = headerLabelColor,
-                            letterSpacing = 1.2.sp
-                        )
-
-                        val paymentMethods = listOf(
-                            Triple("Cash", "Cash\n(Collection)", Icons.Default.Money),
-                            Triple("MFS", "Mobile /\nMFS", Icons.Default.Smartphone),
-                            Triple("Card", "Card", Icons.Default.CreditCard),
-                            Triple("Inventory", "Inventory", Icons.Outlined.Inventory2)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            paymentMethods.forEach { (typeKey, label, icon) ->
-                                val isSelected = checkoutPaymentType == typeKey
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(84.dp)
-                                        .clickable {
-                                            if (typeKey == "Inventory") {
-                                                viewModel.navigateTo("Inventory")
-                                            } else {
-                                                checkoutPaymentType = typeKey
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isSelected) yellowLightBg else cardBg
-                                    ),
-                                    border = BorderStroke(1.5.dp, if (isSelected) yellowPrimary else cardBorder)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(6.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = null,
-                                                tint = primaryText,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = primaryText,
-                                                textAlign = TextAlign.Center,
-                                                lineHeight = 13.sp
-                                            )
-                                        }
-
-                                        if (isSelected) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .size(16.dp)
-                                                    .clip(CircleShape)
-                                                    .background(yellowPrimary),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ── 5. ORDER SUMMARY & CALCULATIONS ────────────────────────────
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "ORDER SUMMARY & CALCULATIONS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = headerLabelColor,
-                            letterSpacing = 1.2.sp
-                        )
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = cardBg),
-                            border = BorderStroke(1.dp, cardBorder)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Subtotal", fontSize = 13.sp, color = secondaryText)
-                                    Text("৳ ${String.format("%,.2f", calculatedSubtotal)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryText)
-                                }
-
-                                HorizontalDivider(color = cardBorder)
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Discount (Coupon)", fontSize = 13.sp, color = secondaryText)
-                                    Row(
-                                        modifier = Modifier.clickable { showDiscountDialog = true },
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text("- ৳ ${String.format("%.2f", discountAmount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = discountRed)
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit Discount", tint = discountRed, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Customer Selection Dialog
-        if (showCustomerDialog) {
-            EnterpriseGestureModal(
-                onDismissRequest = { showCustomerDialog = false },
-                title = "Select Customer",
-                subtitle = "Swipe down or drag handle to dismiss",
-                icon = Icons.Default.Person
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    customers.forEach { cust ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedCustomerId = cust.id
-                                    selectedCustomerName = cust.name
-                                    selectedCustomerPhone = cust.phone
-                                    showCustomerDialog = false
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = bgCanvas,
-                            border = BorderStroke(1.dp, cardBorder)
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(cust.name, color = primaryText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text(cust.phone, color = secondaryText, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Discount Edit Dialog
-        if (showDiscountDialog) {
-            var tempDiscountText by remember { mutableStateOf(discountAmount.toString()) }
-            EnterpriseGestureModal(
-                onDismissRequest = { showDiscountDialog = false },
-                title = "Set Discount Amount",
-                subtitle = "Swipe down or drag handle to dismiss",
-                icon = Icons.Default.LocalOffer
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = tempDiscountText,
-                        onValueChange = { tempDiscountText = it },
-                        label = { Text("Discount (৳)", color = secondaryText) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = primaryText,
-                            unfocusedTextColor = primaryText,
-                            focusedBorderColor = yellowPrimary,
-                            unfocusedBorderColor = cardBorder
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            discountAmount = tempDiscountText.toDoubleOrNull() ?: discountAmount
-                            showDiscountDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Save", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-                }
-            }
-        }
-
-        // Completed Order Modal
-        if (completedOrderSummary != null) {
-            val json = completedOrderSummary!!
-            val orderId = json.optString("orderId")
-            val totalAmt = json.optDouble("totalAmount")
-            val payType = json.optString("paymentType")
-            val discount = json.optDouble("discount")
-
-            EnterpriseGestureModal(
-                onDismissRequest = { completedOrderSummary = null },
-                title = "Receipt / Invoice Generated",
-                subtitle = "Swipe down or drag handle to dismiss",
-                icon = Icons.Default.Receipt
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Invoice ID: #$orderId", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = primaryText)
-                    Text("Payment Method: $payType", fontSize = 12.sp, color = primaryText)
-                    Text("Total Discount: ৳${String.format("%.2f", discount)}", fontSize = 12.sp, color = discountRed)
-                    HorizontalDivider(color = cardBorder)
-                    Text("Net Paid: ৳${String.format("%,.2f", totalAmt)} BDT", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = primaryText)
-                    Text("Stock items auto-deducted from inventory.", fontSize = 11.sp, color = secondaryText)
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.clearPosCart()
-                            completedOrderSummary = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Start New Sale", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-                }
-            }
-        }
-    }
-}
+// NOTE: PosCheckoutScreen is now modularized into PosCheckoutScreen.kt to stay within JVM 64KB bytecode limits.
 
 @Composable
 fun YouTubeVideoGuidelineCard(
