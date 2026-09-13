@@ -1900,7 +1900,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val finalUid = merchantIdFromBackend ?: "m_${providerTag}_${cleanEmail.hashCode().toString().replace("-", "").take(16)}"
                 val finalToken = tokenFromBackend ?: "sp_${java.util.UUID.randomUUID().toString().replace("-", "")}"
 
-                saveEncryptedSessionToken(cleanEmail, finalUid, "$providerName (Supabase Cloud Auth)")
+                saveEncryptedSessionToken(cleanEmail, finalUid, "$providerName (Secure Auth)")
                 setUserEmail(cleanEmail)
 
                 val existing = _activeProfile.value

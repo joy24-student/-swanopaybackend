@@ -3629,7 +3629,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                             modifier = Modifier.padding(bottom = 6.dp)
                         )
 
-                        // Supabase In-App Auth Connection Status Indicator
+                        // Secure Connection Status Indicator
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -3645,7 +3645,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                                     .background(SuccessGreen)
                             )
                             Text(
-                                text = "Supabase Cloud In-App Auth (সুরক্ষিত)",
+                                text = "এন্ড-টু-এন্ড এনক্রিপ্টেড ও সুরক্ষিত",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = SuccessGreen
@@ -4023,38 +4023,6 @@ fun LoginScreen(viewModel: AppViewModel) {
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // One-time merchant database setup entry point
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isDarkMode) Color(0xFF221C11) else Color(0xFFFFFBEB))
-                                .border(1.dp, if (isDarkMode) goldAccent.copy(alpha = 0.8f) else Color(0xFFFDE68A), RoundedCornerShape(12.dp))
-                                .clickable { viewModel.navigateTo("Onboarding") },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Text(
-                                    text = "One-time Merchant Setup",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = goldAccent
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.Default.ArrowForward,
-                                    contentDescription = null,
-                                    tint = goldAccent,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
                     }
                 }
 
@@ -4306,45 +4274,14 @@ fun LoginScreen(viewModel: AppViewModel) {
             val providerColor = if (isGoogle) Color(0xFF4285F4) else Color(0xFF1877F2)
             val providerName = if (isGoogle) "Google" else "Facebook"
 
-            // Discover real device Google accounts without launching external browser
-            val detectedAccounts = remember(provider) {
-                if (isGoogle) {
-                    try {
-                        val am = android.accounts.AccountManager.get(context)
-                        am.getAccountsByType("com.google").map { it.name }.filter { it.contains("@") }
-                    } catch (e: Exception) {
-                        emptyList<String>()
-                    }
-                } else {
-                    emptyList<String>()
-                }
-            }
-
-            var selectedAccountEmail by remember(provider) {
-                mutableStateOf(detectedAccounts.firstOrNull() ?: "")
-            }
-            var isUsingCustomEmail by remember(provider) {
-                mutableStateOf(detectedAccounts.isEmpty())
-            }
-            var customEmailInput by remember(provider) {
-                mutableStateOf("")
-            }
-            var merchantBusinessName by remember(provider) {
-                mutableStateOf("")
-            }
-            var socialValidationError by remember(provider) {
-                mutableStateOf<String?>(null)
-            }
             val isAuthenticatingSocial by viewModel.isAuthenticating.collectAsState()
             val socialAuthError by viewModel.authError.collectAsState()
 
-            // Tab 0 = Official Supabase OAuth In-App WebView, Tab 1 = 1-Tap Device Account
-            var selectedAuthMode by remember(provider) { mutableStateOf(0) }
             var webProgress by remember(provider) { mutableStateOf(0f) }
             var isWebLoading by remember(provider) { mutableStateOf(true) }
             var webViewRef by remember(provider) { mutableStateOf<android.webkit.WebView?>(null) }
 
-            val supabaseBaseUrl = remember {
+            val authBaseUrl = remember {
                 val p = viewModel.activeSupabaseProfile.value
                 if (p != null && p.supabaseUrl.isNotBlank() && !p.supabaseUrl.contains("swapnopay.supabase.co")) {
                     p.supabaseUrl.trimEnd('/')
@@ -4352,11 +4289,11 @@ fun LoginScreen(viewModel: AppViewModel) {
                     "https://tldubojeokgyoclxnzkb.supabase.co"
                 }
             }
-            val oauthAuthorizeUrl = remember(provider, supabaseBaseUrl) {
-                "$supabaseBaseUrl/auth/v1/authorize?provider=$provider&redirect_to=swapnopay://auth-callback"
+            val oauthAuthorizeUrl = remember(provider, authBaseUrl) {
+                "$authBaseUrl/auth/v1/authorize?provider=$provider&redirect_to=swapnopay://auth-callback"
             }
 
-            androidx.activity.compose.BackHandler(enabled = selectedAuthMode == 0 && webViewRef?.canGoBack() == true) {
+            androidx.activity.compose.BackHandler(enabled = webViewRef?.canGoBack() == true) {
                 webViewRef?.goBack()
             }
 
@@ -4377,7 +4314,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                     }
                 },
                 title = providerTitle,
-                subtitle = "অফিসিয়াল Supabase ইন-অ্যাপ অথেন্টিকেশন (ব্রাউজার মুক্ত)",
+                subtitle = "সরাসরি এবং নিরাপদ ইন-অ্যাপ সাইন ইন",
                 icon = if (isGoogle) Icons.Default.AccountCircle else Icons.Default.Public
             ) {
                 Column(
@@ -4387,75 +4324,8 @@ fun LoginScreen(viewModel: AppViewModel) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Segmented Tabs: "Supabase Web OAuth" vs "1-Tap Device Login"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isDarkMode) Color(0xFF1B1924) else Color(0xFFE2E8F0))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selectedAuthMode == 0) providerColor else Color.Transparent)
-                                .clickable { selectedAuthMode = 0 }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Language,
-                                    contentDescription = null,
-                                    tint = if (selectedAuthMode == 0) Color.White else textSub,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = "Supabase OAuth",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedAuthMode == 0) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (selectedAuthMode == 0) Color.White else textSub
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selectedAuthMode == 1) providerColor else Color.Transparent)
-                                .clickable { selectedAuthMode = 1 }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Fingerprint,
-                                    contentDescription = null,
-                                    tint = if (selectedAuthMode == 1) Color.White else textSub,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = "১-ট্যাপ একাউন্ট",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedAuthMode == 1) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (selectedAuthMode == 1) Color.White else textSub
-                                )
-                            }
-                        }
-                    }
-
                     // Error Alert Banner
-                    val activeError = socialValidationError ?: socialAuthError
-                    if (!activeError.isNullOrBlank()) {
+                    if (!socialAuthError.isNullOrBlank()) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D).copy(alpha = 0.8f)),
                             border = BorderStroke(1.dp, Color(0xFFEF4444)),
@@ -4469,7 +4339,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                             ) {
                                 Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFFCA5A5), modifier = Modifier.size(16.dp))
                                 Text(
-                                    text = activeError,
+                                    text = socialAuthError ?: "",
                                     color = Color(0xFFFEE2E2),
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
@@ -4478,435 +4348,201 @@ fun LoginScreen(viewModel: AppViewModel) {
                         }
                     }
 
-                    // Tab 0: Official Supabase OAuth In-App Embedded WebView
-                    if (selectedAuthMode == 0) {
-                        Column(
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Mini Status Toolbar
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Mini Status Toolbar
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(SuccessGreen)
-                                    )
-                                    Text(
-                                        text = "Supabase Cloud • জিরো-ব্রাউজার অথেন্টিকেশন",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
-                                    )
-                                }
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            if (webViewRef?.canGoBack() == true) {
-                                                webViewRef?.goBack()
-                                            }
-                                        },
-                                        enabled = webViewRef?.canGoBack() == true,
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.ArrowBack,
-                                            contentDescription = "Back",
-                                            tint = if (webViewRef?.canGoBack() == true) goldAccent else textSub.copy(alpha = 0.3f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-
-                                    IconButton(
-                                        onClick = {
-                                            webViewRef?.reload()
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription = "Reload",
-                                            tint = goldAccent,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Animated Loading Bar
-                            if (isWebLoading) {
-                                LinearProgressIndicator(
-                                    progress = { webProgress },
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(3.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = providerColor,
-                                    trackColor = providerColor.copy(alpha = 0.2f)
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(SuccessGreen)
+                                )
+                                Text(
+                                    text = "সুরক্ষিত ইন-অ্যাপ সাইন ইন সংযোগ",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
                                 )
                             }
 
-                            // Embedded WebView Container
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(490.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, borderGold.copy(alpha = 0.6f)),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isDarkMode) Color(0xFF121017) else Color(0xFFFFFFFF)
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                AndroidView(
-                                    factory = { ctx ->
-                                        android.webkit.WebView(ctx).apply {
-                                            webViewRef = this
-                                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                            )
-                                            settings.apply {
-                                                javaScriptEnabled = true
-                                                domStorageEnabled = true
-                                                databaseEnabled = true
-                                                loadWithOverviewMode = true
-                                                useWideViewPort = true
-                                                setSupportMultipleWindows(false)
-                                                javaScriptCanOpenWindowsAutomatically = true
-                                                // High-compatibility Chrome Mobile UserAgent to prevent Google OAuth WebView block
-                                                userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-                                            }
-
-                                            webChromeClient = object : android.webkit.WebChromeClient() {
-                                                override fun onProgressChanged(view: android.webkit.WebView?, newProgress: Int) {
-                                                    webProgress = newProgress / 100f
-                                                    isWebLoading = newProgress < 100
-                                                }
-                                            }
-
-                                            val interceptDeepLink: (String) -> Boolean = { targetUrlStr ->
-                                                if (targetUrlStr.startsWith("swapnopay://auth-callback") ||
-                                                    targetUrlStr.startsWith("lenden23://auth-callback") ||
-                                                    targetUrlStr.startsWith("swapnopay://") ||
-                                                    targetUrlStr.startsWith("lenden23://")) {
-                                                    try {
-                                                        val parsedUri = android.net.Uri.parse(targetUrlStr)
-                                                        viewModel.handleAuthDeepLink(parsedUri)
-                                                    } catch (e: Exception) {
-                                                        android.util.Log.e("SupabaseOAuth", "Failed parsing auth redirect: ${e.message}")
-                                                    }
-                                                    socialAuthModalProvider = null
-                                                    true
-                                                } else {
-                                                    false
-                                                }
-                                            }
-
-                                            webViewClient = object : android.webkit.WebViewClient() {
-                                                override fun shouldOverrideUrlLoading(
-                                                    view: android.webkit.WebView?,
-                                                    request: android.webkit.WebResourceRequest?
-                                                ): Boolean {
-                                                    val u = request?.url?.toString() ?: return false
-                                                    return interceptDeepLink(u)
-                                                }
-
-                                                @Deprecated("Deprecated in Java")
-                                                override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, url: String?): Boolean {
-                                                    if (url == null) return false
-                                                    return interceptDeepLink(url)
-                                                }
-
-                                                override fun onPageStarted(view: android.webkit.WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                                                    super.onPageStarted(view, url, favicon)
-                                                    if (url != null && interceptDeepLink(url)) {
-                                                        view?.stopLoading()
-                                                    }
-                                                }
-
-                                                override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                                                    super.onPageFinished(view, url)
-                                                    isWebLoading = false
-                                                    if (url != null) {
-                                                        interceptDeepLink(url)
-                                                    }
-                                                }
-
-                                                override fun onReceivedError(
-                                                    view: android.webkit.WebView?,
-                                                    request: android.webkit.WebResourceRequest?,
-                                                    error: android.webkit.WebResourceError?
-                                                ) {
-                                                    val failing = request?.url?.toString().orEmpty()
-                                                    if (failing.startsWith("swapnopay://") || failing.startsWith("lenden23://")) {
-                                                        interceptDeepLink(failing)
-                                                    }
-                                                }
-                                            }
-
-                                            loadUrl(oauthAuthorizeUrl)
+                                IconButton(
+                                    onClick = {
+                                        if (webViewRef?.canGoBack() == true) {
+                                            webViewRef?.goBack()
                                         }
                                     },
-                                    update = { webView ->
-                                        webViewRef = webView
-                                    },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
-                            Text(
-                                text = "লগইন সম্পন্ন হলে পেজটি স্বয়ংক্রিয়ভাবে বন্ধ হবে এবং আপনার একাউন্ট Supabase এ সংরক্ষিত হবে।",
-                                fontSize = 11.sp,
-                                color = textSub,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp)
-                            )
-                        }
-                    }
-
-                    // Tab 1: 1-Tap Device Account / Custom Email
-                    if (selectedAuthMode == 1) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Device Account Selection (if Google accounts discovered)
-                            if (isGoogle && detectedAccounts.isNotEmpty()) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    enabled = webViewRef?.canGoBack() == true,
+                                    modifier = Modifier.size(28.dp)
                                 ) {
-                                    Text(
-                                        text = "ডিভাইসের Google অ্যাকাউন্ট নির্বাচন করুন:",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isDarkMode) Color(0xFFCBD5E1) else Color(0xFF334155)
+                                    Icon(
+                                        Icons.Default.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = if (webViewRef?.canGoBack() == true) goldAccent else textSub.copy(alpha = 0.3f),
+                                        modifier = Modifier.size(16.dp)
                                     )
-
-                                    detectedAccounts.forEach { accEmail ->
-                                        val isSelected = !isUsingCustomEmail && selectedAccountEmail == accEmail
-                                        Card(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    selectedAccountEmail = accEmail
-                                                    isUsingCustomEmail = false
-                                                    socialValidationError = null
-                                                },
-                                            shape = RoundedCornerShape(12.dp),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) providerColor.copy(alpha = 0.12f)
-                                                else if (isDarkMode) Color(0xFF1B1812) else Color(0xFFFFFFFF)
-                                            ),
-                                            border = BorderStroke(
-                                                width = if (isSelected) 1.5.dp else 1.dp,
-                                                color = if (isSelected) providerColor else borderGold.copy(alpha = 0.5f)
-                                            )
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(32.dp)
-                                                        .clip(CircleShape)
-                                                        .background(providerColor.copy(alpha = 0.15f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = accEmail.firstOrNull()?.uppercase() ?: "G",
-                                                        color = providerColor,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 14.sp
-                                                    )
-                                                }
-
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = accEmail,
-                                                        fontSize = 13.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                                    )
-                                                    Text(
-                                                        text = "ডিভাইস ভেরিফাইড একাউন্ট",
-                                                        fontSize = 10.5.sp,
-                                                        color = if (isSelected) providerColor else textSub
-                                                    )
-                                                }
-
-                                                if (isSelected) {
-                                                    Icon(
-                                                        Icons.Default.CheckCircle,
-                                                        contentDescription = "Selected",
-                                                        tint = providerColor,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Toggle custom email
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                isUsingCustomEmail = !isUsingCustomEmail
-                                                socialValidationError = null
-                                            }
-                                            .padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            if (isUsingCustomEmail) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
-                                            contentDescription = null,
-                                            tint = if (isUsingCustomEmail) providerColor else textSub,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "অন্য ইমেইল দিয়ে লগইন করতে চান?",
-                                            fontSize = 12.sp,
-                                            color = if (isUsingCustomEmail) providerColor else textSub,
-                                            fontWeight = if (isUsingCustomEmail) FontWeight.SemiBold else FontWeight.Normal
-                                        )
-                                    }
                                 }
-                            }
 
-                            // Custom Email Input (if no accounts discovered or custom toggled or Facebook)
-                            if (isUsingCustomEmail || detectedAccounts.isEmpty() || !isGoogle) {
-                                OutlinedTextField(
-                                    value = customEmailInput,
-                                    onValueChange = {
-                                        customEmailInput = it
-                                        socialValidationError = null
+                                IconButton(
+                                    onClick = {
+                                        webViewRef?.reload()
                                     },
-                                    label = { Text(if (isGoogle) "Google ইমেইল ঠিকানা" else "Facebook ইমেইল বা ফোন") },
-                                    placeholder = { Text(if (isGoogle) "merchant@gmail.com" else "user@facebook.com") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Email, contentDescription = null, tint = providerColor)
-                                    },
-                                    singleLine = true,
-                                    enabled = !isAuthenticatingSocial,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = providerColor,
-                                        unfocusedBorderColor = borderGold,
-                                        focusedTextColor = if (isDarkMode) Color.White else Color(0xFF0F172A),
-                                        unfocusedTextColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-
-                            // Merchant Business Name Input
-                            OutlinedTextField(
-                                value = merchantBusinessName,
-                                onValueChange = { merchantBusinessName = it },
-                                label = { Text("দোকান বা মার্চেন্ট নাম (ঐচ্ছিক)") },
-                                placeholder = { Text(if (isGoogle) "যেমন: স্বপন ডিজিটাল স্টোর" else "যেমন: স্বপন জেনারেল শপ") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Storefront, contentDescription = null, tint = goldAccent)
-                                },
-                                singleLine = true,
-                                enabled = !isAuthenticatingSocial,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = goldAccent,
-                                    unfocusedBorderColor = borderGold,
-                                    focusedTextColor = if (isDarkMode) Color.White else Color(0xFF0F172A),
-                                    unfocusedTextColor = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            // 1-Tap Sign In Button
-                            Button(
-                                onClick = {
-                                    val finalEmail = (if (isUsingCustomEmail || detectedAccounts.isEmpty() || !isGoogle) {
-                                        customEmailInput
-                                    } else {
-                                        selectedAccountEmail
-                                    }).trim()
-
-                                    if (finalEmail.isBlank() || !finalEmail.contains("@")) {
-                                        socialValidationError = "অনুগ্রহ করে একটি সঠিক ইমেইল প্রদান করুন"
-                                        return@Button
-                                    }
-
-                                    val finalName = merchantBusinessName.trim().ifBlank {
-                                        if (isGoogle) "Google Merchant" else "Facebook Merchant"
-                                    }
-
-                                    viewModel.performProductionSocialLogin(
-                                        context = context,
-                                        provider = provider,
-                                        email = finalEmail,
-                                        name = finalName
-                                    ) {
-                                        socialAuthModalProvider = null
-                                        val isBiometricLocked = viewModel.isBiometricLocked.value
-                                        val isOnboarded = viewModel.isOnboarded()
-                                        if (!isOnboarded) {
-                                            viewModel.navigateTo("Onboarding")
-                                        } else if (isBiometricLocked) {
-                                            viewModel.navigateTo("LockScreen")
-                                        } else {
-                                            viewModel.navigateTo("Main")
-                                        }
-                                    }
-                                },
-                                enabled = !isAuthenticatingSocial,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = providerColor)
-                            ) {
-                                if (isAuthenticatingSocial) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                        Text("নিরাপদ সাইন ইন হচ্ছে...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    }
-                                } else {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(Icons.Default.Fingerprint, contentDescription = null, tint = Color.White)
-                                        Text(
-                                            text = "১-ট্যাপে সরাসরি সাইন ইন করুন",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = "Reload",
+                                        tint = goldAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         }
+
+                        // Animated Loading Bar
+                        if (isWebLoading) {
+                            LinearProgressIndicator(
+                                progress = { webProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = providerColor,
+                                trackColor = providerColor.copy(alpha = 0.2f)
+                            )
+                        }
+
+                        // Embedded WebView Container
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(490.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, borderGold.copy(alpha = 0.6f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDarkMode) Color(0xFF121017) else Color(0xFFFFFFFF)
+                            )
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    android.webkit.WebView(ctx).apply {
+                                        webViewRef = this
+                                        layoutParams = android.view.ViewGroup.LayoutParams(
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        settings.apply {
+                                            javaScriptEnabled = true
+                                            domStorageEnabled = true
+                                            databaseEnabled = true
+                                            loadWithOverviewMode = true
+                                            useWideViewPort = true
+                                            setSupportMultipleWindows(false)
+                                            javaScriptCanOpenWindowsAutomatically = true
+                                            // High-compatibility Chrome Mobile UserAgent to prevent Google OAuth WebView block
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                                        }
+
+                                        webChromeClient = object : android.webkit.WebChromeClient() {
+                                            override fun onProgressChanged(view: android.webkit.WebView?, newProgress: Int) {
+                                                webProgress = newProgress / 100f
+                                                isWebLoading = newProgress < 100
+                                            }
+                                        }
+
+                                        val interceptDeepLink: (String) -> Boolean = { targetUrlStr ->
+                                            if (targetUrlStr.startsWith("swapnopay://auth-callback") ||
+                                                targetUrlStr.startsWith("lenden23://auth-callback") ||
+                                                targetUrlStr.startsWith("swapnopay://") ||
+                                                targetUrlStr.startsWith("lenden23://")) {
+                                                try {
+                                                    val parsedUri = android.net.Uri.parse(targetUrlStr)
+                                                    viewModel.handleAuthDeepLink(parsedUri)
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("OAuth", "Failed parsing auth redirect: ${e.message}")
+                                                }
+                                                socialAuthModalProvider = null
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        }
+
+                                        webViewClient = object : android.webkit.WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(
+                                                view: android.webkit.WebView?,
+                                                request: android.webkit.WebResourceRequest?
+                                            ): Boolean {
+                                                val u = request?.url?.toString() ?: return false
+                                                return interceptDeepLink(u)
+                                            }
+
+                                            @Deprecated("Deprecated in Java")
+                                            override fun shouldOverrideUrlLoading(view: android.webkit.WebView?, url: String?): Boolean {
+                                                if (url == null) return false
+                                                return interceptDeepLink(url)
+                                            }
+
+                                            override fun onPageStarted(view: android.webkit.WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                                super.onPageStarted(view, url, favicon)
+                                                if (url != null && interceptDeepLink(url)) {
+                                                    view?.stopLoading()
+                                                }
+                                            }
+
+                                            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                isWebLoading = false
+                                                if (url != null) {
+                                                    interceptDeepLink(url)
+                                                }
+                                            }
+
+                                            override fun onReceivedError(
+                                                view: android.webkit.WebView?,
+                                                request: android.webkit.WebResourceRequest?,
+                                                error: android.webkit.WebResourceError?
+                                            ) {
+                                                val failing = request?.url?.toString().orEmpty()
+                                                if (failing.startsWith("swapnopay://") || failing.startsWith("lenden23://")) {
+                                                    interceptDeepLink(failing)
+                                                }
+                                            }
+                                        }
+
+                                        loadUrl(oauthAuthorizeUrl)
+                                    }
+                                },
+                                update = { webView ->
+                                    webViewRef = webView
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        Text(
+                            text = "সাইন ইন সম্পন্ন হলে পেজটি স্বয়ংক্রিয়ভাবে নিশ্চিত হয়ে বন্ধ হবে।",
+                            fontSize = 11.sp,
+                            color = textSub,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                        )
                     }
 
                     // Cancel button
