@@ -40,7 +40,14 @@ class SmsMonitoringService : Service() {
         startSmsReceiver()
         repository.startSmsQueueAutoRetry(scope)
         startHeartbeatLoop()
-        Log.d("SmsMonitoringService", "Service created, foreground notification active, and SMS monitoring initialized.")
+
+        scope.launch {
+            val activeProfile = repository.getActiveSupabaseProfile()
+            val merchantId = activeProfile?.id ?: "00000000-0000-0000-0000-000000000001"
+            SmsGatewayEngine.startOutboxQueueProcessor(applicationContext, merchantId)
+        }
+
+        Log.d("SmsMonitoringService", "Service created, foreground notification active, and SMS monitoring/gateway initialized.")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -163,6 +170,10 @@ class SmsMonitoringService : Service() {
                     val batteryPct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
 
                     repository.sendDeviceHeartbeat(applicationContext, batteryPct)
+
+                    val p = repository.getActiveSupabaseProfile()
+                    val mId = p?.id ?: "00000000-0000-0000-0000-000000000001"
+                    SmsGatewayEngine.syncExternalGatewayJobs(applicationContext, mId, "")
                 } catch (e: Exception) {
                     Log.w("SmsMonitoringService", "Periodic device heartbeat error: ${e.message}")
                 }
@@ -178,6 +189,7 @@ class SmsMonitoringService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        SmsGatewayEngine.stopOutboxQueueProcessor()
         smsReceiver?.let {
             try {
                 unregisterReceiver(it)
@@ -186,6 +198,6 @@ class SmsMonitoringService : Service() {
             }
         }
         job.cancel()
-        Log.d("SmsMonitoringService", "Service stopped and SMS receiver unregistered.")
+        Log.d("SmsMonitoringService", "Service stopped, outbox dispatcher stopped, and SMS receiver unregistered.")
     }
 }

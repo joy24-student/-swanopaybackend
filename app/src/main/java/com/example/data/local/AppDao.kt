@@ -657,4 +657,35 @@ interface AppDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFormSubmissionCaches(submissions: List<FormSubmissionCacheEntity>)
+
+    // Outbox SMS (Campaigns, Due Reminders, Gateway OTP & Custom SMS)
+    @Query("SELECT * FROM outbox_sms WHERE merchantId = :merchantId ORDER BY createdAt DESC")
+    fun observeOutboxSms(merchantId: String): Flow<List<OutboxSmsEntity>>
+
+    @Query("SELECT * FROM outbox_sms WHERE merchantId = :merchantId AND status = 'QUEUED' ORDER BY createdAt ASC LIMIT :limit")
+    suspend fun getPendingOutboxSms(merchantId: String, limit: Int = 50): List<OutboxSmsEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOutboxSms(sms: OutboxSmsEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOutboxSmsList(smsList: List<OutboxSmsEntity>): List<Long>
+
+    @Query("UPDATE outbox_sms SET status = :status, sentAt = :sentAt, errorMessage = :errorMessage WHERE id = :id")
+    suspend fun updateOutboxSmsStatus(id: String, status: String, sentAt: Long? = null, errorMessage: String? = null): Int
+
+    @Query("DELETE FROM outbox_sms WHERE id = :id")
+    suspend fun deleteOutboxSms(id: String): Int
+
+    @Query("DELETE FROM outbox_sms WHERE merchantId = :merchantId")
+    suspend fun clearOutboxSms(merchantId: String): Int
+
+    @Query("SELECT * FROM customers WHERE merchantId = :merchantId AND currentBalance > 0 ORDER BY currentBalance DESC")
+    fun observeCustomersWithDue(merchantId: String): Flow<List<CustomerEntity>>
+
+    @Query("SELECT * FROM customers WHERE merchantId = :merchantId AND currentBalance > 0 ORDER BY currentBalance DESC")
+    suspend fun getCustomersWithDue(merchantId: String): List<CustomerEntity>
+
+    @Query("SELECT * FROM customers WHERE merchantId = :merchantId ORDER BY name ASC")
+    suspend fun getAllCustomersList(merchantId: String): List<CustomerEntity>
 }

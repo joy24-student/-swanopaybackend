@@ -123,6 +123,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
                 title = { Column { Text("Ledger Book", fontWeight = FontWeight.Bold); Text("Tenant-isolated account statement", fontSize = 11.sp, color = muted) } },
                 navigationIcon = { IconButton(onClick = viewModel::goBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = {
+                    IconButton(onClick = { viewModel.navigateTo("SmsGateway") }) { Icon(Icons.Default.Sms, "SMS Due Reminder") }
                     IconButton(onClick = { viewModel.triggerSync() }) { Icon(Icons.Default.Sync, "Sync") }
                     IconButton(
                         onClick = { exportLauncher.launch("${tab.lowercase()}-ledger-${ledgerIso(System.currentTimeMillis())}.csv") },

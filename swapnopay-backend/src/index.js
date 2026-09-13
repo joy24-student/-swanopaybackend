@@ -21,6 +21,7 @@ import { keysRouter } from './routes/keys.js'
 import shopRouter from './routes/shop.js'
 import { kycRouter } from './routes/kyc.js'
 import oauthRouter from './routes/oauth.js'
+import { smsGatewayRouter } from './routes/smsGateway.js'
 import { startShopWorker } from './services/shopService.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -290,6 +291,9 @@ app.use('/v1/kyc', kycRouter)
 // Supabase OAuth 2.0 control plane routes
 app.use('/v1/oauth', oauthRouter)
 app.use('/functions/v1', oauthRouter)
+
+// Enterprise SMS Gateway & OTP Verification API
+app.use('/v1/sms-gateway', smsGatewayRouter(io, merchantHeartbeatMap))
 
 // 404
 app.use((_req, res) => {

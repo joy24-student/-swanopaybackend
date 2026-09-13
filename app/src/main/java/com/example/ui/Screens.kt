@@ -1,4 +1,4 @@
-﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
@@ -894,6 +894,7 @@ fun AppNavigation(viewModel: AppViewModel) {
         "QrScanner", "QRScanner", "Scan", "ScanQr", "QrCodeScanner" -> QrScannerScreen(viewModel)
         "Devices", "DeviceManager", "DeviceStatus", "Hardware", "POSDevices" -> DeviceManagerScreen(viewModel)
         "LaunchWebsite", "WebShop", "ShopDeploy", "DeployWebsite", "WebStore" -> WebShopLaunchScreen(viewModel)
+        "SmsGateway", "SmsGatewayDashboard", "SimGateway", "AutoSms" -> SmsGatewayDashboardScreen(viewModel = viewModel, onNavigateBack = { viewModel.goBack() })
         else -> MainAppFrame(viewModel)
     }
 }
@@ -4488,7 +4489,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(490.dp),
+                                .height(520.dp),
                             shape = RoundedCornerShape(14.dp),
                             border = BorderStroke(1.dp, borderGold.copy(alpha = 0.6f)),
                             colors = CardDefaults.cardColors(
@@ -4511,8 +4512,8 @@ fun LoginScreen(viewModel: AppViewModel) {
                                             useWideViewPort = true
                                             setSupportMultipleWindows(false)
                                             javaScriptCanOpenWindowsAutomatically = true
-                                            // High-compatibility Chrome Mobile UserAgent to prevent Google OAuth WebView block
-                                            userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                                            // Desktop Chrome UserAgent prevents Google's "disallowed_useragent" WebView block
+                                            userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
                                         }
 
                                         webChromeClient = object : android.webkit.WebChromeClient() {
@@ -11143,6 +11144,7 @@ fun MoreScreen(viewModel: AppViewModel) {
                         AdminItemData("Gateway Management", "MFS accounts & routing", Icons.Outlined.PointOfSale, Color(0xFF3B82F6)) { viewModel.navigateTo("PaymentGatewaySettings") },
                         AdminItemData("Devices", "Printers, POS & Terminals", Icons.Outlined.Devices, Color(0xFF8B5CF6)) { viewModel.navigateTo("DeviceManager") },
                         AdminItemData("Backup & Restore", "Data backup settings", Icons.Outlined.Cloud, Color(0xFF0EA5E9)) { viewModel.navigateTo("BackupAndRestore") },
+                        AdminItemData("SIM SMS Gateway", "Auto due, marketing & OTP", Icons.Outlined.Sms, Color(0xFF10B981)) { viewModel.navigateTo("SmsGateway") },
                         AdminItemData("Developer Portal", "API keys, webhooks & docs", Icons.Outlined.Code, Color(0xFF6366F1)) { viewModel.navigateTo("DeveloperPortal") }
                     )
 
@@ -11959,7 +11961,64 @@ fun SettingsScreen(viewModel: AppViewModel) {
                     }
                 }
 
-
+                // SMS & OTP GATEWAY SECTION
+                item {
+                    Column {
+                        Text(
+                            text = t("SMS & OTP GATEWAY", languageState),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = secondaryText,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                        Card(
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            border = BorderStroke(1.dp, cardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.navigateTo("SmsGateway") }
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        GradientIcon(
+                                            icon = Icons.Outlined.Sms,
+                                            gradient = listOf(Color(0xFF10B981), Color(0xFF059669)),
+                                            size = 36.dp,
+                                            iconSize = 18.dp,
+                                            cornerRadius = 10.dp
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "সিম এসএমএস ও ওটিপি গেটওয়ে",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = primaryText
+                                            )
+                                            Text(
+                                                text = "অটো বাকি তাগাদা, মার্কেটিং ও এপিআই সেটিংস",
+                                                fontSize = 11.sp,
+                                                color = secondaryText
+                                            )
+                                        }
+                                    }
+                                    Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = secondaryText, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // APP VERSION FOOTER
                 item {
@@ -15777,6 +15836,7 @@ fun DashboardScreen(viewModel: AppViewModel) {
             QuickActionItem("Digital Pay", Icons.Outlined.CreditCard, "PaymentMethods", goldBg, "বিকাশ, নগদ ও গেটওয়ে পেমেন্ট"),
             QuickActionItem("Sales Log", Icons.Outlined.ReceiptLong, "Sales", goldBg, "পূর্ববর্তী বিক্রয়ের বিস্তারিত তালিকা"),
             QuickActionItem("SMS Logs", Icons.Outlined.Sms, "SMSLogs", goldBg, "লেনদেন এসএমএস ও নোটিফিকেশন"),
+            QuickActionItem("SMS Gateway", Icons.Outlined.Sms, "SmsGateway", goldBg, "সিম গেটওয়ে, বাকি তাগাদা ও ওটিপি"),
             QuickActionItem("Cloud Sync", Icons.Default.CloudSync, "Backup", goldBg, "অনলাইন ব্যাকআপ ও ক্লাউড সিঙ্ক"),
             QuickActionItem("Web Shop", Icons.Outlined.Storefront, "LaunchWebsite", goldBg, "অনলাইন ই-কমার্স শপ লঞ্চ"),
             QuickActionItem("POS Devices", Icons.Outlined.Devices, "Devices", goldBg, "প্রিন্টার ও পিওএস হার্ডওয়্যার"),

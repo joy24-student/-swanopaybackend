@@ -33,9 +33,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EmployeeEntity::class,
         MerchantNumberEntity::class,
         PaymentFormCacheEntity::class,
-        FormSubmissionCacheEntity::class
+        FormSubmissionCacheEntity::class,
+        OutboxSmsEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -144,6 +145,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `outbox_sms` (`id` TEXT NOT NULL, `merchantId` TEXT NOT NULL, `recipientPhone` TEXT NOT NULL, `messageText` TEXT NOT NULL, `smsType` TEXT NOT NULL, `simSlot` INTEGER NOT NULL, `status` TEXT NOT NULL, `externalJobId` TEXT, `customerId` TEXT, `errorMessage` TEXT, `partsCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `sentAt` INTEGER, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_outbox_sms_merchantId` ON `outbox_sms` (`merchantId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_outbox_sms_status` ON `outbox_sms` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_outbox_sms_createdAt` ON `outbox_sms` (`createdAt`)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -151,7 +161,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "swapnopay_database"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

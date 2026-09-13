@@ -389,3 +389,21 @@ data class FormSubmissionCacheEntity(
     val submittedAt: Long = System.currentTimeMillis(),
     val isDirty: Boolean = false
 )
+
+@Entity(tableName = "outbox_sms", indices = [Index("merchantId"), Index("status"), Index("createdAt")])
+data class OutboxSmsEntity(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val merchantId: String,
+    val recipientPhone: String,
+    val messageText: String,
+    val smsType: String = "DUE_REMINDER", // "DUE_REMINDER", "MARKETING", "SALES_RECEIPT", "GATEWAY_OTP", "GATEWAY_CUSTOM"
+    val simSlot: Int = 0, // 0 = Default, 1 = SIM 1, 2 = SIM 2
+    val status: String = "QUEUED", // "QUEUED", "SENDING", "SENT", "DELIVERED", "FAILED"
+    val externalJobId: String? = null,
+    val customerId: String? = null,
+    val errorMessage: String? = null,
+    val partsCount: Int = 1,
+    val createdAt: Long = System.currentTimeMillis(),
+    val sentAt: Long? = null
+)
+

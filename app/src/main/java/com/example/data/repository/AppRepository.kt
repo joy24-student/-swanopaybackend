@@ -1125,4 +1125,16 @@ class AppRepository(private val context: Context) {
         dao.upsertFormSubmissionCache(submission)
     suspend fun upsertFormSubmissionCaches(submissions: List<FormSubmissionCacheEntity>) =
         dao.upsertFormSubmissionCaches(submissions)
+
+    // Outbox SMS & Automated Due Campaigns
+    fun observeOutboxSms(merchantId: String): Flow<List<OutboxSmsEntity>> = dao.observeOutboxSms(merchantId)
+    fun observeCustomersWithDue(merchantId: String): Flow<List<CustomerEntity>> = dao.observeCustomersWithDue(merchantId)
+    suspend fun getCustomersWithDue(merchantId: String): List<CustomerEntity> = dao.getCustomersWithDue(merchantId)
+    suspend fun getAllCustomersList(merchantId: String): List<CustomerEntity> = dao.getAllCustomersList(merchantId)
+    suspend fun queueOutboxSms(sms: OutboxSmsEntity): Long = dao.insertOutboxSms(sms)
+    suspend fun queueOutboxSmsList(smsList: List<OutboxSmsEntity>): List<Long> = dao.insertOutboxSmsList(smsList)
+    suspend fun updateOutboxSmsStatus(id: String, status: String, sentAt: Long? = null, errorMessage: String? = null) =
+        dao.updateOutboxSmsStatus(id, status, sentAt, errorMessage)
+    suspend fun deleteOutboxSms(id: String): Int = dao.deleteOutboxSms(id)
+    suspend fun clearOutboxSms(merchantId: String): Int = dao.clearOutboxSms(merchantId)
 }

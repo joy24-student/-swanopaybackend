@@ -4999,13 +4999,283 @@ function executePayment() {
     }
 
     fun testSendSmsNotification(phoneStr: String, onResult: (String) -> Unit) {
-
         if (!phoneStr.replace(" ", "").matches(Regex("^\\+?[0-9]{10,15}$"))) {
             onResult("Enter a valid notification phone number")
             return
         }
-        refreshGatewayReceiptHealth()
-        onResult("SMS delivery is server-managed. Receipt worker health verification started; no synthetic message was sent.")
+        sendQuickCustomSms(listOf(phoneStr), "SwapnoPay Test SMS Verification") { success, msg ->
+            onResult(if (success) "✅ $msg" else "❌ $msg")
+        }
+    }
+
+    // ── Enterprise SMS Gateway & Campaign State ──
+    private val _gatewayApiKey = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getString("api_key", null) ?: "sp_gw_${java.util.UUID.randomUUID().toString().replace("-", "").take(24)}".also {
+                getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+                    .edit().putString("api_key", it).apply()
+            }
+    )
+    val gatewayApiKey: StateFlow<String> = _gatewayApiKey.asStateFlow()
+
+    private val _isGatewayActive = MutableStateFlow(true)
+    val isGatewayActive: StateFlow<Boolean> = _isGatewayActive.asStateFlow()
+
+    private val _selectedSimSlot = MutableStateFlow(0)
+    val selectedSimSlot: StateFlow<Int> = _selectedSimSlot.asStateFlow()
+
+    private val _availableSimCards = MutableStateFlow<List<com.example.service.SimCardInfo>>(emptyList())
+    val availableSimCards: StateFlow<List<com.example.service.SimCardInfo>> = _availableSimCards.asStateFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val outboxSmsList: StateFlow<List<OutboxSmsEntity>> = activeProfile.flatMapLatest { profile ->
+        repository.observeOutboxSms(profile.id)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val customersWithDue: StateFlow<List<CustomerEntity>> = activeProfile.flatMapLatest { profile ->
+        repository.observeCustomersWithDue(profile.id)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val smsThrottleDelayMs = MutableStateFlow(2500L)
+    val autoPosReceiptSmsEnabled = MutableStateFlow(true)
+    val dueSmsTemplate = MutableStateFlow("প্রিয় {name}, {store}-এ আপনার বাকি {due} টাকা পরিশোধের অনুরোধ জানাচ্ছি। ধন্যবাদ।")
+    val marketingSmsTemplate = MutableStateFlow("সম্মানিত গ্রাহক {name}, {store}-এ নতুন অফার ও বিশেষ ডিসকাউন্টের জন্য ভিজিট করুন। ধন্যবাদ!")
+    val salesSmsTemplate = MutableStateFlow("ধন্যবাদ {name}! {store}-এ আপনার {amount} টাকার অর্ডার সম্পন্ন হয়েছে। ইনভয়েস: {invoice}।")
+
+    fun refreshSimCards() {
+        try {
+            val sims = com.example.service.SmsGatewayEngine.getAvailableSimCards(getApplication())
+            _availableSimCards.value = sims
+        } catch (_: Exception) {}
+    }
+
+    fun setSelectedSimSlot(slot: Int) {
+        _selectedSimSlot.value = slot
+    }
+
+    fun setGatewayActive(active: Boolean) {
+        _isGatewayActive.value = active
+    }
+
+    fun generateNewGatewayApiKey() {
+        val newKey = "sp_gw_${java.util.UUID.randomUUID().toString().replace("-", "").take(24)}"
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit().putString("api_key", newKey).apply()
+        _gatewayApiKey.value = newKey
+    }
+
+    fun sendDueReminderSms(
+        selectedCustomerIds: Set<String>? = null,
+        customTemplate: String? = null,
+        onResult: (Int, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val merchantId = activeProfile.value.id
+            val storeName = activeProfile.value.businessName.ifBlank { "SwapnoPay Merchant" }
+            val tpl = customTemplate?.ifBlank { null } ?: dueSmsTemplate.value
+            val dueCustomers = repository.getCustomersWithDue(merchantId)
+            val targets = if (selectedCustomerIds != null) {
+                dueCustomers.filter { it.id in selectedCustomerIds }
+            } else {
+                dueCustomers
+            }
+
+            if (targets.isEmpty()) {
+                onResult(0, "No customers with due balance to send reminders to.")
+                return@launch
+            }
+
+            val slot = _selectedSimSlot.value
+            val entities = targets.mapNotNull { cust ->
+                val phone = cust.phone.trim()
+                if (phone.length < 10) return@mapNotNull null
+                val dueFormatted = String.format(java.util.Locale.US, "%.0f", cust.currentBalance)
+                val msg = tpl
+                    .replace("{name}", cust.name)
+                    .replace("{due}", dueFormatted)
+                    .replace("{store}", storeName)
+                    .replace("{phone}", phone)
+
+                OutboxSmsEntity(
+                    merchantId = merchantId,
+                    recipientPhone = phone,
+                    messageText = msg,
+                    smsType = "DUE_REMINDER",
+                    simSlot = slot,
+                    status = "QUEUED",
+                    customerId = cust.id,
+                    partsCount = (msg.length / 160) + 1
+                )
+            }
+
+            if (entities.isNotEmpty()) {
+                repository.queueOutboxSmsList(entities)
+                com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                    context = getApplication(),
+                    merchantId = merchantId,
+                    throttleDelayMs = smsThrottleDelayMs.value
+                )
+                onResult(entities.size, "${entities.size} due reminder SMS added to outbox queue.")
+            } else {
+                onResult(0, "No valid phone numbers found among due customers.")
+            }
+        }
+    }
+
+    fun sendMarketingCampaign(
+        targetGroup: String, // "ALL", "DUE", "ZERO_DUE"
+        template: String,
+        onResult: (Int, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val merchantId = activeProfile.value.id
+            val storeName = activeProfile.value.businessName.ifBlank { "SwapnoPay Merchant" }
+            val allCusts = repository.getAllCustomersList(merchantId)
+            val filtered = when (targetGroup) {
+                "DUE" -> allCusts.filter { it.currentBalance > 0 }
+                "ZERO_DUE" -> allCusts.filter { it.currentBalance <= 0 }
+                else -> allCusts
+            }
+
+            if (filtered.isEmpty()) {
+                onResult(0, "No customers found for selected audience: $targetGroup")
+                return@launch
+            }
+
+            val slot = _selectedSimSlot.value
+            val entities = filtered.mapNotNull { cust ->
+                val phone = cust.phone.trim()
+                if (phone.length < 10) return@mapNotNull null
+                val dueFormatted = String.format(java.util.Locale.US, "%.0f", cust.currentBalance)
+                val msg = template
+                    .replace("{name}", cust.name)
+                    .replace("{due}", dueFormatted)
+                    .replace("{store}", storeName)
+                    .replace("{phone}", phone)
+
+                OutboxSmsEntity(
+                    merchantId = merchantId,
+                    recipientPhone = phone,
+                    messageText = msg,
+                    smsType = "MARKETING",
+                    simSlot = slot,
+                    status = "QUEUED",
+                    customerId = cust.id,
+                    partsCount = (msg.length / 160) + 1
+                )
+            }
+
+            if (entities.isNotEmpty()) {
+                repository.queueOutboxSmsList(entities)
+                com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                    context = getApplication(),
+                    merchantId = merchantId,
+                    throttleDelayMs = smsThrottleDelayMs.value
+                )
+                onResult(entities.size, "${entities.size} marketing SMS added to outbox queue.")
+            } else {
+                onResult(0, "No valid customer phone numbers found.")
+            }
+        }
+    }
+
+    fun sendPosReceiptSms(
+        customerName: String,
+        customerPhone: String,
+        amount: Double,
+        invoiceId: String
+    ) {
+        if (!autoPosReceiptSmsEnabled.value || customerPhone.isBlank() || customerPhone.length < 10) return
+        viewModelScope.launch {
+            val merchantId = activeProfile.value.id
+            val storeName = activeProfile.value.businessName.ifBlank { "SwapnoPay Store" }
+            val amountFormatted = String.format(java.util.Locale.US, "%.2f", amount)
+            val msg = salesSmsTemplate.value
+                .replace("{name}", customerName.ifBlank { "সম্মানিত গ্রাহক" })
+                .replace("{amount}", amountFormatted)
+                .replace("{invoice}", invoiceId)
+                .replace("{store}", storeName)
+
+            val entity = OutboxSmsEntity(
+                merchantId = merchantId,
+                recipientPhone = customerPhone,
+                messageText = msg,
+                smsType = "SALES_RECEIPT",
+                simSlot = _selectedSimSlot.value,
+                status = "QUEUED",
+                partsCount = (msg.length / 160) + 1
+            )
+            repository.queueOutboxSms(entity)
+            com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                context = getApplication(),
+                merchantId = merchantId,
+                throttleDelayMs = smsThrottleDelayMs.value
+            )
+        }
+    }
+
+    fun sendQuickCustomSms(
+        phones: List<String>,
+        message: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        if (message.isBlank()) {
+            onResult(false, "Message cannot be empty")
+            return
+        }
+        viewModelScope.launch {
+            val merchantId = activeProfile.value.id
+            val slot = _selectedSimSlot.value
+            val entities = phones.mapNotNull { p ->
+                val clean = p.trim().replace(" ", "").replace("-", "")
+                if (clean.length < 10) return@mapNotNull null
+                OutboxSmsEntity(
+                    merchantId = merchantId,
+                    recipientPhone = clean,
+                    messageText = message.trim(),
+                    smsType = "GATEWAY_CUSTOM",
+                    simSlot = slot,
+                    status = "QUEUED",
+                    partsCount = (message.length / 160) + 1
+                )
+            }
+
+            if (entities.isNotEmpty()) {
+                repository.queueOutboxSmsList(entities)
+                com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                    context = getApplication(),
+                    merchantId = merchantId,
+                    throttleDelayMs = smsThrottleDelayMs.value
+                )
+                onResult(true, "${entities.size} SMS enqueued for delivery.")
+            } else {
+                onResult(false, "Please provide valid phone number(s)")
+            }
+        }
+    }
+
+    fun deleteOutboxSms(id: String) {
+        viewModelScope.launch {
+            repository.deleteOutboxSms(id)
+        }
+    }
+
+    fun clearOutboxSmsHistory() {
+        viewModelScope.launch {
+            repository.clearOutboxSms(activeProfile.value.id)
+        }
+    }
+
+    fun retryFailedOutboxSms(item: OutboxSmsEntity) {
+        viewModelScope.launch {
+            repository.updateOutboxSmsStatus(item.id, "QUEUED", null, null)
+            com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                context = getApplication(),
+                merchantId = activeProfile.value.id,
+                throttleDelayMs = smsThrottleDelayMs.value
+            )
+        }
     }
 
     fun testSendEmailNotification(emailStr: String, onResult: (String) -> Unit) {
