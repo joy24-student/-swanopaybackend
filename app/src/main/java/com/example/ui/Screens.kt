@@ -871,14 +871,14 @@ fun AppNavigation(viewModel: AppViewModel) {
         "SupplierLedger" -> ProductionLedgersScreen(viewModel, initialTab = "SUPPLIER")
         "Inventory" -> InventoryScreen(viewModel)
         "ExpenseSales" -> ExpenseSalesScreen(viewModel)
-        "Loans", "LoanScreen", "BusinessLoans" -> LoanScreen(viewModel)
-        "Deposits", "Deposit", "DepositScreen", "DPS", "DpsScreen" -> DepositScreen(viewModel)
+        "Loans", "LoanScreen", "BusinessLoans" -> DpsAndLoansScreen(viewModel, initialTab = "LOANS")
+        "Deposits", "Deposit", "DepositScreen", "DPS", "DpsScreen", "DpsAndLoans", "LoanAndDeposit", "DpsAndLoan", "LoansAndDps" -> DpsAndLoansScreen(viewModel, initialTab = "DPS")
         "LoanCalculator" -> {
-            LoanScreen(viewModel)
+            DpsAndLoansScreen(viewModel, initialTab = "LOANS")
             LoanCalculatorDialog(isDarkMode = isDarkMode, onDismiss = { viewModel.goBack() })
         }
         "DepositCalculator" -> {
-            DepositScreen(viewModel)
+            DpsAndLoansScreen(viewModel, initialTab = "DPS")
             DepositCalculatorDialog(isDarkMode = isDarkMode, onDismiss = { viewModel.goBack() })
         }
         "FinanceManager", "Finance" -> FinanceManagerScreen(viewModel)
@@ -1983,6 +1983,34 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     // Inputs states
     var supabaseUrlInput by remember { mutableStateOf("") }
     var supabaseAnonKeyInput by remember { mutableStateOf("") }
+    val vmSupabaseUrlInput by viewModel.supabaseUrlInput.collectAsState()
+    val vmSupabaseAnonKeyInput by viewModel.supabaseAnonKeyInput.collectAsState()
+    val vmSupabaseUrl by viewModel.supabaseUrl.collectAsState()
+    val vmSupabaseAnonKey by viewModel.supabaseAnonKey.collectAsState()
+    val activeSupabaseProfile by viewModel.activeSupabaseProfile.collectAsState()
+
+    LaunchedEffect(vmSupabaseUrlInput, vmSupabaseAnonKeyInput, vmSupabaseUrl, vmSupabaseAnonKey, activeSupabaseProfile) {
+        val candidateUrl = when {
+            vmSupabaseUrlInput.isNotBlank() -> vmSupabaseUrlInput
+            !activeSupabaseProfile?.supabaseUrl.isNullOrBlank() -> activeSupabaseProfile!!.supabaseUrl
+            vmSupabaseUrl.isNotBlank() -> vmSupabaseUrl
+            else -> ""
+        }
+        if (candidateUrl.isNotBlank() && supabaseUrlInput != candidateUrl) {
+            supabaseUrlInput = candidateUrl
+        }
+
+        val candidateKey = when {
+            vmSupabaseAnonKeyInput.isNotBlank() -> vmSupabaseAnonKeyInput
+            !activeSupabaseProfile?.anonKey.isNullOrBlank() -> activeSupabaseProfile!!.anonKey
+            vmSupabaseAnonKey.isNotBlank() -> vmSupabaseAnonKey
+            else -> ""
+        }
+        if (candidateKey.isNotBlank() && supabaseAnonKeyInput != candidateKey) {
+            supabaseAnonKeyInput = candidateKey
+        }
+    }
+
     val userEmailVal by viewModel.userEmail.collectAsState()
     var adminEmailInput by remember { mutableStateOf(userEmailVal ?: "") }
     var adminPasswordInput by remember { mutableStateOf("") }
@@ -2781,7 +2809,13 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                 }
                                             }
 
-                                            com.example.ui.AppViewModel.OAuthStep.COMPLETE -> {
+                                             com.example.ui.AppViewModel.OAuthStep.COMPLETE -> {
+                                                val displayUrl = supabaseUrlInput.ifBlank {
+                                                    activeSupabaseProfile?.supabaseUrl ?: vmSupabaseUrl.ifBlank { vmSupabaseUrlInput }
+                                                }
+                                                val displayKey = supabaseAnonKeyInput.ifBlank {
+                                                    activeSupabaseProfile?.anonKey ?: vmSupabaseAnonKey.ifBlank { vmSupabaseAnonKeyInput }
+                                                }
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -2794,7 +2828,10 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                                                             Text(if (isBangla) "সুপাবেস ক্লাউড সম্পূর্ণ তৈরি!" else "SwapnoPay Cloud Ready!", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                                         }
-                                                        Text("URL: $supabaseUrlInput", color = AppTextPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                                        Text("URL: $displayUrl", color = AppTextPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                                        if (displayKey.isNotBlank()) {
+                                                            Text(if (isBangla) "কি: ${displayKey.take(12)}...${displayKey.takeLast(6)}" else "Key: ${displayKey.take(12)}...${displayKey.takeLast(6)}", color = AppTextSecondary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -3342,9 +3379,12 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                 }
 
                 // 4. BOTTOM ACTION BUTTON
+                val isStep1Valid = (supabaseUrlInput.isNotBlank() || vmSupabaseUrlInput.isNotBlank() || vmSupabaseUrl.isNotBlank() || !activeSupabaseProfile?.supabaseUrl.isNullOrBlank()) &&
+                        (supabaseAnonKeyInput.isNotBlank() || vmSupabaseAnonKeyInput.isNotBlank() || vmSupabaseAnonKey.isNotBlank() || !activeSupabaseProfile?.anonKey.isNullOrBlank())
+
                 val isNextEnabled = when (currentStep) {
                     0 -> true
-                    1 -> supabaseUrlInput.isNotEmpty() && supabaseAnonKeyInput.isNotEmpty()
+                    1 -> isStep1Valid
                     2 -> adminEmailInput.contains("@") && adminEmailInput.contains(".") && adminPasswordInput.length >= 6
                     3 -> onboardingPin.length == 4
                     4 -> businessNameInput.isNotEmpty() && supportPhoneInput.isNotEmpty()
@@ -3431,6 +3471,24 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             .alpha(if (isNextEnabled) 1f else 0.5f)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable(enabled = isNextEnabled) {
+                                if (currentStep == 1) {
+                                    if (supabaseUrlInput.isBlank()) {
+                                        supabaseUrlInput = when {
+                                            vmSupabaseUrlInput.isNotBlank() -> vmSupabaseUrlInput
+                                            !activeSupabaseProfile?.supabaseUrl.isNullOrBlank() -> activeSupabaseProfile!!.supabaseUrl
+                                            vmSupabaseUrl.isNotBlank() -> vmSupabaseUrl
+                                            else -> ""
+                                        }
+                                    }
+                                    if (supabaseAnonKeyInput.isBlank()) {
+                                        supabaseAnonKeyInput = when {
+                                            vmSupabaseAnonKeyInput.isNotBlank() -> vmSupabaseAnonKeyInput
+                                            !activeSupabaseProfile?.anonKey.isNullOrBlank() -> activeSupabaseProfile!!.anonKey
+                                            vmSupabaseAnonKey.isNotBlank() -> vmSupabaseAnonKey
+                                            else -> ""
+                                        }
+                                    }
+                                }
                                 if (currentStep < 5) {
                                     currentStep++
                                 } else {

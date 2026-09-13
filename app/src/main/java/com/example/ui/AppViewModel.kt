@@ -3235,6 +3235,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         provisioningProgress.value = 1.0f
                         provisioningStatusText.value = "SwapnoPay Cloud Ready!"
                         oauthStep.value = OAuthStep.COMPLETE
+                        setSupabaseUrlInput(projectUrl)
+                        setSupabaseAnonKeyInput(publishableKey)
+                        supabaseUrl.value = projectUrl
+                        supabaseAnonKey.value = publishableKey
                         connectSupabase(
                             url = projectUrl,
                             anonKey = publishableKey,
@@ -3429,6 +3433,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         
         supabaseUrl.value = cleanUrl
         supabaseAnonKey.value = anonKey.trim()
+        setSupabaseUrlInput(cleanUrl)
+        setSupabaseAnonKeyInput(anonKey.trim())
         // A service-role key must never be persisted in a distributed mobile client.
         supabaseConnectionName.value = cleanName
         supabaseSetupProgress.value = 8

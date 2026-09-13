@@ -40,21 +40,39 @@ import java.util.Date
 import java.util.Locale
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOAN MANAGEMENT SCREEN
+// UNIFIED DPS & LOAN MANAGEMENT SCREEN WITH TAB SWITCHING
 // ─────────────────────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoanScreen(viewModel: AppViewModel) {
+fun DpsAndLoansScreen(viewModel: AppViewModel, initialTab: String = "DPS") {
     val context = LocalContext.current
     val isDark by viewModel.isDarkMode.collectAsState()
     val loans by viewModel.loans.collectAsState()
+    val dpsAccounts by viewModel.dpsAccounts.collectAsState()
     val installments by viewModel.financeInstallments.collectAsState()
 
-    var showCalculator by remember { mutableStateOf(false) }
+    val cleanInitialTab = if (initialTab.equals("LOANS", ignoreCase = true) || initialTab.equals("LOAN", ignoreCase = true) || initialTab.equals("LoanScreen", ignoreCase = true) || initialTab.equals("BusinessLoans", ignoreCase = true)) "LOANS" else "DPS"
+    var selectedTab by rememberSaveable { mutableStateOf(cleanInitialTab) }
+
+    LaunchedEffect(initialTab) {
+        val target = if (initialTab.equals("LOANS", ignoreCase = true) || initialTab.equals("LOAN", ignoreCase = true) || initialTab.equals("LoanScreen", ignoreCase = true) || initialTab.equals("BusinessLoans", ignoreCase = true)) "LOANS" else "DPS"
+        if (selectedTab != target) {
+            selectedTab = target
+        }
+    }
+
+    // Modal dialog controls
+    var showLoanCalculator by remember { mutableStateOf(false) }
+    var showDpsCalculator by remember { mutableStateOf(false) }
     var showAddLoanDialog by remember { mutableStateOf(false) }
+    var showAddDepositDialog by remember { mutableStateOf(false) }
     var paymentTarget by remember { mutableStateOf<FinanceInstallmentEntity?>(null) }
+
+    // Tab-specific filters & expansion states
     var expandedLoanId by rememberSaveable { mutableStateOf<String?>(null) }
-    var filterStatus by rememberSaveable { mutableStateOf("ALL") }
+    var loanFilterStatus by rememberSaveable { mutableStateOf("ALL") }
+    var expandedDpsId by rememberSaveable { mutableStateOf<String?>(null) }
+    var dpsFilterStatus by rememberSaveable { mutableStateOf("ALL") }
 
     val now = System.currentTimeMillis()
     val bg = if (isDark) Color(0xFF070707) else Color(0xFFF8FAFC)
@@ -65,21 +83,17 @@ fun LoanScreen(viewModel: AppViewModel) {
     val gold = Color(0xFFF5C518)
     val goldPill = if (isDark) Color(0xFF261D07) else Color(0xFFFEF3C7)
 
-    // Calculate aggregate metrics
+    // Loan metrics
     val loanInstallments = remember(installments) { installments.filter { it.accountType == "LOAN" } }
     val totalBorrowed = remember(loans) { loans.sumOf { it.principalAmount } }
-    val totalPaid = remember(loanInstallments) {
+    val totalLoanPaid = remember(loanInstallments) {
         loanInstallments.filter { it.status == "PAID" }.sumOf { it.totalAmount }
     }
-    val totalOutstanding = remember(loanInstallments) {
+    val totalLoanOutstanding = remember(loanInstallments) {
         loanInstallments.filter { it.status != "PAID" && it.status != "WAIVED" }.sumOf { it.totalAmount }
     }
-    val nextDueInstallment = remember(loanInstallments, now) {
-        loanInstallments.filter { it.status == "PENDING" && it.dueDate >= now }.minByOrNull { it.dueDate }
-    }
-
-    val filteredLoans = remember(loans, filterStatus, loanInstallments) {
-        when (filterStatus) {
+    val filteredLoans = remember(loans, loanFilterStatus, loanInstallments) {
+        when (loanFilterStatus) {
             "ACTIVE" -> loans.filter { loan ->
                 val remaining = loanInstallments.filter { it.accountId == loan.id && it.status != "PAID" }
                 remaining.isNotEmpty()
@@ -92,14 +106,43 @@ fun LoanScreen(viewModel: AppViewModel) {
         }
     }
 
+    // DPS metrics
+    val dpsInstallments = remember(installments) { installments.filter { it.accountType == "DPS" } }
+    val totalMonthlyCommitment = remember(dpsAccounts) { dpsAccounts.sumOf { it.monthlyDeposit } }
+    val totalSavingsDeposited = remember(dpsInstallments) {
+        dpsInstallments.filter { it.status == "PAID" }.sumOf { it.totalAmount }
+    }
+    val totalProjectedMaturity = remember(dpsAccounts) {
+        dpsAccounts.sumOf { dps ->
+            val totalDep = dps.monthlyDeposit * dps.durationMonths
+            val estReturn = totalDep * (dps.interestRate / 100.0) * (dps.durationMonths / 12.0) * 0.55
+            totalDep + estReturn
+        }
+    }
+    val filteredDps = remember(dpsAccounts, dpsFilterStatus) {
+        when (dpsFilterStatus) {
+            "ACTIVE" -> dpsAccounts.filter { it.status == "ACTIVE" }
+            "MATURED" -> dpsAccounts.filter { it.status == "MATURED" || it.maturityDate < now }
+            else -> dpsAccounts
+        }
+    }
+
     Scaffold(
         containerColor = bg,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Business Loans & EMI", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Installment tracking & amortization", fontSize = 11.sp, color = muted)
+                        Text(
+                            text = if (selectedTab == "DPS") "DPS & Savings" else "Business Loans & EMI",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            text = if (selectedTab == "DPS") "Recurring savings & maturity growth" else "Installment tracking & amortization",
+                            fontSize = 11.sp,
+                            color = muted
+                        )
                     }
                 },
                 navigationIcon = {
@@ -108,11 +151,15 @@ fun LoanScreen(viewModel: AppViewModel) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showCalculator = true }) {
-                        Icon(Icons.Outlined.Calculate, contentDescription = "Loan EMI Calculator", tint = gold)
+                    IconButton(onClick = {
+                        if (selectedTab == "DPS") showDpsCalculator = true else showLoanCalculator = true
+                    }) {
+                        Icon(Icons.Outlined.Calculate, contentDescription = "Calculator", tint = gold)
                     }
-                    IconButton(onClick = { showAddLoanDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Loan", tint = gold)
+                    IconButton(onClick = {
+                        if (selectedTab == "DPS") showAddDepositDialog = true else showAddLoanDialog = true
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add", tint = gold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = card, titleContentColor = text)
@@ -126,206 +173,507 @@ fun LoanScreen(viewModel: AppViewModel) {
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // ── SUMMARY CARDS ROW ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, border),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Total Borrowed", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(4.dp))
-                        Text("৳ ${formatMoney(totalBorrowed)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = text)
-                        Text("${loans.size} active loans", fontSize = 10.sp, color = gold)
-                    }
-                }
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, border),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Remaining Dues", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(4.dp))
-                        Text("৳ ${formatMoney(totalOutstanding)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
-                        Text("Paid: ৳ ${formatMoney(totalPaid)}", fontSize = 10.sp, color = Color(0xFF10B981))
-                    }
-                }
-            }
-
-            // Quick Calculator Shortcut Banner
+            // ── TOP TAB SWITCHER (DPS vs LOANS) ──
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showCalculator = true },
-                colors = CardDefaults.cardColors(containerColor = goldPill),
-                border = BorderStroke(1.dp, gold.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(12.dp)
+                    .padding(top = 4.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF13100A) else Color(0xFFF1F5F9)),
+                border = BorderStroke(1.dp, border)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    val isDpsSelected = selectedTab == "DPS"
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isDpsSelected) goldPill else Color.Transparent)
+                            .border(
+                                1.dp,
+                                if (isDpsSelected) gold else Color.Transparent,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { selectedTab = "DPS" },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Outlined.Calculate, null, tint = gold, modifier = Modifier.size(24.dp))
-                        Column {
-                            Text("Loan EMI Calculator", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
-                            Text("Simulate monthly payments & interest breakdown", fontSize = 11.sp, color = muted)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Savings,
+                                contentDescription = null,
+                                tint = if (isDpsSelected) gold else muted,
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Text(
+                                text = "DPS & Savings",
+                                fontSize = 14.sp,
+                                fontWeight = if (isDpsSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (isDpsSelected) (if (isDark) gold else Color(0xFFB45309)) else muted
+                            )
                         }
                     }
-                    Icon(Icons.Default.ChevronRight, null, tint = gold)
+
+                    val isLoanSelected = selectedTab == "LOANS"
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isLoanSelected) goldPill else Color.Transparent)
+                            .border(
+                                1.dp,
+                                if (isLoanSelected) gold else Color.Transparent,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { selectedTab = "LOANS" },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AccountBalance,
+                                contentDescription = null,
+                                tint = if (isLoanSelected) gold else muted,
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Text(
+                                text = "Business Loans",
+                                fontSize = 14.sp,
+                                fontWeight = if (isLoanSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (isLoanSelected) (if (isDark) gold else Color(0xFFB45309)) else muted
+                            )
+                        }
+                    }
                 }
             }
 
-            // Filter Chips
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("ALL" to "All Loans", "ACTIVE" to "Active", "COMPLETED" to "Repaid").forEach { (key, label) ->
-                    FilterChip(
-                        selected = filterStatus == key,
-                        onClick = { filterStatus = key },
-                        label = { Text(label, fontSize = 12.sp) }
-                    )
+            // ── TAB CONTENT ──
+            if (selectedTab == "DPS") {
+                // ── DPS SUMMARY CARDS ROW ──
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        border = BorderStroke(1.dp, border),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Total Deposited", fontSize = 11.sp, color = muted)
+                            Spacer(Modifier.height(4.dp))
+                            Text("৳ ${formatMoney(totalSavingsDeposited)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                            Text("Monthly: ৳ ${formatMoney(totalMonthlyCommitment)}", fontSize = 10.sp, color = gold)
+                        }
+                    }
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        border = BorderStroke(1.dp, border),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Projected Maturity", fontSize = 11.sp, color = muted)
+                            Spacer(Modifier.height(4.dp))
+                            Text("৳ ${formatMoney(totalProjectedMaturity)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = gold)
+                            Text("${dpsAccounts.size} DPS accounts", fontSize = 10.sp, color = muted)
+                        }
+                    }
                 }
-            }
 
-            // Loans List
-            if (filteredLoans.isEmpty()) {
-                Box(
+                // DPS Calculator Shortcut Banner
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
+                        .clickable { showDpsCalculator = true },
+                    colors = CardDefaults.cardColors(containerColor = goldPill),
+                    border = BorderStroke(1.dp, gold.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Outlined.AccountBalance, null, tint = muted, modifier = Modifier.size(56.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text("No Loans Found", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
-                        Text("Add bank or private financing to track EMI repayments.", color = muted, fontSize = 12.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = { showAddLoanDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
-                            shape = RoundedCornerShape(10.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Add Loan Account", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Outlined.Savings, null, tint = gold, modifier = Modifier.size(24.dp))
+                            Column {
+                                Text("DPS Maturity Calculator", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
+                                Text("Simulate future deposit growth & compound returns", fontSize = 11.sp, color = muted)
+                            }
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = gold)
+                    }
+                }
+
+                // DPS Filter Chips
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("ALL" to "All DPS", "ACTIVE" to "Active", "MATURED" to "Matured").forEach { (key, label) ->
+                        FilterChip(
+                            selected = dpsFilterStatus == key,
+                            onClick = { dpsFilterStatus = key },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
+
+                // DPS Accounts List
+                if (filteredDps.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Outlined.Savings, null, tint = muted, modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("No DPS Accounts Found", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
+                            Text("Create a monthly deposit scheme to build capital reserves.", color = muted, fontSize = 12.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { showAddDepositDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Add DPS Account", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 32.dp)
+                    ) {
+                        items(filteredDps, key = { it.id }) { dps ->
+                            val dpsRows = dpsInstallments.filter { it.accountId == dps.id }
+                            val paidSum = dpsRows.filter { it.status == "PAID" }.sumOf { it.totalAmount }
+                            val totalExpected = dps.monthlyDeposit * dps.durationMonths
+                            val isExpanded = expandedDpsId == dps.id
+                            val progress = if (totalExpected > 0.0) (paidSum / totalExpected).toFloat().coerceIn(0f, 1f) else 0f
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { expandedDpsId = if (isExpanded) null else dps.id },
+                                colors = CardDefaults.cardColors(containerColor = card),
+                                border = BorderStroke(1.dp, border),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Column {
+                                            Text(dps.providerName.ifBlank { "DPS Provider" }, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = text)
+                                            Text("Ref: ${dps.accountReference.ifBlank { dps.id.take(8) }}", fontSize = 11.sp, color = muted)
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text("Monthly Deposit", fontSize = 10.sp, color = muted)
+                                            Text("৳ ${formatMoney(dps.monthlyDeposit)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF10B981))
+                                        }
+                                    }
+
+                                    LinearProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFF10B981),
+                                        trackColor = if (isDark) Color(0xFF062C12) else Color(0xFFDCFCE7)
+                                    )
+
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Deposited: ৳ ${formatMoney(paidSum)} (${(progress * 100).toInt()}%)", fontSize = 11.sp, color = Color(0xFF10B981))
+                                        Text("Maturity: ${formatDate(dps.maturityDate)}", fontSize = 11.sp, color = muted)
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Return Rate: ${dps.interestRate}% p.a.", fontSize = 11.sp, color = muted)
+                                        Text("Tenure: ${dps.durationMonths} Months", fontSize = 11.sp, color = muted)
+                                        Text(
+                                            if (isExpanded) "Hide Schedule ▲" else "View Schedule (${dpsRows.size}) ▼",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = gold
+                                        )
+                                    }
+
+                                    AnimatedVisibility(visible = isExpanded) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            HorizontalDivider(color = border)
+                                            Text("Monthly Deposit Schedule", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = muted)
+
+                                            if (dpsRows.isEmpty()) {
+                                                Text("No installment schedule generated.", fontSize = 11.sp, color = muted)
+                                            }
+
+                                            dpsRows.forEach { row ->
+                                                val isOverdue = row.status == "PENDING" && row.dueDate < now
+                                                val statusDisplay = if (isOverdue) "OVERDUE" else row.status
+                                                val statusColor = when (statusDisplay) {
+                                                    "PAID" -> Color(0xFF10B981)
+                                                    "OVERDUE" -> Color(0xFFEF4444)
+                                                    else -> muted
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 4.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Text("#${row.installmentNumber} • ${formatDate(row.dueDate)}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = text)
+                                                        Text("৳ ${formatMoney(row.totalAmount)} • $statusDisplay", fontSize = 10.sp, color = statusColor)
+                                                    }
+                                                    if (statusDisplay in setOf("PENDING", "OVERDUE")) {
+                                                        Button(
+                                                            onClick = { paymentTarget = row },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color.White),
+                                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        ) {
+                                                            Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 32.dp)
+                // ── LOANS TAB CONTENT ──
+                // Summary Cards Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(filteredLoans, key = { it.id }) { loan ->
-                        val loanRows = loanInstallments.filter { it.accountId == loan.id }
-                        val paidSum = loanRows.filter { it.status == "PAID" }.sumOf { it.totalAmount }
-                        val remainingSum = loanRows.filter { it.status != "PAID" && it.status != "WAIVED" }.sumOf { it.totalAmount }
-                        val isExpanded = expandedLoanId == loan.id
-                        val progress = if (paidSum + remainingSum > 0.0) (paidSum / (paidSum + remainingSum)).toFloat() else 0f
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        border = BorderStroke(1.dp, border),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Total Borrowed", fontSize = 11.sp, color = muted)
+                            Spacer(Modifier.height(4.dp))
+                            Text("৳ ${formatMoney(totalBorrowed)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = text)
+                            Text("${loans.size} active loans", fontSize = 10.sp, color = gold)
+                        }
+                    }
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        border = BorderStroke(1.dp, border),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Remaining Dues", fontSize = 11.sp, color = muted)
+                            Spacer(Modifier.height(4.dp))
+                            Text("৳ ${formatMoney(totalLoanOutstanding)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                            Text("Paid: ৳ ${formatMoney(totalLoanPaid)}", fontSize = 10.sp, color = Color(0xFF10B981))
+                        }
+                    }
+                }
 
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { expandedLoanId = if (isExpanded) null else loan.id },
-                            colors = CardDefaults.cardColors(containerColor = card),
-                            border = BorderStroke(1.dp, border),
-                            shape = RoundedCornerShape(16.dp)
+                // Quick Calculator Shortcut Banner
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLoanCalculator = true },
+                    colors = CardDefaults.cardColors(containerColor = goldPill),
+                    border = BorderStroke(1.dp, gold.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Column {
-                                        Text(loan.providerName.ifBlank { "Loan Provider" }, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = text)
-                                        Text("Ref: ${loan.accountReference.ifBlank { loan.id.take(8) }}", fontSize = 11.sp, color = muted)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("Monthly EMI", fontSize = 10.sp, color = muted)
-                                        Text("৳ ${formatMoney(loan.monthlyInstallment)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = gold)
-                                    }
-                                }
+                            Icon(Icons.Outlined.Calculate, null, tint = gold, modifier = Modifier.size(24.dp))
+                            Column {
+                                Text("Loan EMI Calculator", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
+                                Text("Simulate monthly payments & interest breakdown", fontSize = 11.sp, color = muted)
+                            }
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = gold)
+                    }
+                }
 
-                                LinearProgressIndicator(
-                                    progress = { progress },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = gold,
-                                    trackColor = if (isDark) Color(0xFF261D07) else Color(0xFFFEF3C7)
-                                )
+                // Filter Chips
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("ALL" to "All Loans", "ACTIVE" to "Active", "COMPLETED" to "Repaid").forEach { (key, label) ->
+                        FilterChip(
+                            selected = loanFilterStatus == key,
+                            onClick = { loanFilterStatus = key },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
 
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Paid: ৳ ${formatMoney(paidSum)} (${(progress * 100).toInt()}%)", fontSize = 11.sp, color = Color(0xFF10B981))
-                                    Text("Remaining: ৳ ${formatMoney(remainingSum)}", fontSize = 11.sp, color = muted)
-                                }
+                // Loans List
+                if (filteredLoans.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Outlined.AccountBalance, null, tint = muted, modifier = Modifier.size(56.dp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("No Loans Found", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
+                            Text("Add bank or private financing to track EMI repayments.", color = muted, fontSize = 12.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = { showAddLoanDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Add Loan Account", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 32.dp)
+                    ) {
+                        items(filteredLoans, key = { it.id }) { loan ->
+                            val loanRows = loanInstallments.filter { it.accountId == loan.id }
+                            val paidSum = loanRows.filter { it.status == "PAID" }.sumOf { it.totalAmount }
+                            val remainingSum = loanRows.filter { it.status != "PAID" && it.status != "WAIVED" }.sumOf { it.totalAmount }
+                            val isExpanded = expandedLoanId == loan.id
+                            val progress = if (paidSum + remainingSum > 0.0) (paidSum / (paidSum + remainingSum)).toFloat() else 0f
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Rate: ${loan.interestRate}% (${loan.interestType})", fontSize = 11.sp, color = muted)
-                                    Text("Tenure: ${loan.durationMonths} Mos", fontSize = 11.sp, color = muted)
-                                    Text(
-                                        if (isExpanded) "Tap to hide ▲" else "View Schedule (${loanRows.size}) ▼",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = gold
-                                    )
-                                }
-
-                                AnimatedVisibility(visible = isExpanded) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { expandedLoanId = if (isExpanded) null else loan.id },
+                                colors = CardDefaults.cardColors(containerColor = card),
+                                border = BorderStroke(1.dp, border),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
                                     ) {
-                                        HorizontalDivider(color = border)
-                                        Text("Repayment Schedule", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = muted)
-
-                                        if (loanRows.isEmpty()) {
-                                            Text("No installment schedule generated.", fontSize = 11.sp, color = muted)
+                                        Column {
+                                            Text(loan.providerName.ifBlank { "Loan Provider" }, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = text)
+                                            Text("Ref: ${loan.accountReference.ifBlank { loan.id.take(8) }}", fontSize = 11.sp, color = muted)
                                         }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text("Monthly EMI", fontSize = 10.sp, color = muted)
+                                            Text("৳ ${formatMoney(loan.monthlyInstallment)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = gold)
+                                        }
+                                    }
 
-                                        loanRows.forEach { row ->
-                                            val isOverdue = row.status == "PENDING" && row.dueDate < now
-                                            val statusDisplay = if (isOverdue) "OVERDUE" else row.status
-                                            val statusColor = when (statusDisplay) {
-                                                "PAID" -> Color(0xFF10B981)
-                                                "OVERDUE" -> Color(0xFFEF4444)
-                                                else -> muted
+                                    LinearProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = gold,
+                                        trackColor = if (isDark) Color(0xFF261D07) else Color(0xFFFEF3C7)
+                                    )
+
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Paid: ৳ ${formatMoney(paidSum)} (${(progress * 100).toInt()}%)", fontSize = 11.sp, color = Color(0xFF10B981))
+                                        Text("Remaining: ৳ ${formatMoney(remainingSum)}", fontSize = 11.sp, color = muted)
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Rate: ${loan.interestRate}% (${loan.interestType})", fontSize = 11.sp, color = muted)
+                                        Text("Tenure: ${loan.durationMonths} Mos", fontSize = 11.sp, color = muted)
+                                        Text(
+                                            if (isExpanded) "Tap to hide ▲" else "View Schedule (${loanRows.size}) ▼",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = gold
+                                        )
+                                    }
+
+                                    AnimatedVisibility(visible = isExpanded) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            HorizontalDivider(color = border)
+                                            Text("Repayment Schedule", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = muted)
+
+                                            if (loanRows.isEmpty()) {
+                                                Text("No installment schedule generated.", fontSize = 11.sp, color = muted)
                                             }
 
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text("#${row.installmentNumber} • ${formatDate(row.dueDate)}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = text)
-                                                    Text("৳ ${formatMoney(row.totalAmount)} • $statusDisplay", fontSize = 10.sp, color = statusColor)
+                                            loanRows.forEach { row ->
+                                                val isOverdue = row.status == "PENDING" && row.dueDate < now
+                                                val statusDisplay = if (isOverdue) "OVERDUE" else row.status
+                                                val statusColor = when (statusDisplay) {
+                                                    "PAID" -> Color(0xFF10B981)
+                                                    "OVERDUE" -> Color(0xFFEF4444)
+                                                    else -> muted
                                                 }
-                                                if (statusDisplay in setOf("PENDING", "OVERDUE")) {
-                                                    Button(
-                                                        onClick = { paymentTarget = row },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    ) {
-                                                        Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 4.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Text("#${row.installmentNumber} • ${formatDate(row.dueDate)}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = text)
+                                                        Text("৳ ${formatMoney(row.totalAmount)} • $statusDisplay", fontSize = 10.sp, color = statusColor)
+                                                    }
+                                                    if (statusDisplay in setOf("PENDING", "OVERDUE")) {
+                                                        Button(
+                                                            onClick = { paymentTarget = row },
+                                                            colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
+                                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        ) {
+                                                            Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                        }
                                                     }
                                                 }
                                             }
@@ -341,13 +689,24 @@ fun LoanScreen(viewModel: AppViewModel) {
     }
 
     // Modal Calculators & Dialogs
-    if (showCalculator) {
+    if (showLoanCalculator) {
         LoanCalculatorDialog(
             isDarkMode = isDark,
-            onDismiss = { showCalculator = false },
+            onDismiss = { showLoanCalculator = false },
             onApplyToNewLoan = { principal, rate, tenure, type ->
-                showCalculator = false
+                showLoanCalculator = false
                 showAddLoanDialog = true
+            }
+        )
+    }
+
+    if (showDpsCalculator) {
+        DepositCalculatorDialog(
+            isDarkMode = isDark,
+            onDismiss = { showDpsCalculator = false },
+            onApplyToNewDps = { deposit, rate, tenure ->
+                showDpsCalculator = false
+                showAddDepositDialog = true
             }
         )
     }
@@ -360,326 +719,6 @@ fun LoanScreen(viewModel: AppViewModel) {
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     if (ok) showAddLoanDialog = false
                 }
-            }
-        )
-    }
-
-    paymentTarget?.let { row ->
-        RecordInstallmentPaymentModal(
-            installment = row,
-            onDismiss = { paymentTarget = null },
-            onSave = { method, ref ->
-                viewModel.payFinanceInstallment(row.id, method, ref) { ok, msg ->
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    if (ok) paymentTarget = null
-                }
-            }
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DEPOSIT / DPS MANAGEMENT SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DepositScreen(viewModel: AppViewModel) {
-    val context = LocalContext.current
-    val isDark by viewModel.isDarkMode.collectAsState()
-    val dpsAccounts by viewModel.dpsAccounts.collectAsState()
-    val installments by viewModel.financeInstallments.collectAsState()
-
-    var showCalculator by remember { mutableStateOf(false) }
-    var showAddDepositDialog by remember { mutableStateOf(false) }
-    var paymentTarget by remember { mutableStateOf<FinanceInstallmentEntity?>(null) }
-    var expandedDpsId by rememberSaveable { mutableStateOf<String?>(null) }
-    var filterStatus by rememberSaveable { mutableStateOf("ALL") }
-
-    val now = System.currentTimeMillis()
-    val bg = if (isDark) Color(0xFF070707) else Color(0xFFF8FAFC)
-    val card = if (isDark) Color(0xFF13100A) else Color.White
-    val border = if (isDark) Color(0xFF382A0B) else Color(0xFFE2E8F0)
-    val text = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val muted = if (isDark) Color(0xFF9CA3AF) else Color(0xFF64748B)
-    val gold = Color(0xFFF5C518)
-    val goldPill = if (isDark) Color(0xFF261D07) else Color(0xFFFEF3C7)
-
-    val dpsInstallments = remember(installments) { installments.filter { it.accountType == "DPS" } }
-    val totalMonthlyCommitment = remember(dpsAccounts) { dpsAccounts.sumOf { it.monthlyDeposit } }
-    val totalSavingsDeposited = remember(dpsInstallments) {
-        dpsInstallments.filter { it.status == "PAID" }.sumOf { it.totalAmount }
-    }
-    val totalProjectedMaturity = remember(dpsAccounts) {
-        dpsAccounts.sumOf { dps ->
-            val totalDep = dps.monthlyDeposit * dps.durationMonths
-            val estReturn = totalDep * (dps.interestRate / 100.0) * (dps.durationMonths / 12.0) * 0.55
-            totalDep + estReturn
-        }
-    }
-
-    val filteredDps = remember(dpsAccounts, filterStatus) {
-        when (filterStatus) {
-            "ACTIVE" -> dpsAccounts.filter { it.status == "ACTIVE" }
-            "MATURED" -> dpsAccounts.filter { it.status == "MATURED" || it.maturityDate < now }
-            else -> dpsAccounts
-        }
-    }
-
-    Scaffold(
-        containerColor = bg,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("DPS & Deposit Accounts", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Recurring savings & maturity growth", fontSize = 11.sp, color = muted)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = viewModel::goBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = text)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showCalculator = true }) {
-                        Icon(Icons.Outlined.Calculate, contentDescription = "Deposit Calculator", tint = gold)
-                    }
-                    IconButton(onClick = { showAddDepositDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add DPS", tint = gold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = card, titleContentColor = text)
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // ── SUMMARY CARDS ROW ──
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, border),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Total Deposited", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(4.dp))
-                        Text("৳ ${formatMoney(totalSavingsDeposited)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
-                        Text("Monthly: ৳ ${formatMoney(totalMonthlyCommitment)}", fontSize = 10.sp, color = gold)
-                    }
-                }
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, border),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Projected Maturity", fontSize = 11.sp, color = muted)
-                        Spacer(Modifier.height(4.dp))
-                        Text("৳ ${formatMoney(totalProjectedMaturity)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = gold)
-                        Text("${dpsAccounts.size} DPS accounts", fontSize = 10.sp, color = muted)
-                    }
-                }
-            }
-
-            // Quick Calculator Shortcut Banner
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showCalculator = true },
-                colors = CardDefaults.cardColors(containerColor = goldPill),
-                border = BorderStroke(1.dp, gold.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Outlined.Savings, null, tint = gold, modifier = Modifier.size(24.dp))
-                        Column {
-                            Text("DPS Maturity Calculator", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
-                            Text("Simulate future deposit growth & compound returns", fontSize = 11.sp, color = muted)
-                        }
-                    }
-                    Icon(Icons.Default.ChevronRight, null, tint = gold)
-                }
-            }
-
-            // Filter Chips
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("ALL" to "All Accounts", "ACTIVE" to "Active DPS", "MATURED" to "Matured").forEach { (key, label) ->
-                    FilterChip(
-                        selected = filterStatus == key,
-                        onClick = { filterStatus = key },
-                        label = { Text(label, fontSize = 12.sp) }
-                    )
-                }
-            }
-
-            // DPS List
-            if (filteredDps.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Outlined.Savings, null, tint = muted, modifier = Modifier.size(56.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text("No DPS Accounts Found", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
-                        Text("Start tracking recurring bank deposits and maturity returns.", color = muted, fontSize = 12.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = { showAddDepositDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("Add DPS Account", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 32.dp)
-                ) {
-                    items(filteredDps, key = { it.id }) { dps ->
-                        val dpsRows = dpsInstallments.filter { it.accountId == dps.id }
-                        val paidSum = dpsRows.filter { it.status == "PAID" }.sumOf { it.totalAmount }
-                        val targetTotal = dps.monthlyDeposit * dps.durationMonths
-                        val isExpanded = expandedDpsId == dps.id
-                        val progress = if (targetTotal > 0.0) (paidSum / targetTotal).toFloat().coerceIn(0f, 1f) else 0f
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { expandedDpsId = if (isExpanded) null else dps.id },
-                            colors = CardDefaults.cardColors(containerColor = card),
-                            border = BorderStroke(1.dp, border),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Column {
-                                        Text(dps.providerName.ifBlank { "Bank DPS" }, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = text)
-                                        Text("Ref: ${dps.accountReference.ifBlank { dps.id.take(8) }}", fontSize = 11.sp, color = muted)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("Monthly Deposit", fontSize = 10.sp, color = muted)
-                                        Text("৳ ${formatMoney(dps.monthlyDeposit)}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF10B981))
-                                    }
-                                }
-
-                                LinearProgressIndicator(
-                                    progress = { progress },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = Color(0xFF10B981),
-                                    trackColor = if (isDark) Color(0xFF062C12) else Color(0xFFDCFCE7)
-                                )
-
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Deposited: ৳ ${formatMoney(paidSum)} (${(progress * 100).toInt()}%)", fontSize = 11.sp, color = Color(0xFF10B981))
-                                    Text("Maturity: ${formatDate(dps.maturityDate)}", fontSize = 11.sp, color = muted)
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Return Rate: ${dps.interestRate}% p.a.", fontSize = 11.sp, color = muted)
-                                    Text("Tenure: ${dps.durationMonths} Months", fontSize = 11.sp, color = muted)
-                                    Text(
-                                        if (isExpanded) "Hide Schedule ▲" else "View Schedule (${dpsRows.size}) ▼",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = gold
-                                    )
-                                }
-
-                                AnimatedVisibility(visible = isExpanded) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        HorizontalDivider(color = border)
-                                        Text("Monthly Deposit Schedule", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = muted)
-
-                                        if (dpsRows.isEmpty()) {
-                                            Text("No installment schedule generated.", fontSize = 11.sp, color = muted)
-                                        }
-
-                                        dpsRows.forEach { row ->
-                                            val isOverdue = row.status == "PENDING" && row.dueDate < now
-                                            val statusDisplay = if (isOverdue) "OVERDUE" else row.status
-                                            val statusColor = when (statusDisplay) {
-                                                "PAID" -> Color(0xFF10B981)
-                                                "OVERDUE" -> Color(0xFFEF4444)
-                                                else -> muted
-                                            }
-
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text("#${row.installmentNumber} • ${formatDate(row.dueDate)}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = text)
-                                                    Text("৳ ${formatMoney(row.totalAmount)} • $statusDisplay", fontSize = 10.sp, color = statusColor)
-                                                }
-                                                if (statusDisplay in setOf("PENDING", "OVERDUE")) {
-                                                    Button(
-                                                        onClick = { paymentTarget = row },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981), contentColor = Color.White),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    ) {
-                                                        Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showCalculator) {
-        DepositCalculatorDialog(
-            isDarkMode = isDark,
-            onDismiss = { showCalculator = false },
-            onApplyToNewDps = { deposit, rate, tenure ->
-                showCalculator = false
-                showAddDepositDialog = true
             }
         )
     }
@@ -708,6 +747,17 @@ fun DepositScreen(viewModel: AppViewModel) {
             }
         )
     }
+}
+
+// Convenient alias composables for direct navigation calls
+@Composable
+fun LoanScreen(viewModel: AppViewModel) {
+    DpsAndLoansScreen(viewModel = viewModel, initialTab = "LOANS")
+}
+
+@Composable
+fun DepositScreen(viewModel: AppViewModel) {
+    DpsAndLoansScreen(viewModel = viewModel, initialTab = "DPS")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -246,9 +246,17 @@ object SupabaseConnectionRepository {
                 val bodyStr = response.body?.string()
                 if (response.isSuccessful && bodyStr != null) {
                     val json = JSONObject(bodyStr)
-                    val projectUrl = json.optString("project_url", "")
-                    val pubKey = json.optString("publishable_key", "")
+                    var projectUrl = json.optString("project_url", "")
+                    if (projectUrl.isBlank() && projectRef.isNotBlank()) {
+                        projectUrl = "https://${projectRef.trim()}.supabase.co"
+                    }
+                    var pubKey = json.optString("publishable_key", "")
+                    if (pubKey.isBlank()) pubKey = json.optString("anon_key", "")
+                    if (pubKey.isBlank()) pubKey = json.optString("key", "")
+
                     if (projectUrl.isNotBlank() && pubKey.isNotBlank()) {
+                        onSuccess(projectUrl, pubKey)
+                    } else if (projectUrl.isNotBlank()) {
                         onSuccess(projectUrl, pubKey)
                     } else {
                         onFailure(json.optString("error", "Failed to retrieve project credentials"))
