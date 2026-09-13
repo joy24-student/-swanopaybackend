@@ -315,8 +315,8 @@
 
     .radymate-gallery-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1.25rem;
       margin-top: 1.25rem;
     }
 
@@ -353,35 +353,7 @@
       background: linear-gradient(180deg, rgba(15,23,42,0.18), rgba(15,23,42,0.9));
     }
 
-    .radymate-upload-box {
-      border: 1px dashed rgba(251,191,36,0.45);
-      background: rgba(251,191,36,0.04);
-      border-radius: 18px;
-      padding: 1rem;
-    }
-
-    .radymate-upload-box input[type="file"] {
-      display: block;
-      width: 100%;
-      border: 1px solid rgba(148,163,184,0.2);
-      border-radius: 12px;
-      padding: 0.7rem 0.8rem;
-      background: rgba(15,23,42,0.95);
-      color: #f8fafc;
-      font-size: 0.75rem;
-    }
-
-    .radymate-upload-box input[type="text"] {
-      width: 100%;
-      border: 1px solid rgba(148,163,184,0.2);
-      border-radius: 12px;
-      padding: 0.7rem 0.8rem;
-      background: rgba(15,23,42,0.95);
-      color: #f8fafc;
-      font-size: 0.75rem;
-    }
-
-    .radymate-admin-badge {
+    .radymate-badge {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
@@ -1464,11 +1436,11 @@
       </p>
     </div>
 
-    <!-- 8 Primary Feature Cards Grid -->
+    <!-- 7 Primary Feature Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       
       <!-- Card 1 -->
-      <div class="ui-card rounded-3xl p-6 space-y-4 flex flex-col justify-between">
+      <div class="ui-card rounded-3xl p-6 space-y-4 flex flex-col justify-between md:col-span-2 lg:col-span-2">
         <div class="space-y-3">
           <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
             <span class="material-symbols-outlined text-2xl">phonelink_ring</span>
@@ -1599,33 +1571,16 @@
         </div>
       </div>
 
-      <!-- Card 8 -->
-      <div class="ui-card rounded-3xl p-6 space-y-4 flex flex-col justify-between">
-        <div class="space-y-3">
-          <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
-            <span class="material-symbols-outlined text-2xl">admin_panel_settings</span>
-          </div>
-          <h3 class="text-base font-extrabold text-slate-900 dark:text-white leading-snug">
-            8. Admin Control Plane & Multi-Tenant Infrastructure
-          </h3>
-          <ul class="space-y-2 text-xs text-slate-600 dark:text-slate-400 font-normal">
-            <li>• Dual DB Architecture</li>
-            <li>• Dynamic Credential Provisioning</li>
-            <li>• Appeal & Merchant Management</li>
-          </ul>
-        </div>
-      </div>
-
     </div>
 
-    <!-- Card 9: UI Aesthetics & Internationalization -->
+    <!-- Card 8: UI Aesthetics & Internationalization -->
     <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6">
       <div class="flex items-center gap-3">
         <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
           <span class="material-symbols-outlined text-2xl">palette</span>
         </div>
         <h3 class="text-lg md:text-xl font-extrabold text-slate-900 dark:text-white">
-          9. UI Aesthetics & Internationalization
+          8. UI Aesthetics & Internationalization
         </h3>
       </div>
 
@@ -2053,7 +2008,7 @@ print("Payment URL:", payment.url)</pre>
     <div class="ui-card rounded-[36px] p-6 md:p-10 reveal" data-reveal>
       <div class="radymate-launch-grid">
         <div class="space-y-6">
-          <div class="radymate-admin-badge">
+          <div class="radymate-badge">
             <span class="material-symbols-outlined text-xs">rocket_launch</span>
             <span>Radymate Studio</span>
           </div>
@@ -2150,43 +2105,15 @@ print("Payment URL:", payment.url)</pre>
         </div>
       </div>
 
-      <div class="mt-10 grid lg:grid-cols-[1.1fr_0.9fr] gap-6 items-start">
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xl font-black text-slate-900 dark:text-white">Website gallery</h3>
-            <span class="text-[10px] uppercase tracking-[0.14em] text-slate-500">Live showcase</span>
+      <div class="mt-12">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <h3 class="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Website gallery</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Explore ready-to-launch eCommerce storefronts and themes</p>
           </div>
-          <div class="radymate-gallery-grid" id="radymate-gallery"></div>
+          <span class="inline-flex self-start sm:self-auto text-[10px] uppercase tracking-[0.14em] text-amber-500 font-extrabold bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">Live showcase</span>
         </div>
-
-        <div class="radymate-upload-box">
-          <div class="flex items-center justify-between mb-3">
-            <div>
-              <div class="text-[10px] uppercase tracking-[0.14em] text-amber-400 font-black">Admin panel</div>
-              <h3 class="text-lg font-black text-white mt-1">Upload website preview</h3>
-            </div>
-            <span class="rounded-full bg-emerald-500/15 px-2 py-1 text-[9px] font-black text-emerald-400 border border-emerald-500/30">Enabled</span>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Image title</label>
-              <input id="radymate-upload-title" type="text" placeholder="Homepage sales dashboard" value="Radymate E-commerce launch" />
-            </div>
-            <div>
-              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Image caption</label>
-              <input id="radymate-upload-caption" type="text" placeholder="Premium storefront for modern brands" value="One-click launch storefront" />
-            </div>
-            <div>
-              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Upload image</label>
-              <input id="radymate-upload-file" type="file" accept="image/*" />
-            </div>
-            <div class="flex gap-2">
-              <button id="radymate-add-image" class="flex-1 rounded-xl bg-amber-500 text-slate-900 px-4 py-2.5 text-xs font-extrabold hover:bg-amber-400 transition-all">Add to gallery</button>
-              <button id="radymate-reset-gallery" class="rounded-xl border border-slate-700 bg-slate-900 text-white px-4 py-2.5 text-xs font-extrabold hover:bg-slate-800 transition-all">Reset</button>
-            </div>
-          </div>
-        </div>
+        <div class="radymate-gallery-grid" id="radymate-gallery"></div>
       </div>
     </div>
   </section>
