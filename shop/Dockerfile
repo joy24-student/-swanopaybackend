@@ -1,6 +1,7 @@
 ﻿FROM php:8.2-fpm-alpine
 
 # Install system dependencies and build libraries
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 RUN apk add --no-cache \
     postgresql-dev \
     libpng-dev \
@@ -36,7 +37,11 @@ RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/docker-php-ext-opcache.
 
 WORKDIR /var/www/html
 
+RUN addgroup -g 10001 shop-runtime && addgroup www-data shop-runtime
+COPY runtime.ini /usr/local/etc/php/conf.d/store-runtime.ini
+
 COPY . /var/www/html
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html

@@ -34,8 +34,7 @@ class SmsMonitoringService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        promoteToForeground()
 
         repository = AppRepository(applicationContext)
         startSmsReceiver()
@@ -45,9 +44,29 @@ class SmsMonitoringService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        promoteToForeground()
         return START_STICKY
+    }
+
+    private fun promoteToForeground() {
+        try {
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                androidx.core.app.ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e("SmsMonitoringService", "Failed to promote service to foreground: ${e.message}", e)
+            try {
+                stopSelf()
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -82,12 +101,16 @@ class SmsMonitoringService : Service() {
             }
         }
         
-        androidx.core.content.ContextCompat.registerReceiver(
-            this,
-            smsReceiver,
-            IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION),
-            androidx.core.content.ContextCompat.RECEIVER_EXPORTED
-        )
+        try {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                smsReceiver,
+                IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION),
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (e: Exception) {
+            Log.e("SmsMonitoringService", "Failed to register dynamic SMS receiver: ${e.message}", e)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -136,10 +159,8 @@ class SmsMonitoringService : Service() {
             while (isActive) {
                 delay(60_000L)
                 try {
-                    val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                    val level = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: 100
-                    val scale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: 100
-                    val batteryPct = if (scale > 0) (level * 100 / scale.toFloat()).toInt() else 100
+                    val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+                    val batteryPct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 100
 
                     repository.sendDeviceHeartbeat(applicationContext, batteryPct)
                 } catch (e: Exception) {
@@ -158,7 +179,11 @@ class SmsMonitoringService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         smsReceiver?.let {
-            unregisterReceiver(it)
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.w("SmsMonitoringService", "Error unregistering receiver: ${e.message}")
+            }
         }
         job.cancel()
         Log.d("SmsMonitoringService", "Service stopped and SMS receiver unregistered.")

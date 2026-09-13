@@ -39,13 +39,14 @@ $customer_id = $_SESSION['customer']['cust_id'];
                                 p.shipping_status
                             FROM tbl_order o
                             LEFT JOIN tbl_payment p ON o.payment_id = p.payment_id
-                            WHERE o.cust_id = ? AND (p.payment_status IN ('Cancelled', 'Returned', 'Return Requested') OR p.shipping_status IN ('Cancelled', 'Returned', 'Return Requested'))
+                            WHERE p.customer_id = ? AND (p.payment_status IN ('Cancelled', 'Returned', 'Return Requested') OR p.shipping_status IN ('Cancelled', 'Returned', 'Return Requested'))
                             ORDER BY o.id DESC
                         ");
                         $statement->execute(array($customer_id));
                         $returns = $statement->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
-                        echo '<div class="alert alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+                        error_log('Customer returns could not load: ' . $e->getCode());
+                        echo '<div class="alert alert-danger">Your returns could not be loaded. Please try again.</div>';
                         $returns = [];
                     }
 

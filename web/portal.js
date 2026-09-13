@@ -5,6 +5,59 @@ let activeTab = 'dashboard';
 let activeSdkLang = 'node';
 let environment = 'sandbox';
 
+const liveExamples = [
+  {
+    provider: 'bKash',
+    mode: 'Production QA',
+    order: 'ORD-7845',
+    amount: 'Tk 1,500.00',
+    phone: '01712345678',
+    method: 'Gateway checkout + SMS verify',
+    status: 'Ready to verify'
+  },
+  {
+    provider: 'Nagad',
+    mode: 'Production QA',
+    order: 'ORD-7846',
+    amount: 'Tk 2,250.00',
+    phone: '01812345678',
+    method: 'Merchant callback test',
+    status: 'Awaiting callback'
+  },
+  {
+    provider: 'Rocket',
+    mode: 'Sandbox live mode',
+    order: 'ORD-7847',
+    amount: 'Tk 875.00',
+    phone: '01912345678',
+    method: 'Cash-in verification flow',
+    status: 'Settlement active'
+  },
+  {
+    provider: 'Upay',
+    mode: 'Testing mode',
+    order: 'ORD-7848',
+    amount: 'Tk 3,140.00',
+    phone: '01612345678',
+    method: 'Full gateway inspection',
+    status: 'Preview + debug'
+  }
+];
+
+const gatewayPageLinks = [
+  { label: 'Secure checkout', href: 'widget.html?merchant_id=00000000-0000-0000-0000-000000000001&amount=1500.00&order_id=ORD-7845', type: 'Main gateway page' },
+  { label: 'Merchant form', href: 'form.html', type: 'Order initiation form' },
+  { label: 'Transaction ledger', href: 'transactions.html', type: 'Payment audit & debug' }
+];
+
+const fullFlowSteps = [
+  { label: 'Create order', detail: 'Merchant registers checkout intent with order metadata.' },
+  { label: 'Request payment', detail: 'Customer chooses bKash / Nagad / Rocket and confirms amount.' },
+  { label: 'Receive SMS', detail: 'App listens for the provider SMS and captures TrxID & amount.' },
+  { label: 'Verify & match', detail: 'SwapnoPay validates the transaction against the pending order.' },
+  { label: 'Webhook callback', detail: 'Merchant server receives a signed event and marks order PAID.' }
+];
+
 // Webhook events log store for payload inspection
 let webhookLogStore = [];
 
@@ -56,13 +109,60 @@ const explorerTemplates = {
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
+  renderLiveExamples();
+  renderFlowTimeline();
   loadExplorerTemplate();
   updateSdkCodes();
   logToConsole('OK', 'SwapnoPay Enterprise Console initialized in Sandbox Mode.');
 });
 
+function renderLiveExamples() {
+  const container = document.getElementById('live-examples-list');
+  const linkContainer = document.getElementById('gateway-demo-links');
+  if (!container) return;
+
+  container.innerHTML = liveExamples.map((example) => `
+    <div class="status-item" style="padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); min-height: 120px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom: 10px;">
+        <span style="font-weight: 700; color:#f8fafc;">${example.provider}</span>
+        <span style="font-size: 10px; color: var(--primary-gold); background: rgba(250, 204, 21, 0.12); border: 1px solid rgba(250, 204, 21, 0.35); padding: 3px 7px; border-radius: 999px;">${example.mode}</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted); line-height: 1.8;">
+        <div><strong>Order:</strong> ${example.order}</div>
+        <div><strong>Amount:</strong> ${example.amount}</div>
+        <div><strong>Phone:</strong> ${example.phone}</div>
+        <div><strong>Flow:</strong> ${example.method}</div>
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; color: var(--success);">● ${example.status}</div>
+    </div>
+  `).join('');
+
+  if (linkContainer) {
+    linkContainer.innerHTML = gatewayPageLinks.map((page) => `
+      <a href="${page.href}" target="_blank" style="display:block; padding:14px 16px; border:1px solid rgba(148,163,184,0.35); border-radius:12px; background: rgba(15,23,42,0.35); color: var(--text-main); text-decoration:none;">
+        <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--primary-gold); margin-bottom:8px;">${page.type}</div>
+        <div style="font-weight:700; font-size:14px;">${page.label}</div>
+      </a>
+    `).join('');
+  }
+}
+
+function renderFlowTimeline() {
+  const container = document.getElementById('sandbox-flow-sequence');
+  if (!container) return;
+
+  container.innerHTML = fullFlowSteps.map((step, index) => `
+    <div class="timeline-item ${index === 0 ? 'active' : ''}" data-flow-step="${index}">
+      <div class="timeline-dot"></div>
+      <span class="timeline-header">${index + 1}. ${step.label}</span>
+      <span class="timeline-time">${step.detail}</span>
+    </div>
+  `).join('');
+}
+
 // View switcher
 function switchView(viewId, element) {
+  if (!document.getElementById(`view-${viewId}`)) return;
   document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
   document.querySelectorAll('.panel-view').forEach(view => view.classList.remove('active'));
 
@@ -77,6 +177,12 @@ function switchView(viewId, element) {
   if (targetView) targetView.classList.add('active');
   
   activeTab = viewId;
+  document.querySelectorAll('.menu-item').forEach(item => {
+    if (item.classList.contains('active')) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+  const viewLabel = document.getElementById('workspace-view-label');
+  if (viewLabel) viewLabel.textContent = document.querySelector('.menu-item.active span:last-child')?.textContent || viewId;
   logToConsole('INFO', `Switched workspace view to: ${viewId.toUpperCase()}`);
 }
 
@@ -95,9 +201,18 @@ function setEnv(env) {
     document.querySelector('.env-btn.live').classList.add('active');
     document.getElementById('key-pk').innerText = 'pk_live_swapnopay_77a11b9920';
     document.getElementById('key-sk').innerText = 'sk_live_swapnopay_44b22c1108';
-    logToConsole('OK', 'Switched workspace to LIVE mode. Connected to SwapnoPay Production Endpoints.');
-    showToast('🚀 Switched to Live Production Mode');
+    logToConsole('INFO', 'Live gateway examples enabled. Full merchant checkout and callback QA is active.');
+    showToast('Live gateway QA mode enabled.');
   }
+
+  renderLiveExamples();
+}
+
+function openGatewayDemo() {
+  const target = 'widget.html?merchant_id=00000000-0000-0000-0000-000000000001&amount=1500.00&order_id=ORD-7845';
+  window.open(target, '_blank', 'noopener,noreferrer');
+  logToConsole('INFO', 'Opened live checkout gateway demo in a new tab.');
+  showToast('Opened live checkout demo', '🧾');
 }
 
 // Logger terminal helper
@@ -403,6 +518,89 @@ function runSdkSnippetTest() {
   setTimeout(() => {
     logToConsole('OK', `SDK Snippet executed cleanly. Order initialized: 77a8b6f3-118e-4a6f-998c-ec8844d18bb2`);
   }, 750);
+}
+
+function runFullSandboxPaymentFlow() {
+  const flowStatus = document.getElementById('sandbox-flow-status');
+  const steps = document.querySelectorAll('#sandbox-flow-sequence .timeline-item');
+  steps.forEach((step, index) => {
+    step.classList.remove('active', 'completed');
+    if (index === 0) step.classList.add('active');
+  });
+
+  if (flowStatus) flowStatus.textContent = 'Status: running full payment flow in sandbox';
+  logToConsole('INFO', 'Starting full sandbox payment flow for a real checkout lifecycle.');
+  showToast('Running full payment flow...', '🔄');
+
+  const schedule = [
+    { index: 0, label: 'Order created', status: 'Order ORD-7845 registered and awaiting payment.' },
+    { index: 1, label: 'Customer selected payment', status: 'bKash payment intent prepared for Tk 1,500.00.' },
+    { index: 2, label: 'SMS received', status: 'Incoming SMS matched via TrxID 9A8B7C6D.' },
+    { index: 3, label: 'Payment verified', status: 'Merchant ledger updated and amount confirmed.' },
+    { index: 4, label: 'Webhook delivered', status: 'Signed payment.success callback sent to merchant callback URL.' }
+  ];
+
+  schedule.forEach((item, idx) => {
+    setTimeout(() => {
+      const step = document.querySelector(`#sandbox-flow-sequence .timeline-item[data-flow-step="${item.index}"]`);
+      if (step) {
+        step.classList.remove('active');
+        step.classList.add('completed');
+      }
+
+      if (idx < schedule.length - 1) {
+        const nextStep = document.querySelector(`#sandbox-flow-sequence .timeline-item[data-flow-step="${item.index + 1}"]`);
+        if (nextStep) nextStep.classList.add('active');
+      }
+
+      if (flowStatus) flowStatus.textContent = `Status: ${item.status}`;
+      logToConsole('OK', `${item.label}: ${item.status}`);
+
+      if (item.index === 4) {
+        const webhookEvent = {
+          id: `evt_${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          targetUrl: 'https://mystore.com/api/webhook',
+          eventType: 'payment.success (bKash)',
+          status: '200 OK',
+          latency: '38ms',
+          headers: {
+            'x-swapnopay-signature': 't=17564600,v1=9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a',
+            'content-type': 'application/json'
+          },
+          payload: {
+            event: 'payment.success',
+            order_id: 'ORD-7845',
+            amount: 1500,
+            customer_phone: '01712345678',
+            mfs_provider: 'bKash',
+            trx_id: '9A8B7C6D',
+            status: 'PAID',
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        webhookLogStore.unshift(webhookEvent);
+        const tableEl = document.getElementById('webhook-logs-table');
+        if (tableEl) {
+          const newRow = document.createElement('tr');
+          newRow.onclick = () => openPayloadModal(webhookEvent.id);
+          newRow.innerHTML = `
+            <td>${webhookEvent.timestamp}</td>
+            <td>https://mystore.com/api/webhook</td>
+            <td><code>payment.success (bKash)</code></td>
+            <td><span class="status-badge ok">200 OK</span></td>
+            <td>38ms</td>
+            <td><button class="btn btn-secondary" style="padding:3px 8px; font-size:10px;" onclick="event.stopPropagation(); openPayloadModal('${webhookEvent.id}')">Inspect</button></td>
+          `;
+          if (tableEl.innerHTML.includes('No webhook events')) tableEl.innerHTML = '';
+          tableEl.insertBefore(newRow, tableEl.firstChild);
+        }
+
+        showToast('Payment matched and webhook delivered!', '🎉');
+      }
+    }, 700 * (idx + 1));
+  });
 }
 
 // Webhook simulation handler

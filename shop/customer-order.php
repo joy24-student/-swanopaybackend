@@ -71,7 +71,7 @@ function hasCustomerReviewedProduct($pdo, $customer_id, $product_id) {
                         <div class="order-list">
                             <?php foreach ($payments as $payment): 
                                 $order_date = strtotime($payment['payment_date']);
-                                $can_cancel = ($payment['shipping_status'] === 'Pending' && (time() - $order_date) < 86400);
+                                $can_cancel = ($payment['payment_status'] === 'Pending' && $payment['shipping_status'] === 'Pending' && (time() - $order_date) < 86400);
                             ?>
                                 <div class="order-card animate__animated animate__fadeInUp">
                                     <div class="order-header">
@@ -229,7 +229,7 @@ function hasCustomerReviewedProduct($pdo, $customer_id, $product_id) {
                                             Method: <?php echo htmlspecialchars($payment['payment_method']); ?>
                                         </div>
                                         <div class="invoice-link">
-                                            <a href="<?php echo BASE_URL; ?>payment_success.php?method=<?php echo ($payment['payment_method'] == 'Cash on Delivery' ? 'cod' : 'sslcommerz'); ?>&tran_id=<?php echo htmlspecialchars($payment['payment_id']); ?>&session_id=<?php echo session_id(); ?>" target="_blank" class="btn btn-sm btn-info">
+                                            <a href="<?php echo BASE_URL; ?>payment_success.php?method=<?php echo ($payment['payment_method'] == 'Cash on Delivery' ? 'cod' : 'sslcommerz'); ?>&tran_id=<?php echo htmlspecialchars($payment['payment_id']); ?>" target="_blank" class="btn btn-sm btn-info">
                                                 <i class="fas fa-file-invoice"></i> View Invoice
                                             </a>
                                         </div>
@@ -630,7 +630,7 @@ function cancelOrder(paymentId) {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: 'payment_id=' + encodeURIComponent(paymentId)
+            body: new URLSearchParams({payment_id: paymentId, _csrf: <?php echo json_encode($csrf->getToken()); ?>}).toString()
         })
         .then(response => response.json())
         .then(data => {
@@ -707,7 +707,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('<?php echo BASE_URL; ?>submit_review.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `product_id=${encodeURIComponent(productId)}&rating=${encodeURIComponent(rating.value)}&review_title=${encodeURIComponent(reviewTitle)}&comment=${encodeURIComponent(comment)}&csrf_token=<?php echo $csrf->getTokenValue() ?? ''; ?>` // Added ?? '' for safety
+                body: `product_id=${encodeURIComponent(productId)}&rating=${encodeURIComponent(rating.value)}&review_title=${encodeURIComponent(reviewTitle)}&comment=${encodeURIComponent(comment)}&_csrf=<?php echo $csrf->getToken() ?? ''; ?>` // Added ?? '' for safety
             })
             .then(response => response.json())
             .then(data => {

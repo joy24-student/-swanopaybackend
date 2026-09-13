@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); ?>
 
 <?php
@@ -22,12 +23,7 @@ if(isset($_POST['form1'])) {
 	if($valid == 1) {
 
 		// getting auto increment id
-		$statement = $pdo->prepare("SHOW TABLE STATUS LIKE 'tbl_slider'");
-		$statement->execute();
-		$result = $statement->fetchAll();
-		foreach($result as $row) {
-			$ai_id=$row[10];
-		}
+		$ai_id=bin2hex(random_bytes(16));
 
 
 		$final_name = 'slider-'.$ai_id.'.'.$ext;

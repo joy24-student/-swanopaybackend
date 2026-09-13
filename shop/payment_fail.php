@@ -1,12 +1,6 @@
 <?php
 ob_start();
-// Start or resume session. Check for session_id if it's passed via GET (common for gateway redirects)
-if (isset($_GET['session_id'])) {
-    session_id($_GET['session_id']);
-    session_start();
-} else {
-    session_start();
-}
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
 // =========================================================================
 // === NOTE: CART/CHECKOUT DATA IS RETAINED ON PAYMENT FAILURE ===
@@ -31,8 +25,8 @@ $customer_name = $_SESSION['customer']['cust_name'] ?? 'Customer';
 
 if ($tran_id !== 'N/A' && $method == 'sslcommerz') {
     // Attempt to fetch the initial order details from tbl_payment if the transaction ID is present
-    $stmt = $pdo->prepare("SELECT paid_amount, txnid, payment_method FROM tbl_payment WHERE txnid = ?");
-    $stmt->execute([$tran_id]);
+    $stmt = $pdo->prepare("SELECT paid_amount, txnid, payment_method FROM tbl_payment WHERE txnid = ? AND customer_id = ?");
+    $stmt->execute([$tran_id, (int)($_SESSION['customer']['cust_id'] ?? 0)]);
     $payment = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($payment) {

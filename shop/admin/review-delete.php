@@ -1,9 +1,10 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 // admin/review-delete.php
 <?php
 ob_start();
-session_start();
-include("inc/config.php");
-include("inc/functions.php");
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+require_once('inc/config.php');
+require_once('inc/functions.php');
 
 if(!isset($_SESSION['user'])) {
     header('location: login.php');
@@ -14,7 +15,7 @@ if(!isset($_REQUEST['id'])) {
     header('location: reviews.php');
     exit;
 } else {
-    $statement = $pdo->prepare("SELECT * FROM tbl_rating WHERE id=?");
+    $statement = $pdo->prepare("SELECT * FROM tbl_review WHERE review_id=?");
     $statement->execute(array($_REQUEST['id']));
     $total = $statement->rowCount();
     if( $total == 0 ) {
@@ -23,7 +24,7 @@ if(!isset($_REQUEST['id'])) {
     }
 }
 
-$statement = $pdo->prepare("DELETE FROM tbl_rating WHERE id=?");
+$statement = $pdo->prepare("DELETE FROM tbl_review WHERE review_id=?");
 $statement->execute(array($_REQUEST['id']));
 
 $_SESSION['success_message'] = 'Review deleted successfully!';

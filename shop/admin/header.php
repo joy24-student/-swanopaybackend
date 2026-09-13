@@ -1,9 +1,10 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php
 ob_start();
-session_start();
-include("inc/config.php");
-include("inc/functions.php");
-include("inc/CSRF_Protect.php");
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+require_once('inc/config.php');
+require_once('inc/functions.php');
+require_once('inc/CSRF_Protect.php');
 $csrf = new CSRF_Protect();
 $error_message = '';
 $success_message = '';
@@ -18,7 +19,7 @@ if(!isset($_SESSION['user'])) {
 
 // Getting all language variables
 $i=1;
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);                           
 foreach ($result as $row) {
@@ -50,6 +51,8 @@ foreach ($result as $row) {
 	<link rel="stylesheet" href="css/summernote.css">
 	<link rel="stylesheet" href="style.css">
 
+<link rel="stylesheet" href="css/enterprise.css">
+<meta name="csrf-token" content="<?php echo $csrf->getToken(); ?>">
 </head>
 
 <body class="hold-transition fixed skin-blue sidebar-mini">

@@ -1,165 +1,17 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); ?>
 
 <?php
+require_once __DIR__ . '/inc/catalog.php';
 if(isset($_POST['form1'])) {
-	$valid = 1;
-
-    if(empty($_POST['tcat_id'])) {
-        $valid = 0;
-        $error_message .= "You must have to select a top level category<br>";
-    }
-
-    if(empty($_POST['mcat_id'])) {
-        $valid = 0;
-        $error_message .= "You must have to select a mid level category<br>";
-    }
-
-    if(empty($_POST['ecat_id'])) {
-        $valid = 0;
-        $error_message .= "You must have to select an end level category<br>";
-    }
-
-    if(empty($_POST['p_name'])) {
-        $valid = 0;
-        $error_message .= "Product name can not be empty<br>";
-    }
-
-    if(empty($_POST['p_current_price'])) {
-        $valid = 0;
-        $error_message .= "Current Price can not be empty<br>";
-    }
-
-    if(empty($_POST['p_qty'])) {
-        $valid = 0;
-        $error_message .= "Quantity can not be empty<br>";
-    }
-
-    $path = $_FILES['p_featured_photo']['name'];
-    $path_tmp = $_FILES['p_featured_photo']['tmp_name'];
-
-    if($path!='') {
-        $ext = pathinfo( $path, PATHINFO_EXTENSION );
-        $file_name = basename( $path, '.' . $ext );
-        if( $ext!='jpg' && $ext!='png' && $ext!='jpeg' && $ext!='gif' ) {
-            $valid = 0;
-            $error_message .= 'You must have to upload jpg, jpeg, gif or png file<br>';
-        }
-    } else {
-    	$valid = 0;
-        $error_message .= 'You must have to select a featured photo<br>';
-    }
-
-
-    if($valid == 1) {
-
-    	$statement = $pdo->prepare("SHOW TABLE STATUS LIKE 'tbl_product'");
-		$statement->execute();
-		$result = $statement->fetchAll();
-		foreach($result as $row) {
-			$ai_id=$row[10];
-		}
-
-    	if( isset($_FILES['photo']["name"]) && isset($_FILES['photo']["tmp_name"]) )
-        {
-        	$photo = array();
-            $photo = $_FILES['photo']["name"];
-            $photo = array_values(array_filter($photo));
-
-        	$photo_temp = array();
-            $photo_temp = $_FILES['photo']["tmp_name"];
-            $photo_temp = array_values(array_filter($photo_temp));
-
-        	$statement = $pdo->prepare("SHOW TABLE STATUS LIKE 'tbl_product_photo'");
-			$statement->execute();
-			$result = $statement->fetchAll();
-			foreach($result as $row) {
-				$next_id1=$row[10];
-			}
-			$z = $next_id1;
-
-            $m=0;
-            for($i=0;$i<count($photo);$i++)
-            {
-                $my_ext1 = pathinfo( $photo[$i], PATHINFO_EXTENSION );
-		        if( $my_ext1=='jpg' || $my_ext1=='png' || $my_ext1=='jpeg' || $my_ext1=='gif' ) {
-		            $final_name1[$m] = $z.'.'.$my_ext1;
-                    move_uploaded_file($photo_temp[$i],"../assets/uploads/product_photos/".$final_name1[$m]);
-                    $m++;
-                    $z++;
-		        }
-            }
-
-            if(isset($final_name1)) {
-            	for($i=0;$i<count($final_name1);$i++)
-		        {
-		        	$statement = $pdo->prepare("INSERT INTO tbl_product_photo (photo,p_id) VALUES (?,?)");
-		        	$statement->execute(array($final_name1[$i],$ai_id));
-		        }
-            }            
-        }
-
-		$final_name = 'product-featured-'.$ai_id.'.'.$ext;
-        move_uploaded_file( $path_tmp, '../assets/uploads/'.$final_name );
-
-
-
-
-
-//Saving data into the main table tbl_product
-		$statement = $pdo->prepare("INSERT INTO tbl_product(
-										p_name,
-										p_old_price,
-										p_current_price,
-										p_qty,
-										p_featured_photo,
-										p_description,
-										p_short_description,
-										p_feature,
-										p_condition,
-										p_return_policy,
-										p_video_link,
-										p_total_view,
-										p_is_featured,
-										p_is_active,
-										ecat_id
-									) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-		$statement->execute(array(
-										$_POST['p_name'],
-										$_POST['p_old_price'],
-										$_POST['p_current_price'],
-										$_POST['p_qty'],
-										$final_name,
-										$_POST['p_description'],
-										$_POST['p_short_description'],
-										$_POST['p_feature'],
-										$_POST['p_condition'],
-										$_POST['p_return_policy'],
-										$_POST['p_video_link'],
-										0,
-										$_POST['p_is_featured'],
-										$_POST['p_is_active'],
-										$_POST['ecat_id']
-									));
-
-		
-
-        if(isset($_POST['size'])) {
-			foreach($_POST['size'] as $value) {
-				$statement = $pdo->prepare("INSERT INTO tbl_product_size (size_id,p_id) VALUES (?,?)");
-				$statement->execute(array($value,$ai_id));
-			}
-		}
-
-		if(isset($_POST['color'])) {
-			foreach($_POST['color'] as $value) {
-				$statement = $pdo->prepare("INSERT INTO tbl_product_color (color_id,p_id) VALUES (?,?)");
-				$statement->execute(array($value,$ai_id));
-			}
-		}
-	
-    	$success_message = 'Product is added successfully.';
+    try {
+        $savedProduct=saveStoreProduct($pdo,$_POST,$_FILES,null);
+        header('Location: product-edit.php?id=' . $savedProduct . '&saved=1');exit;
+    } catch(Throwable $error) {
+        $error_message=$error instanceof PDOException ? 'The product could not be saved. Check its fields and try again.' : htmlspecialchars($error->getMessage(),ENT_QUOTES,'UTF-8');
     }
 }
+if(isset($_GET['saved'])) $success_message='Product saved successfully.';
 ?>
 
 <section class="content-header">

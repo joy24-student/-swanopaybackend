@@ -299,6 +299,9 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProduct(product: ProductItemEntity)
 
+    @Query("UPDATE products SET imageUrl=:image, storefrontDetailsJson=:details WHERE id=:id AND merchantId=:merchantId AND storefrontDetailsJson=:previous")
+    suspend fun updateProductMedia(id: String, merchantId: String, image: String?, details: String, previous: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProducts(products: List<ProductItemEntity>)
 

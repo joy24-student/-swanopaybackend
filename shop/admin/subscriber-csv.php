@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php
 include 'inc/config.php';
 $now = gmdate("D, d M Y H:i:s");

@@ -113,14 +113,6 @@ function getCategoryIdBySlug($slug, $type, $pdo) {
  */
 function updateProductSlug($productId, $productName, $pdo) {
     try {
-        // Check if slug column exists
-        $checkColumn = $pdo->query("SHOW COLUMNS FROM tbl_product LIKE 'slug'");
-        
-        if ($checkColumn->rowCount() == 0) {
-            // Add slug column if it doesn't exist
-            $pdo->query("ALTER TABLE tbl_product ADD COLUMN slug VARCHAR(255) UNIQUE NULL AFTER p_name");
-        }
-        
         $slug = generateUniqueSlug($productName, $productId);
         
         $statement = $pdo->prepare("UPDATE tbl_product SET slug=? WHERE p_id=?");
@@ -146,28 +138,20 @@ function updateCategorySlug($categoryId, $categoryName, $type, $pdo) {
             case 'top-category':
                 $table = 'tbl_top_category';
                 $idColumn = 'tcat_id';
-                $slugColumn = 'tcat_slug';
+                $slugColumn = 'slug';
                 break;
             case 'mid-category':
                 $table = 'tbl_mid_category';
                 $idColumn = 'mcat_id';
-                $slugColumn = 'mcat_slug';
+                $slugColumn = 'slug';
                 break;
             case 'end-category':
                 $table = 'tbl_end_category';
                 $idColumn = 'ecat_id';
-                $slugColumn = 'ecat_slug';
+                $slugColumn = 'slug';
                 break;
             default:
                 return false;
-        }
-        
-        // Check if slug column exists
-        $checkColumn = $pdo->query("SHOW COLUMNS FROM $table LIKE '$slugColumn'");
-        
-        if ($checkColumn->rowCount() == 0) {
-            // Add slug column if it doesn't exist
-            $pdo->query("ALTER TABLE $table ADD COLUMN $slugColumn VARCHAR(255) UNIQUE NULL");
         }
         
         $slug = generateUniqueSlug($categoryName, $categoryId);
@@ -200,6 +184,7 @@ function getProductURL($productId, $productName, $baseUrl = '') {
  */
 function getCategoryURL($categoryId, $categoryName, $type = 'top-category', $parentSlug = '', $baseUrl = '') {
     $slug = generateUniqueSlug($categoryName, $categoryId);
+    if ($type !== 'top-category' && !$parentSlug) return rtrim($baseUrl,'/') . '/product-category.php?type=' . rawurlencode($type) . '&slug=' . rawurlencode($slug);
     $url = rtrim($baseUrl, '/') . '/category/';
     
     if (!empty($parentSlug)) {

@@ -21,6 +21,7 @@ if(!isset($_SESSION['customer'])) {
 if (isset($_POST['form1'])) {
 
     $valid = 1;
+    if (!$csrf->checkToken() || strlen($_POST['cust_password'] ?? '') < 12 || strlen($_POST['cust_password'] ?? '') > 72) { $valid=0; $error_message .= 'Use a valid form session and a password of 12 to 72 bytes.<br>'; }
 
     if( empty($_POST['cust_password']) || empty($_POST['cust_re_password']) ) {
         $valid = 0;
@@ -38,12 +39,12 @@ if (isset($_POST['form1'])) {
 
         // update data into the database
 
-        $password = strip_tags($_POST['cust_password']);
+        $password = $_POST['cust_password'];
         
         $statement = $pdo->prepare("UPDATE tbl_customer SET cust_password=? WHERE cust_id=?");
-        $statement->execute(array(md5($password),$_SESSION['customer']['cust_id']));
+        $statement->execute(array(password_hash($password, PASSWORD_BCRYPT, ['cost'=>12]),$_SESSION['customer']['cust_id']));
         
-        $_SESSION['customer']['cust_password'] = md5($password);        
+        $_SESSION['customer']['cust_password'] = password_hash($password, PASSWORD_BCRYPT, ['cost'=>12]);        
 
         $success_message = LANG_VALUE_141;
     }

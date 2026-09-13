@@ -26,10 +26,9 @@ foreach ($result as $row) {
 }
 $enabled_methods = explode(',', $payment_methods_string);
 $enabled_methods = array_map('trim', explode(',', $payment_methods_string));
-// Always ensure SwapnoPay / bKash/Nagad/Rocket is available
-if (!in_array('bKash/Nagad/Rocket', $enabled_methods) && !in_array('SwapnoPay', $enabled_methods)) {
-    array_unshift($enabled_methods, 'SwapnoPay');
-}
+// Hosted stores offer only configured payment methods.
+if ($runtimeRoot) $enabled_methods = (int)($settings['cod_enabled'] ?? 0) ? ['Cash on Delivery'] : [];
+if (empty($_SESSION['checkout_token'])) $_SESSION['checkout_token'] = bin2hex(random_bytes(32));
 
 
 // --- Calculate Cart Total Price ---
@@ -488,6 +487,7 @@ $_SESSION['payment_data'] = [
                                     <?php if (in_array('Cash on Delivery', $enabled_methods)): ?>
                                         <option value="Cash on Delivery">Cash on Delivery</option>
                                     <?php endif; ?>
+
                                     <?php if (in_array('SSLCommerz', $enabled_methods)): ?>
                                         <option value="SSLCommerz">SSLCommerz</option>
                                     <?php endif; ?>
@@ -594,6 +594,8 @@ $_SESSION['payment_data'] = [
                             <?php if (in_array('Cash on Delivery', $enabled_methods)): ?>
                                 <div id="cod_form" class="payment-form" style="display:none;">
                                     <form action="payment/cod/process.php" method="post">
+                                        <?php $csrf->echoInputField(); ?>
+                                        <input type="hidden" name="checkout_token" value="<?php echo htmlspecialchars($_SESSION['checkout_token'],ENT_QUOTES,'UTF-8'); ?>">
                                         <input type="hidden" name="final_total" value="<?php echo number_format($final_total, 2, '.', ''); ?>">
                                         <div class="form-group">
                                             <div class="alert alert-info">

@@ -40,6 +40,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("SwapnoPayCrash", "Fatal uncaught exception in thread ${thread.name}: ${throwable.message}", throwable)
+        }
         enableEdgeToEdge()
 
         // Handle deep link callback from Supabase email confirmation or reset links
@@ -109,6 +112,8 @@ class MainActivity : FragmentActivity() {
 
     private fun startSmsService() {
         runCatching {
+            val hasSms = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+            if (!hasSms) return@runCatching
             val serviceIntent = Intent(this, SmsMonitoringService::class.java)
             ContextCompat.startForegroundService(this, serviceIntent)
         }.onFailure {

@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+<?php if (getenv('SHOP_RUNTIME_DIR')) { $accountMode='register'; require __DIR__ . '/account.php'; exit; } require_once('header.php'); if (isset($_POST['social_login_email'])) { http_response_code(403); exit('Use email and password to sign in.'); } ?>
 <?php
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;

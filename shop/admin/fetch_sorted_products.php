@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php
 include("admin/inc/config.php");
 $sort_type = $_POST['sort_type'] ?? '';

@@ -1,49 +1,29 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SwapnoPay Developer Portal & Official API Documentation v2.0</title>
-  <meta name="description" content="SwapnoPay Enterprise Developer Portal — Complete API Documentation, Automated SMS Reconciliation Architecture, HMAC-SHA256 Webhooks, Video Tutorials, and Production SDKs.">
+  <title>SwapnoPay API Documentation | Payments, Webhooks &amp; SDKs</title>
+  <meta name="description" content="Explore SwapnoPay payment API documentation, authentication, webhook signatures and SDK examples to integrate MFS payment workflows into your website or app.">
   
-  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              gold: '#c9933b',
-              goldDark: '#ca8a04',
-              darkBg: '#08090d',
-              cardBg: '#12141d',
-            }
-          },
-          fontFamily: {
-            sans: ['Outfit', 'sans-serif'],
-            mono: ['Fira Code', 'monospace']
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="assets/site.css">
+
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <style>
+    <style>
     body {
       font-family: 'Outfit', sans-serif;
-      background-color: #08090d;
-      color: #f3f4f6;
+      background-color: #f8fafc;
+      color: #0f172a;
     }
     code, pre { font-family: 'Fira Code', monospace; }
     
     .hero-mesh-dark {
-      background: radial-gradient(circle at 85% 15%, rgba(202, 138, 4, 0.12) 0%, transparent 50%),
-                  radial-gradient(circle at 15% 75%, rgba(79, 70, 229, 0.10) 0%, transparent 45%),
-                  #08090d;
+      background: radial-gradient(circle at 85% 15%, rgba(245,158,11,0.06) 0%, transparent 50%),
+                  radial-gradient(circle at 15% 75%, rgba(59,130,246,0.04) 0%, transparent 45%),
+                  #f8fafc;
     }
 
     .gold-gradient-text {
@@ -78,24 +58,46 @@
       transition: opacity 0.3s ease, transform 0.3s ease;
     }
   </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="enterprise.css">
+  <script src="workspace.js" defer></script>
+  <link rel="canonical" href="https://swapnopay.top/docs.html">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SwapnoPay">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="SwapnoPay API Documentation | Payments, Webhooks &amp; SDKs">
+  <meta property="og:description" content="Explore SwapnoPay payment API documentation, authentication, webhook signatures and SDK examples to integrate MFS payment workflows into your website or app.">
+  <meta property="og:url" content="https://swapnopay.top/docs.html">
+  <meta property="og:image" content="https://swapnopay.top/logo_branding.png">
+  <meta property="og:image:alt" content="SwapnoPay — payment and business management platform">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="SwapnoPay API Documentation | Payments, Webhooks &amp; SDKs">
+  <meta name="twitter:description" content="Explore SwapnoPay payment API documentation, authentication, webhook signatures and SDK examples to integrate MFS payment workflows into your website or app.">
+  <meta name="twitter:image" content="https://swapnopay.top/logo_branding.png">
+  <meta name="theme-color" content="#101c30">
+  <link rel="icon" href="favicon.png" type="image/png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://swapnopay.top/#organization","name":"SwapnoPay","alternateName":"স্বপ্নপে","url":"https://swapnopay.top/","logo":{"@type":"ImageObject","url":"https://swapnopay.top/logo_branding.png"}},{"@type":"WebSite","@id":"https://swapnopay.top/#website","url":"https://swapnopay.top/","name":"SwapnoPay","alternateName":"স্বপ্নপে","publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://swapnopay.top/docs.html#webpage","url":"https://swapnopay.top/docs.html","name":"SwapnoPay API Documentation | Payments, Webhooks & SDKs","description":"Explore SwapnoPay payment API documentation, authentication, webhook signatures and SDK examples to integrate MFS payment workflows into your website or app.","isPartOf":{"@id":"https://swapnopay.top/#website"},"publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en","breadcrumb":{"@id":"https://swapnopay.top/docs.html#breadcrumbs"}},{"@type":"BreadcrumbList","@id":"https://swapnopay.top/docs.html#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"SwapnoPay","item":"https://swapnopay.top/"},{"@type":"ListItem","position":2,"name":"SwapnoPay API Documentation","item":"https://swapnopay.top/docs.html"}]},{"@type":"TechArticle","@id":"https://swapnopay.top/docs.html#article","headline":"SwapnoPay payment API documentation","description":"Explore SwapnoPay payment API documentation, authentication, webhook signatures and SDK examples to integrate MFS payment workflows into your website or app.","mainEntityOfPage":{"@id":"https://swapnopay.top/docs.html#webpage"},"author":{"@id":"https://swapnopay.top/#organization"},"publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en"}]}</script>
 </head>
-<body class="min-h-screen hero-mesh-dark antialiased">
+<body class="enterprise-page docs-page min-h-screen antialiased">
+  <a href="#docs-content" class="skip-link">Skip to documentation</a>
+  <button type="button" class="workspace-backdrop" aria-label="Close navigation" tabindex="-1" hidden></button>
 
   <!-- Toast Notification -->
-  <div id="copy-toast" class="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-xs flex items-center gap-2 opacity-0 pointer-events-none transform translate-y-3">
-    <span>📋</span>
+  <div id="copy-toast" role="status" aria-live="polite" class="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-xs flex items-center gap-2 opacity-0 pointer-events-none transform translate-y-3">
+    <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
     <span id="toast-text">Full API Documentation copied to clipboard!</span>
   </div>
 
   <!-- Video Player Modal -->
-  <div id="video-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+  <div id="video-modal" role="dialog" aria-modal="true" aria-labelledby="modal-video-title" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
     <div class="bg-[#12141d] border border-amber-500/30 rounded-3xl max-w-3xl w-full p-6 space-y-4 shadow-2xl">
       <div class="flex justify-between items-center pb-3 border-b border-slate-800">
         <h3 id="modal-video-title" class="font-extrabold text-white text-base">Video Integration Tutorial</h3>
         <button onclick="closeVideoModal()" class="text-slate-400 hover:text-white text-xl font-bold">✕</button>
       </div>
       <div class="aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center">
-        <iframe id="modal-video-iframe" class="w-full h-full" src="" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+        <iframe id="modal-video-iframe" title="SwapnoPay integration tutorial" class="w-full h-full" src="" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe>
       </div>
       <div class="flex justify-between items-center pt-2 text-xs text-slate-400">
         <span id="modal-video-desc">Step-by-step video guide</span>
@@ -105,7 +107,7 @@
   </div>
 
   <!-- Sidebar Navigation -->
-  <aside class="w3-sidebar bg-[#0b0f19]/90 border-r border-amber-500/20 p-5 backdrop-blur-xl">
+  <aside id="workspace-sidebar" aria-label="Documentation navigation" class="workspace-sidebar w3-sidebar bg-[#0b0f19]/90 border-r border-amber-500/20 p-5 backdrop-blur-xl">
     <a href="index.html" class="flex items-center gap-3 mb-8 group">
       <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
         <img src="logo_branding.png" alt="SwapnoPay" class="w-full h-full object-contain rounded-xl bg-black" onError="this.style.display='none'">
@@ -116,13 +118,8 @@
       </div>
     </a>
 
-    <!-- One-Click Full Documentation Export in Sidebar -->
-    <div class="mb-6">
-      <button onclick="copyFullApiDocumentation()" class="w-full gold-gradient-btn text-slate-950 font-extrabold text-xs px-3 py-2.5 rounded-xl transition flex items-center justify-center gap-2">
-        <span>📋</span>
-        <span>Copy Full API Docs</span>
-      </button>
-    </div>
+    <label class="docs-search"><span class="material-symbols-outlined" aria-hidden="true">search</span><input id="docs-search" type="search" placeholder="Find a topic…" aria-label="Filter documentation topics" autocomplete="off"></label>
+    <p id="docs-search-status" class="docs-search-status" role="status" hidden>No matching topics. Try “webhook” or “SDK”.</p>
 
     <nav class="space-y-6 text-xs font-medium">
       <div>
@@ -163,13 +160,13 @@
       <div>
         <div class="px-3 text-[10px] font-bold text-amber-400/80 uppercase tracking-widest mb-2">Tutorials & Media</div>
         <ul class="space-y-1">
-          <li><a href="#video-tutorials" class="block px-3 py-2 rounded-xl text-slate-300 hover:bg-slate-900 hover:text-amber-400 transition">🎥 Video Integration Guides</a></li>
+          <li><a href="#video-tutorials" class="block px-3 py-2 rounded-xl text-slate-300 hover:bg-slate-900 hover:text-amber-400 transition"><span class="material-symbols-outlined">videocam</span> Video Integration Guides</a></li>
         </ul>
       </div>
 
       <div class="pt-4 border-t border-slate-800 space-y-2">
         <a href="portal.html" class="block p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-center hover:bg-amber-500/20 transition">
-          💻 Developer Console ↗
+          <span class="material-symbols-outlined">computer</span> Developer Console ↗
         </a>
       </div>
     </nav>
@@ -178,93 +175,59 @@
   <!-- Main Content Area -->
   <main class="main-content min-h-screen pb-20">
     <!-- Top Navbar -->
-    <header class="bg-[#08090d]/90 border-b border-amber-500/15 sticky top-0 z-30 px-6 py-4 flex items-center justify-between backdrop-blur-xl">
-      <div class="flex items-center gap-3">
-        <a href="index.html" class="md:hidden text-amber-400 font-bold text-xs">← Back</a>
-        <h1 class="text-base md:text-lg font-black text-white">📚 SwapnoPay Developer Portal & Official API Documentation</h1>
-        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase">v2.0 Production</span>
-      </div>
-      <div class="flex items-center gap-3">
-        <button onclick="copyFullApiDocumentation()" class="gold-gradient-btn text-slate-950 font-extrabold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
-          <span>📋</span>
-          <span class="hidden sm:inline">Copy Full API Docs</span>
-        </button>
-        <a href="portal.html" class="bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition">Console ↗</a>
-      </div>
+    <header class="workspace-header">
+      <button type="button" class="workspace-toggle" aria-label="Open documentation navigation" aria-expanded="false" aria-controls="workspace-sidebar"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
+      <div class="docs-header-label"><span class="material-symbols-outlined" aria-hidden="true">menu_book</span><span>Documentation</span><span class="version-label">v2.0</span></div>
+      <div class="docs-header-actions"><button type="button" onclick="copyFullApiDocumentation()" class="btn btn-secondary">Copy API docs</button><a class="btn" href="portal.html">Open console <span aria-hidden="true">↗</span></a></div>
     </header>
 
     <!-- Broadcast Banner (dynamically synced from Admin CMS) -->
     <div id="admin-broadcast-banner" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 text-xs text-amber-300 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span>📢</span>
+        <span class="material-symbols-outlined">campaign</span>
         <span id="broadcast-message"></span>
       </div>
       <span class="text-[10px] opacity-75 font-mono">Live Admin Sync</span>
     </div>
 
-    <div class="max-w-5xl mx-auto px-6 py-8 space-y-12">
+    <div class="docs-body" id="docs-content" tabindex="-1">
+      <nav class="workspace-breadcrumb" aria-label="Breadcrumb"><a href="/">SwapnoPay</a><span aria-hidden="true">/</span><span aria-current="page">API documentation</span></nav>
 
-      <!-- Hero Section: One Click Full API Docs Export -->
-      <section class="glass-card rounded-3xl p-6 md:p-8 border border-amber-500/30 space-y-4 shadow-2xl relative overflow-hidden">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-extrabold text-xs mb-2">
-              <span>⚡</span> <span>Production-Ready API Specification</span>
-            </div>
-            <h2 class="text-2xl md:text-3xl font-black text-white">One-Click Full API Documentation</h2>
-            <p class="text-xs md:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Export the complete exhaustive OpenAPI-level specification (all endpoints, HMAC-SHA256 signature verification algorithms, error codes, and SDK snippets in Markdown) directly to your clipboard to hand off to your engineering team.
-            </p>
-          </div>
-          <button onclick="copyFullApiDocumentation()" class="gold-gradient-btn text-slate-950 font-black text-sm px-6 py-3.5 rounded-2xl transition flex items-center gap-2.5 shadow-lg whitespace-nowrap">
-            <span class="text-base">📋</span>
-            <span>Copy Full API Documentation</span>
-          </button>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-amber-500/20 text-xs">
-          <div class="bg-black/40 p-3 rounded-xl border border-amber-500/10">
-            <div class="text-[10px] text-slate-400 uppercase font-bold">Endpoints</div>
-            <div class="text-base font-extrabold text-amber-400">6 Methods</div>
-          </div>
-          <div class="bg-black/40 p-3 rounded-xl border border-amber-500/10">
-            <div class="text-[10px] text-slate-400 uppercase font-bold">Security</div>
-            <div class="text-base font-extrabold text-emerald-400">HMAC-SHA256</div>
-          </div>
-          <div class="bg-black/40 p-3 rounded-xl border border-amber-500/10">
-            <div class="text-[10px] text-slate-400 uppercase font-bold">Reconciliation</div>
-            <div class="text-base font-extrabold text-amber-400">1-3s Instant</div>
-          </div>
-          <div class="bg-black/40 p-3 rounded-xl border border-amber-500/10">
-            <div class="text-[10px] text-slate-400 uppercase font-bold">SDK Languages</div>
-            <div class="text-base font-extrabold text-indigo-400">7 Platforms</div>
-          </div>
+      <section class="docs-hero glass-card" aria-labelledby="docs-title">
+        <div class="workspace-eyebrow">SwapnoPay for developers</div>
+        <h1 id="docs-title">Your guide to better<br>payment integrations.</h1>
+        <p>Integrate SwapnoPay payments into your website or app. Explore the payment API, understand webhook delivery, and get started with practical code examples for Bangladesh’s MFS ecosystem.</p>
+        <div class="docs-hero-actions"><a href="#auth" class="btn">Start integrating <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a><button type="button" onclick="copyFullApiDocumentation()" class="btn btn-secondary"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>Copy full API reference</button></div>
+        <div class="docs-quicklinks">
+          <a href="#endpoints"><span class="material-symbols-outlined" aria-hidden="true">terminal</span><strong>API reference</strong><small>Requests, responses & error codes</small></a>
+          <a href="#webhooks"><span class="material-symbols-outlined" aria-hidden="true">webhook</span><strong>Webhook security</strong><small>Understand signature verification</small></a>
+          <a href="#sdks"><span class="material-symbols-outlined" aria-hidden="true">code_blocks</span><strong>Code examples</strong><small>Find your preferred language</small></a>
         </div>
       </section>
 
       <!-- Section 1: Overview & Mechanism -->
       <section id="overview" class="space-y-4">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">1. Platform Mechanism & Architecture</h2>
+          <h2 class="text-2xl font-black text-white">Platform Mechanism & Architecture</h2>
           <p class="text-xs text-slate-400 mt-1">SwapnoPay unifies carrier MFS SMS verification on Android, merchant databases, and web checkouts into a high-speed settlement pipeline.</p>
         </div>
 
         <div class="grid md:grid-cols-3 gap-4">
           <div class="glass-card p-5 rounded-2xl border border-amber-500/20 space-y-2">
             <div class="text-amber-400 font-extrabold text-base flex items-center gap-1.5">
-              <span>⚡</span> <span>Atomic Pattern Matching</span>
+              <span class="material-symbols-outlined">bolt</span> <span>Atomic Pattern Matching</span>
             </div>
             <p class="text-xs text-slate-400 leading-relaxed">Merchant Android workers intercept raw carrier MFS SMS (bKash, Nagad, Rocket, Upay) and perform atomic regex extraction of Transaction ID, amount, and sender phone.</p>
           </div>
           <div class="glass-card p-5 rounded-2xl border border-amber-500/20 space-y-2">
             <div class="text-amber-400 font-extrabold text-base flex items-center gap-1.5">
-              <span>🔒</span> <span>Central HMAC & Ledger</span>
+              <span class="material-symbols-outlined">lock</span> <span>Central HMAC & Ledger</span>
             </div>
             <p class="text-xs text-slate-400 leading-relaxed">Platform Owner Admin Supabase database manages API key peppered HMAC digests, platform fee accounting, idempotency guards, and centralized payment telemetry.</p>
           </div>
           <div class="glass-card p-5 rounded-2xl border border-amber-500/20 space-y-2">
             <div class="text-amber-400 font-extrabold text-base flex items-center gap-1.5">
-              <span>📡</span> <span>Real-Time WebSockets</span>
+              <span class="material-symbols-outlined">rss_feed</span> <span>Real-Time WebSockets</span>
             </div>
             <p class="text-xs text-slate-400 leading-relaxed">Express.js + Socket.io server emits instant <code class="text-amber-300">payment_status</code> events (<code class="text-emerald-400">PAID</code>, <code class="text-red-400">FAILED</code>, <code class="text-amber-400">CANCELLED</code>) to listening web checkout widgets.</p>
           </div>
@@ -274,7 +237,7 @@
       <!-- Section 2: Flowchart -->
       <section id="flowchart" class="space-y-4">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">2. System Sequence & Flowchart</h2>
+          <h2 class="text-2xl font-black text-white">System Sequence & Flowchart</h2>
           <p class="text-xs text-slate-400 mt-1">End-to-end payment lifecycle from checkout initialization to carrier match and webhook dispatch.</p>
         </div>
 
@@ -309,12 +272,12 @@
       <!-- Section 3: Authentication -->
       <section id="auth" class="space-y-4">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">3. Authentication & Headers</h2>
+          <h2 class="text-2xl font-black text-white">Authentication & Headers</h2>
           <p class="text-xs text-slate-400 mt-1">Authenticate API calls using your Secret Key and protect against duplicate transactions with idempotency.</p>
         </div>
 
         <div class="glass-card rounded-2xl overflow-hidden border border-amber-500/20">
-          <table class="w-full text-left text-xs border-collapse">
+          <div class="docs-table-scroll" role="region" aria-label="Scrollable API reference table" tabindex="0"><table class="w-full text-left text-xs border-collapse">
             <thead>
               <tr class="bg-black/60 text-amber-400 border-b border-amber-500/20 font-mono">
                 <th class="p-3.5">Header Name</th>
@@ -339,14 +302,14 @@
                 <td class="p-3.5">Must be set to <code class="text-amber-400">application/json</code>.</td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
         </div>
       </section>
 
       <!-- Section 4: API Reference -->
       <section id="endpoints" class="space-y-6">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">4. Core API Endpoints Reference</h2>
+          <h2 class="text-2xl font-black text-white">Core API Endpoints Reference</h2>
           <p class="text-xs text-slate-400 mt-1">Production HTTP endpoints for payment creation, instant verification, status queries, and dynamic hosted forms.</p>
         </div>
 
@@ -432,7 +395,7 @@
           <div class="p-4 bg-black/60 border-b border-amber-500/20 font-bold text-sm text-white">
             ⚠️ API Error Codes Reference
           </div>
-          <table class="w-full text-left text-xs border-collapse">
+          <div class="docs-table-scroll" role="region" aria-label="Scrollable API reference table" tabindex="0"><table class="w-full text-left text-xs border-collapse">
             <thead>
               <tr class="bg-black/40 text-amber-400 border-b border-slate-800 font-mono">
                 <th class="p-3">Error Code</th>
@@ -467,14 +430,14 @@
                 <td class="p-3 text-slate-300 font-sans">No Android receiver phone currently online for requested payment gateway.</td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
         </div>
       </section>
 
       <!-- Section 5: Webhooks & Security -->
       <section id="webhooks" class="space-y-4">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">5. Webhooks & HMAC Signature Security</h2>
+          <h2 class="text-2xl font-black text-white">Webhooks & HMAC Signature Security</h2>
           <p class="text-xs text-slate-400 mt-1">SwapnoPay signs all webhook notifications with HMAC-SHA256 in the <code class="text-amber-300">X-Signature</code> header.</p>
         </div>
 
@@ -504,7 +467,7 @@ def verify_swapnopay_webhook(raw_body: bytes, signature_header: str, secret: str
       <section id="video-tutorials" class="space-y-4">
         <div class="border-b border-amber-500/20 pb-4 flex justify-between items-end">
           <div>
-            <h2 class="text-2xl font-black text-white">6. Official Video Integration Tutorials</h2>
+            <h2 class="text-2xl font-black text-white">Official Video Integration Tutorials</h2>
             <p class="text-xs text-slate-400 mt-1">Step-by-step video guides managed dynamically from the Admin Panel CMS.</p>
           </div>
           <span id="tutorials-count-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -520,7 +483,7 @@ def verify_swapnopay_webhook(raw_body: bytes, signature_header: str, secret: str
       <!-- Section 7: Multi-Language Code Examples -->
       <section id="sdks" class="space-y-6">
         <div class="border-b border-amber-500/20 pb-4">
-          <h2 class="text-2xl font-black text-white">7. Production SDK Code Examples</h2>
+          <h2 class="text-2xl font-black text-white">Production SDK Code Examples</h2>
           <p class="text-xs text-slate-400 mt-1">Copy-paste production integrations for your tech stack.</p>
         </div>
 
@@ -553,7 +516,7 @@ async function createSwapnoPayOrder() {
         <!-- 2. Python -->
         <div class="glass-card rounded-2xl overflow-hidden border border-amber-500/30">
           <div class="bg-black/60 px-4 py-3 text-white text-xs font-bold flex justify-between items-center border-b border-amber-500/20">
-            <span>🐍 Python (FastAPI / Requests)</span>
+            <span><span class="material-symbols-outlined">code</span> Python (FastAPI / Requests)</span>
             <button onclick="copySnippet('snippet-python')" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs px-3 py-1 rounded-lg border border-amber-500/40">Copy Code</button>
           </div>
           <pre id="snippet-python" class="p-4 text-xs bg-black/90 text-amber-200 overflow-x-auto leading-relaxed">import requests
@@ -579,7 +542,7 @@ print(response.json())</pre>
         <!-- 3. PHP -->
         <div class="glass-card rounded-2xl overflow-hidden border border-amber-500/30">
           <div class="bg-black/60 px-4 py-3 text-white text-xs font-bold flex justify-between items-center border-b border-amber-500/20">
-            <span>🐘 PHP (cURL / Laravel)</span>
+            <span><span class="material-symbols-outlined">code</span> PHP (cURL / Laravel)</span>
             <button onclick="copySnippet('snippet-php')" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs px-3 py-1 rounded-lg border border-amber-500/40">Copy Code</button>
           </div>
           <pre id="snippet-php" class="p-4 text-xs bg-black/90 text-amber-200 overflow-x-auto leading-relaxed">&lt;?php
@@ -605,7 +568,7 @@ print_r(json_decode($response, true));
         <!-- 4. Kotlin Android -->
         <div class="glass-card rounded-2xl overflow-hidden border border-amber-500/30">
           <div class="bg-black/60 px-4 py-3 text-white text-xs font-bold flex justify-between items-center border-b border-amber-500/20">
-            <span>📱 Kotlin (Android OkHttp)</span>
+            <span><span class="material-symbols-outlined">phone_android</span> Kotlin (Android OkHttp)</span>
             <button onclick="copySnippet('snippet-kotlin')" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs px-3 py-1 rounded-lg border border-amber-500/40">Copy Code</button>
           </div>
           <pre id="snippet-kotlin" class="p-4 text-xs bg-black/90 text-amber-200 overflow-x-auto leading-relaxed">val client = OkHttpClient()
@@ -630,6 +593,7 @@ client.newCall(request).execute().use { response ->
       </section>
 
     </div>
+    <footer class="workspace-footer"><span>© 2026 SwapnoPay. Built for your next integration.</span><div><a href="/">Home</a><a href="docs.html">Documentation</a><a href="privacy-policy.html">Privacy</a><a href="terms-and-conditions.html">Terms</a></div></footer>
   </main>
 
   <script>
@@ -849,19 +813,22 @@ X-Signature: sha256=4f6a9e1029c8b3...
     }
 
     function copyFullApiDocumentation() {
-      navigator.clipboard.writeText(currentApiDocumentation).then(() => {
-        showToast('Full API Documentation copied to clipboard! 📋');
-      }).catch(err => {
-        alert('Copied to clipboard!');
-      });
+      copyDocumentationText(currentApiDocumentation, 'Full API documentation copied to clipboard.');
+    }
+
+    async function copyDocumentationText(text, message) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(message);
+      } catch (_) {
+        showToast('Clipboard unavailable. Select and copy the documentation text manually.');
+      }
     }
 
     function copySnippet(id) {
       const el = document.getElementById(id);
       if (el) {
-        navigator.clipboard.writeText(el.innerText).then(() => {
-          showToast('Code snippet copied to clipboard! 📋');
-        });
+        copyDocumentationText(el.innerText, 'Code snippet copied to clipboard.');
       }
     }
 
@@ -877,13 +844,13 @@ X-Signature: sha256=4f6a9e1029c8b3...
             <span class="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase tracking-wider">
               ${vid.category || 'General'}
             </span>
-            <span class="text-slate-400 font-mono text-xs">⏱ ${vid.duration || '3:00 min'}</span>
+            <span class="text-slate-400 font-mono text-xs"><span class="material-symbols-outlined" style="vertical-align:middle;font-size:14px;margin-right:6px;">schedule</span>${vid.duration || '3:00 min'}</span>
           </div>
           <h4 class="font-extrabold text-white text-sm group-hover:text-amber-400 transition">${vid.title}</h4>
           <p class="text-xs text-slate-400 leading-relaxed line-clamp-2">${vid.description || ''}</p>
           <div class="pt-2 flex items-center justify-between">
             <button onclick="openVideoModal('${vid.title.replace(/'/g, "\\'")}', '${vid.videoUrl}')" class="inline-flex items-center gap-2 text-xs font-bold text-amber-400 hover:text-amber-300">
-              <span class="text-base">▶</span> <span>Watch Tutorial</span>
+              <span class="material-symbols-outlined text-base">play_arrow</span> <span>Watch Tutorial</span>
             </button>
             <a href="${vid.videoUrl}" target="_blank" rel="noreferrer" class="text-[11px] text-slate-500 hover:text-slate-400">Open External ↗</a>
           </div>
@@ -927,7 +894,7 @@ X-Signature: sha256=4f6a9e1029c8b3...
       try {
         const supaUrl = localStorage.getItem('swapnopay_admin_url') || 'https://swapnopay.supabase.co';
         const supaKey = localStorage.getItem('swapnopay_admin_anon') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder';
-        if (window.supabase && supaUrl && supaKey && !supaUrl.includes('placeholder')) {
+        if (window.supabase && supaUrl && supaKey && !supaUrl.includes('placeholder') && !supaKey.includes('placeholder')) {
           const client = window.supabase.createClient(supaUrl, supaKey);
           const { data } = await client.from('showcase_config').select('value').eq('key', 'system_config').single();
           if (data && data.value) {

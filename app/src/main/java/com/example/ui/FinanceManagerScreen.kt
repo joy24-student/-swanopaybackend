@@ -38,6 +38,7 @@ fun FinanceManagerScreen(viewModel: AppViewModel) {
     var accountType by rememberSaveable { mutableStateOf("DPS") }
     var statusFilter by rememberSaveable { mutableStateOf("ALL") }
     var showAdd by remember { mutableStateOf(false) }
+    var showCalculator by remember { mutableStateOf(false) }
     var paymentTarget by remember { mutableStateOf<FinanceInstallmentEntity?>(null) }
     var expandedAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
@@ -105,6 +106,9 @@ fun FinanceManagerScreen(viewModel: AppViewModel) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showCalculator = true }) {
+                        Icon(Icons.Default.Calculate, "Calculator", tint = accent)
+                    }
                     IconButton(
                         onClick = { exportLauncher.launch("finance_${accountType.lowercase()}_${isoDate(now)}.csv") },
                         enabled = visibleInstallments.isNotEmpty()
@@ -258,6 +262,28 @@ fun FinanceManagerScreen(viewModel: AppViewModel) {
                 }
             }
         )
+    }
+
+    if (showCalculator) {
+        if (accountType == "LOAN") {
+            LoanCalculatorDialog(
+                isDarkMode = isDark,
+                onDismiss = { showCalculator = false },
+                onApplyToNewLoan = { principal, rate, months, type ->
+                    showCalculator = false
+                    showAdd = true
+                }
+            )
+        } else {
+            DepositCalculatorDialog(
+                isDarkMode = isDark,
+                onDismiss = { showCalculator = false },
+                onApplyToNewDps = { monthly, rate, months ->
+                    showCalculator = false
+                    showAdd = true
+                }
+            )
+        }
     }
 }
 

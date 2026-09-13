@@ -68,7 +68,7 @@ $customer_id = $_SESSION['customer']['cust_id'];
                                                 ?>
                                             </div>
                                             <p style="margin: 10px 0; color: #333;">
-                                                <?php echo htmlspecialchars($review['review_text'] ?? ''); ?>
+                                                <?php echo htmlspecialchars($review['comment'] ?? ''); ?>
                                             </p>
                                             <small style="color: #999;">
                                                 Reviewed on <?php echo date('F j, Y', strtotime($review['created_at'] ?? date('Y-m-d'))); ?>

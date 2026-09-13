@@ -70,7 +70,10 @@ data class MerchantProfileEntity(
     val accountNumber: String,
     val kycStatus: String, // "VERIFIED", "PENDING", "UNVERIFIED", "REJECTED"
     val photoUrl: String = "",
-    val kycRejectionReason: String = ""
+    val kycRejectionReason: String = "",
+    @androidx.room.ColumnInfo(defaultValue = "''") val nidNumber: String = "",
+    @androidx.room.ColumnInfo(defaultValue = "''") val nidFrontUrl: String = "",
+    @androidx.room.ColumnInfo(defaultValue = "''") val nidBackUrl: String = ""
 )
 
 @Entity(tableName = "devices", indices = [Index("merchantId")])
@@ -190,7 +193,8 @@ data class ProductItemEntity(
     val imageUrl: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val costPrice: Double = purchasePrice,    // Buying / Real Prize
-    val askingPrice: Double = salePrice       // Tag / List Prize
+    val askingPrice: Double = salePrice,      // Tag / List Prize
+    @androidx.room.ColumnInfo(defaultValue = "'{}'") val storefrontDetailsJson: String = "{}"
 )
 
 @Entity(tableName = "product_variants", indices = [Index("merchantId")])

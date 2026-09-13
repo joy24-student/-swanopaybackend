@@ -59,6 +59,7 @@ $success_message="";
 $csrf = new CSRF_Protect();
 $error_message1 = '';
 $success_message1 = '';
+$free_delivery_classes = '';
 
 
 foreach($result as $row) {
@@ -197,6 +198,7 @@ if ($review_feature_on_off == 1) {
 
 if(isset($_POST['form_add_to_cart']) || isset($_POST['form_buy_now'])) {
     $valid = 1;
+    if (!$csrf->checkToken()) { http_response_code(403); exit('Your session expired. Refresh the product page and try again.'); }
     $p_qty_added = (int)($_POST['p_qty'] ?? 1);
     $size_id_added = $_POST['size_id'] ?? 0;
     $size_name_added = $_POST['size_name'] ?? '';
@@ -2749,6 +2751,7 @@ body {
         $hide_banner_mobile = $settings_data['hide_banner_mobile'] ?? 0;
         $hide_free_delivery_desktop = $settings_data['hide_free_delivery_desktop'] ?? 0;
         $hide_free_delivery_mobile = $settings_data['hide_free_delivery_mobile'] ?? 0;
+        $free_delivery_classes = ($hide_free_delivery_desktop && $hide_free_delivery_mobile) ? 'hidden' : ($hide_free_delivery_desktop ? 'mobile-only' : ($hide_free_delivery_mobile ? 'desktop-only' : ''));
     }
 
     { 

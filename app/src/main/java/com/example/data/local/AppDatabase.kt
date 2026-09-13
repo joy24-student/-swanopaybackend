@@ -35,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PaymentFormCacheEntity::class,
         FormSubmissionCacheEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -124,6 +124,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val productColumns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(`products`)").use { cursor ->
+                    while (cursor.moveToNext()) productColumns.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+                if (!productColumns.contains("storefrontDetailsJson")) {
+                    db.execSQL("ALTER TABLE `products` ADD COLUMN `storefrontDetailsJson` TEXT NOT NULL DEFAULT '{}'")
+                }
+                // KYC fields were introduced without a version bump in existing sources.
+                val columns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(`merchant_profile`)").use { cursor ->
+                    while (cursor.moveToNext()) columns.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+                listOf("nidNumber", "nidFrontUrl", "nidBackUrl").filterNot { it in columns }.forEach {
+                    db.execSQL("ALTER TABLE `merchant_profile` ADD COLUMN `$it` TEXT NOT NULL DEFAULT ''")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -131,7 +151,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "swapnopay_database"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                 .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

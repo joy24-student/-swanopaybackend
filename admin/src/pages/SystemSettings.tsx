@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase } from '../adminSupabaseClient';
+import {
+  adminSupabase,
+  DEFAULT_RADYMATE_GALLERY,
+  fetchRadymateGalleryConfig,
+  RadymateGalleryItem,
+  saveRadymateGalleryConfig,
+  uploadRadymateGalleryImage,
+} from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 
 export interface FaqItem {
@@ -337,10 +344,15 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
 
 export default function SystemSettings() {
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets'>('links');
+  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery'>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [radymateGallery, setRadymateGallery] = useState<RadymateGalleryItem[]>(DEFAULT_RADYMATE_GALLERY);
+  const [galleryUploadFile, setGalleryUploadFile] = useState<File | null>(null);
+  const [galleryTitle, setGalleryTitle] = useState('Radymate E-commerce launch');
+  const [galleryCaption, setGalleryCaption] = useState('One-click launch storefront');
+  const [gallerySaving, setGallerySaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -366,6 +378,14 @@ export default function SystemSettings() {
         }
       } catch (e) {
         console.warn('Supabase showcase_config read warning:', e);
+      }
+
+      try {
+        const remoteGallery = await fetchRadymateGalleryConfig();
+        setRadymateGallery(remoteGallery.items.length ? remoteGallery.items : DEFAULT_RADYMATE_GALLERY);
+      } catch (e) {
+        console.warn('Radymate gallery fetch warning:', e);
+        setRadymateGallery(DEFAULT_RADYMATE_GALLERY);
       } finally {
         setLoading(false);
       }
@@ -408,6 +428,44 @@ export default function SystemSettings() {
       setStatusMsg('❌ Failed to save: ' + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGalleryUpload = async () => {
+    if (!galleryUploadFile) {
+      setStatusMsg('❌ Select an image before uploading to the Radymate gallery bucket.');
+      return;
+    }
+
+    setGallerySaving(true);
+    setStatusMsg('Uploading to Supabase Storage bucket...');
+
+    try {
+      const uploadedItem = await uploadRadymateGalleryImage(galleryUploadFile, galleryTitle, galleryCaption);
+      const updatedGallery = [uploadedItem, ...radymateGallery];
+      setRadymateGallery(updatedGallery);
+      await saveRadymateGalleryConfig(updatedGallery);
+      setStatusMsg('✅ Image uploaded to the Supabase bucket and synced to the Radymate gallery.');
+      setGalleryUploadFile(null);
+      setGalleryTitle('Radymate E-commerce launch');
+      setGalleryCaption('One-click launch storefront');
+    } catch (err: any) {
+      setStatusMsg('❌ Upload failed: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setGallerySaving(false);
+    }
+  };
+
+  const handleGalleryReset = async () => {
+    setGallerySaving(true);
+    try {
+      setRadymateGallery(DEFAULT_RADYMATE_GALLERY);
+      await saveRadymateGalleryConfig(DEFAULT_RADYMATE_GALLERY);
+      setStatusMsg('✅ Radymate gallery reset to the default public showcase images.');
+    } catch (err: any) {
+      setStatusMsg('❌ Failed to reset gallery: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setGallerySaving(false);
     }
   };
 
@@ -526,6 +584,7 @@ export default function SystemSettings() {
         {[
           { key: 'links', label: '💻 Developer Portal Links' },
           { key: 'api_docs', label: '📚 API Documentation CMS' },
+          { key: 'gallery', label: '🖼️ Radymate Gallery (' + radymateGallery.length + ')' },
           { key: 'video', label: '🎥 Video Tutorials (' + ((config.video_tutorials || []).length) + ')' },
           { key: 'support_contacts', label: '📞 Support Contacts' },
           { key: 'faqs', label: '❓ FAQs (' + config.faqs.length + ')' },
@@ -752,6 +811,66 @@ export default function SystemSettings() {
                 border: '1px solid #334155'
               }}
             />
+          </div>
+        )}
+
+        {activeTab === 'gallery' && (
+          <div className="card" style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>🖼️ Radymate Studio Gallery</h3>
+                <span style={{ fontSize: 12, color: '#64748B' }}>
+                  Upload product launch screenshots to the Supabase Storage bucket, then save the gallery config so the public storefront reads them.
+                </span>
+              </div>
+              <button type="button" className="button" onClick={handleGalleryReset} disabled={gallerySaving} style={{ background: '#64748B' }}>
+                {gallerySaving ? 'Resetting...' : 'Reset to default'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Gallery Title</label>
+                <input className="input" value={galleryTitle} onChange={(e) => setGalleryTitle(e.target.value)} placeholder="Radymate E-commerce launch" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Caption</label>
+                <input className="input" value={galleryCaption} onChange={(e) => setGalleryCaption(e.target.value)} placeholder="One-click launch storefront" />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Upload image to Supabase Storage</label>
+                <input
+                  className="input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setGalleryUploadFile(e.target.files?.[0] || null)}
+                />
+                <div style={{ marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                  Bucket target: <strong>radymate-gallery</strong>. The uploaded image must be public to render on the front-end homepage.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+              <button type="button" className="button" onClick={handleGalleryUpload} disabled={gallerySaving || !galleryUploadFile} style={{ background: '#10B981' }}>
+                {gallerySaving ? 'Uploading...' : 'Upload & Save to Supabase'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              {radymateGallery.map((item, index) => (
+                <div key={`${item.title}-${index}`} style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden', background: '#F8FAFC' }}>
+                  <img src={item.image} alt={item.title} style={{ width: '100%', height: 118, objectFit: 'cover', display: 'block' }} />
+                  <div style={{ padding: 10 }}>
+                    <div style={{ fontWeight: 800, fontSize: 12, color: '#1E293B' }}>{item.title}</div>
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{item.caption}</div>
+                    <div style={{ fontSize: 10, color: '#0EA5E9', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                      {item.source === 'storage' ? 'Supabase storage' : 'Fallback demo'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

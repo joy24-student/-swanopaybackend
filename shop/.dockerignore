@@ -1,0 +1,9 @@
+.env
+.env.*
+vendor
+DATABASE FILE
+*.zip
+*.log
+*.bak
+assets/uploads
+.git

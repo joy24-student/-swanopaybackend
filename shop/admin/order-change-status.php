@@ -1,22 +1,10 @@
-<?php require_once('header.php');
-
-if (!isset($_REQUEST['id']) || !isset($_REQUEST['task'])) {
-    header('location: logout.php');
-    exit;
+<?php
+require_once __DIR__ . '/inc/guard.php';
+require_once __DIR__ . '/inc/orders.php';
+try {
+    updateStoreOrder($pdo,(string)($_POST['id'] ?? $_GET['id'] ?? ''),'paid');
+    $_SESSION['order_notice']='Order updated successfully.';
+} catch(Throwable $error) {
+    $_SESSION['order_error']=$error instanceof PDOException ? 'The order could not be updated. Please try again.' : $error->getMessage();
 }
-
-// Check if the payment_id is valid
-$statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE payment_id=?");
-$statement->execute(array($_REQUEST['id']));
-$total = $statement->rowCount();
-if ($total == 0) {
-    header('location: logout.php');
-    exit;
-}
-
-// Update the payment status using payment_id
-$statement = $pdo->prepare("UPDATE tbl_payment SET payment_status=? WHERE payment_id=?");
-$statement->execute(array($_REQUEST['task'], $_REQUEST['id']));
-
-header('location: order.php');
-?>
+header('Location: order.php');exit;

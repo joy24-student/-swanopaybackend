@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php // coupon-add.php
 require_once('header.php');
 

@@ -50,7 +50,7 @@ class CSRF_Protect
 	 */
 	public function isTokenValid($userToken)
 	{
-		return ($userToken === $this->readTokenFromStorage());
+		return is_string($userToken) && $userToken !== '' && hash_equals($this->readTokenFromStorage(), $userToken);
 	}
 	
 	/**
@@ -68,7 +68,7 @@ class CSRF_Protect
 	 */
 	public function verifyRequest()
 	{
-		if (!$this->isTokenValid($_POST[$this->namespace]))
+		if (!$this->isTokenValid($_POST[$this->namespace] ?? ''))
 		{
 			die("CSRF validation failed.");
 		}
@@ -99,7 +99,7 @@ class CSRF_Protect
 		
 		if ($storedToken === '')
 		{
-			$token = md5(uniqid(rand(), TRUE));
+			$token = bin2hex(random_bytes(32));
 			$this->writeTokenToStorage($token);
 		}
 	}

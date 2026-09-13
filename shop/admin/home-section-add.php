@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); 
 if(isset($_POST['form1'])) {
     $statement = $pdo->prepare("INSERT INTO tbl_home_sections (title, category_id, category_type, product_limit, order_no) VALUES (?,?,?,?,?)");

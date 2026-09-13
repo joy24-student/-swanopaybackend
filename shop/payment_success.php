@@ -1,15 +1,21 @@
 <?php
 // Add at the very top
 ob_start();
-if (isset($_GET['session_id'])) {
-    session_id($_GET['session_id']);
-    session_start();
-} else {
-    session_start();
-}
+session_start();
 
 require_once('header.php');
 require_once('admin/inc/config.php'); // Include database connection
+
+// A receipt belongs to the signed-in customer and uses the saved amount.
+$reference = (string)($_GET['payment_id'] ?? $_GET['tran_id'] ?? '');
+$receiptQuery = $pdo->prepare('SELECT * FROM tbl_payment WHERE payment_id=? AND customer_id=? LIMIT 1');
+$receiptQuery->execute([$reference,$_SESSION['customer']['cust_id'] ?? 0]);
+$receipt = $receiptQuery->fetch();
+if (!$receipt || empty($_SESSION['customer'])) { http_response_code(404); exit('Order not found.'); }
+$_GET['amount'] = $receipt['paid_amount'];
+$_GET['tran_id'] = $receipt['payment_id'];
+if (($_GET['method'] ?? '') === 'cod' && $receipt['payment_method'] !== 'Cash on Delivery') { http_response_code(404); exit('Order not found.'); }
+
 
 // Function to fetch country name
 function getCountryName($pdo, $country_id) {

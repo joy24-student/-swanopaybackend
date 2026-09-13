@@ -19,6 +19,7 @@ if(!isset($_SESSION['customer'])) {
 
 <?php
 if (isset($_POST['form1'])) {
+    if (!$csrf->checkToken()) {http_response_code(403);exit('Your form session expired. Refresh the page.');}
 
     $valid = 1;
 

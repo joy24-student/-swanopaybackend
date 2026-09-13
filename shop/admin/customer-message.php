@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); ?>
 
 <section class="content-header">
@@ -19,7 +20,7 @@
 								<select name="cust_id" class="form-control select2">
 								<?php
 								$statement = $pdo->prepare("SELECT * FROM tbl_customer ORDER BY cust_id ASC");
-								$statement->execute(array($_REQUEST['id']));
+								$statement->execute();
 								$statement->rowCount();
 								$result = $statement->fetchAll(PDO::FETCH_ASSOC);
 								foreach ($result as $row) {

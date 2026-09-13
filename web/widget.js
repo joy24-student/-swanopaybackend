@@ -8,6 +8,7 @@
 let selectedMethod = "bKash";
 let selectedColor  = "#E2125A";
 let orderId        = "";
+let payableAmount  = "";
 let merchantId     = "";          // loaded from config
 let merchantLogoUrl = "";
 let merchantDefaultNumber = "017XXXXXXXX";
@@ -735,7 +736,59 @@ function connectSupabaseRealtime(url, key, id) {
 // ──────────────────────────────────────────────────────────────────────────────
 // UI Helpers
 // ──────────────────────────────────────────────────────────────────────────────
+function buildCallbackPayload() {
+  const amountValue = Number((payableAmount || "1500").replace(/[^0-9.]/g, '')) || 1500;
+  const orderValue = orderId && orderId !== 'demo_order_id' ? orderId : 'ORD-7845';
+  const userPhone = document.getElementById('customer-phone')?.value?.trim() || '01712345678';
+  const signature = `t=${Date.now()},v1=${[merchantId || 'merchant_01', orderValue, amountValue.toFixed(2), selectedMethod].join(':')}`;
+
+  return {
+    event: 'payment.success',
+    merchant_id: merchantId || '00000000-0000-0000-0000-000000000001',
+    order_id: orderValue,
+    tran_id: orderValue,
+    amount: Number(amountValue.toFixed(2)),
+    currency: 'BDT',
+    payment_method: selectedMethod,
+    customer_phone: userPhone,
+    status: 'PAID',
+    gateway: selectedMethod,
+    trx_id: `TXN${Math.floor(Math.random() * 900000 + 100000)}`,
+    timestamp: new Date().toISOString(),
+    ip: '203.0.113.42',
+    signature: signature,
+    callback_url: window.location.origin + '/api/webhook',
+    source: 'swapnopay_widget'
+  };
+}
+
+function showCallbackPayloadPreview() {
+  const modal = document.getElementById('callback-preview-modal');
+  const payloadEl = document.getElementById('callback-payload-content');
+  const eventLabel = document.getElementById('callback-event-label');
+  if (!modal || !payloadEl) return;
+
+  const payload = buildCallbackPayload();
+  if (eventLabel) eventLabel.innerText = payload.event;
+  payloadEl.innerText = JSON.stringify(payload, null, 2);
+  modal.classList.remove('hidden');
+}
+
+function closeCallbackPayloadPreview() {
+  const modal = document.getElementById('callback-preview-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyCallbackPayload() {
+  const payloadEl = document.getElementById('callback-payload-content');
+  if (!payloadEl) return;
+  navigator.clipboard.writeText(payloadEl.innerText)
+    .then(() => alert('Callback payload copied to clipboard.'))
+    .catch(() => alert('Unable to copy payload automatically.'));
+}
+
 function setAmountDisplay(amount) {
+  payableAmount = String(amount).replace(/,/g, '');
   document.getElementById("amount-text").innerText = `৳${amount}`;
   document.getElementById("amount-text-input").value = `৳${amount}`;
   document.getElementById("receipt-amount").innerText = `৳${amount}`;
@@ -849,6 +902,15 @@ function copyAmount() {
   });
 }
 
+function updateFlowStage(step) {
+  const stages = Array.from(document.querySelectorAll('#flow-stage-strip .flow-stage-pill'));
+  stages.forEach((item, idx) => {
+    item.classList.remove('active', 'complete');
+    if (idx < step) item.classList.add('complete');
+    if (idx === step - 1) item.classList.add('active');
+  });
+}
+
 function goToStep(step) {
   if (step === 2) {
     const phoneInput = document.getElementById("customer-phone").value.trim();
@@ -875,8 +937,15 @@ function goToStep(step) {
       : "flex-grow flex-1 bg-gray-200 rounded-full transition-all duration-300";
   });
 
-  if (step === 2) startTimer();
-  else clearInterval(timerInterval);
+  if (step === 1) updateFlowStage(1);
+  if (step === 2) {
+    updateFlowStage(2);
+    startTimer();
+  }
+  if (step === 3) {
+    updateFlowStage(3);
+    clearInterval(timerInterval);
+  }
 }
 
 function startTimer() {
@@ -933,6 +1002,7 @@ function handleTransferred() {
   // Show processing overlay
   document.getElementById("processing-view").classList.remove("hidden");
   paymentResolved = false; // reset guard for this payment attempt
+  updateFlowStage(3);
 
   procSeconds = 300;
   const timerDisplay = document.getElementById("proc-countdown-timer");
@@ -992,6 +1062,7 @@ function skipProcessingAndAppeal() {
 function showSuccessScreen(orderRecord) {
   clearInterval(timerInterval);
   clearInterval(procInterval);
+  updateFlowStage(4);
 
   document.getElementById("processing-view").classList.add("hidden");
   document.getElementById("cancel-view").classList.add("hidden");
@@ -1007,6 +1078,8 @@ function showSuccessScreen(orderRecord) {
     document.getElementById("receipt-amount").innerText  = "৳" + parseFloat(orderRecord.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
   }
 
+  const payloadEl = document.getElementById('callback-payload-content');
+  if (payloadEl) payloadEl.innerText = JSON.stringify(buildCallbackPayload(), null, 2);
   successView.classList.remove("hidden");
 }
 

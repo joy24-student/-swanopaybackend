@@ -15,6 +15,44 @@
     .dashed-border {
       border: 2px dashed #cbd5e1;
     }
+    .flow-stage-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(248, 250, 252, 0.9);
+      color: #475569;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: all 0.25s ease;
+    }
+    .flow-stage-pill.active {
+      background: linear-gradient(135deg, rgba(59,130,246,.15), rgba(37,99,235,.12));
+      border-color: rgba(59,130,246,.4);
+      color: #1d4ed8;
+      box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+    }
+    .flow-stage-pill.complete {
+      background: linear-gradient(135deg, rgba(16,185,129,.12), rgba(5,150,105,.08));
+      border-color: rgba(16,185,129,.35);
+      color: #047857;
+    }
+    .flow-stage-pill .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0.7;
+      animation: flowPulse 1.8s ease-in-out infinite;
+    }
+    @keyframes flowPulse {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.3); opacity: 1; }
+    }
   </style>
     .merchant-avatar-img {
       width: 40px;
@@ -144,8 +182,14 @@
       
       <!-- STEP INDICATOR TRACKER -->
       <div id="step-indicator" class="mb-4">
-        <div class="flex justify-between items-center mb-1.5">
+        <div class="flex justify-between items-center mb-2 gap-2">
           <p class="text-blue-600 text-[11px] font-bold" id="step-title" data-translate="stepOf">Step 1 of 3</p>
+          <div class="flex items-center gap-2 flex-wrap justify-end" id="flow-stage-strip">
+            <div class="flow-stage-pill active"><span class="dot"></span> Checkout</div>
+            <div class="flow-stage-pill"><span class="dot"></span> Verify</div>
+            <div class="flow-stage-pill"><span class="dot"></span> Callback</div>
+            <div class="flow-stage-pill"><span class="dot"></span> Success</div>
+          </div>
           <img alt="SwapnoPay Logo" class="h-10 object-contain md:hidden" src="logo_branding.png"/>
         </div>
         <div class="flex gap-1.5 h-1">
@@ -652,6 +696,9 @@
             <button class="w-full py-2.5 bg-gray-100 text-gray-400 border border-gray-200 rounded-xl font-bold text-[11px] transition-colors cursor-not-allowed" id="btn-skip-processing" disabled onclick="skipProcessingAndAppeal()">
               Verify Manually via Appeal
             </button>
+            <button class="w-full py-2.5 bg-slate-900 text-white rounded-xl font-bold text-[11px] transition-colors hover:bg-slate-800" onclick="showCallbackPayloadPreview()">
+              Preview Callback Payload
+            </button>
           </div>
         </div>
       </div>
@@ -659,6 +706,28 @@
     </div>
 
   </main>
+
+  <div id="callback-preview-modal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <div>
+          <div class="text-[9px] font-black uppercase tracking-[0.18em] text-blue-600">SwapnoPay callback</div>
+          <h3 class="text-sm font-black text-slate-900 mt-1">Payload Preview</h3>
+        </div>
+        <button class="text-xs font-bold text-slate-500 hover:text-slate-700" onclick="closeCallbackPayloadPreview()">Close</button>
+      </div>
+      <div class="p-4">
+        <div class="mb-3 flex items-center justify-between gap-2 rounded-xl bg-blue-50 border border-blue-100 px-3 py-2">
+          <div>
+            <div class="text-[9px] uppercase tracking-[0.14em] text-blue-600 font-black">Event</div>
+            <div class="text-xs font-bold text-slate-800" id="callback-event-label">payment.success</div>
+          </div>
+          <button class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-slate-800" onclick="copyCallbackPayload()">Copy JSON</button>
+        </div>
+        <pre id="callback-payload-content" class="max-h-[420px] overflow-auto rounded-xl bg-slate-950 text-slate-100 p-4 text-[11px] leading-6 whitespace-pre-wrap"></pre>
+      </div>
+    </div>
+  </div>
 
   <!-- Floating Help Button -->
   <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">

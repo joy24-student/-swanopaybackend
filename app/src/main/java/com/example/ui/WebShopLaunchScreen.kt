@@ -41,6 +41,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val webShopState by viewModel.webShopState.collectAsState()
     val recentOrders by viewModel.orders.collectAsState()
+    val activeProfile by viewModel.activeProfile.collectAsState()
 
     var storeName by remember { mutableStateOf<String>(webShopState.storeName) }
     var storeSubdomain by remember { mutableStateOf<String>(webShopState.shopSlug) }
@@ -59,20 +60,26 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
         viewModel.loadWebShopStatus()
     }
 
-    LaunchedEffect(webShopState) {
-        if (storeName.isBlank() || storeName == "SwapnoPay Enterprise Store") {
+    LaunchedEffect(webShopState, activeProfile) {
+        if (webShopState.storeName.isNotBlank()) {
             storeName = webShopState.storeName
+        } else if (storeName.isBlank()) {
+            storeName = activeProfile.businessName.ifBlank { "My Web Store" }
         }
-        if (storeSubdomain.isBlank() || storeSubdomain == "myshop") {
+        if (webShopState.shopSlug.isNotBlank()) {
             storeSubdomain = webShopState.shopSlug
+        } else if (storeSubdomain.isBlank()) {
+            storeSubdomain = activeProfile.businessName.lowercase().replace(Regex("[^a-z0-9]"), "").take(16).ifBlank { "myshop" }
         }
-        if (customDomain.isBlank()) {
+        if (webShopState.customDomain.isNotBlank()) {
             customDomain = webShopState.customDomain
         }
-        if (adminEmailInput.isBlank() || adminEmailInput == "admin@mail.com") {
+        if (webShopState.adminEmail.isNotBlank()) {
             adminEmailInput = webShopState.adminEmail
+        } else if (adminEmailInput.isBlank()) {
+            adminEmailInput = activeProfile.email.ifBlank { "admin@myshop.com" }
         }
-        if (adminPasswordInput.isBlank() || adminPasswordInput == "Password@123") {
+        if (webShopState.adminPassword.isNotBlank()) {
             adminPasswordInput = webShopState.adminPassword
         }
     }
@@ -126,10 +133,19 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                         color = secondaryText
                     )
                 }
+                val (statusText, statusBg, statusColor) = when (webShopState.status) {
+                    "LIVE" -> Triple("LIVE VPS", successGreen.copy(alpha = 0.15f), successGreen)
+                    "QUEUED", "PROVISIONING" -> Triple("PROVISIONING...", Color(0xFF3B82F6).copy(alpha = 0.15f), Color(0xFF3B82F6))
+                    "WAITING_DNS" -> Triple("DNS PENDING", Color(0xFFF59E0B).copy(alpha = 0.15f), Color(0xFFF59E0B))
+                    "WAITING_TLS" -> Triple("SECURING SSL", Color(0xFFF59E0B).copy(alpha = 0.15f), Color(0xFFF59E0B))
+                    "DEGRADED" -> Triple("DEGRADED", Color(0xFFF97316).copy(alpha = 0.15f), Color(0xFFF97316))
+                    "FAILED" -> Triple("FAILED", Color(0xFFEF4444).copy(alpha = 0.15f), Color(0xFFEF4444))
+                    else -> Triple("NOT LAUNCHED", Color(0xFF6B7280).copy(alpha = 0.15f), Color(0xFF9CA3AF))
+                }
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (webShopState.isDeployed) successGreen.copy(alpha = 0.15f) else Color(0xFFE11D48).copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, if (webShopState.isDeployed) successGreen else Color(0xFFE11D48))
+                    color = statusBg,
+                    border = BorderStroke(1.dp, statusColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -139,14 +155,14 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (webShopState.isDeployed) successGreen else Color(0xFFE11D48))
+                                .background(statusColor)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (webShopState.isDeployed) "LIVE VPS" else "OFFLINE",
+                            text = statusText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (webShopState.isDeployed) successGreen else Color(0xFFE11D48)
+                            color = statusColor
                         )
                     }
                 }
@@ -217,20 +233,33 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
-                                    runCatching {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(effectiveUrl))
-                                        context.startActivity(intent)
-                                    }.onFailure {
-                                        Toast.makeText(context, "Could not open browser for: $effectiveUrl", Toast.LENGTH_SHORT).show()
+                                    if (effectiveUrl.isNotBlank()) {
+                                        runCatching {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(effectiveUrl))
+                                            context.startActivity(intent)
+                                        }.onFailure {
+                                            Toast.makeText(context, "Could not open browser for: $effectiveUrl", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 },
+                                enabled = webShopState.isDeployed && effectiveUrl.isNotBlank(),
                                 modifier = Modifier.fillMaxWidth().height(44.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF0F172A),
+                                    disabledContainerColor = Color(0xFF0F172A).copy(alpha = 0.4f)
+                                ),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(16.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("VISIT LIVE WEB STOREFRONT", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(
+                                    text = if (webShopState.isDeployed) "VISIT LIVE WEB STOREFRONT"
+                                    else if (webShopState.isDeploying || webShopState.status in listOf("QUEUED", "PROVISIONING")) "PROVISIONING VPS STOREFRONT..."
+                                    else "LAUNCH STOREFRONT BELOW",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
                             }
 
                             Row(
@@ -239,9 +268,14 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                             ) {
                                 OutlinedButton(
                                     onClick = {
-                                        clipboardManager.setText(AnnotatedString(effectiveUrl))
-                                        Toast.makeText(context, "Shop URL copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                        if (effectiveUrl.isNotBlank()) {
+                                            clipboardManager.setText(AnnotatedString(effectiveUrl))
+                                            Toast.makeText(context, "Shop URL copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Launch your storefront first to get a live URL", Toast.LENGTH_SHORT).show()
+                                        }
                                     },
+                                    enabled = effectiveUrl.isNotBlank(),
                                     modifier = Modifier.weight(1f).height(38.dp),
                                     shape = RoundedCornerShape(10.dp),
                                     border = BorderStroke(1.dp, cardBorder)
@@ -253,15 +287,20 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
 
                                 OutlinedButton(
                                     onClick = {
-                                        runCatching {
-                                            val sendIntent = Intent().apply {
-                                                action = Intent.ACTION_SEND
-                                                putExtra(Intent.EXTRA_TEXT, "Visit our store at: $effectiveUrl")
-                                                type = "text/plain"
+                                        if (effectiveUrl.isNotBlank()) {
+                                            runCatching {
+                                                val sendIntent = Intent().apply {
+                                                    action = Intent.ACTION_SEND
+                                                    putExtra(Intent.EXTRA_TEXT, "Visit our store at: $effectiveUrl")
+                                                    type = "text/plain"
+                                                }
+                                                context.startActivity(Intent.createChooser(sendIntent, "Share Web Shop"))
                                             }
-                                            context.startActivity(Intent.createChooser(sendIntent, "Share Web Shop"))
+                                        } else {
+                                            Toast.makeText(context, "Launch your storefront first to share", Toast.LENGTH_SHORT).show()
                                         }
                                     },
+                                    enabled = effectiveUrl.isNotBlank(),
                                     modifier = Modifier.weight(1f).height(38.dp),
                                     shape = RoundedCornerShape(10.dp),
                                     border = BorderStroke(1.dp, cardBorder)
@@ -536,25 +575,29 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                         // Prominent Launch Admin Button
                         Button(
                             onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(adminLoginUrl))
-                                    context.startActivity(intent)
-                                }.onFailure {
-                                    Toast.makeText(context, "Opening admin panel: $adminLoginUrl", Toast.LENGTH_SHORT).show()
+                                if (adminLoginUrl.isNotBlank()) {
+                                    runCatching {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(adminLoginUrl))
+                                        context.startActivity(intent)
+                                    }.onFailure {
+                                        Toast.makeText(context, "Opening admin panel: $adminLoginUrl", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             },
+                            enabled = webShopState.isDeployed && adminLoginUrl.isNotBlank(),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(46.dp),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF4F46E5)
+                                containerColor = Color(0xFF4F46E5),
+                                disabledContainerColor = Color(0xFF4F46E5).copy(alpha = 0.4f)
                             )
                         ) {
                             Icon(Icons.Default.RocketLaunch, null, modifier = Modifier.size(18.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "LAUNCH STORE ADMIN PANEL",
+                                text = if (webShopState.isDeployed) "LAUNCH STORE ADMIN PANEL" else "ADMIN PANEL AVAILABLE AFTER VPS LAUNCH",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -902,7 +945,24 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                             singleLine = true
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (webShopState.statusMessage.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (webShopState.isDeployed) successGreen.copy(alpha = 0.1f) else Color(0xFFF59E0B).copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, if (webShopState.isDeployed) successGreen.copy(alpha = 0.3f) else Color(0xFFF59E0B).copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = webShopState.statusMessage,
+                                    fontSize = 12.sp,
+                                    color = if (webShopState.isDeployed) successGreen else Color(0xFFF59E0B),
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
 
                         Button(
                             onClick = {
@@ -911,8 +971,8 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                     shopSlug = storeSubdomain.ifBlank { "store" },
                                     customDomain = customDomain,
                                     primaryCurrency = primaryCurrency,
-                                    adminEmail = adminEmailInput.ifBlank { "admin@mail.com" },
-                                    adminPassword = adminPasswordInput.ifBlank { "Password@123" }
+                                    adminEmail = adminEmailInput,
+                                    adminPassword = adminPasswordInput
                                 ) { success: Boolean, msg: String ->
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
@@ -932,7 +992,9 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                 Icon(Icons.Default.RocketLaunch, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = if (webShopState.isDeployed) "RE-DEPLOY / UPDATE STOREFRONT" else "LAUNCH WEBSITE ON VPS",
+                                    text = if (webShopState.isDeployed) "RE-DEPLOY / UPDATE STOREFRONT"
+                                    else if (webShopState.status in listOf("QUEUED", "PROVISIONING")) "STOREFRONT IS PROVISIONING..."
+                                    else "LAUNCH WEBSITE ON VPS",
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -1214,7 +1276,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                         OutlinedTextField(
                             value = editPassword,
                             onValueChange = { editPassword = it },
-                            label = { Text("New Password (min 6 chars)") },
+                            label = { Text("New Password (min 12 chars)") },
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
@@ -1224,13 +1286,13 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                 confirmButton = {
                     Button(
                         onClick = {
-                            if (editEmail.isNotBlank() && editPassword.length >= 6) {
+                            if (editEmail.isNotBlank() && editPassword.length >= 12) {
                                 showEditCredentialsDialog = false
                                 viewModel.updateWebShopAdminCredentials(editEmail, editPassword) { success, msg ->
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
                             } else {
-                                Toast.makeText(context, "Please enter a valid email and password (min 6 chars)", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Please enter a valid email and password (min 12 chars)", Toast.LENGTH_SHORT).show()
                             }
                         }
                     ) {

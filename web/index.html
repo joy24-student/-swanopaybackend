@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SwapnoPay — Payments. Reimagined. | All-in-One Smart Payment Gateway, POS & AI Platform</title>
-  <meta name="description" content="SwapnoPay combines automated MFS payment gateway matching, POS, inventory, digital ledger, AI assistant, and developer APIs into one unified merchant platform for Bangladesh.">
+  <title>SwapnoPay | Payment Gateway, POS &amp; Digital Ledger in Bangladesh</title>
+  <meta name="description" content="Automate bKash, Nagad, Rocket and Upay payment matching with SwapnoPay. Manage POS billing, inventory and digital ledgers for your business in Bangladesh.">
   
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/png" href="favicon.png">
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Locally built production styles -->
+  <link rel="stylesheet" href="assets/site.css">
 
   <!-- Google Fonts: Inter & Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,35 +19,8 @@
   
   <!-- Google Material Symbols -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            heading: ['Outfit', 'sans-serif'],
-          },
-          colors: {
-            gold: {
-              50: '#fffbeb',
-              100: '#fef3c7',
-              200: '#fde68a',
-              300: '#fcd34d',
-              400: '#fbbf24',
-              500: '#f59e0b',
-              600: '#d97706',
-              700: '#b45309',
-              800: '#92400e',
-              900: '#78350f',
-              950: '#451a03',
-            }
-          }
-        }
-      }
-    }
-  </script>
 
   <style>
     .gold-gradient-text {
@@ -63,36 +36,1033 @@
       background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
     }
     .ui-card {
-      background: rgba(255, 255, 255, 0.95);
-      border: 1px solid rgba(226, 232, 240, 0.8);
-      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.12);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .ui-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 40px -18px rgba(15, 23, 42, 0.2);
+      border-color: rgba(245, 158, 11, 0.35);
     }
     .dark .ui-card {
       background: rgba(18, 20, 29, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.45);
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .mobile-menu-wrap { display: none; }
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+    }
+    .enterprise-shell {
+      position: relative;
+      border-radius: 2rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(255,255,255,0.1));
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 24px 72px rgba(15, 23, 42, 0.12);
+    }
+    .enterprise-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(255,255,255,0), rgba(59,130,246,0.08));
+      pointer-events: none;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at top, rgba(251, 191, 36, 0.10), transparent 28%),
+        linear-gradient(180deg, #f8fafc 0%, #fffdf9 12%, #f8fafc 100%);
+    }
+
+    .dark body {
+      background:
+        radial-gradient(circle at top, rgba(251, 191, 36, 0.08), transparent 18%),
+        linear-gradient(180deg, #06070b 0%, #0a0d12 18%, #090b10 100%);
+    }
+
+    section[id] {
+      position: relative;
+    }
+
+    #about,
+    #features,
+    #pos,
+    #pricing,
+    #gallery,
+    #reviews,
+    #contact {
+      overflow: hidden;
+    }
+
+    .premium-strip {
+      position: relative;
+      background: linear-gradient(90deg, rgba(12,14,20,0.98), rgba(24,24,27,0.98));
+      border-top: 1px solid rgba(251,191,36,0.22);
+      border-bottom: 1px solid rgba(251,191,36,0.22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 20px 40px rgba(15,23,42,0.08);
+    }
+
+    .premium-strip::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(251,191,36,0.09), transparent 12%, transparent 88%, rgba(251,191,36,0.09));
+      pointer-events: none;
+    }
+
+    .ui-card {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255,255,255,0.84);
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 14px 34px -18px rgba(15,23,42,0.25);
+    }
+
+    .ui-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(251,191,36,0.06), transparent 24%, transparent 76%, rgba(59,130,246,0.04));
+      pointer-events: none;
+    }
+
+    .dark .ui-card {
+      background: rgba(15, 18, 24, 0.9);
+      border-color: rgba(255,255,255,0.06);
+      box-shadow: 0 18px 40px -18px rgba(0,0,0,0.40);
+    }
+
+    .hero-ambient {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .hero-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(40px);
+      opacity: 0.52;
+      animation: floatOrb 12s ease-in-out infinite alternate;
+    }
+
+    .hero-orb--gold {
+      width: 240px;
+      height: 240px;
+      right: 8%;
+      top: 8%;
+      background: rgba(251, 191, 36, 0.28);
+    }
+
+    .hero-orb--blue {
+      width: 280px;
+      height: 280px;
+      left: 8%;
+      bottom: 10%;
+      background: rgba(59, 130, 246, 0.18);
+      animation-delay: 1.5s;
+    }
+
+    .hero-grid {
+      background-image: linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px);
+      background-size: 22px 22px;
+      mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+      opacity: 0.45;
+    }
+
+    .floating-metric {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.9rem 1rem;
+      border-radius: 1rem;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255,255,255,0.11);
+      box-shadow: 0 18px 30px rgba(15, 23, 42, 0.25);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      animation: floatCard 6s ease-in-out infinite alternate;
+    }
+
+    .floating-metric--one {
+      right: 6%;
+      top: 17%;
+      animation-delay: 0.2s;
+    }
+
+    .floating-metric--two {
+      right: 10%;
+      bottom: 17%;
+      animation-delay: 1.2s;
+    }
+
+    .floating-metric .metric-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.8rem;
+      background: linear-gradient(135deg, rgba(251,191,36,0.25), rgba(245,158,11,0.1));
+      color: #fbbf24;
+      font-size: 1.1rem;
+    }
+
+    .floating-metric .metric-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.65);
+    }
+
+    .floating-metric .metric-value {
+      margin-top: 0.15rem;
+      font-size: 1rem;
+      font-weight: 800;
+      color: white;
+    }
+
+    .animated-section {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .animated-section::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 0%, rgba(251,191,36,0.12) 35%, rgba(59,130,246,0.10) 60%, transparent 100%);
+      transform: translateX(-100%);
+      animation: shimmerSweep 8s linear infinite;
+      pointer-events: none;
+    }
+
+    .premium-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 1.6rem;
+      background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.62));
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 22px 48px -24px rgba(15, 23, 42, 0.28);
+      transition: transform 0.32s ease, box-shadow 0.32s ease, border-color 0.32s ease;
+      transform-style: preserve-3d;
+    }
+
+    .premium-card:hover {
+      transform: translateY(-8px) rotateX(4deg) rotateY(-2deg);
+      box-shadow: 0 30px 58px -26px rgba(245, 158, 11, 0.26);
+      border-color: rgba(245, 158, 11, 0.36);
+    }
+
+    .dark .premium-card {
+      background: linear-gradient(135deg, rgba(14,17,24,0.9), rgba(15,23,42,0.78));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .radymate-launch-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .radymate-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(17,24,39,0.95), rgba(17,24,39,0.93));
+      border: 1px solid rgba(251,191,36,0.25);
+      box-shadow: 0 28px 62px -30px rgba(15, 23, 42, 0.7);
+    }
+
+    .radymate-card::before {
+      content: "";
+      position: absolute;
+      inset: -30% 40% auto -20%;
+      height: 180px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(251,191,36,0.32), rgba(251,191,36,0));
+      filter: blur(10px);
+      pointer-events: none;
+    }
+
+    .radymate-screen {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(15,23,42,1), rgba(30,41,59,0.9));
+      border: 1px solid rgba(148,163,184,0.2);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    .radymate-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 10%, rgba(255,255,255,0.06) 45%, transparent 80%);
+      transform: translateX(-120%);
+      animation: shimmerSweep 9s linear infinite;
+    }
+
+    .radymate-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+
+    .radymate-gallery-item {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 1px solid rgba(148,163,184,0.18);
+      background: rgba(15, 23, 42, 0.9);
+      box-shadow: 0 18px 36px -22px rgba(15,23,42,0.5);
+      animation: fadeUp 0.5s ease both;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .radymate-gallery-item:hover {
+      transform: translateY(-4px) scale(1.01);
+      box-shadow: 0 24px 42px -26px rgba(245,158,11,0.35);
+    }
+
+    .radymate-gallery-item img {
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.45s ease;
+    }
+
+    .radymate-gallery-item:hover img {
+      transform: scale(1.06);
+    }
+
+    .radymate-gallery-meta {
+      padding: 0.9rem 0.9rem 1rem;
+      background: linear-gradient(180deg, rgba(15,23,42,0.18), rgba(15,23,42,0.9));
+    }
+
+    .radymate-upload-box {
+      border: 1px dashed rgba(251,191,36,0.45);
+      background: rgba(251,191,36,0.04);
+      border-radius: 18px;
+      padding: 1rem;
+    }
+
+    .radymate-upload-box input[type="file"] {
+      display: block;
+      width: 100%;
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 12px;
+      padding: 0.7rem 0.8rem;
+      background: rgba(15,23,42,0.95);
+      color: #f8fafc;
+      font-size: 0.75rem;
+    }
+
+    .radymate-upload-box input[type="text"] {
+      width: 100%;
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 12px;
+      padding: 0.7rem 0.8rem;
+      background: rgba(15,23,42,0.95);
+      color: #f8fafc;
+      font-size: 0.75rem;
+    }
+
+    .radymate-admin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(251,191,36,0.12);
+      border: 1px solid rgba(251,191,36,0.24);
+      color: #fbbf24;
+      font-size: 0.63rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric-3d {
+      background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,248,220,0.72));
+      border: 1px solid rgba(251,191,36,0.22);
+      box-shadow: 0 20px 40px rgba(245, 158, 11, 0.12), inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    .dark .metric-3d {
+      background: linear-gradient(135deg, rgba(17,24,39,0.96), rgba(31,41,55,0.7));
+      border-color: rgba(251,191,36,0.18);
+    }
+
+    .float-slow {
+      animation: floatY 6s ease-in-out infinite alternate;
+    }
+
+    .float-delayed {
+      animation: floatY 7s ease-in-out infinite alternate 0.8s;
+    }
+
+    .glow-ring {
+      position: relative;
+      box-shadow: 0 0 0 1px rgba(251,191,36,0.25), 0 0 28px rgba(251,191,36,0.15);
+    }
+
+    .glow-ring::after {
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border-radius: 9999px;
+      border: 1px solid rgba(251,191,36,0.25);
+      opacity: 0.7;
+      animation: pulseRing 2.4s ease-out infinite;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px) scale(0.985);
+      transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), filter 0.7s ease;
+      filter: blur(6px);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    .pricing-compare {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,250,240,0.78));
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 24px 48px -25px rgba(15, 23, 42, 0.26);
+    }
+
+    .dark .pricing-compare {
+      background: linear-gradient(180deg, rgba(12,17,24,0.94), rgba(17,24,39,0.8));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .compare-pill {
+      position: relative;
+      animation: floatY 5s ease-in-out infinite alternate;
+    }
+
+    .compare-feature-row {
+      display: grid;
+      grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+      align-items: center;
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .compare-feature-row:last-child {
+      border-bottom: none;
+    }
+
+    .compare-feature-row.header {
+      background: rgba(251,191,36,0.08);
+      border-radius: 1rem 1rem 0 0;
+      border-bottom: 1px solid rgba(251,191,36,0.22);
+    }
+
+    .compare-feature-row > div {
+      text-align: center;
+      font-size: 0.72rem;
+      color: #475569;
+      font-weight: 700;
+    }
+
+    .dark .compare-feature-row > div {
+      color: #cbd5e1;
+    }
+
+    .compare-feature-row > div:first-child {
+      text-align: left;
+      color: #0f172a;
+      font-weight: 800;
+    }
+
+    .dark .compare-feature-row > div:first-child {
+      color: #f8fafc;
+    }
+
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 1.5rem;
+    }
+
+    .professional-3col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.25rem;
+    }
+
+    .professional-card {
+      position: relative;
+      padding: 1.25rem;
+      border-radius: 1.5rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(248,250,252,0.7));
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 22px 38px -28px rgba(15,23,42,0.28);
+    }
+
+    .dark .professional-card {
+      background: linear-gradient(180deg, rgba(15,23,42,0.9), rgba(17,24,39,0.78));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .professional-bullet {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.9rem;
+      background: linear-gradient(135deg, rgba(251,191,36,0.18), rgba(255,255,255,0.14));
+      color: #b45309;
+      border: 1px solid rgba(251,191,36,0.18);
+      margin-bottom: 0.8rem;
+    }
+
+    .showcase-panel {
+      position: relative;
+      overflow: hidden;
+      border-radius: 1.75rem;
+      background: linear-gradient(135deg, rgba(255,255,255,0.86), rgba(249,250,251,0.7));
+      border: 1px solid rgba(148,163,184,0.16);
+      box-shadow: 0 30px 60px -35px rgba(15, 23, 42, 0.35);
+    }
+
+    .dark .showcase-panel {
+      background: linear-gradient(135deg, rgba(15,23,42,0.9), rgba(17,24,39,0.82));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .chart-bars {
+      display: flex;
+      align-items: end;
+      gap: 0.7rem;
+      height: 130px;
+      padding: 0.75rem 0 0.5rem;
+    }
+
+    .chart-bar {
+      flex: 1;
+      border-radius: 0.8rem 0.8rem 0 0;
+      background: linear-gradient(180deg, rgba(251,191,36,0.9), rgba(245,158,11,0.5));
+      box-shadow: inset 0 -8px 12px rgba(120,53,15,0.2);
+      animation: riseBar 1.2s ease forwards;
+      transform-origin: bottom;
+      height: var(--height);
+      min-height: 22%;
+    }
+
+    .chart-bar.alt {
+      background: linear-gradient(180deg, rgba(59,130,246,0.9), rgba(14,165,233,0.5));
+    }
+
+    .flow-card {
+      position: relative;
+      padding: 1rem;
+      border-radius: 1.25rem;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 18px 30px -22px rgba(15,23,42,0.28);
+    }
+
+    .dark .flow-card {
+      background: rgba(12,17,24,0.7);
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .flow-node {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.9rem;
+      background: linear-gradient(135deg, rgba(251,191,36,0.25), rgba(255,255,255,0.2));
+      color: #f59e0b;
+      font-weight: 800;
+      border: 1px solid rgba(251,191,36,0.25);
+    }
+
+    .flow-line {
+      position: relative;
+      height: 2.5rem;
+      width: 1px;
+      background: linear-gradient(180deg, rgba(251,191,36,0.8), transparent);
+      margin: 0 auto;
+    }
+
+    .flow-line::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #f59e0b;
+      top: 0;
+      animation: pulseDot 1.6s ease-in-out infinite;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8rem;
+    }
+
+    .circular-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .circularmetric {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 160px;
+      height: 160px;
+      margin: 0 auto;
+      border-radius: 50%;
+      background: conic-gradient(#f59e0b 0deg, #fbbf24 220deg, rgba(148,163,184,0.15) 220deg 360deg);
+      box-shadow: inset 0 0 22px rgba(255,255,255,0.7), 0 20px 40px rgba(245,158,11,0.12);
+      animation: spinSlow 12s linear infinite;
+    }
+
+    .circularmetric.alt-one {
+      background: conic-gradient(#3b82f6 0deg, #60a5fa 240deg, rgba(148,163,184,0.15) 240deg 360deg);
+    }
+
+    .circularmetric.alt-two {
+      background: conic-gradient(#10b981 0deg, #34d399 200deg, rgba(148,163,184,0.15) 200deg 360deg);
+    }
+
+    .circularmetric.alt-three {
+      background: conic-gradient(#8b5cf6 0deg, #a78bfa 210deg, rgba(148,163,184,0.15) 210deg 360deg);
+    }
+
+    .circularmetric-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 111px;
+      height: 111px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248,250,252,0.9));
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+
+    .dark .circularmetric-inner {
+      background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.9));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .circularmetric-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-top: 0.35rem;
+      font-weight: 800;
+    }
+
+    .dark .circularmetric-label {
+      color: #cbd5e1;
+    }
+
+    .three-d-carousel {
+      position: relative;
+      perspective: 1200px;
+      padding: 1rem 0 0.5rem;
+    }
+
+    .carousel-track {
+      display: flex;
+      gap: 1.1rem;
+      overflow-x: auto;
+      padding: 1rem 0.5rem 1rem;
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+    }
+
+    .carousel-track::-webkit-scrollbar { display: none; }
+
+    .carousel-card {
+      flex: 0 0 290px;
+      position: relative;
+      height: 420px;
+      border-radius: 2rem;
+      padding: 0.8rem;
+      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(241,245,249,0.7));
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 20px 48px -18px rgba(15,23,42,0.25);
+      transform: rotateX(10deg) rotateY(-12deg) translateY(0);
+      transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+      overflow: hidden;
+    }
+
+    .dark .carousel-card {
+      background: linear-gradient(135deg, rgba(15,23,42,0.9), rgba(17,24,39,0.84));
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .carousel-card:nth-child(2n) {
+      transform: rotateX(8deg) rotateY(10deg) translateY(12px);
+    }
+
+    .carousel-card:hover {
+      transform: rotateX(0deg) rotateY(0deg) translateY(-10px) scale(1.02);
+      box-shadow: 0 38px 65px -22px rgba(245,158,11,0.18);
+      border-color: rgba(245,158,11,0.36);
+    }
+
+    .carousel-screen {
+      position: relative;
+      height: 300px;
+      border-radius: 1.6rem;
+      overflow: hidden;
+      background: linear-gradient(135deg, #0f172a, #1e293b 45%, #111827);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .carousel-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 20% 10%, rgba(251,191,36,0.25), transparent 28%), linear-gradient(180deg, transparent, rgba(15,23,42,0.15));
+      pointer-events: none;
+    }
+
+    .carousel-card .screen-badge {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1;
+      background: rgba(15,23,42,0.7);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: white;
+      padding: 0.38rem 0.7rem;
+      border-radius: 9999px;
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .carousel-card .screen-widget {
+      position: absolute;
+      left: 1rem;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6rem;
+    }
+
+    .carousel-card .widget-mini {
+      background: rgba(15,23,42,0.7);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 0.9rem;
+      padding: 0.55rem 0.4rem;
+      text-align: center;
+      color: white;
+    }
+
+    .carousel-card .widget-mini strong {
+      display: block;
+      font-size: 0.86rem;
+      font-weight: 900;
+      color: #fbbf24;
+    }
+
+    .carousel-card .widget-mini span {
+      font-size: 0.56rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+
+    @keyframes spinSlow {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes riseBar {
+      from { transform: scaleY(0.2); opacity: 0.4; }
+      to { transform: scaleY(1); opacity: 1; }
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(0.7); }
+      50% { opacity: 1; transform: translateX(-50%) scale(1.2); }
+    }
+
+    .compare-check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 9999px;
+      background: rgba(16,185,129,0.12);
+      color: #10b981;
+      font-weight: 900;
+    }
+
+    .compare-x {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 9999px;
+      background: rgba(148,163,184,0.12);
+      color: #64748b;
+      font-weight: 900;
+    }
+
+    @keyframes floatOrb {
+      0% { transform: translate3d(0, 0, 0) scale(1); }
+      100% { transform: translate3d(18px, -18px, 0) scale(1.08); }
+    }
+
+    @keyframes floatY {
+      0% { transform: translateY(0px); }
+      100% { transform: translateY(-12px); }
+    }
+
+    @keyframes pulseRing {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      70% { transform: scale(1.12); opacity: 0.2; }
+      100% { transform: scale(1.2); opacity: 0; }
+    }
+
+    @keyframes shimmerSweep {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(140%); }
+    }
+
+    @keyframes floatCard {
+      0% { transform: translateY(0px); }
+      100% { transform: translateY(-10px); }
+    }
+
+    /* Responsive foundations: content can shrink without being clipped. */
+    html { scroll-padding-top: 110px; }
+    body { min-width: 280px; }
+    .grid > *, .flex > *, .showcase-grid > *, .professional-3col > * { min-width: 0; }
+    img { max-width: 100%; }
+    pre { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    h1, h2, h3 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+    a, button, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
+    button, a, summary { touch-action: manipulation; }
+    :focus-visible { outline: 3px solid #d97706; outline-offset: 4px; }
+    .material-symbols-outlined { flex-shrink: 0; }
+    .gold-gradient-btn { white-space: normal; text-align: center; }
+    .site-nav > div { backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    .brand-anchor, .nav-actions { flex-shrink: 0; }
+    .theme-toggle, .menu-toggle { min-width: 44px; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+    .theme-toggle { background: #f1f5f9; border: 1px solid #e2e8f0; color: #92400e; }
+    .dark .theme-toggle { background: #1e293b; border-color: #334155; color: #fbbf24; }
+    .theme-moon, .dark .theme-sun { display: none; }
+    .dark .theme-moon { display: inline; }
+    .menu-toggle { display: none; background: #0f172a; color: #fbbf24; }
+    #lang-btn { min-height: 44px; }
+    .mobile-menu-wrap[hidden] { display: none !important; }
+    .hero-copy > p { line-height: 1.8; }
+    .hero-section .enterprise-shell { background: rgba(255,253,249,.94); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    .dark .hero-section .enterprise-shell { background: rgba(12,16,25,.94); border-color: rgba(251,191,36,.16); }
+    .hero-status { line-height: 1.6; }
+    .hero-status > span:first-child { flex-shrink: 0; }
+    .circularmetric { animation: none; }
+    .pricing-pro { overflow: visible; border: 2px solid #f59e0b; }
+    .pricing-pro::before { border-radius: inherit; }
+    .compare-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border-radius: 1rem; }
+    .compare-table { min-width: 540px; }
+    .compare-hint { display: none; }
+    .carousel-track { scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+    .carousel-card { scroll-snap-align: center; }
+    #video-modal { z-index: 100; padding: max(16px, env(safe-area-inset-top)) 16px; }
+    #video-modal > div { max-height: 90dvh; overflow-y: auto; }
+    #video-modal button { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+    .reveal { opacity: 1; transform: none; filter: none; }
+    .reveal-pending { opacity: 0; transform: translateY(20px); }
+    .reveal-pending.visible { opacity: 1; transform: none; }
+
+    @media (min-width: 1024px) and (max-width: 1279px) {
+      .site-nav { padding-inline: 20px; }
+      .site-nav > div { padding-inline: 20px; gap: 16px; }
+      #nav-links { gap: 16px; }
+      .brand-copy { display: none; }
+      .nav-actions { gap: 8px; }
+    }
+    @media (max-width: 1023px) {
+      html { scroll-padding-top: 96px; }
+      .site-nav { padding: max(12px, env(safe-area-inset-top)) 16px 0; }
+      .site-nav > div { padding: 8px 12px; border-radius: 24px; gap: 12px; box-shadow: 0 8px 32px -16px rgba(15,23,42,.25); }
+      .brand-anchor { gap: 8px; }
+      .brand-anchor > div:first-child { width: 44px; height: 44px; flex-shrink: 0; }
+      .brand-copy > div > span { font-size: 13px; letter-spacing: .04em; }
+      .brand-copy p { font-size: 7px; letter-spacing: .06em; }
+      #nav-links, .nav-actions > .gold-gradient-btn, #lang-btn { display: none; }
+      .nav-actions { gap: 6px; }
+      .menu-toggle { display: inline-flex; }
+      .mobile-menu-wrap { display: block; position: fixed; inset: calc(84px + env(safe-area-inset-top)) 16px auto; z-index: 60; }
+      .mobile-menu-panel { padding: 16px; border-radius: 24px; background: #fffdf9; border: 1px solid #e2e8f0; box-shadow: 0 24px 60px rgba(15,23,42,.2); max-height: calc(100dvh - 110px - env(safe-area-inset-top)); overflow-y: auto; }
+      .dark .mobile-menu-panel { background: #10151f; border-color: #334155; }
+      .mobile-menu { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+      .mobile-menu a { display: flex; align-items: center; min-height: 48px; padding: 12px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; }
+      .mobile-menu a:hover { background: rgba(245,158,11,.1); color: #b45309; }
+      .mobile-menu-tools { display: flex; gap: 10px; margin-top: 12px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,.25); }
+      .mobile-menu-tools > * { flex: 1; min-height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 14px; font-size: 13px; font-weight: 700; }
+      body .hero-section { min-height: auto; padding-top: calc(104px + env(safe-area-inset-top)); background-image: radial-gradient(ellipse at 85% 35%, rgba(251,191,36,.18), transparent 55%), linear-gradient(160deg,#fffdf7,#f8fafc 65%,#eef2f7); box-shadow: none; }
+      .dark .hero-section { background-image: radial-gradient(ellipse at 85% 35%,rgba(245,158,11,.12),transparent 55%),linear-gradient(160deg,#0c1019,#101725); }
+      .hero-section > .relative { min-height: auto; }
+      #home { padding: 28px 24px 48px; }
+      #home > .grid { gap: 36px; }
+      #home .enterprise-shell { padding: 0; margin: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+      #home .enterprise-shell::before { display: none; }
+      .hero-copy { max-width: 600px; margin-inline: auto; }
+      #home h1 { font-size: clamp(2.25rem, 12.5vw, 4.75rem); line-height: 1.07; letter-spacing: -.045em; }
+      .hero-copy > p { font-size: 15px; max-width: 480px; }
+      .hero-copy > .glass-panel { font-size: 10px; letter-spacing: .08em; padding: 8px 14px; box-shadow: none; }
+      .hero-actions { max-width: 440px; margin-inline: auto; gap: 12px; }
+      .hero-actions > a, .hero-actions > button { justify-content: center; min-height: 52px; border-radius: 16px; }
+      .hero-status { max-width: 330px; margin-inline: auto; font-size: 11px; padding-top: 0; }
+      .hero-preview { padding-top: 0; }
+      .phone-shell { max-width: 300px; transform: rotate(-3deg); box-shadow: 12px 26px 55px -20px rgba(15,23,42,.45); }
+      .showcase-grid { grid-template-columns: minmax(0,1fr); }
+      .professional-3col { grid-template-columns: minmax(0,1fr); }
+      .circular-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px 16px; }
+      .carousel-card, .carousel-card:nth-child(2n), .carousel-card:hover { transform: none; }
+    }
+    @media (max-width: 767px) {
+      main > section:not(.premium-strip) { padding: 48px 20px; }
+      section h2 { font-size: clamp(1.85rem,7.5vw,2.5rem); line-height: 1.15; letter-spacing: -.035em; }
+      section > .text-center > p { font-size: 14px; line-height: 1.75; }
+      .ui-card, .showcase-panel, .professional-card { border-radius: 24px; }
+      section > .ui-card, #gallery > .ui-card { padding: 22px; }
+      .ui-card p, .ui-card li { line-height: 1.7; }
+      .ui-card p, .ui-card h3, .ui-card h4, .ui-card li { overflow-wrap: anywhere; }
+      .hero-actions { flex-direction: column; }
+      .hero-actions > * { width: 100%; }
+      .premium-strip { margin: 0; padding: 22px 20px; border-inline: 0; }
+      .premium-strip > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 12px; font-size: 9px; letter-spacing: .06em; }
+      .premium-strip > div > div { align-items: flex-start; }
+      .platform-stats > div { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+      .platform-stats .premium-card { padding: 16px; border-radius: 20px; }
+      .platform-stats .premium-card > div:last-child { font-size: 10px; letter-spacing: .04em; line-height: 1.6; }
+      .platform-stats .premium-card .text-3xl { font-size: 28px; }
+      .compare-hint { display: block; margin: 0 0 12px; font-size: 12px; color: #64748b; }
+      .dark .compare-hint { color: #94a3b8; }
+      .compare-feature-row { gap: 12px; }
+      .compare-feature-row > div { font-size: 12px; }
+      .carousel-card { flex-basis: min(270px, 100%); height: auto; min-height: 400px; }
+      .carousel-track { padding: 12px 0; gap: 14px; }
+      .carousel-screen { height: 280px; }
+      .circularmetric { width: min(140px,100%); height: auto; aspect-ratio: 1; }
+      .circularmetric-inner { width: 74%; height: 74%; }
+      input, select, textarea { font-size: 16px !important; min-height: 48px; }
+      button, summary, .ui-card a { min-height: 44px; }
+      .ui-card a { display: inline-flex; align-items: center; justify-content: center; }
+      #pos .ui-card { gap: 24px; }
+      #pos .gold-gradient-btn { white-space: normal; padding-inline: 12px; }
+      #developers .font-mono > .flex { flex-wrap: wrap; gap: 8px; }
+      #download > div { padding: 28px 22px; border-radius: 28px; gap: 24px; }
+      #download .flex-wrap > a { width: 100%; justify-content: center; min-height: 50px; }
+      footer { padding-bottom: max(32px,env(safe-area-inset-bottom)); }
+      footer > .grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px 20px; }
+      footer > .grid > div:first-child, footer > .grid > div:last-child { grid-column: 1 / -1; }
+      footer li a { display: inline-flex; align-items: center; min-height: 44px; }
+      footer ul.space-y-2 > * + * { margin-top: 0; }
+      footer > div:last-child > .flex { flex-wrap: wrap; justify-content: center; gap: 12px 20px; }
+      footer > div:last-child a { padding-block: 10px; }
+    }
+    @media (max-width: 359px) {
+      .site-nav { padding-inline: 10px; }
+      .site-nav > div { padding-inline: 8px; gap: 4px; }
+      .brand-copy > div > span { font-size: 11px; }
+      .brand-copy p { display: none; }
+      .brand-anchor { gap: 4px; }
+      #home { padding-inline: 18px; }
+      main > section:not(.premium-strip) { padding-inline: 16px; }
+      section > .ui-card, #gallery > .ui-card { padding: 18px; }
+      .platform-stats .premium-card { padding: 12px; }
+      .platform-stats .premium-card > .flex > span:first-child { width: 34px; height: 34px; }
+      .mini-grid { grid-template-columns: minmax(0,1fr); }
+    }
+    @media (hover: none) {
+      .premium-card:hover, .ui-card:hover { transform: none; }
+      .float-slow, .float-delayed, .compare-pill, .animated-section::before, .glow-ring::after { animation: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto !important; }
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+      .reveal-pending { opacity: 1; transform: none; }
+    }
+
   </style>
+  <link rel="canonical" href="https://swapnopay.top/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SwapnoPay">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="SwapnoPay | Payment Gateway, POS &amp; Digital Ledger in Bangladesh">
+  <meta property="og:description" content="Automate bKash, Nagad, Rocket and Upay payment matching with SwapnoPay. Manage POS billing, inventory and digital ledgers for your business in Bangladesh.">
+  <meta property="og:url" content="https://swapnopay.top/">
+  <meta property="og:image" content="https://swapnopay.top/logo_branding.png">
+  <meta property="og:image:alt" content="SwapnoPay — payment and business management platform">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="SwapnoPay | Payment Gateway, POS &amp; Digital Ledger in Bangladesh">
+  <meta name="twitter:description" content="Automate bKash, Nagad, Rocket and Upay payment matching with SwapnoPay. Manage POS billing, inventory and digital ledgers for your business in Bangladesh.">
+  <meta name="twitter:image" content="https://swapnopay.top/logo_branding.png">
+  <meta name="theme-color" content="#101c30">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://swapnopay.top/#organization","name":"SwapnoPay","alternateName":"স্বপ্নপে","url":"https://swapnopay.top/","logo":{"@type":"ImageObject","url":"https://swapnopay.top/logo_branding.png"}},{"@type":"WebSite","@id":"https://swapnopay.top/#website","url":"https://swapnopay.top/","name":"SwapnoPay","alternateName":"স্বপ্নপে","publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://swapnopay.top/#webpage","url":"https://swapnopay.top/","name":"SwapnoPay | Payment Gateway, POS & Digital Ledger in Bangladesh","description":"Automate bKash, Nagad, Rocket and Upay payment matching with SwapnoPay. Manage POS billing, inventory and digital ledgers for your business in Bangladesh.","isPartOf":{"@id":"https://swapnopay.top/#website"},"publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en","about":{"@id":"https://swapnopay.top/#application"}},{"@type":"SoftwareApplication","@id":"https://swapnopay.top/#application","name":"SwapnoPay","url":"https://swapnopay.top/","applicationCategory":"BusinessApplication","operatingSystem":"Android, Web","description":"Automate bKash, Nagad, Rocket and Upay payment matching with SwapnoPay. Manage POS billing, inventory and digital ledgers for your business in Bangladesh.","publisher":{"@id":"https://swapnopay.top/#organization"}}]}</script>
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 dark:bg-[#08090d] antialiased text-slate-900 dark:text-slate-100 font-sans">
 
   <!-- ── 1. FIXED TOP NAVIGATION BAR ─────────────────────────────────────── -->
-  <nav class="fixed top-0 left-0 right-0 z-50 pt-4 px-4 md:px-8 flex justify-center pointer-events-none">
-    <div class="max-w-7xl w-full bg-white/95 dark:bg-[#0c0e14]/95 backdrop-blur-2xl border border-slate-200/80 dark:border-amber-500/20 rounded-full px-6 py-3 flex items-center justify-between shadow-xl shadow-slate-900/10 dark:shadow-none transition-colors pointer-events-auto">
+  <nav aria-label="Main navigation" class="site-nav fixed top-0 left-0 right-0 z-50 pt-4 px-4 md:px-8 flex justify-center pointer-events-none">
+    <div class="max-w-7xl w-full bg-white/95 dark:bg-[#0c0e14]/95 border border-slate-200/80 dark:border-amber-500/20 rounded-full px-6 py-3 flex items-center justify-between shadow-xl shadow-slate-900/10 dark:shadow-none transition-colors pointer-events-auto">
       
       <!-- Brand Logo -->
-      <a href="#" class="flex items-center gap-3 group">
-        <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 p-0.5 shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform flex items-center justify-center">
-          <img id="header-logo-img" src="logo_branding.png" alt="SwapnoPay Logo" class="w-full h-full object-contain rounded-lg bg-slate-950/80 p-0.5" onError="this.style.display='none'; document.getElementById('header-logo-fallback').style.display='flex'">
-          <div id="header-logo-fallback" class="w-full h-full bg-slate-950 rounded-lg hidden items-center justify-center font-black text-amber-400 text-lg">S</div>
+      <a href="#" class="brand-anchor flex items-center gap-3 group">
+        <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-transparent shadow-none group-hover:scale-[1.02] transition-transform flex items-center justify-center">
+          <img id="header-logo-img" src="logo_branding.png" alt="SwapnoPay Logo" width="64" height="64" class="w-full h-full object-contain drop-shadow-[0_8px_18px_rgba(245,158,11,0.30)]" onError="this.style.display='none'; document.getElementById('header-logo-fallback').style.display='flex'">
+          <div id="header-logo-fallback" class="w-full h-full bg-slate-950 rounded-xl hidden items-center justify-center font-black text-amber-400 text-lg">S</div>
         </div>
-        <div>
+        <div class="brand-copy">
           <div class="flex items-center gap-1">
-            <span class="font-black text-lg tracking-wider text-slate-900 dark:text-white uppercase font-heading">SWAPNOPAY</span>
+            <span class="font-black text-sm sm:text-base tracking-wider text-slate-900 dark:text-white uppercase font-heading">SWAPNOPAY</span>
           </div>
-          <p class="text-[9px] font-extrabold tracking-widest text-amber-600 dark:text-amber-400 uppercase">— PAY • EASY • TRUSTED —</p>
+          <p class="text-[8px] sm:text-[9px] font-extrabold tracking-widest text-amber-600 dark:text-amber-400 uppercase">— PAY • EASY • TRUSTED —</p>
         </div>
       </a>
 
@@ -102,24 +1072,25 @@
         <a href="#features" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Features" data-bn="ফিচারসমূহ">Features</a>
         <a href="#gallery" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Gallery" data-bn="গ্যালারি">Gallery</a>
         <a href="#pricing" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Pricing" data-bn="প্রাইসিং">Pricing</a>
-        <a href="#developers" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Developers" data-bn="ডেভেলপার">Developers</a>
-        <a href="#reviews" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Reviews" data-bn="রিভিউ">Reviews</a>
+        <a href="portal.html" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Developers" data-bn="ডেভেলপার">Developers</a>
+        <a href="#faq" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="FAQ" data-bn="প্রশ্নোত্তর">FAQ</a>
         <a href="#contact" class="nav-item hover:text-amber-600 dark:hover:text-amber-400 transition-colors" data-en="Contact" data-bn="যোগাযোগ">Contact</a>
       </div>
 
       <!-- Right Controls -->
-      <div class="flex items-center gap-3">
+      <div class="nav-actions flex items-center gap-3">
         <!-- Live Bilingual Language Switcher Button -->
         <button onclick="toggleLanguage()" id="lang-btn" class="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 hover:scale-105 transition-all">
           <span class="material-symbols-outlined text-sm">translate</span>
           <span id="lang-label">বাংলা</span>
         </button>
 
-        <!-- Theme Toggle Switcher Pill -->
-        <button onclick="toggleTheme()" class="w-12 h-6 rounded-full bg-slate-200 dark:bg-slate-800 p-1 flex items-center justify-between border border-slate-300 dark:border-slate-700 relative cursor-pointer" title="Toggle Light/Dark Mode">
-          <span class="material-symbols-outlined text-[13px] text-amber-500">light_mode</span>
-          <span class="material-symbols-outlined text-[13px] text-slate-400">dark_mode</span>
-          <div id="theme-toggle-knob" class="absolute left-1 w-4 h-4 rounded-full bg-amber-500 transition-transform"></div>
+        <button type="button" onclick="toggleTheme()" class="theme-toggle" aria-label="Switch to dark mode" aria-pressed="false">
+          <span class="material-symbols-outlined theme-sun" aria-hidden="true">light_mode</span>
+          <span class="material-symbols-outlined theme-moon" aria-hidden="true">dark_mode</span>
+        </button>
+        <button type="button" id="mobile-menu-toggle" class="menu-toggle" aria-label="Open navigation" aria-controls="mobile-navigation" aria-expanded="false" onclick="toggleMobileMenu()">
+          <span class="material-symbols-outlined" aria-hidden="true">menu</span>
         </button>
 
         <!-- Download App Button -->
@@ -132,50 +1103,161 @@
     </div>
   </nav>
 
+  <div id="mobile-navigation" class="mobile-menu-wrap" hidden>
+    <div class="mobile-menu-panel">
+      <div class="mobile-menu" role="navigation" aria-label="Mobile navigation">
+        <a href="#home" data-en="Home" data-bn="হোম">Home</a>
+        <a href="#features" data-en="Features" data-bn="ফিচারসমূহ">Features</a>
+        <a href="#gallery" data-en="Gallery" data-bn="গ্যালারি">Gallery</a>
+        <a href="#pricing" data-en="Pricing" data-bn="প্রাইসিং">Pricing</a>
+        <a href="portal.html" data-en="Developer Portal" data-bn="ডেভেলপার পোর্টাল">Developer Portal</a>
+        <a href="#contact" data-en="Contact" data-bn="যোগাযোগ">Contact</a>
+      </div>
+      <div class="mobile-menu-tools">
+        <button type="button" onclick="toggleLanguage()" aria-label="Change language"><span id="mobile-lang-label">বাংলা</span></button>
+        <a href="#download" class="gold-gradient-btn" data-en="Download App" data-bn="অ্যাপ ডাউনলোড">Download App</a>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 2. HERO SECTION ─────────────────────────────────────────────────── -->
-  <div class="relative w-full min-h-screen bg-[url('WhatsApp%20Image%202026-08-29%20at%208.04.26%20PM%20(1).jpeg')] bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-2xl pt-24 md:pt-28">
+  <main id="main-content">
+  <div class="hero-section relative w-full min-h-screen bg-[url('WhatsApp%20Image%202026-08-29%20at%208.04.26%20PM%20(1).jpeg')] bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-2xl pt-24 md:pt-28">
     <div class="absolute inset-0 bg-white/5 dark:bg-[#08090d]/60 pointer-events-none"></div>
 
     <div class="relative z-10 flex flex-col min-h-screen">
       <section id="home" class="flex-1 flex items-center px-4 md:px-12 max-w-7xl mx-auto w-full py-12 md:py-20">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full">
-          
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full relative">
+          <div class="hero-ambient hidden lg:block" aria-hidden="true">
+            <div class="hero-grid absolute inset-0"></div>
+            <div class="hero-orb hero-orb--gold"></div>
+            <div class="hero-orb hero-orb--blue"></div>
+            <div class="floating-metric floating-metric--one">
+              <div class="metric-icon">↗</div>
+              <div>
+                <div class="metric-label">Settlement</div>
+                <div class="metric-value">2.4s</div>
+              </div>
+            </div>
+            <div class="floating-metric floating-metric--two">
+              <div class="metric-icon">✓</div>
+              <div>
+                <div class="metric-label">Secure</div>
+                <div class="metric-value">Bank Grade</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Left Copy Column -->
-          <div class="lg:col-span-7 space-y-6 text-center lg:text-left">
-            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/10 border border-slate-200/80 dark:border-amber-500/30 text-slate-800 dark:text-amber-400 text-xs font-extrabold shadow-sm backdrop-blur-md">
-              <span class="text-amber-500 text-sm">★</span>
-              <span data-en="INTRODUCING SWAPNOPAY" data-bn="স্বপ্নপে আত্মপ্রকাশ">INTRODUCING SWAPNOPAY</span>
-            </div>
+          <div class="lg:col-span-7 relative z-10">
+            <div class="enterprise-shell p-5 md:p-7 lg:p-8">
+              <div class="hero-copy space-y-6 text-center lg:text-left relative z-10">
+                <div class="glass-panel inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/10 border border-slate-200/80 dark:border-amber-500/30 text-slate-800 dark:text-amber-400 text-xs font-extrabold shadow-sm">
+                  <span class="text-amber-500 text-sm">★</span>
+                  <span data-en="PAYMENTS FOR BANGLADESH" data-bn="স্বপ্নপে আত্মপ্রকাশ">PAYMENTS FOR BANGLADESH</span>
+                </div>
 
-            <h1 class="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.08] font-heading">
-              Payments.<br>
-              <span class="gold-gradient-text font-black" data-en="Reimagined." data-bn="নতুন দিগন্তে।">Reimagined.</span>
-            </h1>
+                <h1 class="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.08] font-heading">
+                  Payments.<br>
+                  <span class="gold-gradient-text font-black" data-en="Reimagined." data-bn="নতুন দিগন্তে।">Reimagined.</span>
+                </h1>
 
-            <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal" data-en="All-in-one payment automation, POS checkout, stock inventory, digital ledger (ব্যবসা খাতা), AI assistant, and developer API platform built for modern merchants." data-bn="পেমেন্ট অটোমেশন, পস ক্যাশিয়ার, স্টক ইনভেন্টরি, ডিজিটাল বাকির খাতা, এআই অ্যাসিস্ট্যান্ট এবং ডেভেলপার এপিআই সমৃদ্ধ আধুনিক মার্চেন্ট প্ল্যাটফর্ম।">
-              All-in-one payment automation, POS checkout, stock inventory, digital ledger (ব্যবসা খাতা), AI assistant, and developer API platform built for modern merchants.
-            </p>
+                <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal" data-en="Payment gateway automation, POS billing, inventory and digital ledger (ব্যবসা খাতা) for businesses in Bangladesh. Manage bKash, Nagad, Rocket and Upay payments in one platform." data-bn="পেমেন্ট অটোমেশন, পস ক্যাশিয়ার, স্টক ইনভেন্টরি, ডিজিটাল বাকির খাতা, এআই অ্যাসিস্ট্যান্ট এবং ডেভেলপার এপিআই সমৃদ্ধ আধুনিক মার্চেন্ট প্ল্যাটফর্ম।">
+                  Payment gateway automation, POS billing, inventory and digital ledger (ব্যবসা খাতা) for businesses in Bangladesh. Manage bKash, Nagad, Rocket and Upay payments in one platform.
+                </p>
 
-            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-2">
-              <a href="#download" class="gold-gradient-btn text-sm font-black px-7 py-3.5 rounded-full flex items-center gap-2 shadow-xl shadow-amber-500/30 hover:scale-105 transition-all">
-                <span class="material-symbols-outlined text-lg">download</span>
-                <span data-en="Download SwapnoPay" data-bn="স্বপ্নপে ডাউনলোড করুন">Download SwapnoPay</span>
-              </a>
+                <div class="hero-actions flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-2">
+                  <a href="#download" class="gold-gradient-btn text-sm font-black px-7 py-3.5 rounded-full flex items-center gap-2 shadow-[0_16px_32px_rgba(245,158,11,0.28)] hover:scale-[1.02] transition-all active:scale-[0.98] border border-amber-500/20">
+                    <span class="material-symbols-outlined text-lg">download</span>
+                    <span data-en="Download SwapnoPay" data-bn="স্বপ্নপে ডাউনলোড করুন">Download SwapnoPay</span>
+                  </a>
 
-              <button onclick="openVideoModal()" class="px-6 py-3.5 rounded-full bg-white/90 dark:bg-slate-900/80 text-slate-800 dark:text-slate-100 text-sm font-bold border border-slate-200 dark:border-slate-800 hover:bg-amber-500/10 hover:border-amber-500/40 backdrop-blur-md flex items-center gap-2 transition-all">
-                <span class="material-symbols-outlined text-amber-500">play_circle</span>
-                <span data-en="Watch Introduction" data-bn="ভিডিও দেখুন">Watch Introduction</span>
-              </button>
-            </div>
+                  <button onclick="openVideoModal()" class="px-6 py-3.5 rounded-full bg-white/80 dark:bg-slate-900/80 text-slate-800 dark:text-slate-100 text-sm font-bold border border-slate-200/80 dark:border-slate-700/80 hover:bg-amber-500/10 hover:border-amber-500/40 backdrop-blur-md flex items-center gap-2 transition-all shadow-[0_10px_25px_rgba(15,23,42,0.06)] active:scale-[0.98]">
+                    <span class="material-symbols-outlined text-amber-500">play_circle</span>
+                    <span data-en="Watch Introduction" data-bn="ভিডিও দেখুন">Watch Introduction</span>
+                  </button>
+                </div>
 
-            <div class="flex items-center justify-center lg:justify-start gap-3 pt-4 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span data-en="Android Version 1.0.0 • Offline Ready & Bank-Grade Encrypted" data-bn="অ্যান্ড্রয়েড ভার্সন ১.০.০ • অফলাইন উপযোগী ও সম্পূর্ণ নিরাপদ">Android Version 1.0.0 • Offline Ready & Bank-Grade Encrypted</span>
+                <div class="hero-status flex items-center justify-center lg:justify-start gap-3 pt-4 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span data-en="Android Version 1.0.0 • Offline Ready & Bank-Grade Encrypted" data-bn="অ্যান্ড্রয়েড ভার্সন ১.০.০ • অফলাইন উপযোগী ও সম্পূর্ণ নিরাপদ">Android Version 1.0.0 • Offline Ready & Bank-Grade Encrypted</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Right Column Space for Image 1 Backdrop phones -->
           <div class="lg:col-span-5 hidden lg:block h-[500px]"></div>
+
+          <div class="hero-preview lg:hidden w-full max-w-sm mx-auto pt-8">
+            <div class="phone-shell relative mx-auto w-full max-w-[320px] rounded-[2.2rem] border border-slate-200/80 bg-slate-950 p-2.5 shadow-[0_30px_80px_rgba(15,23,42,0.35)]">
+              <div class="phone-notch mx-auto mb-3 h-1.5 w-20 rounded-full bg-slate-700/80"></div>
+              <div class="rounded-[1.8rem] overflow-hidden border border-slate-700 bg-gradient-to-b from-slate-900 via-slate-950 to-[#111827]">
+                <div class="p-4 pb-3 bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-transparent">
+                  <div class="flex items-center justify-between text-[10px] font-bold text-slate-300">
+                    <span>9:41</span>
+                    <span>5G</span>
+                  </div>
+                  <div class="mt-4 rounded-2xl border border-amber-500/20 bg-slate-900/80 p-3 shadow-inner shadow-amber-500/10">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <p class="text-[9px] uppercase tracking-[0.2em] text-amber-400">Today</p>
+                        <p class="mt-1 text-xl font-black text-white">৳24,300</p>
+                      </div>
+                      <div class="rounded-xl bg-emerald-500/20 px-2 py-1 text-[9px] font-bold text-emerald-300">+18.4%</div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-3 gap-2 text-[9px] text-slate-300">
+                      <div class="rounded-xl bg-slate-800/80 p-2 text-center">
+                        <div class="text-slate-400">Sales</div>
+                        <div class="mt-1 font-bold text-white">12</div>
+                      </div>
+                      <div class="rounded-xl bg-slate-800/80 p-2 text-center">
+                        <div class="text-slate-400">Due</div>
+                        <div class="mt-1 font-bold text-white">৳2.1k</div>
+                      </div>
+                      <div class="rounded-xl bg-slate-800/80 p-2 text-center">
+                        <div class="text-slate-400">Stock</div>
+                        <div class="mt-1 font-bold text-white">89</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="px-4 pb-4 space-y-3">
+                  <div class="rounded-2xl bg-slate-900/70 p-3 border border-slate-800">
+                    <div class="flex items-center justify-between text-[10px] text-slate-300">
+                      <span>Recent payments</span>
+                      <span class="text-amber-400">Live</span>
+                    </div>
+                    <div class="mt-3 space-y-2">
+                      <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
+                        <span>bKash</span>
+                        <span class="font-bold text-emerald-300">৳1,260</span>
+                      </div>
+                      <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
+                        <span>Nagad</span>
+                        <span class="font-bold text-emerald-300">৳820</span>
+                      </div>
+                      <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
+                        <span>Rocket</span>
+                        <span class="font-bold text-emerald-300">৳2,340</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-[10px] text-slate-200">
+                    <div class="flex items-center justify-between">
+                      <span class="font-bold text-amber-300">AI Copilot</span>
+                      <span>Ready</span>
+                    </div>
+                    <div class="mt-2 rounded-xl bg-slate-950/60 px-2 py-2 leading-relaxed text-slate-300">
+                      “Need stock update for rice? I can reconcile it.”
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
         </div>
       </section>
@@ -183,8 +1265,8 @@
   </div>
 
   <!-- ── 3. TRUST / PLATFORM HIGHLIGHTS STRIP ───────────────────────────── -->
-  <section class="bg-[#0c0e14] border-y border-amber-500/20 py-4 px-4 overflow-hidden shadow-inner">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-around gap-6 text-xs font-extrabold uppercase tracking-widest text-slate-300">
+  <section class="premium-strip py-4 px-4 overflow-hidden">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-around gap-6 text-xs font-extrabold uppercase tracking-widest text-slate-300 relative z-10">
       <div class="flex items-center gap-2"><span class="text-amber-500">⚡</span><span>Automated Payments</span></div>
       <div class="flex items-center gap-2"><span class="text-amber-500">🌐</span><span>Offline-Ready</span></div>
       <div class="flex items-center gap-2"><span class="text-amber-500">📡</span><span>Real-Time WebSockets</span></div>
@@ -195,8 +1277,149 @@
     </div>
   </section>
 
+  <section class="platform-stats animated-section py-16 px-4 md:px-8 max-w-7xl mx-auto w-full">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div class="premium-card metric-3d p-5 float-slow">
+        <div class="flex items-center justify-between mb-4">
+          <span class="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 flex items-center justify-center glow-ring"><span class="material-symbols-outlined text-xl">payments</span></span>
+          <span class="text-[10px] uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400 font-bold">Live</span>
+        </div>
+        <div class="text-3xl font-black text-slate-900 dark:text-white">24.8K</div>
+        <div class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Payments processed</div>
+      </div>
+
+      <div class="premium-card metric-3d p-5 float-delayed">
+        <div class="flex items-center justify-between mb-4">
+          <span class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 text-white flex items-center justify-center glow-ring"><span class="material-symbols-outlined text-xl">speed</span></span>
+          <span class="text-[10px] uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 font-bold">Fast</span>
+        </div>
+        <div class="text-3xl font-black text-slate-900 dark:text-white">0.8s</div>
+        <div class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Avg. settlement</div>
+      </div>
+
+      <div class="premium-card metric-3d p-5 float-slow">
+        <div class="flex items-center justify-between mb-4">
+          <span class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-slate-950 flex items-center justify-center glow-ring"><span class="material-symbols-outlined text-xl">trending_up</span></span>
+          <span class="text-[10px] uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 font-bold">Growth</span>
+        </div>
+        <div class="text-3xl font-black text-slate-900 dark:text-white">4.2x</div>
+        <div class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Merchant uplift</div>
+      </div>
+
+      <div class="premium-card metric-3d p-5 float-delayed">
+        <div class="flex items-center justify-between mb-4">
+          <span class="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center glow-ring"><span class="material-symbols-outlined text-xl">smart_toy</span></span>
+          <span class="text-[10px] uppercase tracking-[0.2em] text-violet-600 dark:text-violet-400 font-bold">AI</span>
+        </div>
+        <div class="text-3xl font-black text-slate-900 dark:text-white">98%</div>
+        <div class="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Prompt accuracy</div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── 4. WHAT IS SWAPNOPAY? ─────────────────────────────────────────── -->
-  <section id="about" class="py-20 px-4 md:px-8 max-w-7xl mx-auto w-full space-y-12">
+  <section id="about" class="py-20 px-4 md:px-8 max-w-7xl mx-auto w-full space-y-12 animated-section">
+    <div class="showcase-grid reveal" data-reveal>
+      <div class="showcase-panel p-5 md:p-7">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-[10px] uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 font-bold">Business overview</div>
+            <h3 class="text-xl md:text-2xl font-black text-slate-900 dark:text-white mt-2">Growth performance</h3>
+          </div>
+          <div class="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 text-[10px] font-bold">+18.4%</div>
+        </div>
+
+        <div class="chart-bars">
+          <div class="chart-bar" style="--height: 42%"></div>
+          <div class="chart-bar alt" style="--height: 61%"></div>
+          <div class="chart-bar" style="--height: 54%"></div>
+          <div class="chart-bar alt" style="--height: 78%"></div>
+          <div class="chart-bar" style="--height: 66%"></div>
+          <div class="chart-bar alt" style="--height: 88%"></div>
+          <div class="chart-bar" style="--height: 94%"></div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-3 gap-3 text-center">
+          <div class="rounded-2xl bg-slate-100 dark:bg-slate-900/80 p-3">
+            <div class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Sales</div>
+            <div class="text-lg font-black text-slate-900 dark:text-white mt-1">৳ 28K</div>
+          </div>
+          <div class="rounded-2xl bg-slate-100 dark:bg-slate-900/80 p-3">
+            <div class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Profit</div>
+            <div class="text-lg font-black text-slate-900 dark:text-white mt-1">৳ 9.6K</div>
+          </div>
+          <div class="rounded-2xl bg-slate-100 dark:bg-slate-900/80 p-3">
+            <div class="text-[10px] uppercase tracking-[0.16em] text-slate-500">Tasks</div>
+            <div class="text-lg font-black text-slate-900 dark:text-white mt-1">142</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="showcase-panel p-5 md:p-7">
+        <div class="text-[10px] uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400 font-bold">Workflow engine</div>
+        <h3 class="text-xl md:text-2xl font-black text-slate-900 dark:text-white mt-2">Payment flow</h3>
+
+        <div class="mt-5 space-y-2">
+          <div class="flow-card">
+            <div class="flex items-center gap-3">
+              <div class="flow-node">1</div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Customer</div>
+                <div class="font-extrabold text-sm text-slate-900 dark:text-white">Pays via bKash</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-line"></div>
+
+          <div class="flow-card">
+            <div class="flex items-center gap-3">
+              <div class="flow-node">2</div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Parser</div>
+                <div class="font-extrabold text-sm text-slate-900 dark:text-white">Extracts amount + trx id</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-line"></div>
+
+          <div class="flow-card">
+            <div class="flex items-center gap-3">
+              <div class="flow-node">3</div>
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.2em] text-slate-500">Match</div>
+                <div class="font-extrabold text-sm text-slate-900 dark:text-white">Atomic sync & receipt</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="professional-3col reveal" data-reveal>
+      <div class="professional-card">
+        <div class="professional-bullet"><span class="material-symbols-outlined">payments</span></div>
+        <div class="text-[10px] uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 font-bold mb-2">Payment Engine</div>
+        <h3 class="text-lg font-black text-slate-900 dark:text-white mb-2">Unified MFS settlement</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">Automated bKash, Nagad, Rocket, and Upay matching with low-latency reconciliation for merchants.</p>
+      </div>
+
+      <div class="professional-card">
+        <div class="professional-bullet"><span class="material-symbols-outlined">point_of_sale</span></div>
+        <div class="text-[10px] uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 font-bold mb-2">Operations</div>
+        <h3 class="text-lg font-black text-slate-900 dark:text-white mb-2">POS + Inventory</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">Smart checkout, product catalog, stock tracking, and digital ledger workflows in one interface.</p>
+      </div>
+
+      <div class="professional-card">
+        <div class="professional-bullet"><span class="material-symbols-outlined">smart_toy</span></div>
+        <div class="text-[10px] uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 font-bold mb-2">Intelligence</div>
+        <h3 class="text-lg font-black text-slate-900 dark:text-white mb-2">AI + Developer APIs</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">Business copilot insights and SDK-ready integrations for product teams and enterprise merchants.</p>
+      </div>
+    </div>
+
     <div class="text-center space-y-4 max-w-3xl mx-auto">
       <div class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white dark:bg-amber-500/10 text-slate-800 dark:text-amber-400 text-xs font-extrabold border border-slate-200 dark:border-amber-500/20 shadow-sm">
         <span class="text-amber-500">★</span>
@@ -564,7 +1787,7 @@
         <div class="flex items-center gap-3">
           <div class="relative flex-1">
             <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-sm">search</span>
-            <input type="text" placeholder="Search product or scan barcode..." class="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:border-amber-500">
+            <input type="text" aria-label="Search product or scan barcode" placeholder="Search product or scan barcode..." class="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:border-amber-500">
           </div>
           <button class="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 font-bold text-xs flex items-center gap-1">
             <span class="material-symbols-outlined text-sm">qr_code_scanner</span>
@@ -767,10 +1990,16 @@ payment = client.payments.create(
 print("Payment URL:", payment.url)</pre>
         </div>
 
-        <a href="docs.html" class="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-500 hover:underline pt-2">
-          <span>Read Full Developer Documentation</span>
-          <span class="material-symbols-outlined text-sm">arrow_forward</span>
-        </a>
+        <div class="flex flex-wrap items-center gap-3 pt-2">
+          <a href="docs.html" class="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-500 hover:underline">
+            <span>Read Full Developer Documentation</span>
+            <span class="material-symbols-outlined text-sm">arrow_forward</span>
+          </a>
+          <a href="portal.html" class="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-extrabold text-amber-400 hover:bg-amber-500/15">
+            <span>Open Developer Portal</span>
+            <span class="material-symbols-outlined text-sm">open_in_new</span>
+          </a>
+        </div>
       </div>
 
       <!-- Request / Response Tester Right -->
@@ -804,9 +2033,152 @@ print("Payment URL:", payment.url)</pre>
     </div>
   </section>
 
+  <!-- ── Radymate Launch Studio ───────────────────────────────────────────── -->
+  <section id="radymate-launch" class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full relative">
+    <div class="ui-card rounded-[36px] p-6 md:p-10 reveal" data-reveal>
+      <div class="radymate-launch-grid">
+        <div class="space-y-6">
+          <div class="radymate-admin-badge">
+            <span class="material-symbols-outlined text-xs">rocket_launch</span>
+            <span>Radymate Studio</span>
+          </div>
+          <div class="space-y-4">
+            <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading leading-tight">
+              Launch a <span class="gold-gradient-text">professional eCommerce website</span> in one click.
+            </h2>
+            <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 max-w-xl">
+              Deploy a premium storefront, curated product pages, and polished brand experience with a single launch command. Built for Bangladesh businesses that want velocity, trust, and conversion.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <a href="#radymate-launch" class="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white px-5 py-3 text-xs font-extrabold shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all">
+              <span>Launch Demo</span>
+              <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            </a>
+            <a href="#gallery" class="inline-flex items-center gap-2 rounded-full border border-slate-300 px-5 py-3 text-xs font-extrabold text-slate-700 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900 transition-all">
+              <span>View Gallery</span>
+              <span class="material-symbols-outlined text-sm">photo_library</span>
+            </a>
+          </div>
+
+          <div class="grid sm:grid-cols-3 gap-3 mt-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:bg-slate-900 dark:border-slate-700">
+              <div class="text-lg font-black text-slate-900 dark:text-white">5 min</div>
+              <div class="text-[10px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">setup</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:bg-slate-900 dark:border-slate-700">
+              <div class="text-lg font-black text-slate-900 dark:text-white">1 click</div>
+              <div class="text-[10px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">launch</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:bg-slate-900 dark:border-slate-700">
+              <div class="text-lg font-black text-slate-900 dark:text-white">24/7</div>
+              <div class="text-[10px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">online</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="radymate-card p-4 md:p-5">
+          <div class="radymate-screen p-4 md:p-5">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.16em] text-amber-400 font-black">Radymate</div>
+                <div class="text-sm font-bold text-white">Storefront Builder</div>
+              </div>
+              <div class="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-1 font-bold text-[10px] text-emerald-400">Live</div>
+            </div>
+
+            <div class="space-y-3">
+              <div class="rounded-2xl bg-slate-800/80 p-3 border border-slate-700">
+                <div class="flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                  <span>Website</span>
+                  <span>Ready</span>
+                </div>
+                <div class="mt-2 text-lg font-black text-white">DreamCart BD</div>
+                <div class="mt-1 text-[11px] text-slate-300">Home, product showcase, checkout, and delivery flow</div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2">
+                <div class="rounded-xl bg-slate-800 p-2 border border-slate-700 text-center">
+                  <div class="text-lg font-black text-amber-400">24</div>
+                  <div class="text-[9px] text-slate-400">pages</div>
+                </div>
+                <div class="rounded-xl bg-slate-800 p-2 border border-slate-700 text-center">
+                  <div class="text-lg font-black text-amber-400">8k</div>
+                  <div class="text-[9px] text-slate-400">orders</div>
+                </div>
+                <div class="rounded-xl bg-slate-800 p-2 border border-slate-700 text-center">
+                  <div class="text-lg font-black text-amber-400">96%</div>
+                  <div class="text-[9px] text-slate-400">uptime</div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl bg-gradient-to-r from-amber-500/15 to-sky-500/10 border border-amber-500/20 p-3">
+                <div class="text-[10px] uppercase tracking-[0.12em] text-amber-300 font-black">Launch pipeline</div>
+                <div class="mt-2 space-y-2">
+                  <div class="flex items-center gap-2 text-[11px] text-slate-200">
+                    <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
+                    Store assets connected
+                  </div>
+                  <div class="flex items-center gap-2 text-[11px] text-slate-200">
+                    <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
+                    Payment gateway preconfigured
+                  </div>
+                  <div class="flex items-center gap-2 text-[11px] text-slate-200">
+                    <span class="inline-block h-2 w-2 rounded-full bg-amber-400"></span>
+                    Checkout and callback verified
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-10 grid lg:grid-cols-[1.1fr_0.9fr] gap-6 items-start">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xl font-black text-slate-900 dark:text-white">Website gallery</h3>
+            <span class="text-[10px] uppercase tracking-[0.14em] text-slate-500">Live showcase</span>
+          </div>
+          <div class="radymate-gallery-grid" id="radymate-gallery"></div>
+        </div>
+
+        <div class="radymate-upload-box">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="text-[10px] uppercase tracking-[0.14em] text-amber-400 font-black">Admin panel</div>
+              <h3 class="text-lg font-black text-white mt-1">Upload website preview</h3>
+            </div>
+            <span class="rounded-full bg-emerald-500/15 px-2 py-1 text-[9px] font-black text-emerald-400 border border-emerald-500/30">Enabled</span>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Image title</label>
+              <input id="radymate-upload-title" type="text" placeholder="Homepage sales dashboard" value="Radymate E-commerce launch" />
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Image caption</label>
+              <input id="radymate-upload-caption" type="text" placeholder="Premium storefront for modern brands" value="One-click launch storefront" />
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">Upload image</label>
+              <input id="radymate-upload-file" type="file" accept="image/*" />
+            </div>
+            <div class="flex gap-2">
+              <button id="radymate-add-image" class="flex-1 rounded-xl bg-amber-500 text-slate-900 px-4 py-2.5 text-xs font-extrabold hover:bg-amber-400 transition-all">Add to gallery</button>
+              <button id="radymate-reset-gallery" class="rounded-xl border border-slate-700 bg-slate-900 text-white px-4 py-2.5 text-xs font-extrabold hover:bg-slate-800 transition-all">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── 28 & 29. 3D APP GALLERY CAROUSEL ──────────────────────────────── -->
   <section id="gallery" class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full relative">
-    <div class="ui-card rounded-[36px] p-8 md:p-12 relative shadow-md">
+    <div class="ui-card rounded-[36px] p-8 md:p-12 relative shadow-md reveal" data-reveal>
       
       <div class="text-center space-y-2 mb-10">
         <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-amber-500/10 text-slate-800 dark:text-amber-400 text-xs font-bold border border-slate-200 dark:border-amber-500/20">
@@ -831,60 +2203,82 @@ print("Payment URL:", payment.url)</pre>
       </button>
 
       <!-- Carousel Cards Track -->
-      <div class="relative overflow-x-auto pb-6 no-scrollbar scroll-smooth" id="gallery-carousel-track">
-        <div class="flex gap-6 min-w-max px-4 items-stretch">
-          
-          <div class="w-56 md:w-64 bg-slate-50 dark:bg-slate-900/60 rounded-3xl p-4 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="w-full h-80 rounded-2xl bg-black overflow-hidden border border-slate-800 mb-4">
-              <img src="splash_dark.jpg" alt="Dashboard" class="w-full h-full object-cover">
+      <div class="three-d-carousel">
+        <div class="carousel-track" id="gallery-carousel-track">
+          <div class="carousel-card">
+            <div class="carousel-screen">
+              <div class="screen-badge">Dashboard</div>
+              <div class="screen-widget">
+                <div class="widget-mini"><strong>৳ 28K</strong><span>Sales</span></div>
+                <div class="widget-mini"><strong>214</strong><span>Orders</span></div>
+                <div class="widget-mini"><strong>92%</strong><span>Win</span></div>
+              </div>
             </div>
-            <div>
-              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">Dashboard</h4>
-              <p class="text-[11px] text-slate-500 mt-0.5">Overview of sales, balance, and performance.</p>
-            </div>
-          </div>
-
-          <div class="w-56 md:w-64 bg-slate-50 dark:bg-slate-900/60 rounded-3xl p-4 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="w-full h-80 rounded-2xl bg-black overflow-hidden border border-slate-800 mb-4">
-              <img src="splash_dark.jpg" alt="Transactions" class="w-full h-full object-cover">
-            </div>
-            <div>
-              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">Transactions</h4>
-              <p class="text-[11px] text-slate-500 mt-0.5">Track payment status and MFS logs.</p>
+            <div class="mt-4 px-1">
+              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">Executive Dashboard</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Instant overview of sales, profit, and merchant health.</p>
             </div>
           </div>
 
-          <div class="w-56 md:w-64 bg-amber-50/70 dark:bg-amber-500/10 rounded-3xl p-4 border-2 border-amber-400 dark:border-amber-500 flex flex-col justify-between relative shadow-xl transform scale-[1.02]">
-            <div class="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-[9px]">★ POPULAR</div>
-            <div class="w-full h-80 rounded-2xl bg-black overflow-hidden border border-slate-800 mb-4">
-              <img src="splash_dark.jpg" alt="POS & Billing" class="w-full h-full object-cover">
+          <div class="carousel-card">
+            <div class="carousel-screen" style="background: linear-gradient(135deg, #111827, #1e293b 55%, #0f172a);">
+              <div class="screen-badge">POS</div>
+              <div class="screen-widget">
+                <div class="widget-mini"><strong>৳ 1,250</strong><span>Cart</span></div>
+                <div class="widget-mini"><strong>3</strong><span>Items</span></div>
+                <div class="widget-mini"><strong>Paid</strong><span>Cash</span></div>
+              </div>
             </div>
-            <div>
-              <h4 class="font-extrabold text-sm text-amber-700 dark:text-amber-400">POS & Smart Billing</h4>
-              <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">Fast cashier checkout & receipts.</p>
+            <div class="mt-4 px-1">
+              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">POS & Billing</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Fast billing, payment capture, and instant checkout.</p>
             </div>
           </div>
 
-          <div class="w-56 md:w-64 bg-slate-50 dark:bg-slate-900/60 rounded-3xl p-4 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="w-full h-80 rounded-2xl bg-black overflow-hidden border border-slate-800 mb-4">
-              <img src="splash_light.jpg" alt="Ledger" class="w-full h-full object-cover">
+          <div class="carousel-card" style="border-color: rgba(245,158,11,0.42);">
+            <div class="carousel-screen" style="background: linear-gradient(135deg, #1a1203, #2a1d0d 50%, #0f172a);">
+              <div class="screen-badge">Popular</div>
+              <div class="screen-widget">
+                <div class="widget-mini"><strong>৳ 9.6K</strong><span>Profit</span></div>
+                <div class="widget-mini"><strong>98%</strong><span>Match</span></div>
+                <div class="widget-mini"><strong>AI</strong><span>Ready</span></div>
+              </div>
             </div>
-            <div>
+            <div class="mt-4 px-1">
+              <h4 class="font-extrabold text-sm text-amber-700 dark:text-amber-400">AI + Growth Engine</h4>
+              <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-1">Sales intelligence and recommendation workflows.</p>
+            </div>
+          </div>
+
+          <div class="carousel-card">
+            <div class="carousel-screen" style="background: linear-gradient(135deg, #0f172a, #112236 45%, #0b1120);">
+              <div class="screen-badge">Ledger</div>
+              <div class="screen-widget">
+                <div class="widget-mini"><strong>৳ 11K</strong><span>Due</span></div>
+                <div class="widget-mini"><strong>24</strong><span>Clients</span></div>
+                <div class="widget-mini"><strong>5</strong><span>Alerts</span></div>
+              </div>
+            </div>
+            <div class="mt-4 px-1">
               <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">Digital Ledger</h4>
-              <p class="text-[11px] text-slate-500 mt-0.5">Customer & Supplier Due Book.</p>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Track cashflow, supplier dues, and customer balances.</p>
             </div>
           </div>
 
-          <div class="w-56 md:w-64 bg-slate-50 dark:bg-slate-900/60 rounded-3xl p-4 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="w-full h-80 rounded-2xl bg-black overflow-hidden border border-slate-800 mb-4">
-              <img src="splash_dark.jpg" alt="AI Copilot" class="w-full h-full object-cover">
+          <div class="carousel-card">
+            <div class="carousel-screen" style="background: linear-gradient(135deg, #111827, #0f172a 50%, #1f2937);">
+              <div class="screen-badge">AI</div>
+              <div class="screen-widget">
+                <div class="widget-mini"><strong>৳ 48K</strong><span>Sales</span></div>
+                <div class="widget-mini"><strong>2.1x</strong><span>Trend</span></div>
+                <div class="widget-mini"><strong>Yes</strong><span>Advice</span></div>
+              </div>
             </div>
-            <div>
-              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">AI Copilot (ব্যবসা AI)</h4>
-              <p class="text-[11px] text-slate-500 mt-0.5">Instant business intelligence.</p>
+            <div class="mt-4 px-1">
+              <h4 class="font-extrabold text-sm text-slate-900 dark:text-white">Merchant Copilot</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Actionable suggestions in Bangla or English.</p>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -934,7 +2328,7 @@ print("Payment URL:", payment.url)</pre>
 
   <!-- ── 34. PRICING PLANS ──────────────────────────────────────────────── -->
   <section id="pricing" class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full space-y-12">
-    <div class="text-center space-y-3">
+    <div class="text-center space-y-3 reveal" data-reveal>
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>💎 PRICING PLANS</span>
       </div>
@@ -943,10 +2337,77 @@ print("Payment URL:", payment.url)</pre>
       </h2>
     </div>
 
+    <div class="pricing-compare rounded-[2rem] p-4 md:p-6 reveal" data-reveal>
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-5">
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 font-bold mb-2">Feature comparison</div>
+          <h3 class="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Choose the plan that fits your growth</h3>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/80 rounded-full p-1 border border-slate-200 dark:border-slate-800 compare-pill">
+          <span class="px-3 py-1.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-[0.16em]">Monthly</span>
+          <span class="px-3 py-1.5 rounded-full text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-[0.16em]">Annual</span>
+        </div>
+      </div>
+
+      <p class="compare-hint">Swipe to compare all plans <span aria-hidden="true">→</span></p>
+      <div class="compare-scroll" role="region" aria-label="Plan feature comparison" tabindex="0">
+      <div class="compare-table">
+      <div class="compare-feature-row header">
+        <div>Features</div>
+        <div>Starter</div>
+        <div class="text-amber-700 dark:text-amber-400">Business Pro</div>
+        <div>Enterprise</div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>Automated MFS payment matching</div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>POS & billing dashboard</div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>Inventory & stock alerts</div>
+        <div><span class="compare-x">—</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>AI business copilot</div>
+        <div><span class="compare-x">—</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>Developer APIs & SDKs</div>
+        <div><span class="compare-x">—</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+
+      <div class="compare-feature-row">
+        <div>Priority support</div>
+        <div><span class="compare-x">—</span></div>
+        <div><span class="compare-check">✓</span></div>
+        <div><span class="compare-check">✓</span></div>
+      </div>
+      </div>
+      </div>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
       
       <!-- Free Plan -->
-      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between">
+<div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between reveal" data-reveal>
         <div class="space-y-4">
           <h3 class="text-lg font-black text-slate-900 dark:text-white">Starter</h3>
           <div class="text-3xl font-black text-slate-900 dark:text-white">৳ 0 <span class="text-xs font-semibold text-slate-500">/month</span></div>
@@ -961,7 +2422,7 @@ print("Payment URL:", payment.url)</pre>
       </div>
 
       <!-- Pro Plan -->
-      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between border-2 border-amber-500 relative shadow-2xl transform lg:-translate-y-2">
+      <div class="pricing-pro ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between border-2 border-amber-500 relative shadow-2xl transform lg:-translate-y-2 reveal" data-reveal>
         <div class="absolute -top-3.5 right-6 px-3 py-1 rounded-full bg-amber-500 text-black font-black text-[10px] tracking-wider uppercase">MOST POPULAR</div>
         <div class="space-y-4">
           <h3 class="text-lg font-black text-amber-500">Business Pro</h3>
@@ -978,7 +2439,7 @@ print("Payment URL:", payment.url)</pre>
       </div>
 
       <!-- Developer Plan -->
-      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between">
+      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between reveal" data-reveal>
         <div class="space-y-4">
           <h3 class="text-lg font-black text-slate-900 dark:text-white">Developer / Enterprise</h3>
           <div class="text-3xl font-black text-slate-900 dark:text-white">৳ 1,999 <span class="text-xs font-semibold text-slate-500">/month</span></div>
@@ -1063,7 +2524,47 @@ print("Payment URL:", payment.url)</pre>
       </div>
 
       <div class="w-32 h-32 bg-white p-2 rounded-2xl shadow-2xl flex-shrink-0 flex items-center justify-center border-2 border-amber-500">
-        <img src="logo_branding.png" alt="SwapnoPay App QR Code" class="w-full h-full object-contain">
+        <img src="logo_branding.png" alt="SwapnoPay app logo" class="w-full h-full object-contain">
+      </div>
+    </div>
+  </section>
+
+  <section class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full reveal" data-reveal>
+    <div class="circular-metrics">
+      <div>
+        <div class="circularmetric">
+          <div class="circularmetric-inner">
+            <div class="text-2xl font-black text-slate-900 dark:text-white">92%</div>
+            <div class="circularmetric-label">Match</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="circularmetric alt-one">
+          <div class="circularmetric-inner">
+            <div class="text-2xl font-black text-slate-900 dark:text-white">0.8s</div>
+            <div class="circularmetric-label">Latency</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="circularmetric alt-two">
+          <div class="circularmetric-inner">
+            <div class="text-2xl font-black text-slate-900 dark:text-white">24/7</div>
+            <div class="circularmetric-label">Support</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="circularmetric alt-three">
+          <div class="circularmetric-inner">
+            <div class="text-2xl font-black text-slate-900 dark:text-white">99.9</div>
+            <div class="circularmetric-label">Uptime</div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1078,15 +2579,15 @@ print("Payment URL:", payment.url)</pre>
 
       <form onsubmit="handleContactSubmit(event)" class="space-y-4 text-xs">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input type="text" id="contact-name" placeholder="Your Name" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500">
-          <input type="email" id="contact-email" placeholder="Your Email" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500">
+          <input type="text" id="contact-name" aria-label="Your name" autocomplete="name" placeholder="Your Name" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500">
+          <input type="email" id="contact-email" aria-label="Your email" autocomplete="email" placeholder="Your Email" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500">
         </div>
-        <select id="contact-topic" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500">
+        <select id="contact-topic" aria-label="Support topic" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500">
           <option value="General Inquiry">General Merchant Support</option>
           <option value="Merchant Partnership">Merchant Partnership</option>
           <option value="API Integration">API Integration Support</option>
         </select>
-        <textarea id="contact-msg" rows="4" placeholder="Your Message" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"></textarea>
+        <textarea id="contact-msg" aria-label="Your message" rows="4" placeholder="Your Message" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"></textarea>
         
         <button type="submit" class="w-full py-3.5 gold-gradient-btn font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md">
           <span class="material-symbols-outlined text-sm">send</span>
@@ -1097,6 +2598,8 @@ print("Payment URL:", payment.url)</pre>
   </section>
 
   <!-- ── 46. MASTER FOOTER ──────────────────────────────────────────────── -->
+  </main>
+
   <footer class="mt-auto bg-[#08090d] text-white py-12 px-4 md:px-8 border-t border-amber-500/20 text-xs">
     <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-8">
       
@@ -1146,42 +2649,96 @@ print("Payment URL:", payment.url)</pre>
     <div class="max-w-7xl mx-auto border-t border-slate-900 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-400">
       <p>© 2026 SwapnoPay. All rights reserved.</p>
       <div class="flex items-center gap-6">
-        <a href="#" class="hover:text-amber-400">Terms of Service</a>
-        <a href="#" class="hover:text-amber-400">Privacy Policy</a>
-        <a href="#" class="hover:text-amber-400">Compliance</a>
+        <a href="terms-and-conditions.html" class="hover:text-amber-400">Terms of Service</a>
+        <a href="privacy-policy.html" class="hover:text-amber-400">Privacy Policy</a>
+        <a href="docs.html" class="hover:text-amber-400">Compliance</a>
       </div>
     </div>
   </footer>
 
   <!-- Video Modal -->
-  <div id="video-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden items-center justify-center p-4" onclick="closeVideoModal()">
+  <div role="dialog" aria-modal="true" aria-label="SwapnoPay Platform Introduction" id="video-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden items-center justify-center p-4" onclick="closeVideoModal()">
     <div class="relative w-full max-w-4xl bg-black rounded-3xl overflow-hidden border border-amber-500/40 p-4" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center pb-3 text-white">
         <h4 class="font-bold">SwapnoPay Platform Introduction</h4>
-        <button onclick="closeVideoModal()" class="text-slate-400 hover:text-white">✕</button>
+        <button type="button" aria-label="Close video" onclick="closeVideoModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <div class="aspect-video w-full bg-slate-900 rounded-2xl flex items-center justify-center text-slate-500">
-        <iframe class="w-full h-full rounded-2xl" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="SwapnoPay Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        <iframe class="w-full h-full rounded-2xl" loading="lazy" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="SwapnoPay Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
       </div>
     </div>
   </div>
 
   <!-- ── 47. SCRIPT LOGIC ───────────────────────────────────────────────── -->
   <script>
+    const mobileNavigation = document.getElementById('mobile-navigation');
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    function toggleMobileMenu(open = mobileNavigation.hidden) {
+      mobileNavigation.hidden = !open;
+      menuToggle.setAttribute('aria-expanded', String(open));
+      menuToggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      menuToggle.firstElementChild.textContent = open ? 'close' : 'menu';
+    }
+    mobileNavigation.addEventListener('click', (event) => {
+      if (event.target.closest('a')) toggleMobileMenu(false);
+    });
+    document.addEventListener('click', (event) => {
+      if (!mobileNavigation.contains(event.target) && !menuToggle.contains(event.target)) toggleMobileMenu(false);
+    });
+    document.addEventListener('focusin', (event) => {
+      if (!mobileNavigation.hidden && !mobileNavigation.contains(event.target) && !menuToggle.contains(event.target)) toggleMobileMenu(false);
+    });
+    window.matchMedia('(min-width: 1024px)').addEventListener('change', (event) => {
+      if (event.matches) toggleMobileMenu(false);
+    });
+
+    let videoTrigger;
+    let previousBodyOverflow;
     function openVideoModal() {
+      videoTrigger = document.activeElement;
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
       document.getElementById('video-modal').classList.remove('hidden');
       document.getElementById('video-modal').classList.add('flex');
+      document.querySelector('#video-modal button').focus();
     }
     function closeVideoModal() {
       document.getElementById('video-modal').classList.add('hidden');
       document.getElementById('video-modal').classList.remove('flex');
+      document.body.style.overflow = previousBodyOverflow || '';
+      const frame = document.querySelector('#video-modal iframe');
+      frame.src = frame.src;
+      videoTrigger?.focus({ preventScroll: true });
     }
+    document.addEventListener('keydown', (event) => {
+      const videoOpen = !document.getElementById('video-modal').classList.contains('hidden');
+      if (event.key === 'Escape') {
+        if (videoOpen) closeVideoModal();
+        else if (!mobileNavigation.hidden) {
+          toggleMobileMenu(false);
+          menuToggle.focus();
+        }
+      }
+      if (videoOpen && event.key === 'Tab') {
+        const close = document.querySelector('#video-modal button');
+        const frame = document.querySelector('#video-modal iframe');
+        if (event.shiftKey && document.activeElement === close) {
+          event.preventDefault();
+          frame.focus();
+        } else if (!event.shiftKey && document.activeElement === frame) {
+          event.preventDefault();
+          close.focus();
+        }
+      }
+    });
 
     // Live Bilingual Language Switcher
     let isBangla = false;
     function toggleLanguage() {
       isBangla = !isBangla;
       document.getElementById('lang-label').innerText = isBangla ? 'English' : 'বাংলা';
+      document.getElementById('mobile-lang-label').innerText = isBangla ? 'English' : 'বাংলা';
+      document.documentElement.lang = isBangla ? 'bn' : 'en';
       const elList = document.querySelectorAll('[data-en][data-bn]');
       elList.forEach(el => {
         el.innerText = isBangla ? el.getAttribute('data-bn') : el.getAttribute('data-en');
@@ -1191,26 +2748,24 @@ print("Payment URL:", payment.url)</pre>
     // Theme Switcher — default is light mode; persists via localStorage
     function applyTheme(isDark) {
       const html = document.documentElement;
-      const knob = document.getElementById('theme-toggle-knob');
-      if (isDark) {
-        html.classList.add('dark');
-        if (knob) knob.style.transform = 'translateX(24px)';
-      } else {
-        html.classList.remove('dark');
-        if (knob) knob.style.transform = 'translateX(0px)';
-      }
+      html.classList.toggle('dark', isDark);
+      html.style.colorScheme = isDark ? 'dark' : 'light';
+      const toggle = document.querySelector('.theme-toggle');
+      toggle.setAttribute('aria-pressed', String(isDark));
+      toggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
     }
 
     function toggleTheme() {
       const isDark = document.documentElement.classList.contains('dark');
       const next = !isDark;
-      localStorage.setItem('sp-theme', next ? 'dark' : 'light');
+      try { localStorage.setItem('sp-theme', next ? 'dark' : 'light'); } catch (_) { /* Theme still works without storage. */ }
       applyTheme(next);
     }
 
     // Restore saved preference on load (default: light)
     (function () {
-      const saved = localStorage.getItem('sp-theme');
+      let saved;
+      try { saved = localStorage.getItem('sp-theme'); } catch (_) { /* Default to light. */ }
       applyTheme(saved === 'dark');
     })();
 
@@ -1365,11 +2920,184 @@ echo $payment->payment_url;`
       document.getElementById('sdk-code-snippet').innerText = snippets[lang];
     }
 
+    const defaultRadymateGallery = [
+      {
+        title: 'Launch Dashboard',
+        caption: 'Storefront overview and order performance',
+        image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80'
+      },
+      {
+        title: 'Premium Storefront',
+        caption: 'Professional eCommerce front-end showcase',
+        image: 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1200&q=80'
+      },
+      {
+        title: 'Checkout Flow',
+        caption: 'Fast and trusted conversion experience',
+        image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80'
+      },
+      {
+        title: 'Merchant Console',
+        caption: 'Insights and analytics dashboard for growth',
+        image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80'
+      },
+      {
+        title: 'Cart Experience',
+        caption: 'High-converting product and checkout pages',
+        image: 'https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1200&q=80'
+      },
+      {
+        title: 'Mobile Sales',
+        caption: 'Responsive storefront for every device',
+        image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=1200&q=80'
+      }
+    ];
+
+    const radymateStorageKey = 'radymate-gallery-images';
+    const radymateSupabase = (() => {
+      if (!window.supabase) return null;
+      const url = window.RADYMATE_SUPABASE_URL || '';
+      const key = window.RADYMATE_SUPABASE_ANON_KEY || '';
+      if (!url || !key) return null;
+      return window.supabase.createClient(url, key);
+    })();
+
+    async function loadRemoteRadymateGallery() {
+      if (!radymateSupabase) return null;
+      try {
+        const { data, error } = await radymateSupabase
+          .from('showcase_config')
+          .select('value')
+          .eq('key', 'radymate_gallery')
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Radymate gallery Supabase read warning:', error.message);
+          return null;
+        }
+
+        const items = Array.isArray(data?.value?.items) ? data.value.items : null;
+        return items && items.length ? items : null;
+      } catch (error) {
+        console.warn('Unable to load Radymate gallery from Supabase:', error);
+        return null;
+      }
+    }
+
+    async function getRadymateGallery() {
+      try {
+        const remoteGallery = await loadRemoteRadymateGallery();
+        if (remoteGallery) return remoteGallery;
+      } catch (_) {
+        // fallback below
+      }
+
+      try {
+        const saved = JSON.parse(localStorage.getItem(radymateStorageKey) || 'null');
+        return Array.isArray(saved) && saved.length ? saved : defaultRadymateGallery;
+      } catch (_) {
+        return defaultRadymateGallery;
+      }
+    }
+
+    async function saveRadymateGallery(gallery) {
+      try {
+        localStorage.setItem(radymateStorageKey, JSON.stringify(gallery));
+      } catch (_) {
+        // ignore storage failures in private browsing or restricted environments
+      }
+
+      if (radymateSupabase) {
+        try {
+          await radymateSupabase
+            .from('showcase_config')
+            .upsert({ key: 'radymate_gallery', value: { items: gallery, updated_at: new Date().toISOString() }, updated_at: new Date().toISOString() });
+        } catch (error) {
+          console.warn('Unable to sync Radymate gallery to Supabase:', error);
+        }
+      }
+    }
+
+    async function renderRadymateGallery() {
+      const gallery = await getRadymateGallery();
+      const container = document.getElementById('radymate-gallery');
+      if (!container) return;
+
+      container.innerHTML = gallery.map((item) => `
+        <div class="radymate-gallery-item">
+          <img src="${item.image}" alt="${item.title}" loading="lazy" />
+          <div class="radymate-gallery-meta">
+            <div class="text-sm font-black text-white">${item.title}</div>
+            <div class="text-[10px] text-slate-300 mt-1">${item.caption}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addRadymateGalleryItem() {
+      const title = document.getElementById('radymate-upload-title')?.value?.trim() || 'New launch preview';
+      const caption = document.getElementById('radymate-upload-caption')?.value?.trim() || 'Premium storefront preview';
+      const fileInput = document.getElementById('radymate-upload-file');
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      const gallery = await getRadymateGallery();
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = async function (event) {
+          gallery.unshift({ title, caption, image: event.target.result, source: 'fallback' });
+          await saveRadymateGallery(gallery);
+          await renderRadymateGallery();
+          fileInput.value = '';
+          const titleInput = document.getElementById('radymate-upload-title');
+          const captionInput = document.getElementById('radymate-upload-caption');
+          if (titleInput) titleInput.value = '';
+          if (captionInput) captionInput.value = '';
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      gallery.unshift({ title, caption, image: 'https://images.unsplash.com/photo-1556740749-887f6717d7e4?auto=format&fit=crop&w=1200&q=80', source: 'fallback' });
+      await saveRadymateGallery(gallery);
+      await renderRadymateGallery();
+    }
+
+    async function resetRadymateGallery() {
+      await saveRadymateGallery(defaultRadymateGallery);
+      await renderRadymateGallery();
+      const fileInput = document.getElementById('radymate-upload-file');
+      if (fileInput) fileInput.value = '';
+      const titleInput = document.getElementById('radymate-upload-title');
+      const captionInput = document.getElementById('radymate-upload-caption');
+      if (titleInput) titleInput.value = 'Radymate E-commerce launch';
+      if (captionInput) captionInput.value = 'One-click launch storefront';
+    }
+
+    document.getElementById('radymate-add-image')?.addEventListener('click', addRadymateGalleryItem);
+    document.getElementById('radymate-reset-gallery')?.addEventListener('click', resetRadymateGallery);
+    renderRadymateGallery();
+
     // App Gallery Scroll
     function scrollGallery(amount) {
       const track = document.getElementById('gallery-carousel-track');
       if (track) track.scrollBy({ left: amount, behavior: 'smooth' });
     }
+
+    // Reveal-on-scroll animation
+    const revealElements = document.querySelectorAll('[data-reveal]');
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
+
+    revealElements.forEach((el) => {
+      el.classList.add('reveal-pending');
+      revealObserver.observe(el);
+    });
 
     // Contact Form Handler
     function handleContactSubmit(e) {

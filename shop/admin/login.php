@@ -1,43 +1,48 @@
 <?php
 ob_start();
 session_start();
-include("inc/config.php");
-include("inc/functions.php");
-include("inc/CSRF_Protect.php");
+require_once('inc/config.php');
+require_once('inc/functions.php');
+require_once('inc/CSRF_Protect.php');
 $csrf = new CSRF_Protect();
 $error_message='';
 
-if(isset($_POST['form1'])) {
-        
-    if(empty($_POST['email']) || empty($_POST['password'])) {
-        $error_message = 'Email and/or Password can not be empty<br>';
+if (isset($_POST['form1'])) {
+    $email = strtolower(trim((string)($_POST['email'] ?? '')));
+    $password = (string)($_POST['password'] ?? '');
+    if (!$csrf->checkToken()) {
+        $error_message = 'Your session expired. Refresh and try again.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
+        $error_message = 'Enter your email and password.';
     } else {
-		
-		$email = strip_tags($_POST['email']);
-		$password = strip_tags($_POST['password']);
-
-    	$statement = $pdo->prepare("SELECT * FROM tbl_user WHERE email=? AND status=?");
-    	$statement->execute(array($email,'Active'));
-    	$total = $statement->rowCount();    
-        $result = $statement->fetchAll(PDO::FETCH_ASSOC);    
-        if($total==0) {
-            $error_message .= 'Email Address does not match<br>';
-        } else {       
-            foreach($result as $row) { 
-                $row_password = $row['password'];
-            }
-        
-            if( $row_password != md5($password) ) {
-                $error_message .= 'Password does not match<br>';
-            } else {       
-            
-				$_SESSION['user'] = $row;
-                header("location: index.php");
-            }
+        $key = hash('sha256', $email . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+        $blocked = false;
+        if ($runtimeRoot) {
+            $attempt = $pdo->prepare("SELECT failures FROM shop_login_attempts WHERE attempt_key=? AND last_attempt > NOW() - INTERVAL '15 minutes'");
+            $attempt->execute([$key]);
+            $blocked = (int)$attempt->fetchColumn() >= 10;
         }
+        $statement = $pdo->prepare("SELECT * FROM tbl_user WHERE lower(email)=? AND status='Active' LIMIT 1");
+        $statement->execute([$email]);
+        $row = $statement->fetch();
+        $legacy = $row && preg_match('/\A[a-f0-9]{32}\z/i', $row['password']);
+        $valid = !$blocked && $row && (password_verify($password, $row['password']) || ($legacy && hash_equals(strtolower($row['password']), md5($password))));
+        if ($valid) {
+            if ($legacy || password_needs_rehash($row['password'], PASSWORD_BCRYPT, ['cost'=>12])) {
+                $row['password'] = password_hash($password, PASSWORD_BCRYPT, ['cost'=>12]);
+                $pdo->prepare('UPDATE tbl_user SET password=? WHERE id=?')->execute([$row['password'],$row['id']]);
+            }
+            if ($runtimeRoot) $pdo->prepare('DELETE FROM shop_login_attempts WHERE attempt_key=?')->execute([$key]);
+            session_regenerate_id(true);
+            $_SESSION['shop_admin_version'] = hash('sha256',$row['password']);
+            unset($row['password']);
+            $_SESSION['user'] = $row;
+            $_SESSION['shop_merchant_id'] = MERCHANT_ID;
+            header('Location: index.php'); exit;
+        }
+        if ($runtimeRoot && !$blocked) $pdo->prepare("INSERT INTO shop_login_attempts(attempt_key,failures) VALUES(?,1) ON CONFLICT(attempt_key) DO UPDATE SET failures=CASE WHEN shop_login_attempts.last_attempt < NOW() - INTERVAL '15 minutes' THEN 1 ELSE shop_login_attempts.failures+1 END,last_attempt=NOW()")->execute([$key]);
+        $error_message = $blocked ? 'Too many attempts. Try again in 15 minutes.' : 'Email or password is incorrect.';
     }
-
-    
 }
 ?>
 <!DOCTYPE html>
@@ -47,7 +52,7 @@ if(isset($_POST['form1'])) {
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<title>Login</title>
 
-	<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+	<meta content="width=device-width, initial-scale=1" name="viewport">
 
 	<link rel="stylesheet" href="css/bootstrap.min.css">
 	<link rel="stylesheet" href="css/font-awesome.min.css">
@@ -80,10 +85,10 @@ if(isset($_POST['form1'])) {
 		<form action="" method="post">
 			<?php $csrf->echoInputField(); ?>
 			<div class="form-group has-feedback">
-				<input class="form-control" placeholder="Email address" name="email" type="email" autocomplete="off" autofocus>
+				<input class="form-control" placeholder="Email address" name="email" type="email" autocomplete="username" required autofocus>
 			</div>
 			<div class="form-group has-feedback">
-				<input class="form-control" placeholder="Password" name="password" type="password" autocomplete="off" value="">
+				<input class="form-control" placeholder="Password" name="password" type="password" autocomplete="current-password" required value="">
 			</div>
 			<div class="row">
 				<div class="col-xs-8"></div>

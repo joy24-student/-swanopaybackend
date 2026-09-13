@@ -1,4 +1,4 @@
-<?php require_once('header.php'); ?>
+<?php if (getenv('SHOP_RUNTIME_DIR')) { $accountMode='login'; require __DIR__ . '/account.php'; exit; } require_once('header.php'); if (isset($_POST['social_login_email'])) { http_response_code(403); exit('Use email and password to sign in.'); } ?>
 
 <?php
 // Fetch banner login from settings
@@ -500,7 +500,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('<?php echo BASE_URL; ?>send_otp.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `mobile_number=${encodeURIComponent(mobileNumber)}&csrf_token=<?php echo $csrf->getTokenValue(); ?>` // Pass CSRF token
+                body: `mobile_number=${encodeURIComponent(mobileNumber)}&csrf_token=<?php echo $csrf->getToken(); ?>` // Pass CSRF token
             })
             .then(response => response.json())
             .then(data => {
@@ -544,7 +544,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch('<?php echo BASE_URL; ?>verify_otp.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `mobile_number=${encodeURIComponent(mobileNumber)}&otp_code=${encodeURIComponent(otpCode)}&csrf_token=<?php echo $csrf->getTokenValue(); ?>`
+                body: `mobile_number=${encodeURIComponent(mobileNumber)}&otp_code=${encodeURIComponent(otpCode)}&csrf_token=<?php echo $csrf->getToken(); ?>`
             })
             .then(response => response.json())
             .then(data => {
@@ -656,7 +656,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('<?php echo BASE_URL; ?>login.php', { // Send to login.php itself for processing
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `social_login_email=${encodeURIComponent(email)}&social_login_id=${encodeURIComponent(socialId)}&social_login_provider=${encodeURIComponent(provider)}&social_login_name=${encodeURIComponent(name)}&csrf_token=<?php echo $csrf->getTokenValue(); ?>`
+            body: `social_login_email=${encodeURIComponent(email)}&social_login_id=${encodeURIComponent(socialId)}&social_login_provider=${encodeURIComponent(provider)}&social_login_name=${encodeURIComponent(name)}&csrf_token=<?php echo $csrf->getToken(); ?>`
         })
         .then(response => response.json())
         .then(data => {

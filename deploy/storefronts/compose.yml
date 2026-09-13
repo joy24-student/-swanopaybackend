@@ -1,0 +1,98 @@
+name: swapnopay-storefronts
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: storefronts
+      POSTGRES_USER: shop_operator
+      POSTGRES_PASSWORD: ${SHOP_DB_PASSWORD:?Set SHOP_DB_PASSWORD to a random hex secret}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./init-database.sql:/docker-entrypoint-initdb.d/01-storefronts.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U shop_operator -d storefronts"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  prepare-volumes:
+    image: alpine:3.22
+    user: root
+    command: [sh, -ec, "mkdir -p /srv/runtime/hosts /srv/shops/stores /srv/shops/hosts; chown 1000:10001 /srv/runtime /srv/runtime/hosts /srv/shops /srv/shops/stores /srv/shops/hosts; chmod 750 /srv/runtime /srv/runtime/hosts; chmod 755 /srv/shops /srv/shops/stores /srv/shops/hosts"]
+    volumes: ["runtime:/srv/runtime", "sites:/srv/shops"]
+    network_mode: none
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/storefronts/backend.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      SHOP_DATABASE_URL: postgresql://shop_operator:${SHOP_DB_PASSWORD}@database:5432/storefronts
+      SHOP_DB_SSLMODE: disable
+      SHOP_PHP_DB_HOST: database
+      SHOP_RUNTIME_DIR: /srv/runtime
+      SHOP_RUNTIME_GID: "10001"
+      SHOP_SITES_DIR: /srv/shops
+      SHOP_TEMPLATE_DIR: /opt/store-template
+      SHOP_VENDOR_DIR: /opt/store-vendor
+      SHOP_BASE_DOMAIN: ${SHOP_BASE_DOMAIN:-shops.swapnopay.top}
+    volumes:
+      - ../../shop:/opt/store-template:ro
+      - runtime:/srv/runtime
+      - sites:/srv/shops
+      - backend_uploads:/app/uploads
+    depends_on:
+      database: {condition: service_healthy}
+      prepare-volumes: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://localhost:4000/healthz]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    networks: [private]
+
+  php:
+    build: ../../shop
+    restart: unless-stopped
+    environment:
+      SHOP_RUNTIME_DIR: /srv/runtime
+    volumes:
+      - runtime:/srv/runtime:ro
+      - sites:/srv/shops
+    depends_on:
+      prepare-volumes: {condition: service_completed_successfully}
+    security_opt: ["no-new-privileges:true"]
+    networks: [private]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - sites:/srv/shops:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend: {condition: service_healthy}
+      php: {condition: service_started}
+    networks: [private]
+
+networks:
+  private:
+volumes:
+  database:
+  runtime:
+  sites:
+  backend_uploads:
+  caddy_data:
+  caddy_config:

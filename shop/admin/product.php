@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); ?>
 
 <section class="content-header">
@@ -57,7 +58,6 @@
 														
 														b.business_name,
 														b.owner_user_id
-														t4.tcat_name
 
 							                           	FROM tbl_product t1
 							                           	JOIN tbl_end_category t2
@@ -88,8 +88,8 @@
 										}
 										?>
 									</td>
-									<td>$<?php echo $row['p_old_price']; ?></td>
-									<td>$<?php echo $row['p_current_price']; ?></td>
+									<td>BDT <?php echo number_format((float)$row['p_old_price'], 2); ?></td>
+									<td>BDT <?php echo number_format((float)$row['p_current_price'], 2); ?></td>
 									<td><?php echo $row['p_qty']; ?></td>
 									<td>
 										<?php if($row['p_is_featured'] == 1) {echo '<span class="badge badge-success" style="background-color:green;">Yes</span>';} else {echo '<span class="badge badge-success" style="background-color:red;">No</span>';} ?>
@@ -123,8 +123,8 @@
                 <h4 class="modal-title" id="myModalLabel">Delete Confirmation</h4>
             </div>
             <div class="modal-body">
-                <p>Are you sure want to delete this item?</p>
-                <p style="color:red;">Be careful! This product will be deleted from the order table, payment table, size table, color table and rating table also.</p>
+                <p>Archive this product from the storefront?</p>
+                <p>Existing orders and product history will remain available.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>

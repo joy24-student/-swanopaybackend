@@ -858,6 +858,7 @@ class AppRepository(private val context: Context) {
         dao.deletePristineProduct(id, merchantId)
         deleteProductFromSupabase(id)
     }
+    suspend fun saveProductImages(product: ProductItemEntity, previous: String) = dao.updateProductMedia(product.id, product.merchantId, product.imageUrl, product.storefrontDetailsJson, previous)
     suspend fun canDeletePristineProduct(id: String, merchantId: String) = dao.canDeletePristineProduct(id, merchantId)
     suspend fun updateProductWithStockAdjustment(
         product: ProductItemEntity,
@@ -899,7 +900,8 @@ class AppRepository(private val context: Context) {
                                                 stockQuantity = obj.optDouble("stock_quantity", 0.0),
                                                 minStockThreshold = obj.optDouble("min_stock_threshold", 5.0),
                                                 unit = obj.optString("unit", "pcs"),
-                                                imageUrl = obj.optString("featured_image", null),
+                                                imageUrl = obj.optString("image_url", null),
+                                                storefrontDetailsJson = obj.optJSONObject("storefront_details")?.toString() ?: "{}",
                                                 createdAt = parseIsoDateToMillis(obj.optString("created_at")),
                                                 costPrice = obj.optDouble("purchase_price", 0.0),
                                                 askingPrice = obj.optDouble("sale_price", 0.0)
@@ -942,8 +944,9 @@ class AppRepository(private val context: Context) {
                         put("stock_quantity", product.stockQuantity)
                         put("min_stock_threshold", product.minStockThreshold)
                         put("unit", product.unit)
+                        put("storefront_details", org.json.JSONObject(product.storefrontDetailsJson))
                         if (!product.imageUrl.isNullOrBlank()) {
-                            put("featured_image", product.imageUrl)
+                            put("image_url", product.imageUrl)
                         }
                     }
 

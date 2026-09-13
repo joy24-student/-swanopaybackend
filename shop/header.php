@@ -17,7 +17,7 @@ $success_message1 = '';
 
 // Getting all language variables
 $i=1;
-$statement = $pdo->prepare("SELECT * FROM tbl_language");
+$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id");
 $statement->execute();
 $result = $statement->fetchAll(PDO::FETCH_ASSOC);                           
 foreach ($result as $row) {
@@ -47,31 +47,7 @@ $compare_feature_on_off = $settings['compare_feature_on_off'] ?? 0;
 $store_feature_on_off = $settings['store_feature_on_off'] ?? 0;
 
 
-// Checking the order table and removing pending transactions
-$current_date_time = date('Y-m-d H:i:s');
-$statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE payment_status=? AND payment_date < NOW() - INTERVAL '24 HOUR'");
-$statement->execute(array('Pending'));
-$result = $statement->fetchAll(PDO::FETCH_ASSOC);                           
-foreach ($result as $row) {
-    $statement1 = $pdo->prepare("SELECT * FROM tbl_order WHERE payment_id=?");
-    $statement1->execute(array($row['payment_id']));
-    $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($result1 as $row1) {
-        $statement2 = $pdo->prepare("SELECT p_qty FROM tbl_product WHERE p_id=?");
-        $statement2->execute(array($row1['product_id']));
-        $product_qty_row = $statement2->fetch(PDO::FETCH_ASSOC);
-        if ($product_qty_row) {
-            $p_qty = $product_qty_row['p_qty'];
-            $final_qty = $p_qty + $row1['quantity'];
-            $statement_update_qty = $pdo->prepare("UPDATE tbl_product SET p_qty=? WHERE p_id=?");
-            $statement_update_qty->execute(array($final_qty, $row1['product_id']));
-        }
-    }
-    $statement_delete_order = $pdo->prepare("DELETE FROM tbl_order WHERE payment_id=?");
-    $statement_delete_order->execute(array($row['payment_id']));
-    $statement_delete_payment = $pdo->prepare("DELETE FROM tbl_payment WHERE id=?");
-    $statement_delete_payment->execute(array($row['id']));
-}
+// Order expiration belongs in a scheduled, transactional job. Page views never mutate orders.
 
 // Meta tags for dynamic pages
 $cur_page = basename($_SERVER["SCRIPT_NAME"]); 
@@ -113,6 +89,7 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <base href="<?php echo htmlspecialchars(BASE_URL, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
     <meta name="robots" content="index, follow">

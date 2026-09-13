@@ -1,27 +1,11 @@
-<?php require_once('header.php'); ?>
-
 <?php
-// Preventing the direct access of this page.
-if(!isset($_REQUEST['id'])) {
-	header('location: logout.php');
-	exit;
-} else {
-	// Check the id is valid or not
-	$statement = $pdo->prepare("SELECT * FROM tbl_color WHERE color_id=?");
-	$statement->execute(array($_REQUEST['id']));
-	$total = $statement->rowCount();
-	if( $total == 0 ) {
-		header('location: logout.php');
-		exit;
-	}
+require_once __DIR__ . '/inc/guard.php';
+require_once __DIR__ . '/inc/catalog-delete.php';
+try {
+    deleteStoreCatalogEntry($pdo, 'color', (int)($_GET['id'] ?? 0));
+    header('Location: color.php');exit;
+} catch (Throwable $error) {
+    http_response_code(409);
+    $message=$error instanceof PDOException ? 'This record is still in use. Refresh the list and try again.' : $error->getMessage();
+    echo '<p>' . htmlspecialchars($message,ENT_QUOTES,'UTF-8') . '</p><a href="color.php">Return to list</a>';
 }
-?>
-
-<?php
-
-	// Delete from tbl_color
-	$statement = $pdo->prepare("DELETE FROM tbl_color WHERE color_id=?");
-	$statement->execute(array($_REQUEST['id']));
-
-	header('location: color.php');
-?>

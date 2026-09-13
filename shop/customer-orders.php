@@ -56,7 +56,7 @@ $status_filter = isset($_GET['status']) ? htmlspecialchars($_GET['status']) : nu
                             switch($status_filter) {
                                 case 'to_cancel':
                                     // Orders within 24 hours that haven't shipped yet
-                                    $query .= " AND p.shipping_status = 'Pending' AND p.payment_status = 'Completed' AND p.payment_date >= NOW() - INTERVAL '24 HOUR'";
+                                    $query .= " AND p.shipping_status = 'Pending' AND p.payment_status = 'Pending' AND p.payment_date::timestamp >= NOW() - INTERVAL '24 HOUR'";
                                     break;
                                 case 'to_ship':
                                     // Orders ready to ship
@@ -97,7 +97,7 @@ $status_filter = isset($_GET['status']) ? htmlspecialchars($_GET['status']) : nu
 
                             <?php foreach ($orders as $order): 
                                 $order_date = strtotime($order['payment_date']);
-                                $can_cancel = ($order['shipping_status'] === 'Pending' && (time() - $order_date) < 86400); // 24 hours
+                                $can_cancel = ($order['payment_status'] === 'Pending' && $order['shipping_status'] === 'Pending' && (time() - $order_date) < 86400); // 24 hours
                                 $status_color = 'warning';
                                 $status_text = 'Processing';
                                 
@@ -144,7 +144,7 @@ $status_filter = isset($_GET['status']) ? htmlspecialchars($_GET['status']) : nu
                     <?php
                     }
                     catch (PDOException $e) {
-                        echo '<div class="alert alert-danger">Error fetching orders: ' . htmlspecialchars($e->getMessage()) . '</div>';
+                        error_log('Order list unavailable: ' . $e->getCode()); echo '<div class="alert alert-danger">Your orders could not be loaded. Please try again.</div>';
                     }
                     ?>
                 </div>
@@ -162,7 +162,7 @@ function cancelOrder(paymentId) {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: 'payment_id=' + encodeURIComponent(paymentId)
+            body: new URLSearchParams({payment_id: paymentId, _csrf: <?php echo json_encode($csrf->getToken()); ?>}).toString()
         })
         .then(response => response.json())
         .then(data => {

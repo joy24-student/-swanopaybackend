@@ -10,21 +10,21 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { rateLimit } from 'express-rate-limit'
 
-import { initAdminSupabase } from './services/adminSupabase.js'
-import { initMailer } from './services/mailer.js'
-import { notifyWaitingCustomersMerchantOnline } from './services/deviceAlertService.js'
-import { paymentRouter } from './routes/payment.js'
-import { adminRouter } from './routes/admin.js'
-import { keysRouter } from './routes/keys.js'
-import { shopRouter } from './routes/shop.js'
-import { kycRouter } from './routes/kyc.js'
-import oauthRouter from './routes/oauth.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { initAdminSupabase } from './services/adminSupabase.js'
+import { initMailer } from './services/mailer.js'
+import { paymentRouter } from './routes/payment.js'
+import { adminRouter } from './routes/admin.js'
+import { keysRouter } from './routes/keys.js'
+import shopRouter from './routes/shop.js'
+import { kycRouter } from './routes/kyc.js'
+import oauthRouter from './routes/oauth.js'
+import { startShopWorker } from './services/shopService.js'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Validate required environment variables
@@ -95,7 +95,7 @@ const corsOptions = {
     cb(new Error(`CORS: origin ${origin} is not allowed`))
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -111,17 +111,8 @@ app.disable('x-powered-by')
 app.use(cors(corsOptions))
 app.options('*', cors(corsOptions))
 
-// Serve uploads statically
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
-
-// Parse JSON body and capture rawBody for HMAC verification on /v1/payment/verify
-app.use(express.json({
-  limit: '35mb',
-  strict: true,
-  verify: (req, _res, buf) => {
-    req.rawBody = buf.toString('utf8')
-  },
-}))
+// Capture raw body for HMAC verification on /v1/payment/verify
+app.use(express.json({ limit: '2mb', strict: true, verify: (req, _res, buffer) => { req.rawBody = buffer.toString('utf8') } }))
 
 // Global rate limiting
 app.use(rateLimit({
@@ -201,10 +192,6 @@ io.on('connection', (socket) => {
     console.log(`[socket.io] ${socket.id} joined merchant room: ${room} | device: ${device_id || 'unknown'}`)
     socket.emit('room_joined', { room, merchant_id, ts: Date.now() })
 
-    // Notify any waiting customers that this merchant is now online
-    notifyWaitingCustomersMerchantOnline(merchant_id)
-      .catch(e => console.warn('[socket.io] Alert notify error:', e.message))
-
     // Store merchant_id on socket for cleanup on disconnect
     socket.data.merchant_id = merchant_id
     socket.data.device_id = device_id || null
@@ -220,37 +207,12 @@ io.on('connection', (socket) => {
     })
     // Acknowledge heartbeat with server timestamp
     socket.emit('heartbeat_ack', { ts: Date.now(), merchant_id })
-
-    // Notify any waiting customers that this merchant is online
-    notifyWaitingCustomersMerchantOnline(merchant_id)
-      .catch(e => console.warn('[socket.io] Alert notify error:', e.message))
   })
 
   // ── Widget pings backend to confirm connection is alive ──
   socket.on('ping_backend', (cb) => {
     if (typeof cb === 'function') cb({ ts: Date.now(), ok: true })
     else socket.emit('pong_backend', { ts: Date.now(), ok: true })
-  })
-
-  // ── Client queries order status over WebSocket directly ──
-  socket.on('order_lookup', async ({ order_id, merchant_id } = {}, cb) => {
-    if (!order_id) return
-    try {
-      const { getOrderFromMerchantDB } = await import('./services/adminSupabase.js')
-      const order = await getOrderFromMerchantDB(merchant_id, order_id)
-      const resPayload = order ? { ok: true, order } : { ok: false, error: 'Order not found' }
-      if (typeof cb === 'function') cb(resPayload)
-      else socket.emit('order_lookup_res', resPayload)
-    } catch (err) {
-      if (typeof cb === 'function') cb({ ok: false, error: err.message })
-    }
-  })
-
-  // ── Android device measures round-trip latency ──
-  socket.on('merchant_ping', ({ client_ts } = {}, cb) => {
-    const server_ts = Date.now()
-    if (typeof cb === 'function') cb({ ok: true, client_ts, server_ts })
-    else socket.emit('merchant_pong', { ok: true, client_ts, server_ts })
   })
 
   socket.on('disconnect', reason => {
@@ -280,12 +242,14 @@ io.on('connection', (socket) => {
 // Routes
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Attach io and heartbeatMap to request object for route handlers
+// Middleware: Attach Socket.io to req
 app.use((req, _res, next) => {
   req.io = io
-  req.heartbeatMap = merchantHeartbeatMap
   next()
 })
+
+// Static file hosting for uploads (KYC docs, receipts, shop assets)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
 // Public health check
 app.get('/healthz', (_req, res) => {
@@ -317,18 +281,15 @@ app.get('/v1/showcase', async (_req, res) => {
 // Admin routes (protected by ADMIN_SECRET)
 app.use('/v1/admin', adminRouter)
 app.use('/v1/admin/keys', keysRouter)
-
-// Web Shop & Launch Website routes
 app.use('/v1/shop', shopRouter)
+startShopWorker()
 
-// Merchant & Admin KYC verification routes
+// KYC identity verification routes
 app.use('/v1/kyc', kycRouter)
-app.use('/v1/admin/kyc', kycRouter)
 
-// Supabase OAuth Control Plane (Native VPS backend endpoints)
+// Supabase OAuth 2.0 control plane routes
 app.use('/v1/oauth', oauthRouter)
-app.use('/functions/v1', oauthRouter) // Compatibility alias for /functions/v1/oauth-callback, /functions/v1/oauth-start, etc.
-app.use('/oauth', oauthRouter) // Direct root alias for /oauth/callback
+app.use('/functions/v1', oauthRouter)
 
 // 404
 app.use((_req, res) => {

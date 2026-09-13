@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/inc/guard.php'; ?>
 <?php require_once('header.php'); ?>
 
 <?php
@@ -100,6 +101,9 @@ if(isset($_POST['form2'])) {
 
 if(isset($_POST['form3'])) {
 	$valid = 1;
+    if (!$csrf->checkToken() || strlen($_POST['password'] ?? '') < 12 || strlen($_POST['password'] ?? '') > 72) {
+        $valid = 0; $error_message .= 'Use a password of 12 to 72 bytes and a valid form session.<br>';
+    }
 
 	if( empty($_POST['password']) || empty($_POST['re_password']) ) {
         $valid = 0;
@@ -115,11 +119,12 @@ if(isset($_POST['form3'])) {
 
     if($valid == 1) {
 
-    	$_SESSION['user']['password'] = md5($_POST['password']);
+    	$_SESSION['user']['password'] = password_hash($_POST['password'], PASSWORD_BCRYPT, ['cost'=>12]);
 
     	// updating the database
 		$statement = $pdo->prepare("UPDATE tbl_user SET password=? WHERE id=?");
-		$statement->execute(array(md5($_POST['password']),$_SESSION['user']['id']));
+		$statement->execute(array($_SESSION['user']['password'],$_SESSION['user']['id']));
+        $_SESSION['shop_admin_version'] = hash('sha256',$_SESSION['user']['password']);
 
     	$success_message = 'User Password is updated successfully.';
     }

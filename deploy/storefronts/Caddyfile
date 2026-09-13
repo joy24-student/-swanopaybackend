@@ -1,0 +1,45 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+	on_demand_tls {
+		ask http://backend:4000/v1/shop/tls/authorize
+	}
+}
+
+# This stack owns the API and storefront ingress on its host. Keep the marketing
+# site and any other application on their existing host, or merge site blocks.
+api.swapnopay.top {
+	reverse_proxy backend:4000
+	header -Server
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	root * /srv/shops/hosts/{http.request.host}
+	encode zstd gzip
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000"
+	}
+	request_body {
+		max_size 32MB
+	}
+	@private path_regexp private (?i)(^|/)(\.[^/]*|vendor|admin/inc|DATABASE\sFILE|tests?[^/]*|debug[^/]*|setup[^/]*|migration[^/]*|create_[^/]*|install[^/]*|seo-manager.php|seo-verify.php|speed-manager.php|security-dashboard.php|smtp_test.php|email_tester.php|01test.php|phpinfo.php)(/|$)|\.(sql|log|zip|bak|ini|yml|yaml|md|lock)$
+	@uploadedCode path_regexp uploads (?i)/assets/uploads/.*\.(php[0-9]*|phtml|phar)(/|$)
+	@uploads path /assets/uploads/*
+	route {
+		respond @private 404
+		respond @uploadedCode 404
+		header @uploads Content-Security-Policy "default-src 'none'; sandbox"
+		php_fastcgi php:9000 {
+			root /srv/shops/hosts/{http.request.host}
+			try_files {path} {path}/index.php router.php
+		}
+		file_server
+	}
+}

@@ -11,13 +11,18 @@ const PORT = process.env.PORT || 3000;
 // Enable CORS for embeddable checkout widget
 app.use(cors());
 
+// Keep public page aliases consistent with their canonical SEO URLs.
+app.get(['/index.html', '/docs', '/portal'], (req, res) => {
+  const target = req.path === '/index.html' ? '/' : `${req.path}.html`;
+  const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(301, target + query);
+});
+
 // Serve static web assets
 app.use(express.static(path.join(__dirname)));
 
 // Fallback routes for web apps and hosted forms
 app.get('/widget', (_req, res) => res.sendFile(path.join(__dirname, 'widget.html')));
-app.get('/docs', (_req, res) => res.sendFile(path.join(__dirname, 'docs.html')));
-app.get('/portal', (_req, res) => res.sendFile(path.join(__dirname, 'portal.html')));
 app.get(['/form', '/f/:id', '/form/:id', '/forms/:id'], (_req, res) => res.sendFile(path.join(__dirname, 'form.html')));
 
 // Web Storefront & Admin panel convenience navigation
