@@ -897,6 +897,21 @@
     #lang-btn { min-height: 44px; }
     .mobile-menu-wrap[hidden] { display: none !important; }
     .hero-copy > p { line-height: 1.8; }
+    .hero-section {
+      position: relative;
+      background-color: #f8fafc;
+      background-image: url('assets/hero-bg.jpg'), url('hero-bg.jpg');
+      background-size: cover;
+      background-position: right top;
+      background-repeat: no-repeat;
+    }
+    .dark .hero-section {
+      background-color: #08090d;
+      background-image: linear-gradient(to right, rgba(8, 9, 13, 0.94) 0%, rgba(8, 9, 13, 0.85) 45%, rgba(8, 9, 13, 0.35) 100%), url('assets/hero-bg.jpg'), url('hero-bg.jpg');
+      background-size: cover;
+      background-position: right top;
+      background-repeat: no-repeat;
+    }
     .hero-section .enterprise-shell { background: rgba(255,253,249,.94); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
     .dark .hero-section .enterprise-shell { background: rgba(12,16,25,.94); border-color: rgba(251,191,36,.16); }
     .hero-status { line-height: 1.6; }
@@ -942,8 +957,8 @@
       .mobile-menu a:hover { background: rgba(245,158,11,.1); color: #b45309; }
       .mobile-menu-tools { display: flex; gap: 10px; margin-top: 12px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,.25); }
       .mobile-menu-tools > * { flex: 1; min-height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 14px; font-size: 13px; font-weight: 700; }
-      body .hero-section { min-height: auto; padding-top: calc(104px + env(safe-area-inset-top)); background-image: radial-gradient(ellipse at 85% 35%, rgba(251,191,36,.18), transparent 55%), linear-gradient(160deg,#fffdf7,#f8fafc 65%,#eef2f7); box-shadow: none; }
-      .dark .hero-section { background-image: radial-gradient(ellipse at 85% 35%,rgba(245,158,11,.12),transparent 55%),linear-gradient(160deg,#0c1019,#101725); }
+      body .hero-section { min-height: auto; padding-top: calc(104px + env(safe-area-inset-top)); background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 250, 252, 0.95) 100%), url('assets/hero-bg.jpg'), url('hero-bg.jpg'); background-size: cover; background-position: center top; background-repeat: no-repeat; box-shadow: none; }
+      .dark .hero-section { background-image: linear-gradient(180deg, rgba(12, 16, 25, 0.92) 0%, rgba(16, 23, 37, 0.96) 100%), url('assets/hero-bg.jpg'), url('hero-bg.jpg'); background-size: cover; background-position: center top; background-repeat: no-repeat; }
       .hero-section > .relative { min-height: auto; }
       #home { padding: 28px 24px 48px; }
       #home > .grid { gap: 36px; }
@@ -1122,7 +1137,7 @@
 
   <!-- ── 2. HERO SECTION ─────────────────────────────────────────────────── -->
   <main id="main-content">
-  <div class="hero-section relative w-full min-h-screen bg-[url('WhatsApp%20Image%202026-08-29%20at%208.04.26%20PM%20(1).jpeg')] bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-2xl pt-24 md:pt-28">
+  <div class="hero-section relative w-full min-h-screen bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-2xl pt-24 md:pt-28" style="background-image: url('assets/hero-bg.jpg');">
     <div class="absolute inset-0 bg-white/5 dark:bg-[#08090d]/60 pointer-events-none"></div>
 
     <div class="relative z-10 flex flex-col min-h-screen">
