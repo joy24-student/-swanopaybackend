@@ -442,13 +442,26 @@ async function handleProvision(req, res) {
     if (action === 'APPLY_SCHEMA_AND_FINALIZE') {
       if (!projectRef) return res.status(400).json({ error: 'project_ref is required' })
 
-      // Get API keys for project
-      const keysResp = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-
-      const keys = keysResp.ok ? await keysResp.json() : []
-      const anonKey = keys.find((k) => k.name === 'anon')?.api_key || keys[0]?.api_key || ''
+      // Get API keys for project (with retry if newly provisioned)
+      let anonKey = ''
+      for (let kAttempt = 0; kAttempt < 5; kAttempt++) {
+        try {
+          const keysResp = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+          if (keysResp.ok) {
+            const keys = await keysResp.json()
+            if (Array.isArray(keys) && keys.length > 0) {
+              const anonObj = keys.find((k) => k.name === 'anon' || k.name === 'publishable') || keys[0]
+              anonKey = anonObj?.api_key || anonObj?.key || ''
+              if (anonKey) break
+            }
+          }
+        } catch (e) {
+          console.warn('[oauth-provision] API key fetch attempt failed:', kAttempt, e.message)
+        }
+        if (kAttempt < 4) await new Promise((r) => setTimeout(r, 2000))
+      }
 
       const projectUrl = `https://${projectRef}.supabase.co`
       return res.json({ project_url: projectUrl, publishable_key: anonKey, status: 'READY' })
