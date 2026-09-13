@@ -7,7 +7,7 @@
 // GET  /v1/admin/keys           — list keys (filtered by merchant_id if specified)
 
 import { Router } from 'express'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID as uuidv4 } from 'node:crypto'
 import { requireMerchantOrAdminAuth } from '../middleware/auth.js'
 import {
   storeApiKeyRecord,

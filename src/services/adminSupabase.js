@@ -67,7 +67,7 @@ function createMerchantClient(supabaseUrl, supabaseAnonKey) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Get stored merchant credentials from admin DB
 // ──────────────────────────────────────────────────────────────────────────────
-async function getMerchantCredentials(merchantId) {
+export async function getMerchantCredentials(merchantId) {
   if (!merchantId) return null
   const admin = getAdminClient()
   const { data, error } = await admin
@@ -1112,4 +1112,3 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
 
   return data
 }
-

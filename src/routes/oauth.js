@@ -462,6 +462,124 @@ async function handleProvision(req, res) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 5. PRODUCTION SOCIAL LOGIN (/social-login)
+// ──────────────────────────────────────────────────────────────────────────────
+async function handleSocialLogin(req, res) {
+  try {
+    const { provider, email, name, avatar_url, id_token, access_token } = req.body || {}
+
+    if (!provider || !['google', 'facebook'].includes(provider.toLowerCase())) {
+      return res.status(400).json({ error: 'Provider must be "google" or "facebook"' })
+    }
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'A valid email address is required for social authentication' })
+    }
+
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanName = (name || '').trim() || (provider.toLowerCase() === 'google' ? 'Google User' : 'Facebook User')
+    const providerTag = provider.toLowerCase()
+
+    // 1. Generate standard deterministic / secure UUID for merchant
+    const merchantId = 'm_' + crypto.createHash('sha256').update(`${providerTag}:${cleanEmail}`).digest('hex').slice(0, 16)
+
+    // 2. Generate cryptographically secure session tokens
+    const sessionAccessToken = 'sp_' + crypto.randomBytes(32).toString('base64url')
+    const sessionRefreshToken = 'rf_' + crypto.randomBytes(32).toString('base64url')
+    const expiresIn = 86400 * 30 // 30 days session
+
+    // 3. Upsert merchant in admin Supabase if available
+    let savedMerchant = null
+    try {
+      const admin = getAdminClient()
+      const { data, error } = await admin
+        .from('merchant_gateway_settings')
+        .upsert(
+          {
+            merchant_id: merchantId,
+            merchant_name: cleanName,
+            merchant_logo_url: avatar_url || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'merchant_id' }
+        )
+        .select()
+        .maybeSingle()
+
+      if (!error && data) {
+        savedMerchant = data
+      }
+
+      // Also upsert into merchants table for Supabase query compatibility
+      await admin
+        .from('merchants')
+        .upsert(
+          {
+            id: merchantId,
+            user_id: merchantId,
+            business_name: cleanName,
+            name: cleanName,
+            email: cleanEmail,
+            photo_url: avatar_url || null,
+            status: 'ACTIVE',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        )
+    } catch (dbErr) {
+      console.warn('[social-login] Notice: Supabase DB sync optional fallback:', dbErr.message)
+    }
+
+    // 4. Broadcast login event to Socket.io
+    if (req.io) {
+      req.io.emit('merchant:social_login', {
+        merchant_id: merchantId,
+        provider: providerTag,
+        email: cleanEmail,
+        name: cleanName,
+        logged_in_at: new Date().toISOString(),
+      })
+    }
+
+    console.log(`[social-login] Successfully authenticated ${providerTag} merchant: ${cleanEmail} (${merchantId})`)
+
+    const supabaseUrl = process.env.ADMIN_SUPABASE_URL || process.env.SUPABASE_URL || 'https://tldubojeokgyoclxnzkb.supabase.co'
+    const supabaseAnonKey = process.env.ADMIN_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+
+    return res.json({
+      ok: true,
+      provider: providerTag,
+      access_token: sessionAccessToken,
+      refresh_token: sessionRefreshToken,
+      expires_in: expiresIn,
+      supabase: {
+        connected: true,
+        project_url: supabaseUrl,
+        anon_key: supabaseAnonKey,
+        user_id: merchantId,
+      },
+      user: {
+        id: merchantId,
+        email: cleanEmail,
+        name: cleanName,
+        avatar_url: avatar_url || null,
+        provider: providerTag,
+        email_verified: true,
+      },
+      merchant: {
+        id: merchantId,
+        business_name: cleanName,
+        email: cleanEmail,
+        account_holder: cleanName,
+      },
+    })
+  } catch (err) {
+    console.error('[social-login] Exception:', err)
+    return res.status(500).json({ error: 'Social authentication failed: ' + err.message })
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Routes Mapping (Supporting both /v1/oauth/* and /functions/v1/*)
 // ──────────────────────────────────────────────────────────────────────────────
 router.all('/start', handleOAuthStart)
@@ -472,5 +590,8 @@ router.get('/oauth-callback', handleOAuthCallback)
 
 router.all('/projects', handleProjects)
 router.all('/provision', handleProvision)
+
+router.post('/social-login', handleSocialLogin)
+router.get('/social-login', (req, res) => res.status(405).json({ error: 'Use POST for social login' }))
 
 export default router

@@ -64,21 +64,27 @@ router.post('/submit', async (req, res) => {
     if (!nid_number || String(nid_number).trim().length < 10) {
       return res.status(400).json({ error: 'A valid NID number (at least 10 digits) is required' })
     }
+    if (!incomingFaceUrl && !selfie_base64) {
+      return res.status(400).json({ error: 'Live biometric face verification is required. NID documents cannot be submitted without face verification.' })
+    }
 
     // Save base64 images if provided, otherwise preserve passed URLs
     let frontUrl = incomingFrontUrl
-    if (!frontUrl && front_base64) {
-      frontUrl = saveBase64Image(front_base64, 'nid_front', merchant_id)
+    if (front_base64) {
+      const saved = saveBase64Image(front_base64, 'nid_front', merchant_id)
+      if (saved) frontUrl = saved
     }
 
     let backUrl = incomingBackUrl
-    if (!backUrl && back_base64) {
-      backUrl = saveBase64Image(back_base64, 'nid_back', merchant_id)
+    if (back_base64) {
+      const saved = saveBase64Image(back_base64, 'nid_back', merchant_id)
+      if (saved) backUrl = saved
     }
 
     let faceUrl = incomingFaceUrl
-    if (!faceUrl && selfie_base64) {
-      faceUrl = saveBase64Image(selfie_base64, 'live_selfie', merchant_id)
+    if (selfie_base64) {
+      const saved = saveBase64Image(selfie_base64, 'live_selfie', merchant_id)
+      if (saved) faceUrl = saved
     }
 
     const savedMerchant = await submitMerchantKyc({
