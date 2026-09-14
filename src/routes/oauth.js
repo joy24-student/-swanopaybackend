@@ -557,7 +557,7 @@ async function lookupMerchantInAdminDb(email, merchantId = null) {
     merchantId: effectiveMerchantId,
     merchant: {
       id: effectiveMerchantId,
-      business_name: (hasRealBusinessName ? merchant?.business_name : null) || gatewaySettings?.merchant_name || merchant?.name || '',
+      business_name: merchant?.business_name || gatewaySettings?.merchant_name || merchant?.name || '',
       email: merchant?.email || cleanEmail,
       phone: merchant?.phone || '',
       business_type: merchant?.business_type || 'Retail Store',
