@@ -29,6 +29,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "SmartPay Merchant"
+rootProject.name = "SwapnoPay"
 
 include(":app")

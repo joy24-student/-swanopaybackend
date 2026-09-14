@@ -301,7 +301,7 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
   ],
   api_documentation: "",
   faqs: [
-    { question: "Do I need a merchant account?", answer: "No, SmartPay fully supports Personal, Agent, and Merchant accounts for bKash, Nagad, and Rocket." },
+    { question: "Do I need a merchant account?", answer: "No, SwapnoPay fully supports Personal, Agent, and Merchant accounts for bKash, Nagad, and Rocket." },
     { question: "How fast does automatic matching take?", answer: "Typically 1 to 3 seconds after the mobile operator SMS is received on your Android device." },
     { question: "Can I use multiple SIM cards?", answer: "Yes! Dual-SIM Android devices are supported with simultaneous multi-gateway routing." },
     { question: "What if a customer pays the wrong amount?", answer: "The transaction is flagged as \"Unmatched\" in your ledger for quick 1-tap manual review and appeal resolution." }
@@ -316,7 +316,7 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
       id: "matching",
       title: "How automatic payment matching works",
       category: "Automation",
-      content: "SmartPay uses automatic SMS pattern recognition to match incoming mobile payments (bKash, Nagad, Rocket) with merchant orders in real-time.\n\n1. When a customer initiates a payment on your site, an order is created with a unique amount and payment reference.\n2. Once payment is completed, your Android device receives the official gateway SMS.\n3. The SmartPay background processor parses the transaction ID, sender's phone, and exact amount from the SMS.\n4. If all parameters match, the order is instantly marked as PAID and webhook notifications are triggered."
+      content: "SwapnoPay uses automatic SMS pattern recognition to match incoming mobile payments (bKash, Nagad, Rocket) with merchant orders in real-time.\n\n1. When a customer initiates a payment on your site, an order is created with a unique amount and payment reference.\n2. Once payment is completed, your Android device receives the official gateway SMS.\n3. The SwapnoPay background processor parses the transaction ID, sender's phone, and exact amount from the SMS.\n4. If all parameters match, the order is instantly marked as PAID and webhook notifications are triggered."
     },
     {
       id: "number",

@@ -728,7 +728,7 @@ fun t(key: String, lang: String): String {
         "Devices" -> if (isBangla) "ডিভাইসসমূহ" else "Devices"
         "Supabase Diagnostics" -> if (isBangla) "সুপাবেস ডায়াগনস্টিকস" else "Supabase Diagnostics"
         "Help & Support" -> if (isBangla) "সাহায্য ও সমর্থন" else "Help & Support"
-        "About SmartPay" -> if (isBangla) "স্মার্টপে সম্পর্কে" else "About SmartPay"
+        "About SwapnoPay" -> if (isBangla) "স্বপ্নপে সম্পর্কে" else "About SwapnoPay"
         "Logout" -> if (isBangla) "লগআউট" else "Logout"
         "Supabase Setup" -> if (isBangla) "সুপাবেস সেটআপ" else "Supabase Setup"
         "Help" -> if (isBangla) "সাহায্য" else "Help"
@@ -5635,7 +5635,7 @@ fun FirebaseConfigScreen(viewModel: AppViewModel) {
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
                                                 Text(
-                                                    text = merchant.businessName.ifBlank { "SmartPay Merchant" },
+                                                    text = merchant.businessName.ifBlank { "SwapnoPay Merchant" },
                                                     fontSize = 13.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = textPrimary
@@ -7970,7 +7970,7 @@ fun SetupScreen(viewModel: AppViewModel) {
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = "Connect and configure your own Supabase project to power your SmartPay backend.",
+                                            text = "Connect and configure your own Supabase project to power your SwapnoPay backend.",
                                             color = Color(0xFFD1D5DB),
                                             fontSize = 12.sp,
                                             lineHeight = 16.sp
@@ -8842,7 +8842,7 @@ fun SetupScreen(viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "To power your SmartPay bKash / Nagad automated logger, you need a backend database. Supabase provides a free Postgres database in under 2 minutes.",
+                        text = "To power your SwapnoPay bKash / Nagad automated logger, you need a backend database. Supabase provides a free Postgres database in under 2 minutes.",
                         fontSize = 13.sp,
                         color = AppTextSecondary,
                         lineHeight = 18.sp
@@ -9305,7 +9305,7 @@ fun SupabaseSetupGuideScreen(viewModel: AppViewModel) {
                                             )
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                "Your SmartPay application operates in a completely private & secure decentralized mode. Rather than storing your customer billing records or business transaction logs on centralized servers, all data is directly synced to your private, self-hosted Supabase cloud instance.",
+                                                "Your SwapnoPay application operates in a completely private & secure decentralized mode. Rather than storing your customer billing records or business transaction logs on centralized servers, all data is directly synced to your private, self-hosted Supabase cloud instance.",
                                                 color = Color.White,
                                                 fontSize = 13.sp,
                                                 lineHeight = 20.sp
@@ -9963,14 +9963,14 @@ fun SupabaseSetupGuideScreen(viewModel: AppViewModel) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "You successfully completed the Supabase Merchant database setup guide! SmartPay is now fully configured and synchronized with your private PostgreSQL cloud backend.",
+                    "You successfully completed the Supabase Merchant database setup guide! SwapnoPay is now fully configured and synchronized with your private PostgreSQL cloud backend.",
                     fontSize = 14.sp,
                     color = AppTextSecondary,
                     lineHeight = 20.sp,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("Welcome to SmartPay merchant network!", fontWeight = FontWeight.Bold, color = Color(0xFF10B981), fontSize = 14.sp)
+                Text("Welcome to SwapnoPay merchant network!", fontWeight = FontWeight.Bold, color = Color(0xFF10B981), fontSize = 14.sp)
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -12383,7 +12383,7 @@ fun SettingsScreen(viewModel: AppViewModel) {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "SmartPay MFS Gateway & Business POS v1.2.4",
+                            text = "SwapnoPay MFS Gateway & Business POS v1.2.4",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = secondaryText
@@ -12550,12 +12550,12 @@ fun SettingsScreen(viewModel: AppViewModel) {
         if (showAboutDialog) {
             EnterpriseGestureModal(
                 onDismissRequest = { showAboutDialog = false },
-                title = "About SmartPay Gateway",
+                title = "About SwapnoPay Gateway",
                 subtitle = "Swipe down or drag handle to dismiss",
                 icon = Icons.Default.Info
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("SmartPay MFS Gateway & Business POS", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = primaryText)
+                    Text("SwapnoPay MFS Gateway & Business POS", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = primaryText)
                     Text("Version 1.2.4 (Enterprise Edition)", fontSize = 12.sp, color = secondaryText)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Automated MFS Payment Matching (bKash, Nagad, Rocket, Upay) with Supabase Cloud Database Sync.", fontSize = 13.sp, color = primaryText, lineHeight = 18.sp)

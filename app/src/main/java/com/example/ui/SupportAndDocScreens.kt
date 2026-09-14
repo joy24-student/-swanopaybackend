@@ -538,7 +538,7 @@ fun SupportScreen(viewModel: AppViewModel) {
         if (isChatOpen) {
             EnterpriseGestureModal(
                 onDismissRequest = { isChatOpen = false },
-                title = "SmartPay Live Support",
+                title = "SwapnoPay Live Support",
                 subtitle = "Online • Agent ready • Swipe down to dismiss",
                 icon = Icons.Default.Chat
             ) {
@@ -658,7 +658,7 @@ fun SupportScreen(viewModel: AppViewModel) {
                 "FAQs" -> "Frequently Asked Questions"
                 "Guides" -> "User Guides & Onboarding"
                 "Tutorials" -> "Video Tutorials Library"
-                "Contact" -> "Contact SmartPay Support"
+                "Contact" -> "Contact SwapnoPay Support"
                 "Ticket" -> "Submit Support Ticket"
                 else -> "System Operations Status"
             }
