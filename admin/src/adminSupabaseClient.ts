@@ -4,26 +4,23 @@
 
 import { createClient } from '@supabase/supabase-js'
 
+const DEFAULT_PLATFORM_URL = 'https://tldubojeokgyoclxnzkb.supabase.co'
+const DEFAULT_PLATFORM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+
 export const ADMIN_SUPABASE_URL =
-  ((import.meta as any).env.VITE_ADMIN_SUPABASE_URL as string) || ''
+  ((import.meta as any).env.VITE_ADMIN_SUPABASE_URL as string) || DEFAULT_PLATFORM_URL
 export const ADMIN_SUPABASE_ANON_KEY =
-  ((import.meta as any).env.VITE_ADMIN_SUPABASE_ANON_KEY as string) || ''
+  ((import.meta as any).env.VITE_ADMIN_SUPABASE_ANON_KEY as string) || DEFAULT_PLATFORM_KEY
 
 export const isAdminSupabaseConfigured = Boolean(ADMIN_SUPABASE_URL && ADMIN_SUPABASE_ANON_KEY)
-
-if (!isAdminSupabaseConfigured) {
-  console.warn(
-    '[admin-supabase] VITE_ADMIN_SUPABASE_URL and VITE_ADMIN_SUPABASE_ANON_KEY are not configured. ' +
-    'Add them to admin/.env. Using placeholder client.'
-  )
-}
 
 // Anon key is safe for browser — Supabase Auth + RLS enforces access control.
 // The admin_users table RLS ensures only authenticated admin users can read/write.
 export const adminSupabase = createClient(
-  ADMIN_SUPABASE_URL || 'https://placeholder.supabase.co',
-  ADMIN_SUPABASE_ANON_KEY || 'placeholder'
+  ADMIN_SUPABASE_URL,
+  ADMIN_SUPABASE_ANON_KEY
 )
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
