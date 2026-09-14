@@ -4630,7 +4630,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Google দিয়ে সাইন ইন করুন",
+                                    text = if (isBangla) "Google দিয়ে সাইন ইন করুন" else "Continue with Google",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = if (isDarkMode) Color.White else Color(0xFF0F172A)
@@ -4670,7 +4670,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Facebook দিয়ে সাইন ইন করুন",
+                                    text = if (isBangla) "Facebook দিয়ে সাইন ইন করুন" else "Continue with Facebook",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = if (isDarkMode) Color.White else Color(0xFF0F172A)

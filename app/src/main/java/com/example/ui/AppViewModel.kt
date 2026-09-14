@@ -1907,6 +1907,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val candidateUrls = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000", "http://10.0.2.2:5000")
                 var tokenFromBackend: String? = null
                 var merchantIdFromBackend: String? = null
+                var isNewUserFromBackend: Boolean? = null
+                var restoredBusinessName: String? = null
+                var restoredPhone: String? = null
+                var restoredBusinessType: String? = null
 
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     for (baseUrl in candidateUrls) {
@@ -1935,6 +1939,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 tokenFromBackend = json.optString("access_token")
                                 val userObj = json.optJSONObject("user")
                                 merchantIdFromBackend = userObj?.optString("id")
+                                // Read is_new flag — determines Onboarding vs Dashboard routing
+                                isNewUserFromBackend = json.optBoolean("is_new", true)
+                                // Read existing merchant data for profile restore on sign-in
+                                val merchantObj = json.optJSONObject("merchant")
+                                if (merchantObj != null) {
+                                    val bName = merchantObj.optString("business_name")
+                                    if (bName.isNotBlank()) restoredBusinessName = bName
+                                    val ph = merchantObj.optString("phone")
+                                    if (!ph.isNullOrBlank()) restoredPhone = ph
+                                    val bType = merchantObj.optString("business_type")
+                                    if (!bType.isNullOrBlank()) restoredBusinessType = bType
+                                }
                                 break
                             }
                         } catch (e: Exception) {
@@ -1945,6 +1961,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                 val finalUid = merchantIdFromBackend ?: "m_${providerTag}_${cleanEmail.hashCode().toString().replace("-", "").take(16)}"
                 val finalToken = tokenFromBackend ?: "sp_${java.util.UUID.randomUUID().toString().replace("-", "")}"
+                // is_new: null means backend unreachable → fall back to local isOnboarded() flag
+                val isNewUser: Boolean = isNewUserFromBackend ?: !isOnboarded()
 
                 saveEncryptedSessionToken(cleanEmail, finalUid, "$providerName (Secure Auth)")
                 setUserEmail(cleanEmail)
@@ -1952,9 +1970,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val existing = _activeProfile.value
                 val updatedProfile = existing.copy(
                     id = finalUid,
-                    businessName = if (existing.businessName.isBlank() || existing.businessName == "Demo Store") cleanName else existing.businessName,
+                    // For returning users, use restored business name from backend; for new users use OAuth name
+                    businessName = when {
+                        !isNewUser && !restoredBusinessName.isNullOrBlank() -> restoredBusinessName!!
+                        existing.businessName.isBlank() || existing.businessName == "Demo Store" -> cleanName
+                        else -> existing.businessName
+                    },
                     email = cleanEmail,
-                    accountHolder = if (existing.accountHolder.isBlank()) cleanName else existing.accountHolder
+                    accountHolder = when {
+                        !isNewUser && !restoredBusinessName.isNullOrBlank() -> restoredBusinessName!!
+                        existing.accountHolder.isBlank() -> cleanName
+                        else -> existing.accountHolder
+                    },
+                    phone = if (!isNewUser && !restoredPhone.isNullOrBlank()) restoredPhone!! else existing.phone,
+                    businessType = if (!isNewUser && !restoredBusinessType.isNullOrBlank()) restoredBusinessType!! else existing.businessType
                 )
                 _activeProfile.value = updatedProfile
                 repository.insertMerchantProfile(updatedProfile)
@@ -1980,10 +2009,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 anonKey = updatedSupabaseProfile.anonKey,
                                 accessToken = finalToken,
                                 userId = finalUid,
-                                businessName = cleanName,
+                                businessName = updatedProfile.businessName,
                                 email = cleanEmail,
-                                phone = existing.phone,
-                                businessType = existing.businessType,
+                                phone = updatedProfile.phone,
+                                businessType = updatedProfile.businessType,
                                 website = existing.website,
                                 onSuccess = { logFirebaseStatus("Social merchant record synced to Supabase in-app.") },
                                 onFailure = { err -> logFirebaseStatus("Supabase background sync note: $err") }
@@ -1997,9 +2026,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 _authError.value = null
-                logFirebaseStatus("Signed in successfully with $providerName (Supabase In-App Flow).")
+                logFirebaseStatus("Signed in successfully with $providerName (is_new=$isNewUser).")
                 logFirebaseEvent("login_success", android.os.Bundle().apply {
                     putString("provider", providerTag)
+                    putString("is_new", isNewUser.toString())
                     putString("auth_flow", "supabase_in_app")
                 })
 
@@ -2007,12 +2037,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     onDirectSuccess()
                 } else {
                     val isBiometricEnabled = _isBiometricLocked.value
-                    val onboarded = isOnboarded()
-                    if (!onboarded) {
+                    if (isNewUser) {
+                        // New user — show Onboarding to collect business info
+                        setOnboarded(false)
                         navigateTo("Onboarding")
                     } else if (isBiometricEnabled) {
+                        // Returning user with biometric lock
+                        setOnboarded(true)
                         navigateTo("LockScreen")
                     } else {
+                        // Returning user — go straight to Dashboard
+                        setOnboarded(true)
                         navigateTo("Main")
                     }
                 }
@@ -2356,11 +2391,69 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 setUserEmail(finalEmail)
                 saveEncryptedSessionToken(finalEmail, finalProfile.id, "OAuth (${tokenType ?: "login"})")
 
-                if (userName.isNotBlank()) {
+
+                // Call backend social-login to detect is_new and restore merchant data
+                // tokenType from Supabase deep links is "signup" for new users, "login" for returning
+                var isNewUserDeepLink = tokenType?.lowercase() == "signup"
+                var deepLinkRestoredBusinessName: String? = null
+                var deepLinkRestoredPhone: String? = null
+                var deepLinkRestoredBusinessType: String? = null
+
+                if (finalEmail.isNotBlank() && !finalEmail.startsWith("oauth_user_")) {
+                    val providerTag = "google" // deep link OAuth on Platform Supabase is always Google
+                    val candidateUrls = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000")
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        for (baseUrl in candidateUrls) {
+                            try {
+                                val url = java.net.URL("$baseUrl/v1/oauth/social-login")
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "POST"
+                                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                                conn.connectTimeout = 4000
+                                conn.readTimeout = 4000
+                                conn.doOutput = true
+                                val body = org.json.JSONObject().apply {
+                                    put("provider", providerTag)
+                                    put("email", finalEmail)
+                                    put("name", userName.ifBlank { "Google Merchant" })
+                                }
+                                conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+                                if (conn.responseCode in 200..299) {
+                                    val respStr = conn.inputStream.bufferedReader().readText()
+                                    val json = org.json.JSONObject(respStr)
+                                    // Backend is_new is authoritative; only fall back to tokenType signal
+                                    isNewUserDeepLink = json.optBoolean("is_new", isNewUserDeepLink)
+                                    val merchantObj = json.optJSONObject("merchant")
+                                    if (merchantObj != null) {
+                                        val bName = merchantObj.optString("business_name")
+                                        if (bName.isNotBlank() && bName != userName) deepLinkRestoredBusinessName = bName
+                                        val ph = merchantObj.optString("phone")
+                                        if (!ph.isNullOrBlank()) deepLinkRestoredPhone = ph
+                                        val bType = merchantObj.optString("business_type")
+                                        if (!bType.isNullOrBlank()) deepLinkRestoredBusinessType = bType
+                                    }
+                                    break
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.w("AuthDeepLink", "Social-login check: ${e.message}")
+                            }
+                        }
+                    }
+                }
+
+                // Update local profile with restored data (for returning users)
+                if (userName.isNotBlank() || !deepLinkRestoredBusinessName.isNullOrBlank()) {
                     val currentProfile = _activeProfile.value
+                    val restoredName = deepLinkRestoredBusinessName ?: userName
                     val updatedProfile = currentProfile.copy(
-                        businessName = if (currentProfile.businessName.isBlank() || currentProfile.businessName == "Demo Store") userName else currentProfile.businessName,
-                        email = finalEmail
+                        businessName = when {
+                            !isNewUserDeepLink && !deepLinkRestoredBusinessName.isNullOrBlank() -> deepLinkRestoredBusinessName!!
+                            currentProfile.businessName.isBlank() || currentProfile.businessName == "Demo Store" -> restoredName
+                            else -> currentProfile.businessName
+                        },
+                        email = finalEmail,
+                        phone = if (!isNewUserDeepLink && !deepLinkRestoredPhone.isNullOrBlank()) deepLinkRestoredPhone!! else currentProfile.phone,
+                        businessType = if (!isNewUserDeepLink && !deepLinkRestoredBusinessType.isNullOrBlank()) deepLinkRestoredBusinessType!! else currentProfile.businessType
                     )
                     _activeProfile.value = updatedProfile
                     repository.insertMerchantProfile(updatedProfile)
@@ -2368,15 +2461,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                 _isAuthenticating.value = false
                 _authError.value = null
-                logFirebaseStatus("Auth deep link verified (${tokenType ?: "signup"}). Navigating to Main.")
+                logFirebaseStatus("Auth deep link verified (is_new=$isNewUserDeepLink). Routing user.")
 
                 val isBiometricEnabled = _isBiometricLocked.value
-                val onboarded = isOnboarded()
-                if (!onboarded) {
+                if (isNewUserDeepLink) {
+                    // New signup — collect business info
+                    setOnboarded(false)
                     navigateTo("Onboarding")
                 } else if (isBiometricEnabled) {
+                    // Returning user with biometric lock
+                    setOnboarded(true)
                     navigateTo("LockScreen")
                 } else {
+                    // Returning user — go straight to Dashboard
+                    setOnboarded(true)
                     navigateTo("Main")
                 }
             }

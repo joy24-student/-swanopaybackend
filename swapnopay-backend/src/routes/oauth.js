@@ -493,33 +493,26 @@ async function handleSocialLogin(req, res) {
     const sessionRefreshToken = 'rf_' + crypto.randomBytes(32).toString('base64url')
     const expiresIn = 86400 * 30 // 30 days session
 
-    // 3. Upsert merchant in admin Supabase if available
+    // 3. Detect new vs existing merchant, then upsert
     let savedMerchant = null
+    let isNewUser = false
     try {
       const admin = getAdminClient()
-      const { data, error } = await admin
-        .from('merchant_gateway_settings')
-        .upsert(
-          {
-            merchant_id: merchantId,
-            merchant_name: cleanName,
-            merchant_logo_url: avatar_url || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'merchant_id' }
-        )
-        .select()
+
+      // Check if this merchant already exists
+      const { data: existingMerchant } = await admin
+        .from('merchants')
+        .select('id, business_name, phone, business_type, photo_url, status')
+        .eq('id', merchantId)
         .maybeSingle()
 
-      if (!error && data) {
-        savedMerchant = data
-      }
+      isNewUser = !existingMerchant
 
-      // Also upsert into merchants table for Supabase query compatibility
-      await admin
-        .from('merchants')
-        .upsert(
-          {
+      if (isNewUser) {
+        // Brand-new signup — insert fresh record
+        await admin
+          .from('merchants')
+          .insert({
             id: merchantId,
             user_id: merchantId,
             business_name: cleanName,
@@ -527,10 +520,36 @@ async function handleSocialLogin(req, res) {
             email: cleanEmail,
             photo_url: avatar_url || null,
             status: 'ACTIVE',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+      } else {
+        // Existing user signing in — preserve business data, update last-seen only
+        savedMerchant = existingMerchant
+        await admin
+          .from('merchants')
+          .update({
+            email: cleanEmail,
+            photo_url: avatar_url || existingMerchant.photo_url || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', merchantId)
+      }
+
+      // Also upsert gateway settings
+      await admin
+        .from('merchant_gateway_settings')
+        .upsert(
+          {
+            merchant_id: merchantId,
+            merchant_name: isNewUser ? cleanName : (existingMerchant?.business_name || cleanName),
+            merchant_logo_url: avatar_url || null,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'id' }
+          { onConflict: 'merchant_id' }
         )
+        .select()
+        .maybeSingle()
     } catch (dbErr) {
       console.warn('[social-login] Notice: Supabase DB sync optional fallback:', dbErr.message)
     }
@@ -553,6 +572,7 @@ async function handleSocialLogin(req, res) {
 
     return res.json({
       ok: true,
+      is_new: isNewUser,
       provider: providerTag,
       access_token: sessionAccessToken,
       refresh_token: sessionRefreshToken,
@@ -573,9 +593,12 @@ async function handleSocialLogin(req, res) {
       },
       merchant: {
         id: merchantId,
-        business_name: cleanName,
+        business_name: isNewUser ? cleanName : (savedMerchant?.business_name || cleanName),
         email: cleanEmail,
-        account_holder: cleanName,
+        account_holder: isNewUser ? cleanName : (savedMerchant?.business_name || cleanName),
+        phone: savedMerchant?.phone || null,
+        business_type: savedMerchant?.business_type || null,
+        photo_url: savedMerchant?.photo_url || avatar_url || null,
       },
     })
   } catch (err) {
