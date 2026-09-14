@@ -5037,8 +5037,26 @@ function executePayment() {
         repository.observeCustomersWithDue(profile.id)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val smsThrottleDelayMs = MutableStateFlow(2500L)
-    val autoPosReceiptSmsEnabled = MutableStateFlow(true)
+    val smsThrottleDelayMs = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getLong("sms_throttle_delay", 2500L)
+    )
+    val autoPosReceiptSmsEnabled = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getBoolean("auto_pos_receipt_enabled", true)
+    )
+    val isAutoDueScheduleActive = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getBoolean("auto_due_schedule_active", false)
+    )
+    val autoDueScheduleHour = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getInt("auto_due_schedule_hour", 10)
+    )
+    val autoDueMinAmount = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getFloat("auto_due_min_amount", 100f).toDouble()
+    )
     val dueSmsTemplate = MutableStateFlow("প্রিয় {name}, {store}-এ আপনার বাকি {due} টাকা পরিশোধের অনুরোধ জানাচ্ছি। ধন্যবাদ।")
     val marketingSmsTemplate = MutableStateFlow("সম্মানিত গ্রাহক {name}, {store}-এ নতুন অফার ও বিশেষ ডিসকাউন্টের জন্য ভিজিট করুন। ধন্যবাদ!")
     val salesSmsTemplate = MutableStateFlow("ধন্যবাদ {name}! {store}-এ আপনার {amount} টাকার অর্ডার সম্পন্ন হয়েছে। ইনভয়েস: {invoice}।")
@@ -5052,10 +5070,36 @@ function executePayment() {
 
     fun setSelectedSimSlot(slot: Int) {
         _selectedSimSlot.value = slot
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit().putInt("selected_sim_slot", slot).apply()
     }
 
     fun setGatewayActive(active: Boolean) {
         _isGatewayActive.value = active
+    }
+
+    fun setAutoPosReceiptEnabled(enabled: Boolean) {
+        autoPosReceiptSmsEnabled.value = enabled
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("auto_pos_receipt_enabled", enabled).apply()
+    }
+
+    fun setAutoDueScheduleConfig(active: Boolean, hour: Int, minAmount: Double) {
+        isAutoDueScheduleActive.value = active
+        autoDueScheduleHour.value = hour
+        autoDueMinAmount.value = minAmount
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("auto_due_schedule_active", active)
+            .putInt("auto_due_schedule_hour", hour)
+            .putFloat("auto_due_min_amount", minAmount.toFloat())
+            .apply()
+    }
+
+    fun setSmsThrottleDelay(delayMs: Long) {
+        smsThrottleDelayMs.value = delayMs
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit().putLong("sms_throttle_delay", delayMs).apply()
     }
 
     fun generateNewGatewayApiKey() {
@@ -5120,6 +5164,20 @@ function executePayment() {
             } else {
                 onResult(0, "No valid phone numbers found among due customers.")
             }
+        }
+    }
+
+    fun runAutomatedDueReminderBatch(onResult: (Int, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            val merchantId = activeProfile.value.id
+            val debtors = repository.getCustomersWithDue(merchantId)
+            val minAmount = autoDueMinAmount.value
+            val qualified = debtors.filter { it.currentBalance >= minAmount }
+            if (qualified.isEmpty()) {
+                onResult(0, "ন্যূনতম ৳${minAmount.toInt()} বাকি থাকা কোনো কাস্টমার পাওয়া যায়নি।")
+                return@launch
+            }
+            sendDueReminderSms(qualified.map { it.id }.toSet(), null, onResult)
         }
     }
 
@@ -8233,6 +8291,17 @@ function executePayment() {
             logFirebaseStatus("Completed POS Checkout #$orderId: ৳$totalSaleAmount ($paymentType)")
             _selectedInvoiceSaleId.value = orderId
             clearPosCart()
+
+            // Automated physical SIM SMS receipt dispatch on POS checkout
+            if (sale.customerPhone.isNotBlank()) {
+                sendPosReceiptSms(
+                    customerName = sale.customerName,
+                    customerPhone = sale.customerPhone,
+                    amount = sale.netTotal,
+                    invoiceId = sale.invoiceNo
+                )
+            }
+
             onSuccess(orderId, totalSaleAmount)
         }
     }

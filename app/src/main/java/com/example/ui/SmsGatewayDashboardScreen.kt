@@ -248,6 +248,31 @@ private fun DueAndCampaignTab(
                         Text("ট্যাগ: {name}, {due}, {store}", fontSize = 10.5.sp, color = Color(0xFF991B1B))
                     }
 
+                    val isScheduleActive by viewModel.isAutoDueScheduleActive.collectAsState()
+                    val scheduleHour by viewModel.autoDueScheduleHour.collectAsState()
+                    if (isScheduleActive) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.Alarm, null, tint = Color(0xFF059669), modifier = Modifier.size(15.dp))
+                                Text(
+                                    "দৈনিক অটো শিডিউল চালু: প্রতিদিন $scheduleHour:00 টায় ব্যাকগ্রাউন্ডে তাগাদা যাবে",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF047857),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = dueTemplate,
                         onValueChange = { dueTemplate = it },
@@ -580,9 +605,153 @@ private fun SimSettingsTab(
                     }
                     Switch(
                         checked = autoPosReceipt,
-                        onCheckedChange = { viewModel.autoPosReceiptSmsEnabled.value = it },
+                        onCheckedChange = { viewModel.setAutoPosReceiptEnabled(it) },
                         colors = SwitchDefaults.colors(checkedThumbColor = accentBrand, checkedTrackColor = accentBrand.copy(alpha = 0.5f))
                     )
+                }
+            }
+        }
+
+        // USSD Balance & Pack Quick Check
+        item {
+            val currentSim = availableSims.find { it.slotIndex == selectedSimSlot } ?: availableSims.firstOrNull()
+            val carrierName = currentSim?.carrierName ?: "Grameenphone"
+            val ussdList = remember(carrierName) { com.example.service.SmsGatewayEngine.getUssdCodesForCarrier(carrierName) }
+            val context = LocalContext.current
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderCol),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.PhoneInTalk, null, tint = accentBrand)
+                        Text("সিম ব্যালেন্স ও এসএমএস প্যাক অনুসন্ধান ($carrierName)", fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = primaryText)
+                    }
+                    Text(
+                        "সিম কার্ডে পর্যাপ্ত ব্যালেন্স বা এসএমএস প্যাক আছে কিনা তা ১-ট্যাপে সরাসরি ডায়াল করে চেক করুন:",
+                        fontSize = 11.5.sp,
+                        color = secondaryText
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ussdList.take(3).forEach { (label, code) ->
+                            OutlinedButton(
+                                onClick = { com.example.service.SmsGatewayEngine.dialUssd(context, code) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text(code, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = accentBrand)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Automated Daily Due Reminder Schedule Card
+        item {
+            val context = LocalContext.current
+            val isScheduleActive by viewModel.isAutoDueScheduleActive.collectAsState()
+            val scheduleHour by viewModel.autoDueScheduleHour.collectAsState()
+            val minAmount by viewModel.autoDueMinAmount.collectAsState()
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                border = BorderStroke(1.dp, borderCol),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.Alarm, null, tint = accentBrand)
+                                Text("দৈনিক অটোমেটিক বাকি তাগাদা শিডিউল", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = primaryText)
+                            }
+                            Text(
+                                "প্রতিদিন নির্ধারিত সময়ে ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে বাকিদারদের সিম থেকে তাগাদা এসএমএস পাঠাবে।",
+                                fontSize = 11.5.sp,
+                                color = secondaryText
+                            )
+                        }
+                        Switch(
+                            checked = isScheduleActive,
+                            onCheckedChange = { viewModel.setAutoDueScheduleConfig(it, scheduleHour, minAmount) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = accentBrand, checkedTrackColor = accentBrand.copy(alpha = 0.5f))
+                        )
+                    }
+
+                    if (isScheduleActive) {
+                        HorizontalDivider(color = borderCol)
+                        Text("এসএমএস পাঠানোর সময় নির্বাচন করুন:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = primaryText)
+                        val hourOptions = listOf(9 to "সকাল ৯:০০", 10 to "সকাল ১০:০০", 11 to "সকাল ১১:০০", 16 to "বিকাল ৪:০০", 20 to "রাত ৮:০০")
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            hourOptions.forEach { (hour, label) ->
+                                val selected = scheduleHour == hour
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.setAutoDueScheduleConfig(true, hour, minAmount) },
+                                    label = { Text(label, fontSize = 9.5.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = accentBrand.copy(alpha = 0.15f),
+                                        selectedLabelColor = accentBrand
+                                    )
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("সর্বনিম্ন বাকি সীমা:", fontSize = 12.sp, color = primaryText)
+                            Text("৳${minAmount.toInt()}+", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = accentBrand)
+                        }
+                        val amountOptions = listOf(50.0, 100.0, 200.0, 500.0, 1000.0)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            amountOptions.forEach { amt ->
+                                val selected = minAmount == amt
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.setAutoDueScheduleConfig(true, scheduleHour, amt) },
+                                    label = { Text("৳${amt.toInt()}", fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = accentBrand.copy(alpha = 0.15f),
+                                        selectedLabelColor = accentBrand
+                                    )
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.runAutomatedDueReminderBatch { count, msg ->
+                                    Toast.makeText(context, "অটো তাগাদা: $msg", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = accentBrand),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().height(38.dp)
+                        ) {
+                            Icon(Icons.Default.ScheduleSend, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("এখনই শিডিউল টেস্ট রান করুন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
