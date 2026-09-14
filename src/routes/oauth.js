@@ -467,6 +467,115 @@ async function handleProvision(req, res) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Helper: Thoroughly query Admin DB for merchant account & own database setup
+// ──────────────────────────────────────────────────────────────────────────────
+async function lookupMerchantInAdminDb(email, merchantId = null) {
+  const admin = getAdminClient()
+  const cleanEmail = (email || '').trim().toLowerCase()
+  
+  let merchant = null
+
+  // 1. Search by email in merchants table
+  if (cleanEmail) {
+    const { data, error } = await admin
+      .from('merchants')
+      .select('*')
+      .eq('email', cleanEmail)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!error && data) merchant = data
+  }
+
+  // 2. Search by merchant_id / user_id in merchants table
+  if (!merchant && merchantId) {
+    const { data, error } = await admin
+      .from('merchants')
+      .select('*')
+      .or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!error && data) merchant = data
+  }
+
+  const effectiveMerchantId = merchant?.id || merchant?.user_id || merchantId
+
+  // 3. Search merchant_gateway_settings for own database credentials
+  let gatewaySettings = null
+  if (effectiveMerchantId) {
+    const { data } = await admin
+      .from('merchant_gateway_settings')
+      .select('*')
+      .eq('merchant_id', effectiveMerchantId)
+      .maybeSingle()
+    if (data) gatewaySettings = data
+  }
+
+  // 4. Search supabase_connections for provisioned project credentials
+  let connection = null
+  if (effectiveMerchantId) {
+    const { data } = await admin
+      .from('supabase_connections')
+      .select('*')
+      .eq('user_id', effectiveMerchantId)
+      .maybeSingle()
+    if (data) connection = data
+  }
+
+  // 5. Extract merchant's OWN database credentials (ignore platform shared DB)
+  let ownDatabaseUrl = gatewaySettings?.supabase_url || connection?.project_url || null
+  let ownDatabaseAnonKey = gatewaySettings?.supabase_anon_key || connection?.publishable_key || null
+  let projectRef = connection?.selected_project_ref || null
+
+  if (ownDatabaseUrl && ownDatabaseUrl.toLowerCase().includes('tldubojeokgyoclxnzkb')) {
+    // This is the platform central admin URL, not the merchant's dedicated database
+    ownDatabaseUrl = null
+    ownDatabaseAnonKey = null
+  }
+
+  const hasOwnDatabase = Boolean(ownDatabaseUrl && ownDatabaseAnonKey)
+
+  // 6. Check if merchant has real business information configured (not initial placeholder)
+  const isPlaceholder = (name) => {
+    if (!name) return true
+    const n = name.trim().toLowerCase()
+    return n === 'google user' || n === 'facebook user' || n === 'demo store' || n === 'my business' || n === 'my store' || n.startsWith('merchant ')
+  }
+
+  const hasRealBusinessName = Boolean(merchant?.business_name && !isPlaceholder(merchant.business_name) && merchant.business_name.length > 2)
+  const hasPhone = Boolean(merchant?.phone && merchant.phone.length >= 7)
+
+  // A merchant is onboarded IF they have their own database connected, OR if they have configured a real business profile
+  const isOnboarded = Boolean((merchant || gatewaySettings) && (hasOwnDatabase || (hasRealBusinessName && hasPhone)))
+
+  return {
+    exists: Boolean(merchant || gatewaySettings || connection),
+    isOnboarded,
+    isNewUser: !isOnboarded,
+    merchantId: effectiveMerchantId,
+    merchant: {
+      id: effectiveMerchantId,
+      business_name: (hasRealBusinessName ? merchant?.business_name : null) || gatewaySettings?.merchant_name || merchant?.name || '',
+      email: merchant?.email || cleanEmail,
+      phone: merchant?.phone || '',
+      business_type: merchant?.business_type || 'Retail Store',
+      photo_url: merchant?.photo_url || gatewaySettings?.merchant_logo_url || null,
+      account_holder: merchant?.name || merchant?.business_name || '',
+      status: merchant?.status || gatewaySettings?.status || 'ACTIVE'
+    },
+    database: {
+      has_own_database: hasOwnDatabase,
+      supabase_url: ownDatabaseUrl,
+      supabase_anon_key: ownDatabaseAnonKey,
+      project_ref: projectRef
+    },
+    gateway: gatewaySettings || null
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // 5. PRODUCTION SOCIAL LOGIN (/social-login)
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleSocialLogin(req, res) {
@@ -485,7 +594,7 @@ async function handleSocialLogin(req, res) {
     const cleanName = (name || '').trim() || (provider.toLowerCase() === 'google' ? 'Google User' : 'Facebook User')
     const providerTag = provider.toLowerCase()
 
-    // 1. Generate standard deterministic / secure UUID for merchant
+    // 1. Generate deterministic UUID for merchant based on email
     const merchantId = 'm_' + crypto.createHash('sha256').update(`${providerTag}:${cleanEmail}`).digest('hex').slice(0, 16)
 
     // 2. Generate cryptographically secure session tokens
@@ -493,112 +602,77 @@ async function handleSocialLogin(req, res) {
     const sessionRefreshToken = 'rf_' + crypto.randomBytes(32).toString('base64url')
     const expiresIn = 86400 * 30 // 30 days session
 
-    // 3. Detect new vs existing merchant, then upsert
-    let savedMerchant = null
-    let isNewUser = false
+    // 3. Query Admin DB for existing merchant and their own database credentials
+    let lookup = { exists: false, isOnboarded: false, isNewUser: true, merchantId, merchant: {}, database: { has_own_database: false } }
     try {
-      const admin = getAdminClient()
+      lookup = await lookupMerchantInAdminDb(cleanEmail, merchantId)
+    } catch (lookupErr) {
+      console.warn('[social-login] lookupMerchantInAdminDb error:', lookupErr.message)
+    }
 
-      // Check if this merchant already exists
-      const { data: existingMerchant } = await admin
-        .from('merchants')
-        .select('id, business_name, phone, business_type, photo_url, status')
-        .eq('id', merchantId)
-        .maybeSingle()
-
-      isNewUser = !existingMerchant
-
-      if (isNewUser) {
-        // Brand-new signup — insert fresh record
-        await admin
-          .from('merchants')
-          .insert({
-            id: merchantId,
-            user_id: merchantId,
-            business_name: cleanName,
-            name: cleanName,
-            email: cleanEmail,
-            photo_url: avatar_url || null,
-            status: 'ACTIVE',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-      } else {
-        // Existing user signing in — preserve business data, update last-seen only
-        savedMerchant = existingMerchant
+    // If merchant exists and is onboarded, update last seen timestamp without wiping business info
+    if (lookup.isOnboarded) {
+      try {
+        const admin = getAdminClient()
         await admin
           .from('merchants')
           .update({
             email: cleanEmail,
-            photo_url: avatar_url || existingMerchant.photo_url || null,
-            updated_at: new Date().toISOString(),
+            photo_url: avatar_url || lookup.merchant.photo_url || null,
+            updated_at: new Date().toISOString()
           })
-          .eq('id', merchantId)
+          .eq('id', lookup.merchantId)
+      } catch (updErr) {
+        console.warn('[social-login] Update last seen notice:', updErr.message)
       }
-
-      // Also upsert gateway settings
-      await admin
-        .from('merchant_gateway_settings')
-        .upsert(
-          {
-            merchant_id: merchantId,
-            merchant_name: isNewUser ? cleanName : (existingMerchant?.business_name || cleanName),
-            merchant_logo_url: avatar_url || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'merchant_id' }
-        )
-        .select()
-        .maybeSingle()
-    } catch (dbErr) {
-      console.warn('[social-login] Notice: Supabase DB sync optional fallback:', dbErr.message)
     }
 
     // 4. Broadcast login event to Socket.io
     if (req.io) {
       req.io.emit('merchant:social_login', {
-        merchant_id: merchantId,
+        merchant_id: lookup.merchantId,
         provider: providerTag,
         email: cleanEmail,
-        name: cleanName,
+        name: lookup.merchant.business_name || cleanName,
         logged_in_at: new Date().toISOString(),
       })
     }
 
-    console.log(`[social-login] Successfully authenticated ${providerTag} merchant: ${cleanEmail} (${merchantId})`)
-
-    const supabaseUrl = process.env.ADMIN_SUPABASE_URL || process.env.SUPABASE_URL || 'https://tldubojeokgyoclxnzkb.supabase.co'
-    const supabaseAnonKey = process.env.ADMIN_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+    console.log(`[social-login] Authenticated ${providerTag} merchant: ${cleanEmail} (onboarded: ${lookup.isOnboarded}, ownDb: ${lookup.database.has_own_database})`)
 
     return res.json({
       ok: true,
-      is_new: isNewUser,
+      exists: lookup.exists,
+      is_new: lookup.isNewUser,
+      is_onboarded: lookup.isOnboarded,
       provider: providerTag,
       access_token: sessionAccessToken,
       refresh_token: sessionRefreshToken,
       expires_in: expiresIn,
+      database: lookup.database,
       supabase: {
-        connected: true,
-        project_url: supabaseUrl,
-        anon_key: supabaseAnonKey,
-        user_id: merchantId,
+        connected: lookup.database.has_own_database,
+        is_own_database: lookup.database.has_own_database,
+        project_url: lookup.database.supabase_url,
+        anon_key: lookup.database.supabase_anon_key,
+        user_id: lookup.merchantId,
       },
       user: {
-        id: merchantId,
+        id: lookup.merchantId,
         email: cleanEmail,
-        name: cleanName,
-        avatar_url: avatar_url || null,
+        name: lookup.merchant.business_name || cleanName,
+        avatar_url: avatar_url || lookup.merchant.photo_url || null,
         provider: providerTag,
         email_verified: true,
       },
       merchant: {
-        id: merchantId,
-        business_name: isNewUser ? cleanName : (savedMerchant?.business_name || cleanName),
+        id: lookup.merchantId,
+        business_name: lookup.merchant.business_name || cleanName,
         email: cleanEmail,
-        account_holder: isNewUser ? cleanName : (savedMerchant?.business_name || cleanName),
-        phone: savedMerchant?.phone || null,
-        business_type: savedMerchant?.business_type || null,
-        photo_url: savedMerchant?.photo_url || avatar_url || null,
+        account_holder: lookup.merchant.account_holder || cleanName,
+        phone: lookup.merchant.phone || '',
+        business_type: lookup.merchant.business_type || 'Retail Store',
+        photo_url: lookup.merchant.photo_url || avatar_url || null,
       },
     })
   } catch (err) {
@@ -608,7 +682,125 @@ async function handleSocialLogin(req, res) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 6. AUTO-SETUP & BOOTSTRAP (/bootstrap, /auto-setup)
+// 6. CHECK USER EXISTENCE & RETRIEVE CREDENTIALS (/check-user)
+// ──────────────────────────────────────────────────────────────────────────────
+async function handleCheckUser(req, res) {
+  try {
+    const email = req.body?.email || req.query?.email
+    const merchantId = req.body?.merchant_id || req.query?.merchant_id || req.body?.user_id || req.query?.user_id
+
+    if (!email && !merchantId) {
+      return res.status(400).json({ error: 'email or merchant_id is required to check user existence' })
+    }
+
+    const lookup = await lookupMerchantInAdminDb(email, merchantId)
+    console.log(`[check-user] Checked: ${email || merchantId} -> exists: ${lookup.exists}, onboarded: ${lookup.isOnboarded}, ownDb: ${lookup.database.has_own_database}`)
+
+    return res.json({
+      ok: true,
+      exists: lookup.exists,
+      is_new: lookup.isNewUser,
+      is_onboarded: lookup.isOnboarded,
+      merchant: lookup.merchant,
+      database: lookup.database,
+      supabase: {
+        connected: lookup.database.has_own_database,
+        is_own_database: lookup.database.has_own_database,
+        project_url: lookup.database.supabase_url,
+        anon_key: lookup.database.supabase_anon_key,
+        user_id: lookup.merchantId
+      }
+    })
+  } catch (err) {
+    console.error('[check-user] Error:', err.message)
+    return res.status(500).json({ error: 'Failed to check merchant user: ' + err.message })
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 7. SYNC MERCHANT ONBOARDING & OWN DATABASE SETUP (/sync-merchant-setup)
+// ──────────────────────────────────────────────────────────────────────────────
+async function handleSyncMerchantSetup(req, res) {
+  try {
+    const {
+      merchant_id,
+      email,
+      business_name,
+      phone,
+      business_type,
+      website,
+      photo_url,
+      supabase_url,
+      supabase_anon_key,
+      project_ref
+    } = req.body || {}
+
+    if (!merchant_id && !email) {
+      return res.status(400).json({ error: 'merchant_id or email is required' })
+    }
+
+    const cleanEmail = (email || '').trim().toLowerCase()
+    const targetId = merchant_id || ('m_' + crypto.createHash('sha256').update(cleanEmail).digest('hex').slice(0, 16))
+    const admin = getAdminClient()
+
+    // 1. Upsert into merchants table
+    const merchantPayload = {
+      id: targetId,
+      user_id: targetId,
+      business_name: business_name || 'My Store',
+      email: cleanEmail || null,
+      phone: phone || null,
+      business_type: business_type || 'Retail Store',
+      website: website || null,
+      photo_url: photo_url || null,
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString()
+    }
+    await admin.from('merchants').upsert(merchantPayload, { onConflict: 'id' })
+
+    // 2. Upsert into merchant_gateway_settings table
+    const gatewayPayload = {
+      merchant_id: targetId,
+      merchant_name: business_name || 'My Store',
+      merchant_logo_url: photo_url || null,
+      supabase_url: supabase_url || null,
+      supabase_anon_key: supabase_anon_key || null,
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString()
+    }
+    await admin.from('merchant_gateway_settings').upsert(gatewayPayload, { onConflict: 'merchant_id' })
+
+    // 3. Upsert into supabase_connections table if own database URL provided
+    if (supabase_url && supabase_anon_key && !supabase_url.includes('tldubojeokgyoclxnzkb')) {
+      const ref = project_ref || (supabase_url.includes('supabase.co') ? supabase_url.substring(supabase_url.indexOf('//') + 2, supabase_url.indexOf('.supabase.co')) : null)
+      await admin.from('supabase_connections').upsert({
+        user_id: targetId,
+        project_url: supabase_url,
+        publishable_key: supabase_anon_key,
+        selected_project_ref: ref,
+        connection_status: 'ACTIVE',
+        provisioning_status: 'COMPLETE',
+        last_verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' })
+    }
+
+    console.log(`[sync-merchant-setup] Successfully synced setup for merchant ${targetId} (${business_name}, ownDb: ${Boolean(supabase_url)})`)
+
+    return res.json({
+      ok: true,
+      message: 'Merchant setup and own database credentials synced successfully',
+      merchant_id: targetId,
+      has_own_database: Boolean(supabase_url && supabase_anon_key && !supabase_url.includes('tldubojeokgyoclxnzkb'))
+    })
+  } catch (err) {
+    console.error('[sync-merchant-setup] Error:', err.message)
+    return res.status(500).json({ error: 'Failed to sync merchant setup: ' + err.message })
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 8. AUTO-SETUP & BOOTSTRAP (/bootstrap, /auto-setup)
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleBootstrap(req, res) {
   try {
@@ -652,6 +844,9 @@ router.all('/projects', handleProjects)
 router.all('/provision', handleProvision)
 router.all('/bootstrap', handleBootstrap)
 router.all('/auto-setup', handleBootstrap)
+
+router.all('/check-user', handleCheckUser)
+router.all('/sync-merchant-setup', handleSyncMerchantSetup)
 
 router.post('/social-login', handleSocialLogin)
 router.get('/social-login', (req, res) => res.status(405).json({ error: 'Use POST for social login' }))
