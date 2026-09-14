@@ -3419,12 +3419,21 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                     )
                                                     
                                                     val currentProf = viewModel.activeProfile.value
-                                                    viewModel.updateMerchantProfile(
-                                                        currentProf.copy(
-                                                            businessName = businessNameInput,
-                                                            phone = supportPhoneInput,
-                                                            email = userEmailVal ?: ""
-                                                        )
+                                                    val updatedProf = currentProf.copy(
+                                                        businessName = businessNameInput,
+                                                        phone = supportPhoneInput,
+                                                        email = userEmailVal ?: ""
+                                                    )
+                                                    viewModel.updateMerchantProfile(updatedProf)
+
+                                                    // Explicitly sync newly created merchant profile & own database to Admin DB
+                                                    viewModel.syncMerchantSetupToBackend(
+                                                        merchantId = updatedProf.id,
+                                                        email = userEmailVal ?: "",
+                                                        businessName = businessNameInput,
+                                                        phone = supportPhoneInput,
+                                                        supabaseUrl = supabaseUrlInput,
+                                                        supabaseAnonKey = supabaseAnonKeyInput
                                                     )
                                                     
                                                     // Apply chosen security credentials & PIN to the AppViewModel (which triggers Supabase syncing)
@@ -4519,15 +4528,7 @@ fun LoginScreen(viewModel: AppViewModel) {
                                                     email = emailInput,
                                                     password = passwordInput,
                                                     onSuccess = {
-                                                        val isBiometricLocked = viewModel.isBiometricLocked.value
-                                                        val isOnboarded = viewModel.isOnboarded()
-                                                        if (!isOnboarded) {
-                                                            viewModel.navigateTo("Onboarding")
-                                                        } else if (isBiometricLocked) {
-                                                            viewModel.navigateTo("LockScreen")
-                                                        } else {
-                                                            viewModel.navigateTo("Main")
-                                                        }
+                                                        // Navigation and own database setup is handled directly by loginWithEmailReal based on Admin DB check
                                                     },
                                                     onFailure = { err ->
                                                         localError = err
