@@ -797,7 +797,7 @@ private fun SimSettingsTab(
                         value = throttleDelaySlider,
                         onValueChange = {
                             throttleDelaySlider = it
-                            viewModel.smsThrottleDelayMs.value = (it * 1000).toLong()
+                            viewModel.setSmsThrottleDelay((it * 1000).toLong())
                         },
                         valueRange = 1.0f..5.0f,
                         steps = 8,

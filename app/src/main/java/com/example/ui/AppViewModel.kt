@@ -5283,7 +5283,12 @@ function executePayment() {
             val minAmount = autoDueMinAmount.value
             val qualified = debtors.filter { it.currentBalance >= minAmount }
             if (qualified.isEmpty()) {
-                onResult(0, "ন্যূনতম ৳${minAmount.toInt()} বাকি থাকা কোনো কাস্টমার পাওয়া যায়নি।")
+                val isBangla = language.value == "Bangla"
+                val msg = if (isBangla)
+                    "ন্যূনতম ৳${minAmount.toInt()} বাকি থাকা কোনো কাস্টমার পাওয়া যায়নি।"
+                else
+                    "No customers found with due ≥ ৳${minAmount.toInt()}."
+                onResult(0, msg)
                 return@launch
             }
             sendDueReminderSms(qualified.map { it.id }.toSet(), null, onResult)

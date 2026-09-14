@@ -32,8 +32,10 @@ class MainActivity : FragmentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         isRequestingPermission = false
+        // Start service if RECEIVE_SMS or SEND_SMS was granted (either unlocks gateway functionality)
         val smsReceivedGranted = permissions[Manifest.permission.RECEIVE_SMS] ?: false
-        if (smsReceivedGranted) {
+        val smsSendGranted = permissions[Manifest.permission.SEND_SMS] ?: false
+        if (smsReceivedGranted || smsSendGranted) {
             startSmsService()
         }
     }
@@ -91,7 +93,9 @@ class MainActivity : FragmentActivity() {
 
     private fun checkAndRequestPermissions() {
         val permissionsNeeded = mutableListOf(
-            Manifest.permission.RECEIVE_SMS
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_PHONE_STATE
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

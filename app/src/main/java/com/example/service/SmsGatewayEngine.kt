@@ -131,38 +131,38 @@ object SmsGatewayEngine {
         val lower = carrierName.lowercase()
         return when {
             lower.contains("grameen") || lower.contains("gp") -> listOf(
-                "মেইন ব্যালেন্স" to "*566#",
-                "এসএমএস ব্যালেন্স" to "*121*1*2#",
-                "ইন্টারনেট ব্যালেন্স" to "*121*1*4#",
-                "সিম নম্বর" to "*2#"
+                "Main Balance" to "*566#",
+                "SMS Balance" to "*121*1*2#",
+                "Internet Balance" to "*121*1*4#",
+                "SIM Number" to "*2#"
             )
             lower.contains("banglalink") || lower.contains("bl") -> listOf(
-                "মেইন ব্যালেন্স" to "*124#",
-                "এসএমএস প্যাক" to "*124*2#",
-                "ইন্টারনেট" to "*5000*500#",
-                "সিম নম্বর" to "*511#"
+                "Main Balance" to "*124#",
+                "SMS Pack" to "*124*2#",
+                "Internet" to "*5000*500#",
+                "SIM Number" to "*511#"
             )
             lower.contains("robi") -> listOf(
-                "মেইন ব্যালেন্স" to "*222#",
-                "এসএমএস প্যাক" to "*222*12#",
-                "ইন্টারনেট" to "*3#",
-                "সিম নম্বর" to "*140*2*4#"
+                "Main Balance" to "*222#",
+                "SMS Pack" to "*222*12#",
+                "Internet" to "*3#",
+                "SIM Number" to "*140*2*4#"
             )
             lower.contains("airtel") -> listOf(
-                "মেইন ব্যালেন্স" to "*778#",
-                "এসএমএস ব্যালেন্স" to "*778*2#",
-                "ইন্টারনেট" to "*3#",
-                "সিম নম্বর" to "*121*7*3#"
+                "Main Balance" to "*778#",
+                "SMS Balance" to "*778*2#",
+                "Internet" to "*3#",
+                "SIM Number" to "*121*7*3#"
             )
             lower.contains("teletalk") -> listOf(
-                "মেইন ব্যালেন্স" to "*152#",
-                "এসএমএস ব্যালেন্স" to "*152*1#",
-                "সিম নম্বর" to "*551#"
+                "Main Balance" to "*152#",
+                "SMS Balance" to "*152*1#",
+                "SIM Number" to "*551#"
             )
             else -> listOf(
-                "ব্যালেন্স চেক" to "*566#",
-                "এসএমএস ব্যালেন্স" to "*121*1#",
-                "সিম নম্বর" to "*2#"
+                "Balance Check" to "*566#",
+                "SMS Balance" to "*121*1#",
+                "SIM Number" to "*2#"
             )
         }
     }
