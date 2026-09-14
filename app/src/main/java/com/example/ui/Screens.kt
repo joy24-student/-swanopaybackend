@@ -2013,9 +2013,6 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     }
 
     val userEmailVal by viewModel.userEmail.collectAsState()
-    var adminEmailInput by remember { mutableStateOf(userEmailVal ?: "") }
-    var adminPasswordInput by remember { mutableStateOf("") }
-    var isRegisterMode by remember { mutableStateOf(true) }
     var businessNameInput by remember { mutableStateOf("") }
     var supportPhoneInput by remember { mutableStateOf("") }
     
@@ -2042,12 +2039,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     SideEffect { isDarkModeGlobal = isDarkMode }
     val language by viewModel.language.collectAsState()
     val isBangla = language == "Bangla"
-    
-    // ── Privacy Policy & Terms Consent State ──
-    var showPrivacyDialog by remember { mutableStateOf(false) }
-    var hasAcceptedPrivacyPolicy by rememberSaveable { mutableStateOf(false) }
 
-    // ── TTS Voice Guidance Engine ──
+    // ── TTS Voice Guidance Engine (Natural Human Cadence & Accurate Phonetics) ──
     var isTtsMuted by rememberSaveable { mutableStateOf(false) }
     var ttsEngine by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
     var isTtsReady by remember { mutableStateOf(false) }
@@ -2056,6 +2049,9 @@ fun OnboardingScreen(viewModel: AppViewModel) {
         var engine: android.speech.tts.TextToSpeech? = null
         engine = android.speech.tts.TextToSpeech(context) { status ->
             if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                // Natural speaking cadence (0.87f prevents robotic rushing)
+                engine?.setSpeechRate(0.87f)
+                engine?.setPitch(1.0f)
                 isTtsReady = true
             }
         }
@@ -2067,8 +2063,11 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     }
 
     val speakText: (String) -> Unit = { text ->
-        if (!isTtsMuted && ttsEngine != null && isTtsReady) {
+        if (!isTtsMuted && ttsEngine != null && isTtsReady && text.isNotBlank()) {
             try {
+                ttsEngine?.setSpeechRate(0.87f)
+                ttsEngine?.setPitch(1.0f)
+
                 if (isBangla) {
                     val bn = java.util.Locale("bn", "BD")
                     val res = ttsEngine?.setLanguage(bn)
@@ -2089,6 +2088,27 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                         ttsEngine?.setLanguage(java.util.Locale.getDefault())
                     }
                 }
+
+                // Choose high-quality natural voice without latency
+                try {
+                    val voices = ttsEngine?.voices
+                    if (!voices.isNullOrEmpty()) {
+                        val targetLang = if (isBangla) "bn" else "en"
+                        val bestVoice = voices.firstOrNull { v ->
+                            v.locale.language == targetLang &&
+                            !v.isNetworkConnectionRequired &&
+                            v.quality >= android.speech.tts.Voice.QUALITY_HIGH
+                        } ?: voices.firstOrNull { v ->
+                            v.locale.language == targetLang && !v.isNetworkConnectionRequired
+                        } ?: voices.firstOrNull { v ->
+                            v.locale.language == targetLang
+                        }
+                        if (bestVoice != null) {
+                            ttsEngine?.voice = bestVoice
+                        }
+                    }
+                } catch (_: Exception) {}
+
                 ttsEngine?.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "onboarding_step_$currentStep")
             } catch (e: Exception) {
                 android.util.Log.w("OnboardingScreen", "TTS speak failed: ${e.message}")
@@ -2101,52 +2121,47 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     val getStepVoiceScript: (Int) -> String = { step ->
         when (step) {
             0 -> if (isBangla) {
-                "স্বপ্নপে টার্মিনালে আপনাকে স্বাগতম। এই অনবোর্ডিং প্রক্রিয়ার মাধ্যমে আপনি আপনার নিজস্ব সুপাবেস ডাটাবেস সংযুক্ত করবেন, অ্যাডমিন লগইন ও সিকিউরিটি পিন সেট করবেন এবং অফলাইন পেমেন্ট যাচাই সক্রিয় করবেন। শুরু করতে পরবর্তী ধাপ চাপুন।"
+                "স্বপ্নপে-তে আপনাকে স্বাগতম। মাত্র কয়েকটি সহজ ধাপে আপনার নিজস্ব ডাটাবেস যুক্ত করুন, পিন কোড সেট করুন এবং স্বয়ংক্রিয় পেমেন্ট ভেরিফিকেশন চালু করুন। শুরু করতে পরবর্তী ধাপে যান।"
             } else {
-                "Welcome to SwapnoPay Terminal. Through this onboarding process, you will link your private Supabase database, configure admin credentials and security PIN, and activate automated payment verification. Tap Next to begin."
+                "Welcome to SwapnoPay. In just a few simple steps, connect your private database, set your security PIN, and activate automated payment verification. Tap Next to continue."
             }
             1 -> {
                 if (oauthStepStateVal == com.example.ui.AppViewModel.OAuthStep.COMPLETE) {
                     if (isBangla) {
-                        "অভিনন্দন! আপনার সুপাবেস ডাটাবেস সফলভাবে সংযুক্ত হয়েছে। মনে রাখবেন, আপনার ডাটা সম্পূর্ণ আপনার নিয়ন্ত্রণে। আপনি চাইলে যেকোনো সময় আপনার সুপাবেস ড্যাশবোর্ডের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপস অপশনে গিয়ে স্বপ্নপে ব্যাকএন্ডের সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেস পাসওয়ার্ড পরিবর্তন করতে পারেন। পরবর্তী ধাপে যেতে নেক্সট চাপুন।"
+                        "অভিনন্দন! আপনার ডাটাবেস সফলভাবে যুক্ত হয়েছে। আপনার তথ্যের সম্পূর্ণ নিয়ন্ত্রণ আপনার হাতে। আপনি চাইলে যেকোনো সময় সুপাবেস কন্ট্রোল প্যানেলের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপসে গিয়ে স্বপ্নপে সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেসের পাসওয়ার্ড পরিবর্তন করতে পারেন। পরবর্তী ধাপে যেতে নেক্সট চাপুন।"
                     } else {
-                        "Congratulations! Your Supabase database is connected successfully. Remember, you have full sovereignty over your data. You can disconnect SwapnoPay backend access at any time by navigating to your Supabase Dashboard, opening Project Settings, and revoking SwapnoPay under Authorized Apps, or by resetting your database password. Tap Next to proceed."
+                        "Congratulations! Your database is connected. You have full ownership of your data. You can disconnect SwapnoPay access at any time from your Supabase Project Settings under Authorized Apps, or by changing your database password. Tap Next to continue."
                     }
                 } else {
                     if (isBangla) {
-                        "ধাপ ১: ডাটাবেস সংযোগ। স্বপ্নপে একটি সম্পূর্ণ স্বাধীন ও গোপনীয় প্ল্যাটফর্ম। এখানে আপনার কাস্টমার ও লেনদেনের ডাটা সুরক্ষিত রাখতে আপনার নিজস্ব সুপাবেস অ্যাকাউন্ট কানেক্ট করুন। নিচে কানেক্ট উইথ সুপাবেস বাটনে চাপুন।"
+                        "ধাপ এক: ডাটাবেস সংযোগ। আপনার ব্যবসার লেনদেন সম্পূর্ণ গোপনীয় রাখতে আপনার নিজস্ব ক্লাউড ডাটাবেস যুক্ত করুন। নিচের বাটনে চাপ দিন।"
                     } else {
-                        "Step 1: Database Setup. SwapnoPay is a private and serverless platform. To ensure customer and transaction data remain confidential to your business, connect your own Supabase account. Tap Connect with Supabase below."
+                        "Step one: Database setup. To ensure your business transactions remain completely confidential, connect your private cloud database. Tap the connect button below."
                     }
                 }
             }
             2 -> if (isBangla) {
-                "ধাপ ২: অ্যাডমিন অ্যাকাউন্ট সেটআপ। আপনার টার্মিনাল ড্যাশবোর্ড সুরক্ষিত রাখতে একটি অ্যাডমিন ইমেল এবং শক্তিশালী পাসওয়ার্ড দিন। এগিয়ে যাওয়ার পূর্বে আমাদের গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলী পর্যালোচনা করুন।"
+                "ধাপ দুই: নিরাপত্তা লক। আপনার অ্যাপ দ্রুত ও নিরাপদে আনলক করতে একটি চার সংখ্যার পিন কোড সেট করুন। আপনি চাইলে আঙুলের ছাপ দিয়ে আনলক সুবিধা চালু রাখতে পারেন।"
             } else {
-                "Step 2: Admin Account Setup. Enter your administrator email and a strong password to protect your terminal dashboard. Please review our privacy policy and terms to proceed."
+                "Step two: Security lock. Set a four digit PIN to secure your app, and optionally turn on fingerprint unlock for fast access."
             }
             3 -> if (isBangla) {
-                "ধাপ ৩: লোকাল সিকিউরিটি লক। আপনার টার্মিনাল দ্রুত লক ও আনলক করতে একটি ৪ ডিজিটের পিন কোড সেট করুন এবং আপনার ডিভাইসের বায়োমেট্রিক ফিঙ্গারপ্রিন্ট আনলক সক্রিয় রাখুন।"
+                "ধাপ তিন: দোকানের পরিচিতি। ডিজিটাল রসিদ ও স্ক্রিনে দেখানোর জন্য আপনার দোকান বা প্রতিষ্ঠানের নাম এবং হেল্পলাইন নম্বর লিখুন।"
             } else {
-                "Step 3: Local Security Lock. Set up a 4-digit PIN code for quick lock screen access, and optionally enable biometric fingerprint unlock."
+                "Step three: Store identity. Enter your store name and customer helpline number to display on digital invoices."
             }
-            4 -> if (isBangla) {
-                "ধাপ ৪: দোকানের পরিচিতি ও ব্র্যান্ডিং। আপনার ডিজিটাল ইনভয়েস এবং পেমেন্ট স্ক্রিনে প্রদর্শনের জন্য আপনার দোকান বা প্রতিষ্ঠানের নাম এবং হেল্পলাইন মোবাইল নম্বর প্রবেশ করান।"
-            } else {
-                "Step 4: Store Identity and Branding. Enter your store or business name and customer support phone number to display on digital invoices and terminal screens."
-            }
-            5 -> {
+            4 -> {
                 if (diagnosticsCompleted) {
                     if (isBangla) {
-                        "অভিনন্দন! আপনার স্বপ্নপে টার্মিনাল সফলভাবে কনফিগার ও প্রস্তুত হয়েছে। টার্মিনালে প্রবেশ করতে নিচে লঞ্চ বাটনে চাপুন।"
+                        "অভিনন্দন! সংযোগ সফলভাবে সম্পন্ন হয়েছে। আপনাকে ড্যাশবোর্ডে নিয়ে যাওয়া হচ্ছে।"
                     } else {
-                        "Congratulations! Your SwapnoPay terminal is fully configured and ready. Tap Launch Terminal below to enter."
+                        "Congratulations! Handshake successful. Taking you to your dashboard now."
                     }
                 } else {
                     if (isBangla) {
-                        "ধাপ ৫: টার্মিনাল কোর সক্রিয়করণ। লোকাল এসএমএস লিসেনার এবং সুপাবেস ডাটাবেসের সংযোগ যাচাই করতে নিচের অ্যাক্টিভেশন বাটনে চাপুন।"
+                        "ধাপ চার: সংযোগ সক্রিয়করণ। মেসেজ লিসেনারের সাথে আপনার ডাটাবেস সংযোগ যাচাই করতে নিচের ক্লাউড বাটনে চাপ দিন।"
                     } else {
-                        "Step 5: Terminal Core Activation. Tap the activation button below to verify connectivity between your local SMS listener and your private database."
+                        "Step four: System activation. Tap the cloud button below to verify connectivity between the local message listener and your database."
                     }
                 }
             }
@@ -2160,9 +2175,9 @@ fun OnboardingScreen(viewModel: AppViewModel) {
 
     val speakDisconnectionGuide: () -> Unit = {
         val script = if (isBangla) {
-            "স্বপ্নপে ডাটাবেস সংযোগ বিচ্ছিন্ন নির্দেশিকা। আপনার ডাটা সম্পূর্ণ আপনার নিয়ন্ত্রণে। আপনি চাইলে যেকোনো সময় আপনার সুপাবেস ড্যাশবোর্ডের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপস অপশনে গিয়ে স্বপ্নপে ব্যাকএন্ডের সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেস পাসওয়ার্ড পরিবর্তন করতে পারেন।"
+            "স্বপ্নপে সংযোগ বিচ্ছিন্ন নির্দেশিকা। আপনার তথ্যের সম্পূর্ণ নিয়ন্ত্রণ আপনার হাতে। আপনি চাইলে যেকোনো সময় সুপাবেস কন্ট্রোল প্যানেলের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপসে গিয়ে স্বপ্নপে সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেসের পাসওয়ার্ড পরিবর্তন করতে পারেন।"
         } else {
-            "SwapnoPay Disconnect Guidance. You have full ownership of your data. You can disconnect SwapnoPay backend access at any time by going to your Supabase Dashboard under Project Settings, Authorized Apps to revoke access, or by changing your database password."
+            "SwapnoPay Disconnect Guidance. You have full ownership of your data. You can disconnect SwapnoPay access at any time by going to your Supabase Project Settings under Authorized Apps to revoke access, or by changing your database password."
         }
         speakText(script)
     }
@@ -2216,13 +2231,12 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     )
     
     val bubbleText = when (currentStep) {
-        0 -> if (isBangla) "স্বপ্নপে টার্মিনালে আপনাকে স্বাগতম। আপনার নিজস্ব ডাটাবেস কোর লিঙ্ক করতে, ক্রেডেনশিয়াল সুরক্ষিত করতে এবং অফলাইনে বিকাশ ও নগদ পেমেন্ট যাচাই শুরু করতে এই ৬টি সহজ পদক্ষেপ অনুসরণ করুন।" else "Welcome to the SwapnoPay Terminal. Follow these 6 quick steps to link your private database core, secure your credentials, and start auto-verifying bKash & Nagad payments completely offline."
-        1 -> if (isBangla) "আপনার নিজস্ব ডাটাবেস সংযুক্ত করুন। আপনার নিজস্ব সুপাবেস ক্রেডেনশিয়াল ব্যবহার করে গ্রাহকদের লেনদেনের তথ্য আপনার ব্যবসার সম্পূর্ণ গোপনীয়তায় সুরক্ষিত থাকে।" else "Connect your private database. By plugging in your own Supabase credentials, your customer transaction logs are kept entirely confidential and private to your business."
-        2 -> if (isBangla) "অ্যাডমিন অ্যাকাউন্টের বিবরণ সেট আপ করুন। অননুমোদিত স্থানীয় পরিবর্তন রোধ করতে একটি অ্যাডমিন ইমেল এবং শক্তিশালী পাসওয়ার্ড চয়ন করুন।" else "Set up your admin account credentials. Choose an administrator email and a strong password to protect your terminal dashboard against unauthorized local configuration changes."
-        3 -> if (isBangla) "স্থানীয় অ্যাক্সেস নিরাপত্তা কনফিগার করুন। দ্রুত স্ক্রিন লকের জন্য ৪-ডিজিটের নিরাপত্তা পিন সেট করুন এবং ফিঙ্গারপ্রিন্ট আনলক সক্রিয় করতে চান কিনা তা নির্ধারণ করুন।" else "Configure local access security. Choose a 4-digit PIN for fast lock screen access, and decide whether to enable fast biometric fingerprint unlock."
-        4 -> if (isBangla) "আপনার টার্মিনালকে সাজান। ডিজিটাল ইনভয়েস এবং স্ক্রিনে দেখানোর জন্য আপনার দোকান বা প্রতিষ্ঠানের নাম এবং হেল্পলাইন নম্বর যোগ করুন।" else "Brand your terminal storefront. Customize your terminal with your official shop name and merchant helpline number to display on digital invoices and screens."
-        5 -> if (isBangla) "টার্মিনাল কোর সক্রিয় করুন। নিজস্ব ভেরিফিকেশন ডাটাবেসের সাথে লোকাল এসএমএস লিসেনার কানেক্ট করতে নিচে ক্লিক করে হ্যান্ডশেক করুন।" else "Finalize terminal core activation. Tap below to run the handshake protocol to connect the local SMS listener engine with your private verification database."
-        else -> if (isBangla) "সিস্টেম প্রস্তুত এবং স্বয়ংক্রিয়। আপনার স্মার্টপে মার্চেন্ট ভেরিফিকেশন নোডটি চালু আছে এবং বিকাশ ও নগদের পেমেন্ট সুরক্ষিতভাবে পর্যবেক্ষণ করছে।" else "System ready and automated. Your SmartPay merchant verification node is online, active, and securely monitoring bKash/Nagad payments."
+        0 -> if (isBangla) "স্বপ্নপে টার্মিনালে আপনাকে স্বাগতম। আপনার নিজস্ব ডাটাবেস লিঙ্ক করতে, পিন লক সেট করতে এবং স্বয়ংক্রিয় পেমেন্ট ভেরিফিকেশন শুরু করতে এই ৫টি সহজ ধাপ সম্পন্ন করুন।" else "Welcome to SwapnoPay Terminal. Follow these 5 quick steps to link your private database, configure security PIN, and start auto-verifying payments."
+        1 -> if (isBangla) "আপনার নিজস্ব ডাটাবেস সংযুক্ত করুন। আপনার সুপাবেস ক্রেডেনশিয়াল ব্যবহার করায় গ্রাহক ও লেনদেনের সমস্ত তথ্য আপনার নিজস্ব ক্লাউডে ১০০% সুরক্ষিত থাকে।" else "Connect your private database. By connecting your own Supabase credentials, your customer transaction logs are kept entirely confidential and private to your business."
+        2 -> if (isBangla) "স্থানীয় অ্যাক্সেস নিরাপত্তা কনফিগার করুন। দ্রুত স্ক্রিন লকের জন্য ৪-ডিজিটের নিরাপত্তা পিন সেট করুন এবং ফিঙ্গারপ্রিন্ট আনলক সক্রিয় রাখুন।" else "Configure local access security. Choose a 4-digit PIN for fast lock screen access, and decide whether to enable biometric fingerprint unlock."
+        3 -> if (isBangla) "আপনার টার্মিনালকে সাজান। ডিজিটাল ইনভয়েস এবং স্ক্রিনে দেখানোর জন্য আপনার দোকান বা প্রতিষ্ঠানের নাম এবং হেল্পলাইন নম্বর যোগ করুন।" else "Brand your terminal storefront. Customize your terminal with your official shop name and merchant helpline number to display on digital invoices and screens."
+        4 -> if (isBangla) "টার্মিনাল কোর সক্রিয় করুন। নিজস্ব ভেরিফিকেশন ডাটাবেসের সাথে লোকাল মেসেজ লিসেনার কানেক্ট করতে নিচে ক্লিক করে হ্যান্ডশেক সম্পন্ন করুন।" else "Finalize terminal core activation. Tap below to run the handshake protocol to connect the local SMS listener engine with your private verification database."
+        else -> if (isBangla) "সিস্টেম প্রস্তুত এবং স্বয়ংক্রিয়। আপনার মার্চেন্ট ভেরিফিকেশন চালু আছে এবং বিকাশ ও নগদের পেমেন্ট পর্যবেক্ষণ করছে।" else "System ready and automated. Your merchant verification node is online, active, and securely monitoring payments."
     }
 
     val glowAlphaTop = if (isDarkMode) 0.18f else 0.08f
@@ -2339,7 +2353,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             .background(AppCardBorderColor, CircleShape)
                     ) {
                         val animatedProgress by animateFloatAsState(
-                            targetValue = (currentStep + 1) / 6f,
+                            targetValue = (currentStep + 1) / 5f,
                             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow)
                         )
                         Box(
@@ -2358,7 +2372,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "0${currentStep + 1} / 06",
+                            text = "0${currentStep + 1} / 05",
                             color = AppTextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -2431,24 +2445,19 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                 if (isBangla) "সুরক্ষিত নিজস্ব ডাটাবেস" else "Secure Private Database"
                             )
                             2 -> Triple(
-                                Icons.Default.Security,
-                                if (isBangla) "অ্যাক্সেস কী" else "ACCESS KEY",
-                                if (isBangla) "মার্চেন্ট ক্রেডেনশিয়াল" else "Merchant Credentials"
-                            )
-                            3 -> Triple(
                                 Icons.Default.Lock,
                                 if (isBangla) "লক ও নিরাপত্তা" else "LOCK & PRIVACY",
                                 if (isBangla) "লোকাল সিকিউরিটি শিল্ড" else "Local Security Shield"
                             )
-                            4 -> Triple(
+                            3 -> Triple(
                                 Icons.Default.Storefront,
                                 if (isBangla) "ব্র্যান্ডিং" else "BRANDING",
                                 if (isBangla) "দোকানের পরিচিতি ও সাপোর্ট" else "Shop Identity & Support"
                             )
-                            5 -> Triple(
+                            4 -> Triple(
                                 Icons.Default.PlayArrow,
                                 if (isBangla) "ডায়াগনস্টিকস" else "DIAGNOSTICS",
-                                if (isBangla) "এসএমএস কোর ইঞ্জিন চালু করুন" else "Activate SMS Core Engine"
+                                if (isBangla) "মেসেজ কোর ইঞ্জিন চালু করুন" else "Activate SMS Core Engine"
                             )
                             else -> Triple(
                                 Icons.Default.CheckCircle,
@@ -3117,165 +3126,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                         }
 
                         2 -> {
-                            // Step 2: Auth Login/Register credentials
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                // Mode Toggle Switch Pill
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(AppCardBorderColor, RoundedCornerShape(16.dp))
-                                        .padding(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .background(
-                                                if (isRegisterMode) BrandPurple else Color.Transparent,
-                                                RoundedCornerShape(12.dp)
-                                            )
-                                            .clickable { isRegisterMode = true }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Create Admin Account",
-                                            color = if (isRegisterMode) Color.White else AppTextSecondary,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .background(
-                                                if (!isRegisterMode) BrandPurple else Color.Transparent,
-                                                RoundedCornerShape(12.dp)
-                                            )
-                                            .clickable { isRegisterMode = false }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Sign In",
-                                            color = if (!isRegisterMode) Color.White else AppTextSecondary,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                OutlinedTextField(
-                                    value = adminEmailInput,
-                                    onValueChange = { adminEmailInput = it },
-                                    label = { Text("Admin Email Address", color = AppTextSecondary) },
-                                    placeholder = { Text("e.g. owner@myshop.com", color = AppTextSecondary.copy(alpha = 0.5f)) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = BrandPurple,
-                                        unfocusedBorderColor = AppCardBorderColor,
-                                        focusedLabelColor = BrandPurple,
-                                        unfocusedLabelColor = AppTextSecondary,
-                                        focusedTextColor = AppTextPrimary,
-                                        unfocusedTextColor = AppTextPrimary,
-                                        focusedContainerColor = AppCardBg,
-                                        unfocusedContainerColor = AppCardBg
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-
-                                OutlinedTextField(
-                                    value = adminPasswordInput,
-                                    onValueChange = { adminPasswordInput = it },
-                                    label = { Text("Console Password", color = AppTextSecondary) },
-                                    placeholder = { Text("At least 6 characters", color = AppTextSecondary.copy(alpha = 0.5f)) },
-                                    singleLine = true,
-                                    visualTransformation = if (isPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                    trailingIcon = {
-                                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                                            Icon(
-                                                imageVector = if (isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                                contentDescription = null,
-                                                tint = AppTextSecondary
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = BrandPurple,
-                                        unfocusedBorderColor = AppCardBorderColor,
-                                        focusedLabelColor = BrandPurple,
-                                        unfocusedLabelColor = AppTextSecondary,
-                                        focusedTextColor = AppTextPrimary,
-                                        unfocusedTextColor = AppTextPrimary,
-                                        focusedContainerColor = AppCardBg,
-                                        unfocusedContainerColor = AppCardBg
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                // Privacy Policy & Terms Link Card
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { showPrivacyDialog = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isDarkMode) Color(0xFF1B1710) else Color(0xFFF8FAFC)
-                                    ),
-                                    border = BorderStroke(1.dp, if (hasAcceptedPrivacyPolicy) SuccessGreen.copy(alpha = 0.5f) else (if (isDarkMode) Color(0xFF3B2F18) else Color(0xFFE2E8F0)))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Security,
-                                            contentDescription = null,
-                                            tint = if (hasAcceptedPrivacyPolicy) SuccessGreen else (if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706)),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = if (isBangla) "গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলী" else "Privacy Policy & Terms of Service",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                            )
-                                            Text(
-                                                text = if (hasAcceptedPrivacyPolicy) {
-                                                    if (isBangla) "✓ শর্তাবলীতে সম্মতি প্রদান করা হয়েছে" else "✓ Privacy policy and terms accepted"
-                                                } else {
-                                                    if (isBangla) "পরবর্তী ধাপে যেতে শর্তাবলী গ্রহণ আবশ্যক (ক্লিক করুন)" else "Must review & accept to proceed (tap here)"
-                                                },
-                                                fontSize = 10.sp,
-                                                color = if (hasAcceptedPrivacyPolicy) SuccessGreen else AppTextSecondary
-                                            )
-                                        }
-                                        Icon(
-                                            imageVector = if (hasAcceptedPrivacyPolicy) Icons.Default.CheckCircle else Icons.Default.ChevronRight,
-                                            contentDescription = null,
-                                            tint = if (hasAcceptedPrivacyPolicy) SuccessGreen else AppTextSecondary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                            }
-                        }
-
-                        3 -> {
-                            // Step 3: PIN Setup & Biometric Lock Configuration (Realtime biometric & pin setup)
+                            // Step 2: PIN Setup & Biometric Lock Configuration (Realtime biometric & pin setup)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -3430,8 +3281,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             }
                         }
 
-                        4 -> {
-                            // Step 4: Business setup and live signboard preview
+                        3 -> {
+                            // Step 3: Business setup and live signboard preview
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -3535,8 +3386,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             }
                         }
 
-                        5 -> {
-                            // Step 5: Handshake diagnostics activation
+                        4 -> {
+                            // Step 4: Handshake diagnostics activation
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth(),
@@ -3572,7 +3423,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                         currentProf.copy(
                                                             businessName = businessNameInput,
                                                             phone = supportPhoneInput,
-                                                            email = adminEmailInput
+                                                            email = userEmailVal ?: ""
                                                         )
                                                     )
                                                     
@@ -3581,21 +3432,21 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                         viewModel.updatePin(onboardingPin)
                                                     }
                                                     viewModel.setBiometricLock(onboardingBiometricEnabled)
-                                                    viewModel.authenticateConnectedSupabase(
-                                                        email = adminEmailInput,
-                                                        password = adminPasswordInput,
-                                                        register = isRegisterMode,
-                                                        onSuccess = {
-                                                            viewModel.setOnboarded(true)
-                                                            diagnosticsCompleted = true
-                                                            diagnosticsRunning = false
-                                                        },
-                                                        onFailure = { error ->
-                                                            diagnosticsCompleted = false
-                                                            diagnosticsRunning = false
-                                                            viewModel.logFirebaseStatus("Onboarding authentication failed: $error")
-                                                        }
+                                                    viewModel.setOnboarded(true)
+                                                    diagnosticsCompleted = true
+                                                    diagnosticsRunning = false
+
+                                                    // Speak success announcement
+                                                    speakText(
+                                                        if (isBangla) "অভিনন্দন! সংযোগ সফল হয়েছে। ড্যাশবোর্ডে প্রবেশ করা হচ্ছে।"
+                                                        else "Congratulations! Handshake successful. Entering dashboard now."
                                                     )
+
+                                                    // Auto redirect to dashboard after brief confirmation!
+                                                    scope.launch {
+                                                        kotlinx.coroutines.delay(1600)
+                                                        viewModel.navigateTo("Main")
+                                                    }
                                                 }
                                             },
                                         contentAlignment = Alignment.Center
@@ -3710,10 +3561,9 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                 val isNextEnabled = when (currentStep) {
                     0 -> true
                     1 -> isStep1Valid
-                    2 -> adminEmailInput.contains("@") && adminEmailInput.contains(".") && adminPasswordInput.length >= 6
-                    3 -> onboardingPin.length == 4
-                    4 -> businessNameInput.isNotEmpty() && supportPhoneInput.isNotEmpty()
-                    5 -> diagnosticsCompleted
+                    2 -> onboardingPin.length == 4
+                    3 -> businessNameInput.isNotEmpty() && supportPhoneInput.isNotEmpty()
+                    4 -> diagnosticsCompleted
                     else -> false
                 }
 
@@ -3724,7 +3574,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (currentStep > 0 && currentStep < 5) {
+                    if (currentStep > 0 && currentStep < 4) {
                         // High-end, premium responsive Back/Prev button
                         Box(
                             modifier = Modifier
@@ -3764,7 +3614,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             1 -> listOf(Color(0xFF023E2A), Color(0xFF2D6A4F))
                             2 -> listOf(Color(0xFF1B4332), Color(0xFF40916C))
                             3 -> listOf(Color(0xFF012D1D), Color(0xFF1B4332))
-                            4 -> listOf(Color(0xFF023E2A), Color(0xFF2D6A4F))
+                            4 -> listOf(Color(0xFF10B981), Color(0xFF059669))
                             else -> listOf(Color(0xFF10B981), Color(0xFF059669))
                         }
                     }
@@ -3796,10 +3646,6 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             .alpha(if (isNextEnabled) 1f else 0.5f)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable(enabled = isNextEnabled) {
-                                if (currentStep == 2 && !hasAcceptedPrivacyPolicy) {
-                                    showPrivacyDialog = true
-                                    return@clickable
-                                }
                                 if (currentStep == 1) {
                                     if (supabaseUrlInput.isBlank()) {
                                         supabaseUrlInput = when {
@@ -3818,9 +3664,10 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                         }
                                     }
                                 }
-                                if (currentStep < 5) {
+                                if (currentStep < 4) {
                                     currentStep++
                                 } else {
+                                    viewModel.setOnboarded(true)
                                     viewModel.navigateTo("Main")
                                 }
                             }
@@ -3833,8 +3680,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = if (currentStep == 5) {
-                                    if (isBangla) "টার্মিনাল চালু করুন" else "LAUNCH TERMINAL COMMANDS"
+                                text = if (currentStep == 4) {
+                                    if (isBangla) "টার্মিনাল চালু করুন" else "LAUNCH DASHBOARD"
                                 } else {
                                     if (isBangla) "পরবর্তী ধাপ" else "CONTINUE STEPS"
                                 },
@@ -3845,7 +3692,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(
-                                imageVector = if (currentStep == 5) Icons.Default.Check else Icons.Default.ArrowForward,
+                                imageVector = if (currentStep == 4) Icons.Default.Check else Icons.Default.ArrowForward,
                                 contentDescription = null,
                                 tint = if (isNextEnabled) (if (isDarkMode) Color.Black else Color.White) else (if (isDarkMode) Color.White.copy(alpha = 0.4f) else Color.Black.copy(alpha = 0.4f)),
                                 modifier = Modifier.size(16.dp)
@@ -3855,23 +3702,6 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                 }
             }
         }
-
-        // Privacy Policy Consent Dialog in Onboarding
-        PrivacyPolicyConsentDialog(
-            isOpen = showPrivacyDialog,
-            isDarkMode = isDarkMode,
-            isBangla = isBangla,
-            onAccept = {
-                hasAcceptedPrivacyPolicy = true
-                showPrivacyDialog = false
-                if (currentStep == 2) {
-                    currentStep++
-                }
-            },
-            onDismiss = {
-                showPrivacyDialog = false
-            }
-        )
     }
 }
 
