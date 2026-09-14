@@ -174,6 +174,12 @@ CREATE POLICY "Service Role full access on payment_events"
 CREATE POLICY "Service Role full access on admin_users"
   ON admin_users FOR ALL USING (auth.role() = 'service_role');
 
+CREATE POLICY "Authenticated users can read their own admin record"
+  ON admin_users FOR SELECT
+  TO authenticated
+  USING (id = auth.uid());
+
+
 CREATE POLICY "Service Role full access on webhook_secrets"
   ON webhook_secrets FOR ALL USING (auth.role() = 'service_role');
 
