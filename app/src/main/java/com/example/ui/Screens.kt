@@ -2043,6 +2043,146 @@ fun OnboardingScreen(viewModel: AppViewModel) {
     val language by viewModel.language.collectAsState()
     val isBangla = language == "Bangla"
     
+    // ── Privacy Policy & Terms Consent State ──
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var hasAcceptedPrivacyPolicy by rememberSaveable { mutableStateOf(false) }
+
+    // ── TTS Voice Guidance Engine ──
+    var isTtsMuted by rememberSaveable { mutableStateOf(false) }
+    var ttsEngine by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    var isTtsReady by remember { mutableStateOf(false) }
+
+    DisposableEffect(context) {
+        var engine: android.speech.tts.TextToSpeech? = null
+        engine = android.speech.tts.TextToSpeech(context) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                isTtsReady = true
+            }
+        }
+        ttsEngine = engine
+        onDispose {
+            engine?.stop()
+            engine?.shutdown()
+        }
+    }
+
+    val speakText: (String) -> Unit = { text ->
+        if (!isTtsMuted && ttsEngine != null && isTtsReady) {
+            try {
+                if (isBangla) {
+                    val bn = java.util.Locale("bn", "BD")
+                    val res = ttsEngine?.setLanguage(bn)
+                    if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA ||
+                        res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                        val bnGeneric = java.util.Locale("bn")
+                        val res2 = ttsEngine?.setLanguage(bnGeneric)
+                        if (res2 == android.speech.tts.TextToSpeech.LANG_MISSING_DATA ||
+                            res2 == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                            ttsEngine?.setLanguage(java.util.Locale.getDefault())
+                        }
+                    }
+                } else {
+                    val us = java.util.Locale.US
+                    val res = ttsEngine?.setLanguage(us)
+                    if (res == android.speech.tts.TextToSpeech.LANG_MISSING_DATA ||
+                        res == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+                        ttsEngine?.setLanguage(java.util.Locale.getDefault())
+                    }
+                }
+                ttsEngine?.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "onboarding_step_$currentStep")
+            } catch (e: Exception) {
+                android.util.Log.w("OnboardingScreen", "TTS speak failed: ${e.message}")
+            }
+        }
+    }
+
+    val oauthStepStateVal by viewModel.oauthStep.collectAsState()
+
+    val getStepVoiceScript: (Int) -> String = { step ->
+        when (step) {
+            0 -> if (isBangla) {
+                "স্বপ্নপে টার্মিনালে আপনাকে স্বাগতম। এই অনবোর্ডিং প্রক্রিয়ার মাধ্যমে আপনি আপনার নিজস্ব সুপাবেস ডাটাবেস সংযুক্ত করবেন, অ্যাডমিন লগইন ও সিকিউরিটি পিন সেট করবেন এবং অফলাইন পেমেন্ট যাচাই সক্রিয় করবেন। শুরু করতে পরবর্তী ধাপ চাপুন।"
+            } else {
+                "Welcome to SwapnoPay Terminal. Through this onboarding process, you will link your private Supabase database, configure admin credentials and security PIN, and activate automated payment verification. Tap Next to begin."
+            }
+            1 -> {
+                if (oauthStepStateVal == com.example.ui.AppViewModel.OAuthStep.COMPLETE) {
+                    if (isBangla) {
+                        "অভিনন্দন! আপনার সুপাবেস ডাটাবেস সফলভাবে সংযুক্ত হয়েছে। মনে রাখবেন, আপনার ডাটা সম্পূর্ণ আপনার নিয়ন্ত্রণে। আপনি চাইলে যেকোনো সময় আপনার সুপাবেস ড্যাশবোর্ডের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপস অপশনে গিয়ে স্বপ্নপে ব্যাকএন্ডের সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেস পাসওয়ার্ড পরিবর্তন করতে পারেন। পরবর্তী ধাপে যেতে নেক্সট চাপুন।"
+                    } else {
+                        "Congratulations! Your Supabase database is connected successfully. Remember, you have full sovereignty over your data. You can disconnect SwapnoPay backend access at any time by navigating to your Supabase Dashboard, opening Project Settings, and revoking SwapnoPay under Authorized Apps, or by resetting your database password. Tap Next to proceed."
+                    }
+                } else {
+                    if (isBangla) {
+                        "ধাপ ১: ডাটাবেস সংযোগ। স্বপ্নপে একটি সম্পূর্ণ স্বাধীন ও গোপনীয় প্ল্যাটফর্ম। এখানে আপনার কাস্টমার ও লেনদেনের ডাটা সুরক্ষিত রাখতে আপনার নিজস্ব সুপাবেস অ্যাকাউন্ট কানেক্ট করুন। নিচে কানেক্ট উইথ সুপাবেস বাটনে চাপুন।"
+                    } else {
+                        "Step 1: Database Setup. SwapnoPay is a private and serverless platform. To ensure customer and transaction data remain confidential to your business, connect your own Supabase account. Tap Connect with Supabase below."
+                    }
+                }
+            }
+            2 -> if (isBangla) {
+                "ধাপ ২: অ্যাডমিন অ্যাকাউন্ট সেটআপ। আপনার টার্মিনাল ড্যাশবোর্ড সুরক্ষিত রাখতে একটি অ্যাডমিন ইমেল এবং শক্তিশালী পাসওয়ার্ড দিন। এগিয়ে যাওয়ার পূর্বে আমাদের গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলী পর্যালোচনা করুন।"
+            } else {
+                "Step 2: Admin Account Setup. Enter your administrator email and a strong password to protect your terminal dashboard. Please review our privacy policy and terms to proceed."
+            }
+            3 -> if (isBangla) {
+                "ধাপ ৩: লোকাল সিকিউরিটি লক। আপনার টার্মিনাল দ্রুত লক ও আনলক করতে একটি ৪ ডিজিটের পিন কোড সেট করুন এবং আপনার ডিভাইসের বায়োমেট্রিক ফিঙ্গারপ্রিন্ট আনলক সক্রিয় রাখুন।"
+            } else {
+                "Step 3: Local Security Lock. Set up a 4-digit PIN code for quick lock screen access, and optionally enable biometric fingerprint unlock."
+            }
+            4 -> if (isBangla) {
+                "ধাপ ৪: দোকানের পরিচিতি ও ব্র্যান্ডিং। আপনার ডিজিটাল ইনভয়েস এবং পেমেন্ট স্ক্রিনে প্রদর্শনের জন্য আপনার দোকান বা প্রতিষ্ঠানের নাম এবং হেল্পলাইন মোবাইল নম্বর প্রবেশ করান।"
+            } else {
+                "Step 4: Store Identity and Branding. Enter your store or business name and customer support phone number to display on digital invoices and terminal screens."
+            }
+            5 -> {
+                if (diagnosticsCompleted) {
+                    if (isBangla) {
+                        "অভিনন্দন! আপনার স্বপ্নপে টার্মিনাল সফলভাবে কনফিগার ও প্রস্তুত হয়েছে। টার্মিনালে প্রবেশ করতে নিচে লঞ্চ বাটনে চাপুন।"
+                    } else {
+                        "Congratulations! Your SwapnoPay terminal is fully configured and ready. Tap Launch Terminal below to enter."
+                    }
+                } else {
+                    if (isBangla) {
+                        "ধাপ ৫: টার্মিনাল কোর সক্রিয়করণ। লোকাল এসএমএস লিসেনার এবং সুপাবেস ডাটাবেসের সংযোগ যাচাই করতে নিচের অ্যাক্টিভেশন বাটনে চাপুন।"
+                    } else {
+                        "Step 5: Terminal Core Activation. Tap the activation button below to verify connectivity between your local SMS listener and your private database."
+                    }
+                }
+            }
+            else -> ""
+        }
+    }
+
+    val speakCurrentStep = {
+        speakText(getStepVoiceScript(currentStep))
+    }
+
+    val speakDisconnectionGuide: () -> Unit = {
+        val script = if (isBangla) {
+            "স্বপ্নপে ডাটাবেস সংযোগ বিচ্ছিন্ন নির্দেশিকা। আপনার ডাটা সম্পূর্ণ আপনার নিয়ন্ত্রণে। আপনি চাইলে যেকোনো সময় আপনার সুপাবেস ড্যাশবোর্ডের প্রজেক্ট সেটিংস থেকে অথরাইজড অ্যাপস অপশনে গিয়ে স্বপ্নপে ব্যাকএন্ডের সংযোগ বিচ্ছিন্ন করতে পারেন, অথবা ডাটাবেস পাসওয়ার্ড পরিবর্তন করতে পারেন।"
+        } else {
+            "SwapnoPay Disconnect Guidance. You have full ownership of your data. You can disconnect SwapnoPay backend access at any time by going to your Supabase Dashboard under Project Settings, Authorized Apps to revoke access, or by changing your database password."
+        }
+        speakText(script)
+    }
+
+    // Auto trigger speech on step change, language toggle, or when TTS is initialized
+    LaunchedEffect(currentStep, isBangla, isTtsReady) {
+        if (isTtsReady && !isTtsMuted) {
+            kotlinx.coroutines.delay(400)
+            speakCurrentStep()
+        }
+    }
+
+    // Auto trigger speech when Supabase finishes connecting in Step 1
+    LaunchedEffect(oauthStepStateVal) {
+        if (currentStep == 1 && oauthStepStateVal == com.example.ui.AppViewModel.OAuthStep.COMPLETE && isTtsReady && !isTtsMuted) {
+            kotlinx.coroutines.delay(500)
+            speakCurrentStep()
+        }
+    }
+    
     // Theme gradients based on step and dark/light preference
     val gradientColorStart = if (isDarkMode) {
         when (currentStep) {
@@ -2213,14 +2353,49 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                         )
                     }
 
-                    Text(
-                        text = "0${currentStep + 1} / 06",
-                        color = AppTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        letterSpacing = 1.sp
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "0${currentStep + 1} / 06",
+                            color = AppTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            letterSpacing = 1.sp
+                        )
+
+                        // Sound Toggle & Voice Guide Button
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isTtsMuted) {
+                                if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+                            } else {
+                                if (isDarkMode) Color(0xFFFFC107).copy(alpha = 0.2f) else BrandPurple.copy(alpha = 0.15f)
+                            },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    if (isTtsMuted) {
+                                        isTtsMuted = false
+                                        speakCurrentStep()
+                                    } else {
+                                        ttsEngine?.stop()
+                                        isTtsMuted = true
+                                    }
+                                }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VolumeUp,
+                                contentDescription = if (isTtsMuted) "Unmute Voice" else "Mute Voice",
+                                tint = if (isTtsMuted) AppTextSecondary.copy(alpha = 0.4f) else (if (isDarkMode) Color(0xFFFFC107) else BrandPurple),
+                                modifier = Modifier
+                                    .padding(6.dp)
+                                    .size(18.dp)
+                            )
+                        }
+                    }
                 }
 
                 // 2. MODERN FINTECH HERO HEADER CARD (Glassmorphic & Elegant)
@@ -2302,18 +2477,53 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                         Column(
                             modifier = Modifier.weight(1f)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .background(AppCardBorderColor, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = stepBadge,
-                                    color = BrandPurple,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = 1.5.sp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(AppCardBorderColor, RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = stepBadge,
+                                        color = BrandPurple,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 1.5.sp
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isDarkMode) Color(0xFFFFC107).copy(alpha = 0.15f) else BrandPurple.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, if (isDarkMode) Color(0xFFFFC107).copy(alpha = 0.3f) else BrandPurple.copy(alpha = 0.2f)),
+                                    modifier = Modifier.clickable {
+                                        isTtsMuted = false
+                                        speakCurrentStep()
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VolumeUp,
+                                            contentDescription = null,
+                                            tint = if (isDarkMode) Color(0xFFFFC107) else BrandPurple,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = if (isBangla) "নির্দেশিকা শুনুন" else "Listen Guide",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDarkMode) Color(0xFFFFC107) else BrandPurple
+                                        )
+                                    }
+                                }
                             }
                             
                             Spacer(modifier = Modifier.height(4.dp))
@@ -2795,6 +3005,110 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                         }
                                                     }
                                                 }
+
+                                                Spacer(modifier = Modifier.height(10.dp))
+
+                                                // Data Sovereignty & Disconnect Instructions Card
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = if (isDarkMode) Color(0xFF161F2E) else Color(0xFFEFF6FF)
+                                                    ),
+                                                    border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF2563EB).copy(alpha = 0.4f) else Color(0xFF3B82F6).copy(alpha = 0.3f))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.padding(14.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    Icons.Default.Security,
+                                                                    contentDescription = null,
+                                                                    tint = if (isDarkMode) Color(0xFF60A5FA) else Color(0xFF2563EB),
+                                                                    modifier = Modifier.size(18.dp)
+                                                                )
+                                                                Text(
+                                                                    text = if (isBangla) "ডাটা নিয়ন্ত্রণ ও ডিসকানেক্ট নির্দেশিকা" else "Data Sovereignty & Disconnect Guide",
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 12.sp,
+                                                                    color = if (isDarkMode) Color(0xFF93C5FD) else Color(0xFF1D4ED8)
+                                                                )
+                                                            }
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = if (isDarkMode) Color(0xFF2563EB).copy(alpha = 0.3f) else Color(0xFFDBEAFE),
+                                                                modifier = Modifier.clickable {
+                                                                    speakDisconnectionGuide()
+                                                                }
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        Icons.Default.VolumeUp,
+                                                                        contentDescription = null,
+                                                                        tint = if (isDarkMode) Color(0xFF60A5FA) else Color(0xFF1D4ED8),
+                                                                        modifier = Modifier.size(14.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = if (isBangla) "শুনুন" else "Listen",
+                                                                        fontSize = 11.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = if (isDarkMode) Color(0xFF60A5FA) else Color(0xFF1D4ED8)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Text(
+                                                            text = if (isBangla)
+                                                                "আপনার ডাটা সম্পূর্ণ আপনার মালিকানাধীন। আপনি চাইলে যেকোনো সময় স্বপ্নপে ব্যাকএন্ডের অ্যাক্সেস বন্ধ করতে পারেন:"
+                                                            else
+                                                                "You own 100% of your data. You can disconnect SwapnoPay backend access at any time:",
+                                                            fontSize = 11.sp,
+                                                            color = AppTextSecondary,
+                                                            lineHeight = 15.sp
+                                                        )
+
+                                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                            Text(
+                                                                text = if (isBangla)
+                                                                    "১. Supabase ড্যাশবোর্ডে লগইন করুন (supabase.com/dashboard)"
+                                                                else
+                                                                    "1. Open Supabase Dashboard (supabase.com/dashboard)",
+                                                                fontSize = 10.sp,
+                                                                color = AppTextPrimary
+                                                            )
+                                                            Text(
+                                                                text = if (isBangla)
+                                                                    "২. Project Settings > Authorized Apps এ গিয়ে SwapnoPay-এর 'Revoke' বাটনে চাপুন।"
+                                                                else
+                                                                    "2. Open Project Settings > Authorized Apps and tap 'Revoke' on SwapnoPay.",
+                                                                fontSize = 10.sp,
+                                                                color = AppTextPrimary
+                                                            )
+                                                            Text(
+                                                                text = if (isBangla)
+                                                                    "৩. অথবা Database Settings এ গিয়ে ডাটাবেস পাসওয়ার্ড পরিবর্তন করুন।"
+                                                                else
+                                                                    "3. Or change your database password in Database Settings anytime.",
+                                                                fontSize = 10.sp,
+                                                                color = AppTextPrimary
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -2906,6 +3220,56 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                     ),
                                     shape = RoundedCornerShape(12.dp)
                                 )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                // Privacy Policy & Terms Link Card
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { showPrivacyDialog = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDarkMode) Color(0xFF1B1710) else Color(0xFFF8FAFC)
+                                    ),
+                                    border = BorderStroke(1.dp, if (hasAcceptedPrivacyPolicy) SuccessGreen.copy(alpha = 0.5f) else (if (isDarkMode) Color(0xFF3B2F18) else Color(0xFFE2E8F0)))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Security,
+                                            contentDescription = null,
+                                            tint = if (hasAcceptedPrivacyPolicy) SuccessGreen else (if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706)),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isBangla) "গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলী" else "Privacy Policy & Terms of Service",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                text = if (hasAcceptedPrivacyPolicy) {
+                                                    if (isBangla) "✓ শর্তাবলীতে সম্মতি প্রদান করা হয়েছে" else "✓ Privacy policy and terms accepted"
+                                                } else {
+                                                    if (isBangla) "পরবর্তী ধাপে যেতে শর্তাবলী গ্রহণ আবশ্যক (ক্লিক করুন)" else "Must review & accept to proceed (tap here)"
+                                                },
+                                                fontSize = 10.sp,
+                                                color = if (hasAcceptedPrivacyPolicy) SuccessGreen else AppTextSecondary
+                                            )
+                                        }
+                                        Icon(
+                                            imageVector = if (hasAcceptedPrivacyPolicy) Icons.Default.CheckCircle else Icons.Default.ChevronRight,
+                                            contentDescription = null,
+                                            tint = if (hasAcceptedPrivacyPolicy) SuccessGreen else AppTextSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
 
                             }
                         }
@@ -3432,6 +3796,10 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             .alpha(if (isNextEnabled) 1f else 0.5f)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable(enabled = isNextEnabled) {
+                                if (currentStep == 2 && !hasAcceptedPrivacyPolicy) {
+                                    showPrivacyDialog = true
+                                    return@clickable
+                                }
                                 if (currentStep == 1) {
                                     if (supabaseUrlInput.isBlank()) {
                                         supabaseUrlInput = when {
@@ -3487,6 +3855,23 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                 }
             }
         }
+
+        // Privacy Policy Consent Dialog in Onboarding
+        PrivacyPolicyConsentDialog(
+            isOpen = showPrivacyDialog,
+            isDarkMode = isDarkMode,
+            isBangla = isBangla,
+            onAccept = {
+                hasAcceptedPrivacyPolicy = true
+                showPrivacyDialog = false
+                if (currentStep == 2) {
+                    currentStep++
+                }
+            },
+            onDismiss = {
+                showPrivacyDialog = false
+            }
+        )
     }
 }
 
@@ -3534,6 +3919,374 @@ fun DiagnosticRow(
 
 data class OnboardingSlide(val title: String, val desc: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
+// ── Privacy Policy & Terms Consent Dialog ──
+@Composable
+fun PrivacyPolicyConsentDialog(
+    isOpen: Boolean,
+    isDarkMode: Boolean,
+    isBangla: Boolean,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!isOpen) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var hasAgreedToTerms by remember { mutableStateOf(false) }
+
+    val openUrlInBrowser = { url: String ->
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "ব্রাউজার খোলা যায়নি: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 24.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDarkMode) Color(0xFF14120E) else Color(0xFFFFFFFF)
+            ),
+            border = BorderStroke(
+                1.dp,
+                if (isDarkMode) Color(0xFF3B2F18) else Color(0xFFE2E8F0)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header Shield Icon
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .background(
+                            if (isDarkMode) Color(0xFF2C2511) else Color(0xFFFEF3C7),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = if (isBangla) "গোপনীয়তা নীতি ও ব্যবহারের শর্তাবলী" else "Privacy Policy & Terms of Service",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = if (isBangla)
+                        "স্বপ্নপে ব্যবহারে এগিয়ে যাওয়ার পূর্বে অনুগ্রহ করে আমাদের ডাটা সুরক্ষা এবং শর্তাবলী পর্যালোচনা করে সম্মতি প্রদান করুন।"
+                    else
+                        "Please review and agree to our data sovereignty policies and terms before proceeding with authentication.",
+                    fontSize = 12.sp,
+                    color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Feature Highlights
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (isDarkMode) Color(0xFF1B1710) else Color(0xFFF8FAFC),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Item 1: Sovereignty
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(18.dp).padding(top = 2.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (isBangla) "১০০% নিজস্ব ডাটাবেস মালিকানা" else "100% Data Sovereignty",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "আপনার কাস্টমার, অর্ডার এবং বিক্রয় ডাটা আপনার নিজস্ব সুপাবেস ডাটাবেসেই থাকে। স্বপ্নপে আপনার গোপনীয় ডাটা নিজের সার্ভারে সংরক্ষণ করে না।"
+                                else
+                                    "Your transactions and customer logs stay strictly within your private Supabase database. SwapnoPay never shares or monetizes your data.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+
+                    // Item 2: Local SMS Parsing
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = BrandPurple,
+                            modifier = Modifier.size(18.dp).padding(top = 2.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (isBangla) "ডিভাইস-লেভেল এসএমএস নিরাপত্তা" else "Local On-Device SMS Verification",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "বিকাশ ও নগদ পেমেন্ট যাচাই স্থানীয়ভাবে ডিভাইসের মধ্যেই প্রক্রিয়া হয়। আপনার ব্যক্তিগত কোনো এসএমএস বহিরাগত ক্লাউডে পাঠানো হয় না।"
+                                else
+                                    "bKash & Nagad payments are verified locally on this device. Personal SMS messages are never uploaded to any remote server.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+
+                    // Item 3: Revocable Access
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.VpnKey,
+                            contentDescription = null,
+                            tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706),
+                            modifier = Modifier.size(18.dp).padding(top = 2.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (isBangla) "সম্পূর্ণ প্রত্যাহারযোগ্য অ্যাক্সেস" else "Revocable Access At Any Time",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "আপনি যেকোনো মুহূর্তে আপনার সুপাবেস ড্যাশবোর্ড থেকে স্বপ্নপে ব্যাকএন্ডের অ্যাক্সেস বাতিল বা ডাটাবেস পাসওয়ার্ড পরিবর্তন করতে পারবেন।"
+                                else
+                                    "You retain full authority to disconnect SwapnoPay backend access anytime directly from your Supabase dashboard.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Web Document Links
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                1.dp,
+                                if (isDarkMode) Color(0xFF3B2F18) else Color(0xFFE2E8F0),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable {
+                                openUrlInBrowser("https://swapnopay.top/privacy-policy.html")
+                            }
+                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "গোপনীয়তা নীতি" else "Privacy Policy",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.OpenInNew,
+                                contentDescription = null,
+                                tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706),
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                1.dp,
+                                if (isDarkMode) Color(0xFF3B2F18) else Color(0xFFE2E8F0),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable {
+                                openUrlInBrowser("https://swapnopay.top/terms-and-conditions.html")
+                            }
+                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "ব্যবহারের শর্তাবলী" else "Terms of Service",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.OpenInNew,
+                                contentDescription = null,
+                                tint = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706),
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Acceptance Checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { hasAgreedToTerms = !hasAgreedToTerms }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = hasAgreedToTerms,
+                        onCheckedChange = { hasAgreedToTerms = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = if (isDarkMode) Color(0xFFFFC107) else Color(0xFFD97706),
+                            checkmarkColor = Color.Black
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isBangla)
+                            "আমি গোপনীয়তা নীতি এবং শর্তাবলী পড়েছি এবং তাতে পূর্ণ সম্মতি দিচ্ছি।"
+                        else
+                            "I have read and agree to the Privacy Policy and Terms of Service.",
+                        fontSize = 11.sp,
+                        color = if (isDarkMode) Color.White else Color(0xFF1E293B),
+                        lineHeight = 15.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Action Buttons (Decline / Accept)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(0.4f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isBangla) "বাতিল" else "Decline",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B)
+                        )
+                    }
+
+                    val goldGradient = if (isDarkMode) {
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFD48806), Color(0xFFE5A93C), Color(0xFFB87300))
+                        )
+                    } else {
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFD97706), Color(0xFFF59E0B), Color(0xFFB45309))
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(0.6f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .alpha(if (hasAgreedToTerms) 1f else 0.5f)
+                            .background(goldGradient)
+                            .clickable(enabled = hasAgreedToTerms) {
+                                onAccept()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "সম্মত ও অগ্রসর হন" else "Accept & Continue",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // 3. Welcome / Login Screen
 @Composable
 fun LoginScreen(viewModel: AppViewModel) {
@@ -3541,6 +4294,13 @@ fun LoginScreen(viewModel: AppViewModel) {
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val isAuthenticating by viewModel.isAuthenticating.collectAsState()
     val authError by viewModel.authError.collectAsState()
+    val language by viewModel.language.collectAsState()
+    val isBangla = language == "Bangla"
+
+    // ── Privacy Policy Consent State ──
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var pendingAuthAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var hasAcceptedPrivacyPolicy by rememberSaveable { mutableStateOf(false) }
 
     var isSignUpMode by remember { mutableStateOf(false) }
     var emailInput by remember { mutableStateOf("") }
@@ -3911,37 +4671,46 @@ fun LoginScreen(viewModel: AppViewModel) {
                                         localError = "পাসওয়ার্ড দুটি মেলেনি"
                                     } else {
                                         localError = null
-                                        if (isSignUpMode) {
-                                            viewModel.registerWithEmailReal(
-                                                email = emailInput,
-                                                password = passwordInput,
-                                                onSuccess = {
-                                                    viewModel.setOnboarded(false)
-                                                    viewModel.navigateTo("Onboarding")
-                                                },
-                                                onFailure = { err ->
-                                                    localError = err
-                                                }
-                                            )
-                                        } else {
-                                            viewModel.loginWithEmailReal(
-                                                email = emailInput,
-                                                password = passwordInput,
-                                                onSuccess = {
-                                                    val isBiometricLocked = viewModel.isBiometricLocked.value
-                                                    val isOnboarded = viewModel.isOnboarded()
-                                                    if (!isOnboarded) {
+                                        val proceedAuthAction = {
+                                            if (isSignUpMode) {
+                                                viewModel.registerWithEmailReal(
+                                                    email = emailInput,
+                                                    password = passwordInput,
+                                                    onSuccess = {
+                                                        viewModel.setOnboarded(false)
                                                         viewModel.navigateTo("Onboarding")
-                                                    } else if (isBiometricLocked) {
-                                                        viewModel.navigateTo("LockScreen")
-                                                    } else {
-                                                        viewModel.navigateTo("Main")
+                                                    },
+                                                    onFailure = { err ->
+                                                        localError = err
                                                     }
-                                                },
-                                                onFailure = { err ->
-                                                    localError = err
-                                                }
-                                            )
+                                                )
+                                            } else {
+                                                viewModel.loginWithEmailReal(
+                                                    email = emailInput,
+                                                    password = passwordInput,
+                                                    onSuccess = {
+                                                        val isBiometricLocked = viewModel.isBiometricLocked.value
+                                                        val isOnboarded = viewModel.isOnboarded()
+                                                        if (!isOnboarded) {
+                                                            viewModel.navigateTo("Onboarding")
+                                                        } else if (isBiometricLocked) {
+                                                            viewModel.navigateTo("LockScreen")
+                                                        } else {
+                                                            viewModel.navigateTo("Main")
+                                                        }
+                                                    },
+                                                    onFailure = { err ->
+                                                        localError = err
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        if (!hasAcceptedPrivacyPolicy) {
+                                            pendingAuthAction = proceedAuthAction
+                                            showPrivacyDialog = true
+                                        } else {
+                                            proceedAuthAction()
                                         }
                                     }
                                 },
@@ -4010,7 +4779,13 @@ fun LoginScreen(viewModel: AppViewModel) {
                                 .background(if (isDarkMode) Color(0xFF1B1710) else Color(0xFFFFFFFF))
                                 .border(1.dp, borderGold, RoundedCornerShape(12.dp))
                                 .clickable(enabled = !isAuthenticating) {
-                                    launchSocialOAuthInChrome("google")
+                                    val proceedGoogle = { launchSocialOAuthInChrome("google") }
+                                    if (!hasAcceptedPrivacyPolicy) {
+                                        pendingAuthAction = proceedGoogle
+                                        showPrivacyDialog = true
+                                    } else {
+                                        proceedGoogle()
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -4044,7 +4819,13 @@ fun LoginScreen(viewModel: AppViewModel) {
                                 .background(if (isDarkMode) Color(0xFF1B1710) else Color(0xFFFFFFFF))
                                 .border(1.dp, borderGold, RoundedCornerShape(12.dp))
                                 .clickable(enabled = !isAuthenticating) {
-                                    launchSocialOAuthInChrome("facebook")
+                                    val proceedFacebook = { launchSocialOAuthInChrome("facebook") }
+                                    if (!hasAcceptedPrivacyPolicy) {
+                                        pendingAuthAction = proceedFacebook
+                                        showPrivacyDialog = true
+                                    } else {
+                                        proceedFacebook()
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -4065,6 +4846,31 @@ fun LoginScreen(viewModel: AppViewModel) {
                                     color = if (isDarkMode) Color.White else Color(0xFF0F172A)
                                 )
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Privacy & Terms link hint
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showPrivacyDialog = true },
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = null,
+                                tint = if (isDarkMode) Color(0xFFFFC107).copy(alpha = 0.8f) else Color(0xFFD97706),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBangla) "গোপনীয়তা নীতি ও শর্তাবলী পড়ুন" else "Read Privacy Policy & Terms",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color(0xFFFFC107).copy(alpha = 0.85f) else Color(0xFFD97706),
+                                fontWeight = FontWeight.Medium
+                            )
                         }
 
                     }
@@ -4309,6 +5115,24 @@ fun LoginScreen(viewModel: AppViewModel) {
                 }
             }
         }
+
+        // Privacy Policy & Terms Consent Dialog in LoginScreen
+        PrivacyPolicyConsentDialog(
+            isOpen = showPrivacyDialog,
+            isDarkMode = isDarkMode,
+            isBangla = isBangla,
+            onAccept = {
+                hasAcceptedPrivacyPolicy = true
+                showPrivacyDialog = false
+                pendingAuthAction?.invoke()
+                pendingAuthAction = null
+            },
+            onDismiss = {
+                showPrivacyDialog = false
+                pendingAuthAction = null
+                localError = if (isBangla) "সাইন ইন বা অ্যাকাউন্ট তৈরি করতে আপনাকে গোপনীয়তা নীতি ও শর্তাবলীতে সম্মত হতে হবে" else "You must accept the Privacy Policy and Terms to proceed."
+            }
+        )
 
     }
 }
