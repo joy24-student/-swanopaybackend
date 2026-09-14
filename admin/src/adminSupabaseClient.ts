@@ -4,13 +4,22 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const DEFAULT_PLATFORM_URL = 'https://tldubojeokgyoclxnzkb.supabase.co'
-const DEFAULT_PLATFORM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+function resolveSupabaseUrl(envUrl: string | undefined): string {
+  if (!envUrl || envUrl.includes('YOUR_ADMIN_PROJECT_REF') || envUrl.includes('placeholder')) {
+    return 'https://tldubojeokgyoclxnzkb.supabase.co'
+  }
+  return envUrl
+}
 
-export const ADMIN_SUPABASE_URL =
-  ((import.meta as any).env.VITE_ADMIN_SUPABASE_URL as string) || DEFAULT_PLATFORM_URL
-export const ADMIN_SUPABASE_ANON_KEY =
-  ((import.meta as any).env.VITE_ADMIN_SUPABASE_ANON_KEY as string) || DEFAULT_PLATFORM_KEY
+function resolveSupabaseKey(envKey: string | undefined): string {
+  if (!envKey || envKey.includes('YOUR_ADMIN_ANON_KEY') || envKey.includes('placeholder')) {
+    return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+  }
+  return envKey
+}
+
+export const ADMIN_SUPABASE_URL = resolveSupabaseUrl((import.meta as any).env.VITE_ADMIN_SUPABASE_URL)
+export const ADMIN_SUPABASE_ANON_KEY = resolveSupabaseKey((import.meta as any).env.VITE_ADMIN_SUPABASE_ANON_KEY)
 
 export const isAdminSupabaseConfigured = Boolean(ADMIN_SUPABASE_URL && ADMIN_SUPABASE_ANON_KEY)
 
@@ -20,6 +29,7 @@ export const adminSupabase = createClient(
   ADMIN_SUPABASE_URL,
   ADMIN_SUPABASE_ANON_KEY
 )
+
 
 
 // ──────────────────────────────────────────────────────────────────────────────
