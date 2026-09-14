@@ -2,6 +2,8 @@
 package com.example.ui
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -18,11 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.local.ProductItemEntity
 
 // INVENTORY & QR BINDING SCREEN — Pixel-Perfect Redesign & Barcode Binding
@@ -478,12 +482,21 @@ fun InventoryScreen(viewModel: AppViewModel) {
                                             .background(yellowBadgeBg),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            prod.name.take(1).uppercase(),
-                                            fontSize = 20.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = yellowText
-                                        )
+                                        if (!prod.imageUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = prod.imageUrl,
+                                                contentDescription = prod.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Text(
+                                                prod.name.take(1).uppercase(),
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = yellowText
+                                            )
+                                        }
                                     }
 
                                     Column(modifier = Modifier.weight(1f)) {
@@ -743,6 +756,24 @@ fun InventoryScreen(viewModel: AppViewModel) {
     }
 
     // ── NEW INVENTORY ITEM ENTRY DIALOG ──────────────────────────────
+    var newProdImageUrl by remember { mutableStateOf<String?>(null) }
+    var isUploadingImage by remember { mutableStateOf(false) }
+
+    val addImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            isUploadingImage = true
+            viewModel.uploadProductImage(uri, context) { success, msg, uploadedUrl ->
+                isUploadingImage = false
+                if (success && uploadedUrl != null) {
+                    newProdImageUrl = uploadedUrl
+                    Toast.makeText(context, "Product photo attached", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     if (showAddDialog) {
         EnterpriseGestureModal(
             onDismissRequest = { showAddDialog = false },
@@ -756,6 +787,99 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Product Image Upload Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(
+                            BorderStroke(1.dp, if (newProdImageUrl != null) yellowPrimary else cardBorder),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable(enabled = !isUploadingImage) {
+                            addImagePicker.launch("image/*")
+                        },
+                    colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color(0xFF16120B) else Color(0xFFF8FAFC))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (newProdImageUrl != null) {
+                            AsyncImage(
+                                model = newProdImageUrl,
+                                contentDescription = "Product Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            IconButton(
+                                onClick = { newProdImageUrl = null },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(30.dp)
+                                    .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 6.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Black.copy(alpha = 0.75f)
+                            ) {
+                                Text(
+                                    "Tap to change photo",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        } else if (isUploadingImage) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = yellowPrimary,
+                                    modifier = Modifier.size(26.dp),
+                                    strokeWidth = 2.5.dp
+                                )
+                                Text(
+                                    "Uploading to Supabase Storage...",
+                                    fontSize = 11.sp,
+                                    color = secondaryText
+                                )
+                            }
+                        } else {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AddPhotoAlternate,
+                                    contentDescription = "Upload Product Image",
+                                    tint = yellowPrimary,
+                                    modifier = Modifier.size(34.dp)
+                                )
+                                Text(
+                                    "Upload Product Image (পণ্যের ছবি)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryText
+                                )
+                                Text(
+                                    "Tap to select photo (Auto-uploaded to Supabase)",
+                                    fontSize = 11.sp,
+                                    color = secondaryText
+                                )
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = newProdName,
                     onValueChange = { newProdName = it },
@@ -922,6 +1046,7 @@ fun InventoryScreen(viewModel: AppViewModel) {
                             salePrice = sellPrice,
                             stock = stock,
                             unit = unit,
+                            imageUrl = newProdImageUrl,
                             onResult = { success, message ->
                                 Toast.makeText(context, message, if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
                                 if (success) {
@@ -930,6 +1055,7 @@ fun InventoryScreen(viewModel: AppViewModel) {
                                     newProdBuyPrice = ""
                                     newProdSellPrice = ""
                                     newProdStock = ""
+                                    newProdImageUrl = null
                                     showAddDialog = false
                                 }
                             }
@@ -959,6 +1085,23 @@ fun InventoryScreen(viewModel: AppViewModel) {
         var editBuyPrice by remember(prod) { mutableStateOf(prod.purchasePrice.toString()) }
         var editSellPrice by remember(prod) { mutableStateOf(prod.salePrice.toString()) }
         var editStock by remember(prod) { mutableStateOf(prod.stockQuantity.toString()) }
+        var editImageUrl by remember(prod) { mutableStateOf(prod.imageUrl) }
+        var isEditUploadingImage by remember { mutableStateOf(false) }
+
+        val editImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                isEditUploadingImage = true
+                viewModel.uploadProductImage(uri, context) { success, msg, uploadedUrl ->
+                    isEditUploadingImage = false
+                    if (success && uploadedUrl != null) {
+                        editImageUrl = uploadedUrl
+                        Toast.makeText(context, "Product photo updated", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
 
         EnterpriseGestureModal(
             onDismissRequest = { editingProduct = null },
@@ -972,6 +1115,99 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Product Image Edit Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(
+                            BorderStroke(1.dp, if (editImageUrl != null) yellowPrimary else cardBorder),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable(enabled = !isEditUploadingImage) {
+                            editImagePicker.launch("image/*")
+                        },
+                    colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color(0xFF16120B) else Color(0xFFF8FAFC))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (editImageUrl != null) {
+                            AsyncImage(
+                                model = editImageUrl,
+                                contentDescription = "Product Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            IconButton(
+                                onClick = { editImageUrl = null },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(30.dp)
+                                    .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 6.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Black.copy(alpha = 0.75f)
+                            ) {
+                                Text(
+                                    "Tap to change photo",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        } else if (isEditUploadingImage) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    color = yellowPrimary,
+                                    modifier = Modifier.size(26.dp),
+                                    strokeWidth = 2.5.dp
+                                )
+                                Text(
+                                    "Uploading to Supabase Storage...",
+                                    fontSize = 11.sp,
+                                    color = secondaryText
+                                )
+                            }
+                        } else {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AddPhotoAlternate,
+                                    contentDescription = "Change Product Image",
+                                    tint = yellowPrimary,
+                                    modifier = Modifier.size(34.dp)
+                                )
+                                Text(
+                                    "Upload / Change Image (পণ্যের ছবি)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryText
+                                )
+                                Text(
+                                    "Tap to select photo (Auto-uploaded to Supabase)",
+                                    fontSize = 11.sp,
+                                    color = secondaryText
+                                )
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = editName,
                     onValueChange = { editName = it },
@@ -1129,7 +1365,8 @@ fun InventoryScreen(viewModel: AppViewModel) {
                             purchasePrice = buyPrice,
                             salePrice = sellPrice,
                             stockQuantity = stock,
-                            unit = unit
+                            unit = unit,
+                            imageUrl = editImageUrl
                         )
                         viewModel.updateProduct(updated) { success, message ->
                             Toast.makeText(context, message, if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()

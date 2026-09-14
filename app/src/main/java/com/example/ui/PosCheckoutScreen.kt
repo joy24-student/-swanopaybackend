@@ -1,4 +1,4 @@
-﻿@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.example.ui
 
 import android.widget.Toast
@@ -28,6 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import com.example.data.local.PosSaleEntity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 
 @Composable
@@ -35,6 +39,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
     val posCart by viewModel.posCart.collectAsState()
     val customers by viewModel.customers.collectAsState()
     val allProducts by viewModel.products.collectAsState()
+    val activeProfile by viewModel.activeProfile.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     SideEffect { isDarkModeGlobal = isDarkMode }
 
@@ -45,17 +50,25 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
     var selectedCustomerId by remember { mutableStateOf<String?>(null) }
     var selectedCustomerName by remember { mutableStateOf("Walk-in Customer") }
     var selectedCustomerPhone by remember { mutableStateOf("") }
+    var selectedCustomerCode by remember { mutableStateOf("") }
     var showCustomerDialog by remember { mutableStateOf(false) }
     var showAddNewCustomerDialog by remember { mutableStateOf(false) }
     var showDiscountDialog by remember { mutableStateOf(false) }
 
     // State for Add New Customer Dialog
+    var newCustCode by remember { mutableStateOf("") }
     var newCustName by remember { mutableStateOf("") }
     var newCustPhone by remember { mutableStateOf("") }
     var newCustAddress by remember { mutableStateOf("") }
     var newCustOpeningBal by remember { mutableStateOf("") }
 
-    var completedOrderSummary by remember { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(showAddNewCustomerDialog) {
+        if (showAddNewCustomerDialog && newCustCode.isBlank()) {
+            newCustCode = viewModel.generateUniqueCustomerCode()
+        }
+    }
+
+    var completedSaleEntity by remember { mutableStateOf<PosSaleEntity?>(null) }
 
     val categories = remember(allProducts) {
         val set = mutableListOf("All")
@@ -167,18 +180,12 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                     paymentType = checkoutPaymentType,
                                     customerId = selectedCustomerId,
                                     discount = discountAmount,
-                                    onSuccess = { orderId, totalAmt ->
-                                        val summaryObj = JSONObject().apply {
-                                            put("orderId", orderId)
-                                            put("totalAmount", totalAmt)
-                                            put("paymentType", checkoutPaymentType)
-                                            put("itemCount", totalItemCount)
-                                            put("discount", discountAmount)
-                                        }
-                                        completedOrderSummary = summaryObj
+                                    onSuccess = { orderId, totalAmt, saleEntity ->
+                                        completedSaleEntity = saleEntity
                                     },
                                     onError = { err ->
                                         viewModel.logFirebaseStatus("POS Checkout error: $err")
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                                     }
                                 )
                             },
@@ -207,6 +214,96 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
             ) {
+
+                // ── 0. CUSTOMER SELECTION BAR & DROPDOWN ─────────────────────────
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showCustomerDialog = true },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        border = BorderStroke(1.dp, if (selectedCustomerId != null) yellowPrimary else cardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(if (selectedCustomerId != null) yellowLightBg else (if (isDarkMode) Color(0xFF1E1911) else Color(0xFFF1F5F9))),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (selectedCustomerId != null) Icons.Default.Person else Icons.Default.Storefront,
+                                        contentDescription = null,
+                                        tint = if (selectedCustomerId != null) yellowPrimary else secondaryText,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = selectedCustomerName,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryText
+                                        )
+                                        if (selectedCustomerCode.isNotBlank()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = yellowLightBg,
+                                                border = BorderStroke(0.5.dp, yellowPrimary)
+                                            ) {
+                                                Text(
+                                                    text = selectedCustomerCode,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = yellowPrimary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = if (selectedCustomerPhone.isNotBlank()) selectedCustomerPhone else "কাস্টমার নির্বাচন বা সার্চ করুন (Tap to select)",
+                                        fontSize = 11.5.sp,
+                                        color = secondaryText
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDarkMode) Color(0xFF1E1911) else Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, cardBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text("Change", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = yellowPrimary)
+                                    Icon(Icons.Default.ArrowDropDown, null, tint = yellowPrimary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // ── 1. SEARCH & SCAN INPUT ──────────────────────────────────────
                 item {
@@ -683,12 +780,32 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                     }
 
                                     Column {
-                                        Text(
-                                            text = selectedCustomerName,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = primaryText
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = selectedCustomerName,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = primaryText
+                                            )
+                                            if (selectedCustomerCode.isNotBlank()) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = yellowLightBg,
+                                                    border = BorderStroke(0.5.dp, yellowPrimary)
+                                                ) {
+                                                    Text(
+                                                        text = selectedCustomerCode,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = yellowPrimary,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         if (selectedCustomerPhone.isNotBlank()) {
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
@@ -862,7 +979,8 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                 if (customerSearch.isBlank()) customers else {
                     customers.filter {
                         it.name.contains(customerSearch, ignoreCase = true) ||
-                        it.phone.contains(customerSearch)
+                        it.phone.contains(customerSearch) ||
+                        it.code.contains(customerSearch, ignoreCase = true)
                     }
                 }
             }
@@ -881,7 +999,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                     OutlinedTextField(
                         value = customerSearch,
                         onValueChange = { customerSearch = it },
-                        placeholder = { Text("Search by name or phone...", fontSize = 12.sp, color = secondaryText) },
+                        placeholder = { Text("Search by name, phone or code (C-1001)...", fontSize = 12.sp, color = secondaryText) },
                         leadingIcon = { Icon(Icons.Default.Search, null, tint = secondaryText) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -907,6 +1025,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                     selectedCustomerId = null
                                     selectedCustomerName = "Walk-in Customer"
                                     selectedCustomerPhone = ""
+                                    selectedCustomerCode = ""
                                     showCustomerDialog = false
                                 },
                             shape = RoundedCornerShape(10.dp),
@@ -925,7 +1044,10 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                         }
 
                         Button(
-                            onClick = { showAddNewCustomerDialog = true },
+                            onClick = {
+                                newCustCode = viewModel.generateUniqueCustomerCode()
+                                showAddNewCustomerDialog = true
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp),
@@ -952,6 +1074,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                     } else {
                         filteredCustomers.forEach { cust ->
                             val isSelected = selectedCustomerId == cust.id
+                            val cCode = if (cust.code.isNotBlank()) cust.code else "C-${cust.phone.takeLast(4).ifBlank { cust.id.take(4).uppercase() }}"
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -959,6 +1082,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                         selectedCustomerId = cust.id
                                         selectedCustomerName = cust.name
                                         selectedCustomerPhone = cust.phone
+                                        selectedCustomerCode = cCode
                                         showCustomerDialog = false
                                     },
                                 shape = RoundedCornerShape(10.dp),
@@ -971,7 +1095,25 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text(cust.name, color = primaryText, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(cust.name, color = primaryText, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = yellowLightBg,
+                                                border = BorderStroke(0.5.dp, yellowPrimary)
+                                            ) {
+                                                Text(
+                                                    cCode,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = yellowPrimary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
                                         if (cust.phone.isNotBlank()) {
                                             Text(cust.phone, color = secondaryText, fontSize = 11.sp)
                                         }
@@ -1004,6 +1146,37 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newCustCode,
+                            onValueChange = { newCustCode = it.uppercase() },
+                            label = { Text("Customer Code (ইউনিক কোড)*") },
+                            placeholder = { Text("e.g. C-1001") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = yellowPrimary,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = primaryText,
+                                unfocusedTextColor = primaryText
+                            )
+                        )
+                        IconButton(
+                            onClick = { newCustCode = viewModel.generateUniqueCustomerCode() },
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .size(48.dp)
+                                .background(yellowLightBg, RoundedCornerShape(10.dp))
+                                .border(BorderStroke(1.dp, yellowPrimary), RoundedCornerShape(10.dp))
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Regenerate Code", tint = yellowPrimary, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
                     OutlinedTextField(
                         value = newCustName,
                         onValueChange = { newCustName = it },
@@ -1085,18 +1258,21 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                                 phone = cPhone,
                                 initialBalance = cBal,
                                 address = newCustAddress.trim().ifBlank { null },
+                                code = newCustCode.trim().ifBlank { null },
                                 onResult = { success, msg, newCust ->
                                     if (success && newCust != null) {
                                         selectedCustomerId = newCust.id
                                         selectedCustomerName = newCust.name
                                         selectedCustomerPhone = newCust.phone
+                                        selectedCustomerCode = newCust.code
                                         newCustName = ""
                                         newCustPhone = ""
                                         newCustAddress = ""
                                         newCustOpeningBal = ""
+                                        newCustCode = ""
                                         showAddNewCustomerDialog = false
                                         showCustomerDialog = false
-                                        Toast.makeText(context, "Customer added & selected", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Customer [${newCust.code}] created & selected", Toast.LENGTH_SHORT).show()
                                     } else {
                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     }
@@ -1154,40 +1330,310 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
             }
         }
 
-        // Completed Order Modal
-        if (completedOrderSummary != null) {
-            val json = completedOrderSummary!!
-            val orderId = json.optString("orderId")
-            val totalAmt = json.optDouble("totalAmount")
-            val payType = json.optString("paymentType")
-            val discount = json.optDouble("discount")
+        // Completed Order Modal - Print & Share Official Invoice
+        if (completedSaleEntity != null) {
+            val sale = completedSaleEntity!!
+            val customerCodeForSale = remember(sale, customers) {
+                customers.firstOrNull { it.id == sale.customerId }?.code ?: selectedCustomerCode
+            }
+            val invoice = remember(sale, activeProfile, customerCodeForSale) {
+                InvoiceDocumentManager.invoiceFromSale(
+                    sale = sale,
+                    businessName = activeProfile.businessName.ifBlank { "SwapnoPay Merchant" },
+                    email = activeProfile.email,
+                    phone = activeProfile.phone,
+                    customerCode = customerCodeForSale
+                )
+            }
 
             EnterpriseGestureModal(
-                onDismissRequest = { completedOrderSummary = null },
-                title = "Receipt / Invoice Generated",
-                subtitle = "Swipe down or drag handle to dismiss",
-                icon = Icons.Default.Receipt
+                onDismissRequest = {
+                    completedSaleEntity = null
+                    viewModel.clearPosCart()
+                    selectedCustomerId = null
+                    selectedCustomerName = "Walk-in Customer"
+                    selectedCustomerPhone = ""
+                    selectedCustomerCode = ""
+                    discountAmount = 0.0
+                },
+                title = "Print Invoice & Receipt",
+                subtitle = "Invoice #${sale.invoiceNo}",
+                icon = Icons.Default.Print
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Invoice ID: #$orderId", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = primaryText)
-                    Text("Payment Method: $payType", fontSize = 12.sp, color = primaryText)
-                    Text("Total Discount: ৳${String.format("%.2f", discount)}", fontSize = 12.sp, color = discountRed)
-                    HorizontalDivider(color = cardBorder)
-                    Text("Net Paid: ৳${String.format("%,.2f", totalAmt)} BDT", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = primaryText)
-                    Text("Stock items auto-deducted from inventory.", fontSize = 11.sp, color = secondaryText)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Success Confirmation Banner
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
+                            Column {
+                                Text("Sale Completed Successfully", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF10B981))
+                                Text("Inventory deducted • Transaction logged", fontSize = 11.sp, color = secondaryText)
+                            }
+                        }
+                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // ── THERMAL RECEIPT / INVOICE PREVIEW PAPER ──
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkMode) Color(0xFF12131A) else Color(0xFFFFFFFF)
+                        ),
+                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF332612) else Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Store Header
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = invoice.businessName,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 17.sp,
+                                    color = primaryText
+                                )
+                                if (invoice.businessPhone.isNotBlank()) {
+                                    Text(
+                                        text = "Phone: ${invoice.businessPhone}",
+                                        fontSize = 11.5.sp,
+                                        color = secondaryText
+                                    )
+                                }
+                                Text(
+                                    text = "--------------------------------",
+                                    fontSize = 11.sp,
+                                    color = secondaryText.copy(alpha = 0.4f),
+                                    letterSpacing = 1.sp
+                                )
+                            }
 
+                            // Invoice Metadata
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Invoice No:", fontSize = 12.sp, color = secondaryText)
+                                Text(sale.invoiceNo, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryText)
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Date & Time:", fontSize = 12.sp, color = secondaryText)
+                                Text(
+                                    SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(sale.timestamp)),
+                                    fontSize = 12.sp,
+                                    color = primaryText
+                                )
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Customer:", fontSize = 12.sp, color = secondaryText)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(sale.customerName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primaryText)
+                                    if (customerCodeForSale.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = yellowPrimary.copy(alpha = 0.2f),
+                                            border = BorderStroke(1.dp, yellowPrimary.copy(alpha = 0.5f))
+                                        ) {
+                                            Text(
+                                                customerCodeForSale,
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = yellowPrimary,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Payment:", fontSize = 12.sp, color = secondaryText)
+                                Text(
+                                    "${sale.paymentMethod} (${sale.paymentStatus})",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (sale.paymentStatus == "DUE") Color(0xFFEF4444) else Color(0xFF10B981)
+                                )
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = if (isDarkMode) Color(0xFF2A2B35) else Color(0xFFE2E8F0)
+                            )
+
+                            // Items Header
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("ITEM", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = secondaryText, modifier = Modifier.weight(1.8f))
+                                Text("QTY", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = secondaryText, modifier = Modifier.weight(0.7f))
+                                Text("TOTAL", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = secondaryText, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                            }
+
+                            // Items
+                            invoice.lines.forEach { line ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1.8f)) {
+                                        Text(line.description, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = primaryText)
+                                        Text("@ ৳${String.format("%,.2f", line.unitPrice)}", fontSize = 10.sp, color = secondaryText)
+                                    }
+                                    Text(
+                                        text = if (line.quantity % 1.0 == 0.0) line.quantity.toInt().toString() else String.format("%.1f", line.quantity),
+                                        fontSize = 12.sp,
+                                        color = primaryText,
+                                        modifier = Modifier.weight(0.7f)
+                                    )
+                                    Text(
+                                        text = "৳${String.format("%,.2f", line.lineTotal)}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = primaryText,
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.End
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = if (isDarkMode) Color(0xFF2A2B35) else Color(0xFFE2E8F0)
+                            )
+
+                            // Totals
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Subtotal", fontSize = 12.sp, color = secondaryText)
+                                Text("৳${String.format("%,.2f", sale.subtotal)}", fontSize = 12.sp, color = primaryText)
+                            }
+                            if (sale.discount > 0.0) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Discount", fontSize = 12.sp, color = discountRed)
+                                    Text("-৳${String.format("%,.2f", sale.discount)}", fontSize = 12.sp, color = discountRed)
+                                }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Grand Total", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = primaryText)
+                                Text(
+                                    "৳${String.format("%,.2f", sale.netTotal)} BDT",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = yellowPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    // ── 1. PRIMARY PRINT INVOICE BUTTON ──
                     Button(
                         onClick = {
-                            viewModel.clearPosCart()
-                            completedOrderSummary = null
+                            InvoiceDocumentManager.print(context, invoice)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Start New Sale", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
+                            Text("Print Invoice", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                        }
+                    }
+
+                    // ── 2. SECONDARY ACTIONS: Share PDF & Full Invoice View ──
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                InvoiceDocumentManager.share(context, invoice)
+                            },
+                            modifier = Modifier.weight(1f).height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, yellowPrimary.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.Share, null, tint = yellowPrimary, modifier = Modifier.size(17.dp))
+                                Text("Share PDF", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = yellowPrimary)
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.selectInvoiceSale(sale.id)
+                                viewModel.navigateTo("PrintInvoice")
+                                completedSaleEntity = null
+                                viewModel.clearPosCart()
+                            },
+                            modifier = Modifier.weight(1f).height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, cardBorder)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.OpenInNew, null, tint = primaryText, modifier = Modifier.size(17.dp))
+                                Text("Full Invoice", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryText)
+                            }
+                        }
+                    }
+
+                    // ── 3. START NEW SALE BUTTON ──
+                    Button(
+                        onClick = {
+                            completedSaleEntity = null
+                            viewModel.clearPosCart()
+                            selectedCustomerId = null
+                            selectedCustomerName = "Walk-in Customer"
+                            selectedCustomerPhone = ""
+                            selectedCustomerCode = ""
+                            discountAmount = 0.0
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDarkMode) Color(0xFF22232E) else Color(0xFFE2E8F0)
+                        ),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = primaryText, modifier = Modifier.size(18.dp))
+                            Text("Start New Sale", color = primaryText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
                 }
             }

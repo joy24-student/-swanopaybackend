@@ -43,7 +43,8 @@ data class InvoiceDocument(
     val lines: List<InvoiceLine>,
     val subtotal: Double,
     val discount: Double,
-    val grandTotal: Double
+    val grandTotal: Double,
+    val customerCode: String = ""
 )
 
 object InvoiceDocumentManager {
@@ -52,6 +53,45 @@ object InvoiceDocumentManager {
     private const val LEFT = 42f
     private const val RIGHT = 553f
     private const val ROWS_PER_PAGE = 17
+
+    fun invoiceFromSale(
+        sale: com.example.data.local.PosSaleEntity,
+        businessName: String,
+        email: String,
+        phone: String,
+        customerCode: String = ""
+    ): InvoiceDocument {
+        val parsedLines = runCatching {
+            val array = org.json.JSONArray(sale.cartItemsJson)
+            List(array.length()) { index ->
+                val item = array.getJSONObject(index)
+                val name = item.optString("name", "Product")
+                val variant = item.optString("variant")
+                InvoiceLine(
+                    description = if (variant.isBlank()) name else "$name — $variant",
+                    quantity = item.optDouble("quantity", 1.0),
+                    unitPrice = item.optDouble("unit_price", 0.0),
+                    lineTotal = item.optDouble("line_total", 0.0)
+                )
+            }
+        }.getOrDefault(emptyList())
+        return InvoiceDocument(
+            invoiceNumber = sale.invoiceNo,
+            issuedAt = sale.timestamp,
+            businessName = businessName,
+            businessEmail = email,
+            businessPhone = phone,
+            customerName = sale.customerName,
+            customerPhone = sale.customerPhone,
+            paymentMethod = sale.paymentMethod,
+            paymentStatus = sale.paymentStatus,
+            lines = parsedLines,
+            subtotal = sale.subtotal,
+            discount = sale.discount,
+            grandTotal = sale.netTotal,
+            customerCode = customerCode
+        )
+    }
 
     fun writePdf(output: OutputStream, invoice: InvoiceDocument) {
         val document = PdfDocument()
@@ -129,7 +169,8 @@ object InvoiceDocumentManager {
         )
         canvas.drawLine(LEFT, 100f, RIGHT, 100f, rule)
         canvas.drawText("BILLED TO", LEFT, 120f, heading)
-        canvas.drawText(invoice.customerName.take(60), LEFT, 137f, body)
+        val billedToText = if (invoice.customerCode.isNotBlank()) "${invoice.customerName} [${invoice.customerCode}]" else invoice.customerName
+        canvas.drawText(billedToText.take(60), LEFT, 137f, body)
         canvas.drawText(invoice.customerPhone.take(35), LEFT, 152f, muted)
         canvas.drawText("Payment: ${invoice.paymentMethod}", 350f, 125f, body)
         canvas.drawText("Status: ${invoice.paymentStatus}", 350f, 142f, body)

@@ -36,13 +36,15 @@ fun ProductionInvoiceScreen(viewModel: AppViewModel) {
     val isDark by viewModel.isDarkMode.collectAsState()
     val profile by viewModel.activeProfile.collectAsState()
     val sales by viewModel.posSales.collectAsState()
+    val customers by viewModel.customers.collectAsState()
     val requestedId by viewModel.selectedInvoiceSaleId.collectAsState()
     var selectedId by remember(requestedId, sales) {
         mutableStateOf(requestedId?.takeIf { id -> sales.any { it.id == id } } ?: sales.firstOrNull()?.id)
     }
     val sale = sales.firstOrNull { it.id == selectedId }
+    val cust = customers.firstOrNull { it.id == sale?.customerId }
     val invoice = sale?.let {
-        invoiceFromSale(it, profile.businessName, profile.email, profile.phone)
+        InvoiceDocumentManager.invoiceFromSale(it, profile.businessName, profile.email, profile.phone, cust?.code.orEmpty())
     }
     val bg = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
     val paper = if (isDark) Color(0xFF1E293B) else Color.White
@@ -148,7 +150,24 @@ fun ProductionInvoiceScreen(viewModel: AppViewModel) {
                     }
                     HorizontalDivider()
                     Text("BILLED TO", color = muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(invoice.customerName, color = text, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(invoice.customerName, color = text, fontWeight = FontWeight.Bold)
+                        if (invoice.customerCode.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFF5C518).copy(alpha = 0.2f),
+                                border = BorderStroke(1.dp, Color(0xFFF5C518).copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    invoice.customerCode,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF5C518),
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
                     if (invoice.customerPhone.isNotBlank()) Text(invoice.customerPhone, color = muted, fontSize = 12.sp)
                     Text("Payment method: ${invoice.paymentMethod}", color = muted, fontSize = 12.sp)
                     HorizontalDivider()
@@ -205,38 +224,9 @@ private fun invoiceFromSale(
     sale: PosSaleEntity,
     businessName: String,
     email: String,
-    phone: String
-): InvoiceDocument {
-    val parsedLines = runCatching {
-        val array = JSONArray(sale.cartItemsJson)
-        List(array.length()) { index ->
-            val item = array.getJSONObject(index)
-            val name = item.optString("name", "Product")
-            val variant = item.optString("variant")
-            InvoiceLine(
-                description = if (variant.isBlank()) name else "$name — $variant",
-                quantity = item.optDouble("quantity", 1.0),
-                unitPrice = item.optDouble("unit_price", 0.0),
-                lineTotal = item.optDouble("line_total", 0.0)
-            )
-        }
-    }.getOrDefault(emptyList())
-    return InvoiceDocument(
-        invoiceNumber = sale.invoiceNo,
-        issuedAt = sale.timestamp,
-        businessName = businessName,
-        businessEmail = email,
-        businessPhone = phone,
-        customerName = sale.customerName,
-        customerPhone = sale.customerPhone,
-        paymentMethod = sale.paymentMethod,
-        paymentStatus = sale.paymentStatus,
-        lines = parsedLines,
-        subtotal = sale.subtotal,
-        discount = sale.discount,
-        grandTotal = sale.netTotal
-    )
-}
+    phone: String,
+    customerCode: String = ""
+): InvoiceDocument = InvoiceDocumentManager.invoiceFromSale(sale, businessName, email, phone, customerCode)
 
 private fun displayInvoiceDate(timestamp: Long): String =
     SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(timestamp))

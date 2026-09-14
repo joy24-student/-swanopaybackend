@@ -634,7 +634,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val onboarded = isOnboarded()
             val targetScreen = when {
                 !session.isValid || session.email.isNullOrEmpty() -> {
-                    if (!onboarded) "Onboarding" else "Login"
+                    "Login"
+                }
+                !onboarded -> {
+                    "Onboarding"
                 }
                 isBiometricEnabled -> {
                     _isAppLocked.value = true
@@ -3206,9 +3209,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
             var attempts = 0
             var isHealthy = false
-            while (attempts < 12 && !isHealthy) {
+            val maxAttempts = if (isNew) 35 else 15
+            while (attempts < maxAttempts && !isHealthy) {
                 kotlinx.coroutines.delay(3000)
                 attempts++
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    val progressBase = if (isNew) 0.25f else 0.45f
+                    provisioningProgress.value = (progressBase + (attempts.toFloat() / maxAttempts.toFloat()) * 0.35f).coerceAtMost(0.70f)
+                    provisioningStatusText.value = "Waiting for project services (${attempts * 3}s)..."
+                }
                 com.example.data.repository.SupabaseConnectionRepository.checkProjectHealth(
                     controlPlaneUrl = controlPlaneUrl.value,
                     userId = userId,
@@ -6514,9 +6523,11 @@ function executePayment() {
         phone: String = "",
         address: String = "",
         openingBalance: Double = 0.0,
-        id: String = java.util.UUID.randomUUID().toString()
+        id: String = java.util.UUID.randomUUID().toString(),
+        code: String? = null
     ) {
         if (name.isBlank()) return
+        val assignedCode = if (!code.isNullOrBlank()) code.trim().uppercase() else generateUniqueSupplierCode()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val merchantId = _activeProfile.value.id
             val supplier = SupplierEntity(
@@ -6528,10 +6539,11 @@ function executePayment() {
                 address = address.trim().ifEmpty { null },
                 openingBalance = openingBalance,
                 currentBalance = openingBalance,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                code = assignedCode
             )
             repository.insertSupplier(supplier)
-            logFirebaseStatus("Added new supplier: $name")
+            logFirebaseStatus("Added new supplier: $name ($assignedCode)")
 
             val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
@@ -6539,6 +6551,7 @@ function executePayment() {
                     put("id", supplier.id)
                     put("name", supplier.name)
                     put("phone", supplier.phone)
+                    put("code", supplier.code)
                     if (supplier.address != null) put("address", supplier.address)
                     put("opening_balance", supplier.openingBalance)
                     put("current_balance", supplier.currentBalance)
@@ -7636,7 +7649,8 @@ function executePayment() {
                         item.getString("id"), merchantId, item.optString("name"), item.optString("phone"),
                         item.optNullableString("email"), item.optNullableString("address"),
                         item.optDouble("opening_balance", 0.0), item.optDouble("current_balance", 0.0),
-                        item.optString("status", "Potential"), parseRemoteTimestamp(item.optString("created_at"))
+                        item.optString("status", "Potential"), parseRemoteTimestamp(item.optString("created_at")),
+                        item.optString("code", "")
                     )
                 }
             })
@@ -7648,7 +7662,8 @@ function executePayment() {
                         item.getString("id"), merchantId, item.optString("name"), item.optString("phone"),
                         item.optNullableString("email"), item.optNullableString("address"),
                         item.optDouble("opening_balance", 0.0), item.optDouble("current_balance", 0.0),
-                        parseRemoteTimestamp(item.optString("created_at"))
+                        parseRemoteTimestamp(item.optString("created_at")),
+                        item.optString("code", "")
                     )
                 }
             })
@@ -8156,6 +8171,10 @@ function executePayment() {
         }
     }
 
+    fun selectInvoiceSale(saleId: String?) {
+        _selectedInvoiceSaleId.value = saleId
+    }
+
     fun clearPosCart() {
         _posCart.value = emptyList()
         _lastScannedQrStatus.value = null
@@ -8165,7 +8184,7 @@ function executePayment() {
         paymentType: String, // "Cash", "MFS", "CustomerCredit"
         customerId: String? = null,
         discount: Double = 0.0,
-        onSuccess: (orderId: String, totalAmount: Double) -> Unit,
+        onSuccess: (orderId: String, totalAmount: Double, sale: PosSaleEntity) -> Unit,
         onError: (String) -> Unit
     ) {
         val cartItems = _posCart.value
@@ -8302,7 +8321,7 @@ function executePayment() {
                 )
             }
 
-            onSuccess(orderId, totalSaleAmount)
+            onSuccess(orderId, totalSaleAmount, sale)
         }
     }
 
@@ -8560,6 +8579,24 @@ function executePayment() {
         }
     }
 
+    fun generateUniqueCustomerCode(): String {
+        val existingCodes = customers.value.map { it.code.trim().uppercase() }.toSet()
+        var candidateNum = 1000 + customers.value.size + 1
+        while (existingCodes.contains("C-$candidateNum")) {
+            candidateNum++
+        }
+        return "C-$candidateNum"
+    }
+
+    fun generateUniqueSupplierCode(): String {
+        val existingCodes = suppliers.value.map { it.code.trim().uppercase() }.toSet()
+        var candidateNum = 1000 + suppliers.value.size + 1
+        while (existingCodes.contains("S-$candidateNum")) {
+            candidateNum++
+        }
+        return "S-$candidateNum"
+    }
+
     // Customer operations
     fun addCustomer(
         name: String,
@@ -8568,6 +8605,7 @@ function executePayment() {
         status: String = "VIP",
         id: String = java.util.UUID.randomUUID().toString(),
         address: String? = null,
+        code: String? = null,
         onResult: ((Boolean, String, CustomerEntity?) -> Unit)? = null
     ) {
         if (name.isBlank() || !initialBalance.isFinite()) {
@@ -8577,6 +8615,7 @@ function executePayment() {
             return
         }
         val cleanPhone = phone.trim()
+        val assignedCode = if (!code.isNullOrBlank()) code.trim().uppercase() else generateUniqueCustomerCode()
         viewModelScope.launch {
             val customer = CustomerEntity(
                 id = id,
@@ -8587,10 +8626,11 @@ function executePayment() {
                 address = address?.trim()?.ifBlank { null },
                 openingBalance = initialBalance,
                 currentBalance = initialBalance,
-                status = status
+                status = status,
+                code = assignedCode
             )
             repository.insertCustomer(customer)
-            logFirebaseStatus("Added new customer: $name")
+            logFirebaseStatus("Added new customer: $name ($assignedCode)")
 
             val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
@@ -8598,6 +8638,7 @@ function executePayment() {
                     put("id", customer.id)
                     put("name", customer.name)
                     put("phone", customer.phone)
+                    put("code", customer.code)
                     put("address", customer.address ?: org.json.JSONObject.NULL)
                     put("opening_balance", customer.openingBalance)
                     put("current_balance", customer.currentBalance)
@@ -8703,6 +8744,47 @@ function executePayment() {
         }
     }
 
+    // Upload Product Image to Supabase Storage ('products' bucket)
+    fun uploadProductImage(
+        uri: android.net.Uri,
+        context: android.content.Context,
+        onResult: (Boolean, String, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val media = com.example.data.local.ProductImageCompressor.import(context, uri)
+                val bytes = com.example.data.local.ProductImageCompressor.readUpload(context, media.reference)
+                val fileName = "prod_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}.jpg"
+
+                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
+                    com.example.data.remote.SupabaseClient.uploadStorageObject(
+                        url = active.supabaseUrl,
+                        anonKey = active.anonKey,
+                        token = active.authSessionToken,
+                        bucket = "products",
+                        filePath = fileName,
+                        fileBytes = bytes,
+                        mimeType = "image/jpeg",
+                        onSuccess = { publicUrl ->
+                            logFirebaseStatus("Product image uploaded to Supabase Storage: $publicUrl")
+                            onResult(true, "Image uploaded to cloud", publicUrl)
+                        },
+                        onFailure = { err ->
+                            logFirebaseStatus("Supabase storage upload failed: $err. Using local media URI.")
+                            onResult(true, "Saved locally (offline)", media.reference)
+                        }
+                    )
+                } else {
+                    onResult(true, "Saved locally", media.reference)
+                }
+            } catch (e: Exception) {
+                logFirebaseStatus("uploadProductImage error: ${e.message}")
+                onResult(false, e.localizedMessage ?: "Failed to process image", null)
+            }
+        }
+    }
+
     // Products
     fun addProduct(
         name: String,
@@ -8713,6 +8795,7 @@ function executePayment() {
         stock: Double,
         unit: String = "pcs",
         storefront: com.example.data.local.ProductStorefrontDetails = com.example.data.local.ProductStorefrontDetails(),
+        imageUrl: String? = null,
         onResult: (Boolean, String) -> Unit = { _, _ -> }
     ) {
         if (name.isBlank() || purchasePrice < 0.0 || salePrice < 0.0 || stock < 0.0 ||
@@ -8722,6 +8805,7 @@ function executePayment() {
             onResult(false, message)
             return
         }
+        val finalImage = imageUrl?.trim()?.ifBlank { null } ?: storefront.featuredImage?.preview
         viewModelScope.launch {
             val normalizedCode = code?.trim()?.ifBlank { null } ?: "PRD-${System.currentTimeMillis() % 1000000}"
             if (repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
@@ -8740,7 +8824,7 @@ function executePayment() {
                     qrCode = fallbackCode,
                     costPrice = purchasePrice,
                     askingPrice = salePrice,
-                    imageUrl = storefront.featuredImage?.preview,
+                    imageUrl = finalImage,
                     storefrontDetailsJson = storefront.json().toString()
                 )
                 val openingMovement = if (stock > 0.0) StockTransactionEntity(
@@ -8769,7 +8853,7 @@ function executePayment() {
                 qrCode = normalizedCode,
                 costPrice = purchasePrice,
                 askingPrice = salePrice,
-                imageUrl = storefront.featuredImage?.preview,
+                imageUrl = finalImage,
                 storefrontDetailsJson = storefront.json().toString()
             )
             val openingMovement = if (stock > 0.0) StockTransactionEntity(
@@ -8793,6 +8877,7 @@ function executePayment() {
                         put("purchase_price", prod.purchasePrice); put("sale_price", prod.salePrice)
                         put("cost_price", prod.costPrice); put("asking_price", prod.askingPrice)
                         put("unit", prod.unit); put("opening_quantity", stock)
+                        put("image_url", prod.imageUrl ?: org.json.JSONObject.NULL)
                     })
                     put("p_variants", org.json.JSONArray())
                 }
@@ -8866,6 +8951,7 @@ function executePayment() {
                         put("unit", normalizedProduct.unit)
                         put("expected_stock", current.stockQuantity)
                         put("target_stock", normalizedProduct.stockQuantity)
+                        put("image_url", normalizedProduct.imageUrl ?: org.json.JSONObject.NULL)
                     })
                     put("p_adjustment", adjustment?.let { movement ->
                         org.json.JSONObject().apply {

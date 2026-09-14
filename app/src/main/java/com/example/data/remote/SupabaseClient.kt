@@ -1799,6 +1799,51 @@ object SupabaseClient {
         }
     }
 
+    // SUPABASE STORAGE: Upload file bytes to bucket (e.g. products)
+    suspend fun uploadStorageObject(
+        url: String,
+        anonKey: String,
+        token: String?,
+        bucket: String,
+        filePath: String,
+        fileBytes: ByteArray,
+        mimeType: String = "image/jpeg",
+        onSuccess: (publicUrl: String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val cleanUrl = url.trimEnd('/')
+        val cleanPath = filePath.trimStart('/')
+        val endpoint = "$cleanUrl/storage/v1/object/$bucket/$cleanPath"
+
+        val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else "Bearer $anonKey"
+
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("apikey", anonKey)
+            .addHeader("Authorization", authHeader)
+            .addHeader("x-upsert", "true")
+            .post(fileBytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+
+        try {
+            withContext(Dispatchers.IO) {
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful) {
+                        val publicUrl = "$cleanUrl/storage/v1/object/public/$bucket/$cleanPath"
+                        onSuccess(publicUrl)
+                    } else {
+                        val errorDesc = response.parseError(bodyStr)
+                        onFailure("Storage upload failed (${response.code}): $errorDesc")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseClient", "uploadStorageObject error", e)
+            onFailure(e.localizedMessage ?: "Storage upload network error")
+        }
+    }
+
     private fun isoTimestamp(timestamp: Long): String =
         java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")

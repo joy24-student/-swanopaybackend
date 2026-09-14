@@ -281,14 +281,16 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
     val totalCustomerCollected = transactions.filter { it.customerId != null && it.type == "payment" }.sumOf { it.amount }
 
     val filteredSuppliers = suppliers.filter {
-        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
+        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
     }
 
     val filteredCustomers = customers.filter {
-        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
+        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
     }
 
-    if (selectedCustomerForLedger != null) {
+    if (selectedSupplierForLedger != null) {
+        SupplierDetailsView(supplier = selectedSupplierForLedger!!, viewModel = viewModel, onBack = { selectedSupplierForLedger = null })
+    } else if (selectedCustomerForLedger != null) {
         CustomerDetailsView(customer = selectedCustomerForLedger!!, viewModel = viewModel, onBack = { selectedCustomerForLedger = null })
     } else {
     Box(
@@ -717,20 +719,21 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                 if (selectedTab == 0) {
                     // SUPPLIER PAYABLES LIST
                     val listToShow = suppliers.filter {
-                        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
+                        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
                     }
 
                     itemsIndexed(listToShow) { index, supplier ->
                         val dueAmount = Math.abs(supplier.currentBalance)
                         val isPaid = supplier.currentBalance >= 0
                         val isPartial = supplier.currentBalance != supplier.openingBalance && supplier.currentBalance < 0
+                        val sCode = supplier.code.ifBlank { "S-${supplier.phone.takeLast(4).ifBlank { supplier.id.take(4).uppercase() }}" }
 
                         val supplierTxs = transactions.filter { it.supplierId == supplier.id }
                         val supplierTotalBill = Math.abs(supplier.openingBalance) + supplierTxs.filter { it.type == "credit" }.sumOf { it.amount }
                         val supplierPaid = supplierTxs.filter { it.type == "payment" }.sumOf { it.amount }
 
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().clickable { selectedSupplierForLedger = supplier },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = cardDark),
                             border = BorderStroke(1.dp, goldBorder)
@@ -759,7 +762,16 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                         }
 
                                         Column {
-                                            Text("${index + 1}. ${supplier.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textWhite)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("${index + 1}. ${supplier.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textWhite)
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = goldBadgeBg,
+                                                    border = BorderStroke(1.dp, if (isDark) goldBorder else Color(0xFFFDE68A))
+                                                ) {
+                                                    Text(sCode, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = goldText, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp))
+                                                }
+                                            }
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Icon(Icons.Default.Phone, null, tint = textMuted, modifier = Modifier.size(12.dp))
@@ -936,14 +948,15 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                 } else {
                     // CUSTOMER DUES LIST
                     val customerListToShow = customers.filter {
-                        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
+                        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
                     }
 
                     itemsIndexed(customerListToShow) { index, customer ->
                         val dueAmt = customer.currentBalance
+                        val cCode = customer.code.ifBlank { "C-${customer.phone.takeLast(4).ifBlank { customer.id.take(4).uppercase() }}" }
 
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().clickable { selectedCustomerForLedger = customer },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = cardDark),
                             border = BorderStroke(1.dp, goldBorder)
@@ -967,7 +980,16 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                         }
 
                                         Column {
-                                            Text("${index + 1}. ${customer.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textWhite)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("${index + 1}. ${customer.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textWhite)
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = goldBadgeBg,
+                                                    border = BorderStroke(1.dp, if (isDark) goldBorder else Color(0xFFFDE68A))
+                                                ) {
+                                                    Text(cCode, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = goldText, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp))
+                                                }
+                                            }
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 Icon(Icons.Default.Phone, null, tint = textMuted, modifier = Modifier.size(12.dp))
@@ -1012,9 +1034,9 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                     }
 
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(Icons.Default.AccountBalanceWallet, null, tint = goldText, modifier = Modifier.size(12.dp))
+                                        Icon(Icons.Default.Receipt, null, tint = goldText, modifier = Modifier.size(12.dp))
                                         Text(
-                                            text = "Total Bill: ৳ ${String.format("%,.2f", customerTotalBill)}",
+                                            text = "Total: ৳ ${String.format("%,.2f", customerTotalBill)}",
                                             fontSize = 11.5.sp,
                                             color = textMuted
                                         )
@@ -1041,11 +1063,31 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                // Call & WhatsApp / Reminder Actions
+                                // Call & WhatsApp / Reminder / View Actions
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .clickable { selectedCustomerForLedger = customer },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = surfaceDark,
+                                        border = BorderStroke(1.dp, goldBorder)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Visibility, null, tint = if (isDark) goldPrimary else Color(0xFF0F172A), modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("View", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF0F172A))
+                                        }
+                                    }
+
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
@@ -1068,14 +1110,14 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(Icons.Default.Phone, null, tint = if (isDark) goldPrimary else Color(0xFF0F172A), modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Call Customer", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF0F172A))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF0F172A))
                                         }
                                     }
 
                                     Surface(
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .weight(1.2f)
                                             .height(38.dp)
                                             .clickable {
                                                 viewModel.logFirebaseStatus("Sent WhatsApp Reminder to ${customer.name}")
@@ -1090,8 +1132,8 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(Icons.Default.Send, null, tint = if (isDark) goldPrimary else Color(0xFF000000), modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Send Reminder", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF000000))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Reminder", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF000000))
                                         }
                                     }
                                 }

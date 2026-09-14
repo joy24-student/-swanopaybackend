@@ -121,7 +121,8 @@ data class CustomerEntity(
     val openingBalance: Double,
     val currentBalance: Double,
     val status: String = "VIP", // VIP, Risk, Inactive, Potential
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val code: String = ""
 )
 
 @Entity(tableName = "suppliers", indices = [Index("merchantId")])
@@ -134,7 +135,8 @@ data class SupplierEntity(
     val address: String?,
     val openingBalance: Double,
     val currentBalance: Double,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val code: String = ""
 )
 
 @Entity(tableName = "ledger_transactions", indices = [Index("merchantId")])

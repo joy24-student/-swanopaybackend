@@ -36,7 +36,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FormSubmissionCacheEntity::class,
         OutboxSmsEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -154,6 +154,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val customerColumns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(`customers`)").use { cursor ->
+                    while (cursor.moveToNext()) customerColumns.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+                if (!customerColumns.contains("code")) {
+                    db.execSQL("ALTER TABLE `customers` ADD COLUMN `code` TEXT NOT NULL DEFAULT ''")
+                }
+                val supplierColumns = mutableSetOf<String>()
+                db.query("PRAGMA table_info(`suppliers`)").use { cursor ->
+                    while (cursor.moveToNext()) supplierColumns.add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+                if (!supplierColumns.contains("code")) {
+                    db.execSQL("ALTER TABLE `suppliers` ADD COLUMN `code` TEXT NOT NULL DEFAULT ''")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -161,7 +180,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "swapnopay_database"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
