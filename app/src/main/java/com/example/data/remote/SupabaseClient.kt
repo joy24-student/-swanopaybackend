@@ -112,7 +112,7 @@ object SupabaseClient {
         password: String,
         businessName: String,
         phone: String,
-        redirectUrl: String = "swapnopay://auth-callback",
+        redirectUrl: String = "https://swapnopay.top/auth-callback.html",
         onSuccess: (AuthSession?) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -421,7 +421,7 @@ object SupabaseClient {
         url: String,
         anonKey: String,
         email: String,
-        redirectUrl: String = "swapnopay://auth-callback",
+        redirectUrl: String = "https://swapnopay.top/auth-callback.html",
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {

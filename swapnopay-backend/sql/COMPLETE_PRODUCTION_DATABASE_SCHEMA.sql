@@ -1333,3 +1333,29 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- AUTO-CONFIRM USERS TRIGGER (PREVENTS LOCALHOST REDIRECTION & SIGN-IN BLOCKS)
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION public.handle_auto_confirm_merchant_user()
+  RETURNS TRIGGER AS $func$
+  BEGIN
+    IF NEW.email_confirmed_at IS NULL THEN
+      NEW.email_confirmed_at := NOW();
+    END IF;
+    IF NEW.confirmed_at IS NULL THEN
+      NEW.confirmed_at := NOW();
+    END IF;
+    RETURN NEW;
+  END;
+  $func$ LANGUAGE plpgsql SECURITY DEFINER;
+
+  DROP TRIGGER IF EXISTS tr_auto_confirm_merchant_user ON auth.users;
+  CREATE TRIGGER tr_auto_confirm_merchant_user
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_auto_confirm_merchant_user();
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Notice: Auto-confirm user trigger skipped: %', SQLERRM;
+END $$;

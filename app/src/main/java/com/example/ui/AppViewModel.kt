@@ -27,8 +27,12 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.messaging.FirebaseMessaging
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.OkHttpClient
 import okhttp3.Request
+
+// SwapnoPay Central Platform Supabase Constants (Anchors Platform Identity & Social OAuth)
+const val PLATFORM_SUPABASE_URL = "https://tldubojeokgyoclxnzkb.supabase.co"
+const val PLATFORM_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
+const val PLATFORM_AUTH_REDIRECT_URL = "https://swapnopay.top/auth-callback.html"
 
 data class FirebaseNotice(
     val title: String = "",
@@ -1674,21 +1678,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    suspend fun getOrCreatePlatformSupabaseProfile(): com.example.data.local.SupabaseProfileEntity {
+        val platformId = "00000000-0000-0000-0000-000000000001"
+        val existing = repository.observeSupabaseProfiles().firstOrNull()?.find { it.id == platformId }
+        if (existing != null && existing.supabaseUrl.isNotBlank() && existing.anonKey.isNotBlank()) {
+            return existing
+        }
+        val defaultProfile = com.example.data.local.SupabaseProfileEntity(
+            id = platformId,
+            businessName = "SwapnoPay Main Cloud",
+            supabaseUrl = PLATFORM_SUPABASE_URL,
+            anonKey = PLATFORM_SUPABASE_ANON_KEY,
+            serviceRoleKey = "",
+            isActive = true
+        )
+        repository.insertSupabaseProfile(defaultProfile)
+        return defaultProfile
+    }
+
     suspend fun getOrCreateActiveSupabaseProfile(): com.example.data.local.SupabaseProfileEntity {
         val existing = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
         if (existing != null && existing.supabaseUrl.isNotBlank() && existing.anonKey.isNotBlank()) {
             _activeSupabaseProfile.value = existing
             return existing
         }
-        val defaultProfile = com.example.data.local.SupabaseProfileEntity(
-            id = "00000000-0000-0000-0000-000000000001",
-            businessName = "SwapnoPay Main Cloud",
-            supabaseUrl = "https://tldubojeokgyoclxnzkb.supabase.co",
-            anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0",
-            serviceRoleKey = "",
-            isActive = true
-        )
-        repository.insertSupabaseProfile(defaultProfile)
+        val defaultProfile = getOrCreatePlatformSupabaseProfile()
         _activeSupabaseProfile.value = defaultProfile
         return defaultProfile
     }
@@ -1697,17 +1711,53 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
-            val databaseProfile = getOrCreateActiveSupabaseProfile()
-            _activeSupabaseProfile.value = databaseProfile
-            val authenticated = authenticateSupabaseProfile(email.trim(), password, register = false)
+            // 1. Primary: Authenticate user against central Platform Supabase
+            val platformProfile = getOrCreatePlatformSupabaseProfile()
+            var session: com.example.data.remote.SupabaseClient.AuthSession? = null
+            var failure: String? = null
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.data.remote.SupabaseClient.signIn(
+                    platformProfile.supabaseUrl,
+                    platformProfile.anonKey,
+                    email.trim(),
+                    password,
+                    onSuccess = { session = it },
+                    onFailure = { failure = it }
+                )
+            }
+            // 2. Secondary fallback: check connected merchant database if different
+            val active = _activeSupabaseProfile.value
+            if (session == null && active != null && active.supabaseUrl.isNotBlank() && !active.supabaseUrl.contains("tldubojeokgyoclxnzkb")) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.example.data.remote.SupabaseClient.signIn(
+                        active.supabaseUrl,
+                        active.anonKey,
+                        email.trim(),
+                        password,
+                        onSuccess = { session = it },
+                        onFailure = { if (failure == null) failure = it }
+                    )
+                }
+            }
             _isAuthenticating.value = false
-            if (authenticated) {
-                saveEncryptedSessionToken(email.trim(), databaseProfile.id, "Supabase In-App Auth")
+            if (session != null) {
+                val authenticatedSession = session!!
+                val updatedPlatform = platformProfile.copy(
+                    authEmail = authenticatedSession.email.ifBlank { email.trim() },
+                    authSessionToken = authenticatedSession.accessToken,
+                    authRefreshToken = authenticatedSession.refreshToken,
+                    authTokenExpiresAt = authenticatedSession.expiresAtMillis
+                )
+                repository.insertSupabaseProfile(updatedPlatform)
+                if (_activeSupabaseProfile.value == null) {
+                    _activeSupabaseProfile.value = updatedPlatform
+                }
+                saveEncryptedSessionToken(email.trim(), platformProfile.id, "Supabase In-App Auth")
                 setUserEmail(email.trim())
                 logFirebaseEvent("login_success", Bundle().apply { putString("provider", "supabase") })
                 onSuccess()
             } else {
-                val message = "Supabase sign-in failed. Check your email and password, or verify your account email."
+                val message = failure ?: "Supabase sign-in failed. Check your email and password, or verify your account email."
                 _authError.value = message
                 onFailure(message)
             }
@@ -1774,55 +1824,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
-            val databaseProfile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            val isCustomConfigured = databaseProfile != null &&
-                    databaseProfile.supabaseUrl.isNotBlank() &&
-                    !databaseProfile.supabaseUrl.contains("swapnopay.supabase.co") &&
-                    databaseProfile.anonKey.isNotBlank()
-
-            if (isCustomConfigured) {
-                val supabaseUrl = databaseProfile!!.supabaseUrl.trimEnd('/')
-                val redirectTo = "swapnopay://auth-callback"
-                val oauthEndpoint = "$supabaseUrl/auth/v1/authorize?provider=$provider&redirect_to=${java.net.URLEncoder.encode(redirectTo, "UTF-8")}"
-                try {
-                    // Pre-flight check if provider is active on Supabase to prevent browser 400 error
-                    val isProviderActive = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val client = okhttp3.OkHttpClient.Builder()
-                                .followRedirects(false)
-                                .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                                .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                                .build()
-                            val checkReq = okhttp3.Request.Builder()
-                                .url(oauthEndpoint)
-                                .header("apikey", databaseProfile.anonKey)
-                                .get()
-                                .build()
-                            client.newCall(checkReq).execute().use { resp ->
-                                resp.isRedirect || (resp.code != 400 && resp.code != 404)
-                            }
-                        } catch (e: Exception) {
-                            false
+            // Social Auth (Google, Facebook) must always run against SwapnoPay Platform Supabase
+            val authBaseUrl = PLATFORM_SUPABASE_URL
+            val anonKey = PLATFORM_SUPABASE_ANON_KEY
+            val redirectTo = "swapnopay://auth-callback"
+            val oauthEndpoint = "$authBaseUrl/auth/v1/authorize?provider=$provider&redirect_to=${java.net.URLEncoder.encode(redirectTo, "UTF-8")}"
+            try {
+                // Pre-flight check if provider is active on Platform Supabase
+                val isProviderActive = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val client = okhttp3.OkHttpClient.Builder()
+                            .followRedirects(false)
+                            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                        val checkReq = okhttp3.Request.Builder()
+                            .url(oauthEndpoint)
+                            .header("apikey", anonKey)
+                            .get()
+                            .build()
+                        client.newCall(checkReq).execute().use { resp ->
+                            resp.isRedirect || (resp.code != 400 && resp.code != 404)
                         }
+                    } catch (e: Exception) {
+                        false
                     }
-
-                    if (isProviderActive) {
-                        logFirebaseStatus("In-app $provider social authentication selected.")
-                        logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
-                        performDirectSocialLogin(provider, onDirectSuccess)
-                    } else {
-                        logFirebaseStatus("$provider OAuth fallback to direct sign-in.")
-                        performDirectSocialLogin(provider, onDirectSuccess)
-                    }
-                } catch (e: Exception) {
-                    _authError.value = "Sign-in error for $provider: ${e.message}"
-                    performDirectSocialLogin(provider, onDirectSuccess)
-                } finally {
-                    _isAuthenticating.value = false
                 }
-            } else {
-                // Perform direct in-app social authentication
+
+                if (isProviderActive) {
+                    logFirebaseStatus("In-app $provider social authentication selected.")
+                    logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
+                    performDirectSocialLogin(provider, onDirectSuccess)
+                } else {
+                    logFirebaseStatus("$provider OAuth fallback to direct sign-in.")
+                    performDirectSocialLogin(provider, onDirectSuccess)
+                }
+            } catch (e: Exception) {
+                _authError.value = "Sign-in error for $provider: ${e.message}"
                 performDirectSocialLogin(provider, onDirectSuccess)
+            } finally {
+                _isAuthenticating.value = false
             }
         }
     }
@@ -1986,19 +2027,58 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
-            val databaseProfile = getOrCreateActiveSupabaseProfile()
-            _activeSupabaseProfile.value = databaseProfile
-            val authenticated = authenticateSupabaseProfile(email.trim(), password, register = true)
+            // Account registration is permanently anchored to SwapnoPay Platform Supabase
+            val platformProfile = getOrCreatePlatformSupabaseProfile()
+            var session: com.example.data.remote.SupabaseClient.AuthSession? = null
+            var failure: String? = null
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.data.remote.SupabaseClient.signUp(
+                    platformProfile.supabaseUrl,
+                    platformProfile.anonKey,
+                    email.trim(),
+                    password,
+                    activeProfile.value.businessName,
+                    activeProfile.value.phone,
+                    redirectUrl = PLATFORM_AUTH_REDIRECT_URL,
+                    onSuccess = { session = it },
+                    onFailure = { failure = it }
+                )
+                // If direct session wasn't returned because email verification is pending or auto-confirmed, attempt signIn
+                if (session == null && failure == null) {
+                    com.example.data.remote.SupabaseClient.signIn(
+                        platformProfile.supabaseUrl,
+                        platformProfile.anonKey,
+                        email.trim(),
+                        password,
+                        onSuccess = { session = it },
+                        onFailure = { /* pending email confirmation */ }
+                    )
+                }
+            }
             _isAuthenticating.value = false
-            if (authenticated) {
-                saveEncryptedSessionToken(email.trim(), databaseProfile.id, "Supabase In-App Auth")
+            if (session != null) {
+                val authenticatedSession = session!!
+                val updatedPlatform = platformProfile.copy(
+                    authEmail = authenticatedSession.email.ifBlank { email.trim() },
+                    authSessionToken = authenticatedSession.accessToken,
+                    authRefreshToken = authenticatedSession.refreshToken,
+                    authTokenExpiresAt = authenticatedSession.expiresAtMillis
+                )
+                repository.insertSupabaseProfile(updatedPlatform)
+                if (_activeSupabaseProfile.value == null) {
+                    _activeSupabaseProfile.value = updatedPlatform
+                }
+                saveEncryptedSessionToken(email.trim(), platformProfile.id, "Supabase In-App Auth")
                 setUserEmail(email.trim())
                 logFirebaseEvent("register_success", Bundle().apply { putString("provider", "supabase") })
                 onSuccess()
+            } else if (failure != null) {
+                _authError.value = failure
+                onFailure(failure!!)
             } else {
-                val message = "Account registration requires email confirmation. Check your email inbox to confirm, then use Sign In."
+                val message = "Account registration complete. Check your email inbox to confirm, or proceed to Sign In."
                 _authError.value = message
-                onFailure(message)
+                onSuccess()
             }
         }
     }
@@ -2172,11 +2252,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         if (!accessToken.isNullOrBlank() || !authCode.isNullOrBlank()) {
             viewModelScope.launch {
-                val profile = _activeSupabaseProfile.value ?: getOrCreateActiveSupabaseProfile()
                 var resolvedAccessToken = accessToken
                 var resolvedRefreshToken = refreshToken
 
-                // If PKCE code was returned, exchange it for access token
+                // If PKCE code was returned, exchange it for access token against Platform Supabase
                 if (resolvedAccessToken.isNullOrBlank() && !authCode.isNullOrBlank()) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         try {
@@ -2185,8 +2264,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 put("auth_code", authCode)
                             }
                             val exchangeReq = okhttp3.Request.Builder()
-                                .url("${profile.supabaseUrl.trimEnd('/')}/auth/v1/token?grant_type=pkce")
-                                .header("apikey", profile.anonKey)
+                                .url("$PLATFORM_SUPABASE_URL/auth/v1/token?grant_type=pkce")
+                                .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
                                 .header("Content-Type", "application/json")
                                 .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
                                 .build()
@@ -2215,25 +2294,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 var userEmail = ""
                 var userName = ""
 
-                val updated = profile.copy(
-                    authSessionToken = resolvedAccessToken,
-                    authRefreshToken = resolvedRefreshToken.orEmpty(),
-                    authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
-                )
-                repository.insertSupabaseProfile(updated)
-                _activeSupabaseProfile.value = updated
-                scheduleSupabaseSessionRefresh(updated)
-                supabaseConnected.value = true
-                userEmail = profile.authEmail
-
-                // Query user info from Supabase /auth/v1/user
+                // Query user info from Platform Supabase /auth/v1/user
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val client = okhttp3.OkHttpClient()
                         val request = okhttp3.Request.Builder()
-                            .url("${profile.supabaseUrl.trimEnd('/')}/auth/v1/user")
+                            .url("$PLATFORM_SUPABASE_URL/auth/v1/user")
                             .header("Authorization", "Bearer $resolvedAccessToken")
-                            .header("apikey", profile.anonKey)
+                            .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
                             .get()
                             .build()
                         client.newCall(request).execute().use { response ->
@@ -2253,9 +2321,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                val platformProfile = getOrCreatePlatformSupabaseProfile()
+                val updatedPlatform = platformProfile.copy(
+                    authEmail = userEmail.ifBlank { platformProfile.authEmail },
+                    authSessionToken = resolvedAccessToken,
+                    authRefreshToken = resolvedRefreshToken.orEmpty(),
+                    authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
+                )
+                repository.insertSupabaseProfile(updatedPlatform)
+
+                // Preserve connected merchant database if one exists; do not overwrite store credentials
+                val currentActive = _activeSupabaseProfile.value
+                val finalProfile = if (currentActive != null && currentActive.supabaseUrl.isNotBlank() && !currentActive.supabaseUrl.contains("tldubojeokgyoclxnzkb")) {
+                    val updatedActive = currentActive.copy(
+                        authEmail = userEmail.ifBlank { currentActive.authEmail },
+                        authSessionToken = resolvedAccessToken,
+                        authRefreshToken = resolvedRefreshToken.orEmpty(),
+                        authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
+                    )
+                    repository.insertSupabaseProfile(updatedActive)
+                    _activeSupabaseProfile.value = updatedActive
+                    scheduleSupabaseSessionRefresh(updatedActive)
+                    updatedActive
+                } else {
+                    _activeSupabaseProfile.value = updatedPlatform
+                    scheduleSupabaseSessionRefresh(updatedPlatform)
+                    updatedPlatform
+                }
+                supabaseConnected.value = true
+
                 val finalEmail = if (userEmail.isNotBlank()) userEmail else "oauth_user_${System.currentTimeMillis().toString().takeLast(6)}@swapnopay.bd"
                 setUserEmail(finalEmail)
-                saveEncryptedSessionToken(finalEmail, profile.id, "OAuth (${tokenType ?: "login"})")
+                saveEncryptedSessionToken(finalEmail, finalProfile.id, "OAuth (${tokenType ?: "login"})")
 
                 if (userName.isNotBlank()) {
                     val currentProfile = _activeProfile.value
@@ -2341,14 +2438,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendPasswordReset(email: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch {
             _isAuthenticating.value = true
-            val databaseProfile = getOrCreateActiveSupabaseProfile()
+            val platformProfile = getOrCreatePlatformSupabaseProfile()
             var success = false
             var failure: String? = null
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.example.data.remote.SupabaseClient.sendPasswordReset(
-                    databaseProfile.supabaseUrl,
-                    databaseProfile.anonKey,
+                    platformProfile.supabaseUrl,
+                    platformProfile.anonKey,
                     email.trim(),
+                    redirectUrl = PLATFORM_AUTH_REDIRECT_URL,
                     onSuccess = { success = true },
                     onFailure = { failure = it }
                 )
