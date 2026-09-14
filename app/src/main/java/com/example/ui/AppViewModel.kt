@@ -1922,10 +1922,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                 _isAuthenticating.value = false
 
+                if (check != null) {
+                    // Pre-fill shop name, phone number, and related data fetched from admin
+                    if (check.businessName.isNotBlank()) {
+                        _onboardingBusinessName.value = check.businessName
+                    }
+                    if (check.phone.isNotBlank()) {
+                        _onboardingPhone.value = check.phone
+                    }
+                    if (check.supabaseUrl.isNotBlank()) {
+                        _supabaseUrlInput.value = check.supabaseUrl
+                    }
+                    if (check.supabaseAnonKey.isNotBlank()) {
+                        _supabaseAnonKeyInput.value = check.supabaseAnonKey
+                    }
+                    applyRestoredMerchantSetup(check)
+                }
+
                 if (check != null && check.isOnboarded && check.hasOwnDatabase) {
                     // Existing onboarded merchant with own database -> configure database & route to Dashboard
                     logFirebaseStatus("Existing merchant confirmed in Admin DB: ${check.businessName} (Own DB: ${check.supabaseUrl})")
-                    applyRestoredMerchantSetup(check)
                     setOnboarded(true)
                     val isBiometricLocked = _isBiometricLocked.value
                     if (isBiometricLocked) {
@@ -1934,8 +1950,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         navigateTo("Main")
                     }
                 } else {
-                    // Not found or incomplete onboarding in Admin DB -> route to Onboarding
-                    logFirebaseStatus("Merchant not registered or onboarded in Admin DB. Navigating to Onboarding.")
+                    // Incomplete onboarding or missing own database -> route to Onboarding with pre-filled admin details
+                    logFirebaseStatus("Merchant setup required. Navigating to Onboarding with pre-filled admin data.")
                     setOnboarded(false)
                     navigateTo("Onboarding")
                 }
@@ -2201,6 +2217,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _activeProfile.value = updatedProfile
                 repository.insertMerchantProfile(updatedProfile)
 
+                if (!restoredBusinessName.isNullOrBlank()) {
+                    _onboardingBusinessName.value = restoredBusinessName!!
+                }
+                if (!restoredPhone.isNullOrBlank()) {
+                    _onboardingPhone.value = restoredPhone!!
+                }
+                if (!restoredSupabaseUrl.isNullOrBlank()) {
+                    _supabaseUrlInput.value = restoredSupabaseUrl!!
+                }
+                if (!restoredSupabaseAnonKey.isNullOrBlank()) {
+                    _supabaseAnonKeyInput.value = restoredSupabaseAnonKey!!
+                }
+
                 val isReturningOnboarded = isOnboardedFromBackend && hasOwnDatabaseFromBackend && !restoredSupabaseUrl.isNullOrBlank() && !restoredSupabaseAnonKey.isNullOrBlank()
 
                 if (isReturningOnboarded) {
@@ -2250,6 +2279,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
+            val cleanEmail = email.trim().lowercase()
+
+            // 1. Strictly validate Admin DB first: if user already exists, reject signup and redirect to login
+            val existingCheck = checkMerchantAccountOnBackend(cleanEmail)
+            if (existingCheck != null && existingCheck.exists) {
+                _isAuthenticating.value = false
+                val msg = "ALREADY_EXISTS: An account with this email already exists."
+                _authError.value = msg
+                onFailure(msg)
+                return@launch
+            }
+
             // Account registration is permanently anchored to SwapnoPay Platform Supabase
             val platformProfile = getOrCreatePlatformSupabaseProfile()
             var session: com.example.data.remote.SupabaseClient.AuthSession? = null
@@ -2258,10 +2299,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 com.example.data.remote.SupabaseClient.signUp(
                     platformProfile.supabaseUrl,
                     platformProfile.anonKey,
-                    email.trim(),
+                    cleanEmail,
                     password,
-                    activeProfile.value.businessName,
-                    activeProfile.value.phone,
+                    "",
+                    "",
                     redirectUrl = PLATFORM_AUTH_REDIRECT_URL,
                     onSuccess = { session = it },
                     onFailure = { failure = it }
@@ -2271,7 +2312,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     com.example.data.remote.SupabaseClient.signIn(
                         platformProfile.supabaseUrl,
                         platformProfile.anonKey,
-                        email.trim(),
+                        cleanEmail,
                         password,
                         onSuccess = { session = it },
                         onFailure = { /* pending email confirmation */ }
@@ -2281,24 +2322,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _isAuthenticating.value = false
             if (session != null) {
                 val authenticatedSession = session!!
+                // Clear any previous session and onboarding state so new user starts completely fresh
+                clearAllSessionAndOnboardingData()
+
                 val updatedPlatform = platformProfile.copy(
-                    authEmail = authenticatedSession.email.ifBlank { email.trim() },
+                    authEmail = authenticatedSession.email.ifBlank { cleanEmail },
                     authSessionToken = authenticatedSession.accessToken,
                     authRefreshToken = authenticatedSession.refreshToken,
                     authTokenExpiresAt = authenticatedSession.expiresAtMillis
                 )
                 repository.insertSupabaseProfile(updatedPlatform)
-                if (_activeSupabaseProfile.value == null) {
-                    _activeSupabaseProfile.value = updatedPlatform
-                }
-                saveEncryptedSessionToken(email.trim(), platformProfile.id, "Supabase In-App Auth")
-                setUserEmail(email.trim())
+                _activeSupabaseProfile.value = updatedPlatform
+                saveEncryptedSessionToken(cleanEmail, platformProfile.id, "Supabase In-App Auth")
+                setUserEmail(cleanEmail)
+                setOnboarded(false)
                 logFirebaseEvent("register_success", Bundle().apply { putString("provider", "supabase") })
                 onSuccess()
             } else if (failure != null) {
-                _authError.value = failure
-                onFailure(failure!!)
+                val isAlreadyRegistered = failure!!.contains("already", ignoreCase = true) ||
+                        failure!!.contains("exists", ignoreCase = true) ||
+                        failure!!.contains("User already", ignoreCase = true)
+                val finalErr = if (isAlreadyRegistered) {
+                    "ALREADY_EXISTS: An account with this email already exists."
+                } else {
+                    failure!!
+                }
+                _authError.value = finalErr
+                onFailure(finalErr)
             } else {
+                clearAllSessionAndOnboardingData()
+                setUserEmail(cleanEmail)
+                setOnboarded(false)
                 val message = "Account registration complete. Check your email inbox to confirm, or proceed to Sign In."
                 _authError.value = message
                 onSuccess()
@@ -2585,10 +2639,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _isAuthenticating.value = false
                 _authError.value = null
 
+                if (check != null) {
+                    if (check.businessName.isNotBlank()) {
+                        _onboardingBusinessName.value = check.businessName
+                    }
+                    if (check.phone.isNotBlank()) {
+                        _onboardingPhone.value = check.phone
+                    }
+                    if (check.supabaseUrl.isNotBlank()) {
+                        _supabaseUrlInput.value = check.supabaseUrl
+                    }
+                    if (check.supabaseAnonKey.isNotBlank()) {
+                        _supabaseAnonKeyInput.value = check.supabaseAnonKey
+                    }
+                    applyRestoredMerchantSetup(check)
+                }
+
                 val isReturningOnboarded = check != null && check.isOnboarded && check.hasOwnDatabase && check.supabaseUrl.isNotBlank() && check.supabaseAnonKey.isNotBlank()
 
                 if (isReturningOnboarded) {
-                    logFirebaseStatus("Existing merchant confirmed in Admin DB: ${check.businessName}. Setting up own database: ${check.supabaseUrl}")
+                    logFirebaseStatus("Existing merchant confirmed in Admin DB: ${check?.businessName}. Setting up own database: ${check?.supabaseUrl}")
                     applyRestoredMerchantSetup(check)
                     setOnboarded(true)
                     val isBiometricEnabled = _isBiometricLocked.value
@@ -2775,8 +2845,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         performDirectSocialLogin("Facebook", onSuccess)
     }
 
-    fun logout(onComplete: () -> Unit) {
+    fun clearAllSessionAndOnboardingData() {
         setUserEmail(null)
+        _supabaseUrlInput.value = ""
+        _supabaseAnonKeyInput.value = ""
+        supabaseUrl.value = ""
+        supabaseAnonKey.value = ""
+        _onboardingBusinessName.value = ""
+        _onboardingPhone.value = ""
+        _authError.value = null
+        _sessionInfo.value = EncryptedSessionInfo(isValid = false)
+        try {
+            securityPrefs.edit().clear().apply()
+        } catch (e: Exception) {
+            android.util.Log.w("AppViewModel", "Failed to clear securityPrefs: ${e.message}")
+        }
+        setOnboarded(false)
+        val cleanProfile = com.example.data.local.MerchantProfileEntity(
+            id = "merchant_default",
+            businessName = "",
+            phone = "",
+            email = "",
+            businessType = "Retail Store",
+            website = "",
+            primaryBank = "",
+            accountHolder = "",
+            accountNumber = "",
+            kycStatus = "UNVERIFIED",
+            photoUrl = ""
+        )
+        _activeProfile.value = cleanProfile
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                repository.insertMerchantProfile(cleanProfile)
+            } catch (e: Exception) {
+                android.util.Log.w("AppViewModel", "Failed to reset default merchant profile: ${e.message}")
+            }
+        }
+    }
+
+
+    fun logout(onComplete: () -> Unit) {
+        clearAllSessionAndOnboardingData()
         viewModelScope.launch {
             val profile = _activeSupabaseProfile.value
             if (profile != null) {
@@ -2787,7 +2897,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     authTokenExpiresAt = 0L
                 )
                 repository.insertSupabaseProfile(cleared)
-                _activeSupabaseProfile.value = cleared
+                _activeSupabaseProfile.value = null
             }
             supabaseRefreshJob?.cancel()
             supabaseConnected.value = false
@@ -6517,12 +6627,26 @@ function executePayment() {
     private val _supabaseAnonKeyInput = MutableStateFlow("")
     val supabaseAnonKeyInput: StateFlow<String> = _supabaseAnonKeyInput.asStateFlow()
 
+    private val _onboardingBusinessName = MutableStateFlow("")
+    val onboardingBusinessName: StateFlow<String> = _onboardingBusinessName.asStateFlow()
+
+    private val _onboardingPhone = MutableStateFlow("")
+    val onboardingPhone: StateFlow<String> = _onboardingPhone.asStateFlow()
+
     fun setSupabaseUrlInput(url: String) {
         _supabaseUrlInput.value = url
     }
 
     fun setSupabaseAnonKeyInput(key: String) {
         _supabaseAnonKeyInput.value = key
+    }
+
+    fun setOnboardingBusinessName(name: String) {
+        _onboardingBusinessName.value = name
+    }
+
+    fun setOnboardingPhone(phone: String) {
+        _onboardingPhone.value = phone
     }
 
     fun startStep1Provision() {

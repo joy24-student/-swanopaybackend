@@ -1997,7 +1997,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
             vmSupabaseUrl.isNotBlank() -> vmSupabaseUrl
             else -> ""
         }
-        if (candidateUrl.isNotBlank() && supabaseUrlInput != candidateUrl) {
+        if (supabaseUrlInput != candidateUrl) {
             supabaseUrlInput = candidateUrl
         }
 
@@ -2007,14 +2007,38 @@ fun OnboardingScreen(viewModel: AppViewModel) {
             vmSupabaseAnonKey.isNotBlank() -> vmSupabaseAnonKey
             else -> ""
         }
-        if (candidateKey.isNotBlank() && supabaseAnonKeyInput != candidateKey) {
+        if (supabaseAnonKeyInput != candidateKey) {
             supabaseAnonKeyInput = candidateKey
         }
     }
 
     val userEmailVal by viewModel.userEmail.collectAsState()
+    val vmBusinessName by viewModel.onboardingBusinessName.collectAsState()
+    val vmPhone by viewModel.onboardingPhone.collectAsState()
+    val activeProfile by viewModel.activeProfile.collectAsState()
+
     var businessNameInput by remember { mutableStateOf("") }
     var supportPhoneInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(vmBusinessName, vmPhone, activeProfile.businessName, activeProfile.phone) {
+        val candidateName = when {
+            vmBusinessName.isNotBlank() -> vmBusinessName
+            activeProfile.businessName.isNotBlank() && activeProfile.businessName != "Demo Store" -> activeProfile.businessName
+            else -> ""
+        }
+        if (businessNameInput != candidateName) {
+            businessNameInput = candidateName
+        }
+
+        val candidatePhone = when {
+            vmPhone.isNotBlank() -> vmPhone
+            activeProfile.phone.isNotBlank() -> activeProfile.phone
+            else -> ""
+        }
+        if (supportPhoneInput != candidatePhone) {
+            supportPhoneInput = candidatePhone
+        }
+    }
     
     // PIN and biometric lock states (realtime biometric & pin setup)
     var onboardingPin by remember { mutableStateOf("") }
@@ -3291,7 +3315,10 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                             ) {
                                 OutlinedTextField(
                                     value = businessNameInput,
-                                    onValueChange = { businessNameInput = it },
+                                    onValueChange = {
+                                        businessNameInput = it
+                                        viewModel.setOnboardingBusinessName(it)
+                                    },
                                     label = { Text("Business / Shop Name", color = AppTextSecondary) },
                                     placeholder = { Text("e.g. Swapno Mart BD", color = AppTextSecondary.copy(alpha = 0.5f)) },
                                     singleLine = true,
@@ -3311,7 +3338,10 @@ fun OnboardingScreen(viewModel: AppViewModel) {
 
                                 OutlinedTextField(
                                     value = supportPhoneInput,
-                                    onValueChange = { supportPhoneInput = it },
+                                    onValueChange = {
+                                        supportPhoneInput = it
+                                        viewModel.setOnboardingPhone(it)
+                                    },
                                     label = { Text("Official Support Hotline", color = AppTextSecondary) },
                                     placeholder = { Text("e.g. 01712345678", color = AppTextSecondary.copy(alpha = 0.5f)) },
                                     singleLine = true,
@@ -4520,7 +4550,15 @@ fun LoginScreen(viewModel: AppViewModel) {
                                                         viewModel.navigateTo("Onboarding")
                                                     },
                                                     onFailure = { err ->
-                                                        localError = err
+                                                        if (err.contains("ALREADY_EXISTS", ignoreCase = true) ||
+                                                            err.contains("already registered", ignoreCase = true) ||
+                                                            err.contains("already in use", ignoreCase = true) ||
+                                                            err.contains("already exists", ignoreCase = true)) {
+                                                            localError = if (isBangla) "এই ইমেইল দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট রয়েছে। অনুগ্রহ করে লগইন করুন।" else "An account with this email already exists. Please log in."
+                                                            isSignUpMode = false // Strictly redirect from sign up screen to login screen!
+                                                        } else {
+                                                            localError = err
+                                                        }
                                                     }
                                                 )
                                             } else {
