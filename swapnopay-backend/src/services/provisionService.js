@@ -383,6 +383,25 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
   summary.edgeFunctions = functionResults.some((f) => f.ok)
   summary.functionDetails = functionResults
 
+  // 4b. Configure Auth Redirect URLs (prevent localhost redirect)
+  try {
+    console.log(`[provision] Configuring Auth redirect URLs and site_url for project ${projectRef}...`)
+    const authConfigRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        site_url: 'https://swapnopay.top',
+        uri_allow_list: 'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,lenden23://auth-callback,https://swapnopay.top,https://api.swapnopay.top',
+      }),
+    })
+    console.log(`[provision-auth] Auth redirect URLs configured: ${authConfigRes.ok ? 'SUCCESS' : authConfigRes.status}`)
+  } catch (authErr) {
+    console.warn('[provision-auth] Notice: Could not set auth config automatically:', authErr.message)
+  }
+
   // 5. Retrieve API Keys
   console.log(`[provision] 5/5 Retrieving API keys...`)
   const { anonKey, serviceRoleKey } = await fetchProjectApiKeys(projectRef, accessToken)
