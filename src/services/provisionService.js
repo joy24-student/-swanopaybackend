@@ -483,23 +483,55 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
   summary.edgeFunctions = functionResults.some((f) => f.ok)
   summary.functionDetails = functionResults
 
-  // 4b. Configure Auth Redirect URLs (prevent localhost redirect)
+  // 4b. Configure Auth Redirect URLs & Auto-confirm (eliminates localhost redirect)
   try {
     console.log(`[provision] Configuring Auth redirect URLs and site_url for project ${projectRef}...`)
-    const authConfigRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
+    const authPayload = {
+      site_url: `https://${projectRef}.supabase.co`,
+      uri_allow_list:
+        'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,lenden23://auth-callback,https://swapnopay.top,https://swapnopay.top/**,https://swapnopay.top/auth-callback.html,https://api.swapnopay.top/**',
+      additional_redirect_urls: [
+        'swapnopay://auth-callback',
+        'swapnopay://supabase-oauth-callback',
+        'swapnopay://supabase-connected',
+        'lenden23://auth-callback',
+        'https://swapnopay.top',
+        'https://swapnopay.top/**',
+        'https://swapnopay.top/auth-callback.html',
+        'https://api.swapnopay.top/**',
+      ],
+      mailer_autoconfirm: true,
+    }
+
+    let authConfigRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        site_url: 'https://swapnopay.top',
-        uri_allow_list:
-          'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,lenden23://auth-callback,https://swapnopay.top,https://api.swapnopay.top',
-      }),
+      body: JSON.stringify(authPayload),
     })
+
+    let authBodyText = await authConfigRes.text()
+    if (!authConfigRes.ok) {
+      console.warn(`[provision-auth] Primary auth config returned ${authConfigRes.status}: ${authBodyText}. Retrying with minimal payload...`)
+      authConfigRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          site_url: `https://${projectRef}.supabase.co`,
+          uri_allow_list:
+            'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,https://swapnopay.top,https://swapnopay.top/**,https://swapnopay.top/auth-callback.html',
+        }),
+      })
+      authBodyText = await authConfigRes.text()
+    }
+
     summary.authConfigured = authConfigRes.ok
-    console.log(`[provision-auth] Auth redirect URLs configured: ${authConfigRes.ok ? 'SUCCESS' : authConfigRes.status}`)
+    console.log(`[provision-auth] Auth configuration result: ${authConfigRes.ok ? 'SUCCESS' : authConfigRes.status} (${authBodyText.slice(0, 100)})`)
   } catch (authErr) {
     console.warn('[provision-auth] Notice: Could not set auth config automatically:', authErr.message)
   }
