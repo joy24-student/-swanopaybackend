@@ -270,6 +270,7 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
     val textMuted = if (isDark) Color(0xFF9CA3AF) else Color(0xFF64748B)
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    var dueOnlyFilter by remember { mutableStateOf(false) }
 
     // Summary calculations from real database entities
     val totalSupplierPayable = suppliers.sumOf { if (it.currentBalance < 0) Math.abs(it.currentBalance) else 0.0 }
@@ -281,11 +282,15 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
     val totalCustomerCollected = transactions.filter { it.customerId != null && it.type == "payment" }.sumOf { it.amount }
 
     val filteredSuppliers = suppliers.filter {
-        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
+        val matchesSearch = if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
+        val matchesDue = if (dueOnlyFilter) it.currentBalance < 0 else true
+        matchesSearch && matchesDue
     }
 
     val filteredCustomers = customers.filter {
-        if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
+        val matchesSearch = if (searchQuery.isBlank()) true else it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) || it.code.contains(searchQuery, ignoreCase = true)
+        val matchesDue = if (dueOnlyFilter) it.currentBalance > 0 else true
+        matchesSearch && matchesDue
     }
 
     if (selectedSupplierForLedger != null) {
@@ -407,7 +412,7 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Supplier Payable",
+                                        text = "All Suppliers (${suppliers.size})",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (selectedTab == 0) (if (isDark) goldPrimary else Color(0xFFD97706)) else textMuted
@@ -439,7 +444,7 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Customer Dues",
+                                        text = "All Customers (${customers.size})",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (selectedTab == 1) (if (isDark) goldPrimary else Color(0xFFD97706)) else textMuted
@@ -653,6 +658,32 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                 }
                             }
                         }
+                    }
+                }
+
+                // ── DUE FILTER TOGGLE ─────────────────────────────────────────────
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterChip(
+                            selected = !dueOnlyFilter,
+                            onClick = { dueOnlyFilter = false },
+                            label = { Text(if (selectedTab == 0) "All Suppliers (${suppliers.size})" else "All Customers (${customers.size})", fontSize = 11.5.sp) },
+                            leadingIcon = if (!dueOnlyFilter) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null
+                        )
+                        FilterChip(
+                            selected = dueOnlyFilter,
+                            onClick = { dueOnlyFilter = true },
+                            label = { Text(if (selectedTab == 0) "Payable Only ($supplierCount)" else "Due Only ($customerCount)", fontSize = 11.5.sp) },
+                            leadingIcon = if (dueOnlyFilter) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = if (isDark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2),
+                                selectedLabelColor = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+                            )
+                        )
                     }
                 }
 

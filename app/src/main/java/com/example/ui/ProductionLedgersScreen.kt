@@ -50,9 +50,12 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
     val transactions by viewModel.ledgerTransactions.collectAsState()
     val profile by viewModel.activeProfile.collectAsState()
     val dark by viewModel.isDarkMode.collectAsState()
+    val language by viewModel.language.collectAsState()
+    val isBangla = language == "Bangla"
     var tab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
     var range by rememberSaveable { mutableStateOf("ALL") }
     var query by rememberSaveable { mutableStateOf("") }
+    var dueFilter by rememberSaveable { mutableStateOf("ALL") } // "ALL" or "DUES_ONLY"
     var sort by rememberSaveable { mutableStateOf("BALANCE_DESC") }
     var sortExpanded by remember { mutableStateOf(false) }
     var expandedParty by rememberSaveable { mutableStateOf<String?>(null) }
@@ -73,7 +76,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
             LedgerPartyRow(it.id, it.name, it.phone, sCode, it.openingBalance, it.currentBalance, it.createdAt)
         }
     }
-    val visibleParties = remember(baseParties, scopedTransactions, query, sort, cutoff, tab) {
+    val visibleParties = remember(baseParties, scopedTransactions, query, sort, cutoff, tab, dueFilter) {
         baseParties.filter { party ->
             val matchesSearch = query.isBlank() ||
                 party.name.contains(query, true) ||
@@ -82,7 +85,16 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
             val hasActivity = cutoff == null || party.createdAt >= cutoff || scopedTransactions.any {
                 if (tab == "CUSTOMER") it.customerId == party.id else it.supplierId == party.id
             }
-            matchesSearch && hasActivity
+            val matchesDue = if (dueFilter == "DUES_ONLY") {
+                if (tab == "CUSTOMER") {
+                    party.currentBalance > 0.01 || scopedTransactions.any { it.customerId == party.id && it.type == "credit" }
+                } else {
+                    party.currentBalance < -0.01 || party.currentBalance > 0.01 || scopedTransactions.any { it.supplierId == party.id && it.type == "credit" }
+                }
+            } else {
+                true
+            }
+            matchesSearch && hasActivity && matchesDue
         }.let { rows ->
             when (sort) {
                 "NAME" -> rows.sortedBy { it.name.lowercase() }
@@ -160,7 +172,23 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
         containerColor = bg,
         topBar = {
             TopAppBar(
-                title = { Column { Text(if (tab == "CUSTOMER") "Customer Directory & Ledger" else "Supplier Directory & Ledger", fontWeight = FontWeight.Bold); Text("Tenant-isolated account statement", fontSize = 11.sp, color = muted) } },
+                title = {
+                    Column {
+                        Text(
+                            if (tab == "CUSTOMER") {
+                                if (isBangla) "কাস্টমার ডিরেক্টরি ও লেজার" else "Customer Directory & Ledger"
+                            } else {
+                                if (isBangla) "সাপ্লায়ার ডিরেক্টরি ও লেজার" else "Supplier Directory & Ledger"
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            if (isBangla) "সকল কাস্টমার ও সাপ্লায়ারদের লেজার হিসাব" else "Tenant-isolated account statement",
+                            fontSize = 11.sp,
+                            color = muted
+                        )
+                    }
+                },
                 navigationIcon = { IconButton(onClick = viewModel::goBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = {
                     IconButton(onClick = { showAddPartyDialog = true }) { Icon(Icons.Default.PersonAdd, "Add ${if (tab == "CUSTOMER") "Customer" else "Supplier"}", tint = accent) }
@@ -178,14 +206,74 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("CUSTOMER", "SUPPLIER").forEachIndexed { index, value ->
-                    SegmentedButton(selected = tab == value, onClick = { tab = value; expandedParty = null }, shape = SegmentedButtonDefaults.itemShape(index, 2)) {
-                        Text(if (value == "CUSTOMER") "Customer dues" else "Supplier payable")
+                    SegmentedButton(
+                        selected = tab == value,
+                        onClick = { tab = value; expandedParty = null },
+                        shape = SegmentedButtonDefaults.itemShape(index, 2)
+                    ) {
+                        Text(
+                            if (value == "CUSTOMER") {
+                                if (isBangla) "কাস্টমার (${customers.size})" else "All Customers (${customers.size})"
+                            } else {
+                                if (isBangla) "সাপ্লায়ার (${suppliers.size})" else "All Suppliers (${suppliers.size})"
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("ALL" to "All", "TODAY" to "Today", "7_DAYS" to "7 days", "MONTH" to "This month").forEach { (value, label) ->
-                    FilterChip(selected = range == value, onClick = { range = value }, label = { Text(label) })
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Due filter options (All vs Dues Only)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val countWithDue = remember(baseParties, tab) {
+                        baseParties.count { p ->
+                            if (tab == "CUSTOMER") p.currentBalance > 0.01 else kotlin.math.abs(p.currentBalance) > 0.01
+                        }
+                    }
+
+                    FilterChip(
+                        selected = dueFilter == "ALL",
+                        onClick = { dueFilter = "ALL" },
+                        label = {
+                            Text(if (isBangla) "সকল (${baseParties.size})" else "All (${baseParties.size})", fontSize = 11.5.sp)
+                        },
+                        leadingIcon = if (dueFilter == "ALL") { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null
+                    )
+
+                    FilterChip(
+                        selected = dueFilter == "DUES_ONLY",
+                        onClick = { dueFilter = "DUES_ONLY" },
+                        label = {
+                            Text(
+                                if (tab == "CUSTOMER") {
+                                    if (isBangla) "শুধু বাকি ($countWithDue)" else "Only Dues ($countWithDue)"
+                                } else {
+                                    if (isBangla) "শুধু প্রদেয় ($countWithDue)" else "Only Payables ($countWithDue)"
+                                },
+                                fontSize = 11.5.sp
+                            )
+                        },
+                        leadingIcon = if (dueFilter == "DUES_ONLY") { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = if (dark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2),
+                            selectedLabelColor = if (dark) Color(0xFFF87171) else Color(0xFFDC2626)
+                        )
+                    )
+                }
+
+                // Range Filter
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("ALL" to (if (isBangla) "সব" else "All"), "TODAY" to (if (isBangla) "আজ" else "Today"), "7_DAYS" to "7D", "MONTH" to (if (isBangla) "মাস" else "1M")).forEach { (value, label) ->
+                        FilterChip(
+                            selected = range == value,
+                            onClick = { range = value },
+                            label = { Text(label, fontSize = 10.5.sp) }
+                        )
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

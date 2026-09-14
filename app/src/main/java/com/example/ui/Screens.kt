@@ -459,14 +459,14 @@ fun GradientTopBar(
 fun TopHeaderActionPill(
     text: String,
     icon: ImageVector? = null,
-    onClick: () -> Unit
+    onClick: (() -> Unit)? = null
 ) {
     val isDark = isDarkModeGlobal
     Surface(
         modifier = Modifier
             .height(40.dp)
             .clip(RoundedCornerShape(16.dp))
-            .clickable { onClick() },
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(16.dp),
         color = if (isDark) Color(0xFF1C1F2B) else Color.White,
         shadowElevation = if (isDark) 0.dp else 1.dp,
@@ -11379,135 +11379,6 @@ fun MoreScreen(viewModel: AppViewModel) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("View Plan", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                                     Icon(Icons.Default.ChevronRight, null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. ENTERPRISE SIM SMS GATEWAY LIVE STATUS CARD
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDarkMode) Color(0xFF141914) else Color(0xFFF0FDF4)
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isDarkMode) Color(0xFF1E3A24) else Color(0xFFBBF7D0)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isDarkMode) Color(0xFF1E3A24) else Color(0xFFDCFCE7)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sms,
-                                        contentDescription = null,
-                                        tint = if (isDarkMode) Color(0xFF4ADE80) else Color(0xFF16A34A),
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "সিম এসএমএস ও ওটিপি গেটওয়ে",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = primaryText
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isGatewayActive) Color(0xFF22C55E) else Color(0xFFEF4444))
-                                        )
-                                    }
-                                    Text(
-                                        text = if (isGatewayActive)
-                                            "অনলাইন • ${currentSim?.carrierName ?: "SIM 1"} (স্লট ${(currentSim?.slotIndex ?: 0) + 1})"
-                                        else
-                                            "অফলাইন • গেটওয়ে বন্ধ",
-                                        fontSize = 11.sp,
-                                        color = if (isGatewayActive) Color(0xFF16A34A) else Color(0xFFDC2626),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            Button(
-                                onClick = { viewModel.navigateTo("SmsGateway") },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDarkMode) Color(0xFF22C55E) else Color(0xFF16A34A)
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Text("ড্যাশবোর্ড", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-
-                        // Gateway Stats Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isDarkMode) Color(0xFF1B231C) else Color.White,
-                                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF2E4032) else Color(0xFFE2E8F0))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("কিউতে অপেক্ষমান", fontSize = 10.sp, color = secondaryText)
-                                    Text("$queuedSmsCount টি", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryText)
-                                }
-                            }
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isDarkMode) Color(0xFF1B231C) else Color.White,
-                                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF2E4032) else Color(0xFFE2E8F0))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("সফল প্রেরিত", fontSize = 10.sp, color = secondaryText)
-                                    Text("$sentSmsCount টি", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                                }
-                            }
-                            Surface(
-                                modifier = Modifier.weight(1.3f).clickable { viewModel.navigateTo("SmsGateway") },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isDarkMode) Color(0xFF1B231C) else Color.White,
-                                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF2E4032) else Color(0xFFE2E8F0))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("বাকি তাগাদা পাঠাতে", fontSize = 10.sp, color = secondaryText)
-                                    Text("৳ ${String.format(java.util.Locale.US, "%,.0f", totalOutstanding)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEAB308))
                                 }
                             }
                         }

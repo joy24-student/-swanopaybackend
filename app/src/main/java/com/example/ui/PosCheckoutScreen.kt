@@ -134,7 +134,7 @@ fun PosCheckoutScreen(viewModel: AppViewModel) {
                         TopHeaderActionPill(
                             text = "Items ($totalItemCount)",
                             icon = Icons.Outlined.ShoppingCart,
-                            onClick = { viewModel.navigateTo("SalesHistory") }
+                            onClick = null
                         )
                         TopHeaderActionPill(
                             text = "History",
