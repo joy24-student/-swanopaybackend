@@ -431,13 +431,19 @@ async function handleProvision(req, res) {
     if (action === 'CHECK_HEALTH') {
       if (!projectRef) return res.status(400).json({ error: 'project_ref is required' })
 
-      const resp = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/health`, {
+      // In Supabase Management API, project status is queried at GET /v1/projects/{ref}
+      const resp = await fetch(`https://api.supabase.com/v1/projects/${projectRef}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
 
-      const health = await resp.json().catch(() => ({}))
-      const isHealthy = resp.ok && (health.healthy === true || health.status === 'ACTIVE_HEALTHY')
-      return res.json({ status: isHealthy ? 'ACTIVE_HEALTHY' : 'PROVISIONING' })
+      const proj = await resp.json().catch(() => ({}))
+      const projStatus = proj.status || ''
+      const isHealthy = resp.ok && (projStatus === 'ACTIVE_HEALTHY' || projStatus === 'READY')
+      return res.json({
+        status: isHealthy ? 'ACTIVE_HEALTHY' : (projStatus || 'PROVISIONING'),
+        project_status: projStatus,
+        healthy: isHealthy,
+      })
     }
 
     if (
