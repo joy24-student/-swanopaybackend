@@ -668,22 +668,93 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FilterChip(
-                            selected = !dueOnlyFilter,
-                            onClick = { dueOnlyFilter = false },
-                            label = { Text(if (selectedTab == 0) "All Suppliers (${suppliers.size})" else "All Customers (${customers.size})", fontSize = 11.5.sp) },
-                            leadingIcon = if (!dueOnlyFilter) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null
-                        )
-                        FilterChip(
-                            selected = dueOnlyFilter,
-                            onClick = { dueOnlyFilter = true },
-                            label = { Text(if (selectedTab == 0) "Payable Only ($supplierCount)" else "Due Only ($customerCount)", fontSize = 11.5.sp) },
-                            leadingIcon = if (dueOnlyFilter) { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null,
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = if (isDark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2),
-                                selectedLabelColor = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+                        // "All" chip
+                        val allLabel = if (selectedTab == 0) "All Suppliers (${suppliers.size})" else "All Customers (${customers.size})"
+                        Surface(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .clickable { dueOnlyFilter = false },
+                            shape = RoundedCornerShape(50),
+                            color = if (!dueOnlyFilter) {
+                                if (isDark) Color(0xFF1C180E) else Color(0xFFFFFDE7)
+                            } else {
+                                if (isDark) Color(0xFF1E1E1E) else Color(0xFFF1F5F9)
+                            },
+                            border = BorderStroke(
+                                1.5.dp,
+                                if (!dueOnlyFilter) goldPrimary else goldBorder
                             )
-                        )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (!dueOnlyFilter) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        null,
+                                        tint = if (isDark) goldPrimary else Color(0xFFD97706),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                Text(
+                                    text = allLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (!dueOnlyFilter) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (!dueOnlyFilter) {
+                                        if (isDark) goldPrimary else Color(0xFFD97706)
+                                    } else {
+                                        if (isDark) textMuted else Color(0xFF64748B)
+                                    }
+                                )
+                            }
+                        }
+
+                        // "Dues Only" chip
+                        val duesLabel = if (selectedTab == 0) "Payable Only ($supplierCount)" else "Due Only ($customerCount)"
+                        Surface(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .clickable { dueOnlyFilter = true },
+                            shape = RoundedCornerShape(50),
+                            color = if (dueOnlyFilter) {
+                                if (isDark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2)
+                            } else {
+                                if (isDark) Color(0xFF1E1E1E) else Color(0xFFF1F5F9)
+                            },
+                            border = BorderStroke(
+                                1.5.dp,
+                                if (dueOnlyFilter) {
+                                    if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+                                } else goldBorder
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (dueOnlyFilter) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        null,
+                                        tint = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                                Text(
+                                    text = duesLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (dueOnlyFilter) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (dueOnlyFilter) {
+                                        if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
+                                    } else {
+                                        if (isDark) textMuted else Color(0xFF64748B)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
 

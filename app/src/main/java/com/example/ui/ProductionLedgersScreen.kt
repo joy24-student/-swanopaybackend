@@ -235,34 +235,75 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
                         }
                     }
 
-                    FilterChip(
-                        selected = dueFilter == "ALL",
-                        onClick = { dueFilter = "ALL" },
-                        label = {
-                            Text(if (isBangla) "সকল (${baseParties.size})" else "All (${baseParties.size})", fontSize = 11.5.sp)
+                    // "All" pill
+                    Surface(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clickable { dueFilter = "ALL" },
+                        shape = RoundedCornerShape(50),
+                        color = if (dueFilter == "ALL") {
+                            if (dark) Color(0xFF1C180E) else Color(0xFFFFFDE7)
+                        } else {
+                            if (dark) Color(0xFF1E1E1E) else Color(0xFFF1F5F9)
                         },
-                        leadingIcon = if (dueFilter == "ALL") { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null
-                    )
+                        border = BorderStroke(
+                            1.5.dp,
+                            if (dueFilter == "ALL") accent else if (dark) Color(0xFF2D2D2D) else Color(0xFFE2E8F0)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (dueFilter == "ALL") Icon(Icons.Default.Check, null, tint = accent, modifier = Modifier.size(12.dp))
+                            Text(
+                                if (isBangla) "সকল (${baseParties.size})" else "All (${baseParties.size})",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (dueFilter == "ALL") FontWeight.Bold else FontWeight.Normal,
+                                color = if (dueFilter == "ALL") accent else if (dark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                        }
+                    }
 
-                    FilterChip(
-                        selected = dueFilter == "DUES_ONLY",
-                        onClick = { dueFilter = "DUES_ONLY" },
-                        label = {
+                    // "Dues Only" pill
+                    Surface(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clickable { dueFilter = "DUES_ONLY" },
+                        shape = RoundedCornerShape(50),
+                        color = if (dueFilter == "DUES_ONLY") {
+                            if (dark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2)
+                        } else {
+                            if (dark) Color(0xFF1E1E1E) else Color(0xFFF1F5F9)
+                        },
+                        border = BorderStroke(
+                            1.5.dp,
+                            if (dueFilter == "DUES_ONLY") {
+                                if (dark) Color(0xFFF87171) else Color(0xFFDC2626)
+                            } else if (dark) Color(0xFF2D2D2D) else Color(0xFFE2E8F0)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (dueFilter == "DUES_ONLY") Icon(Icons.Default.Check, null, tint = if (dark) Color(0xFFF87171) else Color(0xFFDC2626), modifier = Modifier.size(12.dp))
                             Text(
                                 if (tab == "CUSTOMER") {
                                     if (isBangla) "শুধু বাকি ($countWithDue)" else "Only Dues ($countWithDue)"
                                 } else {
                                     if (isBangla) "শুধু প্রদেয় ($countWithDue)" else "Only Payables ($countWithDue)"
                                 },
-                                fontSize = 11.5.sp
+                                fontSize = 11.5.sp,
+                                fontWeight = if (dueFilter == "DUES_ONLY") FontWeight.Bold else FontWeight.Normal,
+                                color = if (dueFilter == "DUES_ONLY") {
+                                    if (dark) Color(0xFFF87171) else Color(0xFFDC2626)
+                                } else if (dark) Color(0xFF94A3B8) else Color(0xFF64748B)
                             )
-                        },
-                        leadingIcon = if (dueFilter == "DUES_ONLY") { { Icon(Icons.Default.Check, null, modifier = Modifier.size(13.dp)) } } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = if (dark) Color(0xFF3B1E1E) else Color(0xFFFEE2E2),
-                            selectedLabelColor = if (dark) Color(0xFFF87171) else Color(0xFFDC2626)
-                        )
-                    )
+                        }
+                    }
                 }
 
                 // Range Filter
