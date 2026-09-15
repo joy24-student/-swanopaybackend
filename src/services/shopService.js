@@ -15,19 +15,48 @@ const schemaFile = path.join(base, '../../sql/storefront.sql')
 const publicFields = 'merchant_id,store_name,shop_slug,custom_domain,currency,theme_color,admin_email,status,message,job_id,updated_at'
 
 export function shopConfiguration(env = process.env) {
-  const key = env.SHOP_CONFIG_KEY || ''
-  const addresses = (env.SHOP_SERVER_IPS || '').split(',').map(x => x.trim()).filter(Boolean)
-  if (!env.SHOP_DATABASE_URL || !env.SHOP_RUNTIME_DIR || !env.SHOP_SITES_DIR || !env.SHOP_TEMPLATE_DIR || !/^[0-9a-f]{64}$/i.test(key) || !addresses.length || net.isIP(addresses[0])!==4 || addresses.some(x => !net.isIP(x))) {
+  const defaultKey = crypto.createHash('sha256').update(env.ADMIN_SECRET || 'swapnopay-default-shop-config-secret-key-32').digest('hex')
+  const key = (/^[0-9a-f]{64}$/i.test(env.SHOP_CONFIG_KEY || '')) ? env.SHOP_CONFIG_KEY : defaultKey
+  const rawAddresses = (env.SHOP_SERVER_IPS || '127.0.0.1').split(',').map(x => x.trim()).filter(Boolean)
+  const addresses = rawAddresses.length && rawAddresses.every(x => net.isIP(x)) ? rawAddresses : ['127.0.0.1']
+
+  const defaultTemplate = path.resolve(base, '../../../shop')
+  const defaultRuntime = path.resolve(base, '../../data/shop-runtime')
+  const defaultSites = path.resolve(base, '../../data/shop-sites')
+
+  const runtime = path.resolve(env.SHOP_RUNTIME_DIR || defaultRuntime)
+  const sites = path.resolve(env.SHOP_SITES_DIR || defaultSites)
+  const template = path.resolve(env.SHOP_TEMPLATE_DIR || defaultTemplate)
+
+  const rawDbUrl = env.SHOP_DATABASE_URL || env.DATABASE_URL || env.POSTGRES_URL || ''
+  if (!rawDbUrl) {
     throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting is not configured yet. The platform operator must complete the storefront setup.')
   }
-  const url = new URL(env.SHOP_DATABASE_URL)
-  if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('SHOP_DATABASE_URL must be PostgreSQL')
+
+  let connectionString = ''
+  let dbHost = '127.0.0.1', dbPort = 5432, dbName = 'swapnopay_shop'
+
+  try {
+    const url = new URL(rawDbUrl)
+    if (['postgres:', 'postgresql:'].includes(url.protocol)) {
+      connectionString = url.href
+      dbHost = env.SHOP_PHP_DB_HOST || url.hostname
+      dbPort = Number(env.SHOP_PHP_DB_PORT || url.port || 5432)
+      dbName = decodeURIComponent(url.pathname.slice(1)) || 'swapnopay_shop'
+    } else {
+      throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured: must be PostgreSQL')
+    }
+  } catch (err) {
+    if (err instanceof ShopError) throw err
+    throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured correctly: ' + err.message)
+  }
+
   return {
-    connectionString: url.href, key, addresses,
-    baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shops.swapnopay.top'),
-    runtime: path.resolve(env.SHOP_RUNTIME_DIR), sites: path.resolve(env.SHOP_SITES_DIR), template: path.resolve(env.SHOP_TEMPLATE_DIR),
-    dbHost: env.SHOP_PHP_DB_HOST || url.hostname, dbPort: Number(env.SHOP_PHP_DB_PORT || url.port || 5432),
-    dbName: decodeURIComponent(url.pathname.slice(1)), sslmode: env.SHOP_DB_SSLMODE || 'require',
+    connectionString, key, addresses,
+    baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shop.swapnopay.top'),
+    runtime, sites, template,
+    dbHost, dbPort, dbName,
+    sslmode: env.SHOP_DB_SSLMODE || 'require',
     group: env.SHOP_RUNTIME_GID ? Number(env.SHOP_RUNTIME_GID) : undefined,
     backendUrl: env.SHOP_BACKEND_URL || 'https://api.swapnopay.top',
     vendor: env.SHOP_VENDOR_DIR || '',
@@ -37,13 +66,14 @@ export function shopConfiguration(env = process.env) {
 export class ShopService {
   constructor(config, dependencies = {}) {
     this.config = config
-    this.pool = dependencies.pool || new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 })
+    this.pool = dependencies.pool || (config.connectionString ? new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 }) : null)
     this.dns = dependencies.dns || checkShopDns
     this.probe = dependencies.probe || probeStore
     this.initialized = null
     this.processing = false
   }
   async initialize() {
+    if (!this.pool) return
     if (!this.initialized) this.initialized = this.pool.query(`
       CREATE SCHEMA IF NOT EXISTS shop_control;
       REVOKE ALL ON SCHEMA shop_control FROM PUBLIC;
@@ -61,11 +91,20 @@ export class ShopService {
     await this.initialized
   }
   async row(id) {
+    if (!this.pool) return null
     await this.initialize()
     return (await this.pool.query(`SELECT * FROM shop_control.launches WHERE merchant_id=$1`, [merchantId(id)])).rows[0] || null
   }
   publicStatus(row, counts = {}) {
-    if (!row) return { ok: true, deployed: false, status: 'NOT_DEPLOYED', shop_url: '', admin_url: '', admin_login_url: '', base_domain: this.config.baseDomain, ssl_active: false, message: 'Set up your store and launch when ready.' }
+    if (!row) {
+      const url = `https://${this.config.baseDomain}`
+      return {
+        ok: true, deployed: false, status: 'NOT_DEPLOYED',
+        shop_url: url, admin_url: `${url}/admin`, admin_login_url: `${url}/admin/login.php`,
+        base_domain: this.config.baseDomain, ssl_active: false,
+        message: 'Set up your store and launch when ready.'
+      }
+    }
     const domain = row.custom_domain || `${row.shop_slug}.${this.config.baseDomain}`
     const url = `https://${domain}`
     return {
@@ -81,6 +120,7 @@ export class ShopService {
     }
   }
   async status(id) {
+    if (!this.pool) return this.publicStatus(null)
     const row = await this.row(id)
     if (row && ['LIVE','DEGRADED'].includes(row.status) && Date.now()-new Date(row.updated_at).getTime()>60000) {
       const host=row.custom_domain || `${row.shop_slug}.${this.config.baseDomain}`
@@ -100,6 +140,9 @@ export class ShopService {
     return this.publicStatus(row, rows[0])
   }
   async enqueue(body) {
+    if (!this.pool) {
+      throw new ShopError(503, 'SHOP_DATABASE_REQUIRED', 'PostgreSQL database connection (SHOP_DATABASE_URL) is required to deploy storefront instances.')
+    }
     await this.initialize()
     const id = merchantId(body.merchant_id)
     const client = await this.pool.connect()
@@ -302,10 +345,15 @@ export class ShopService {
 let service
 export function getShopService() { return service ||= new ShopService(shopConfiguration()) }
 export function startShopWorker() {
-  if (!process.env.SHOP_DATABASE_URL) return
-  const poll=()=>{ try { getShopService().tick().catch(error=>console.error('[shop/worker]',error.code || 'Hosting configuration error')) } catch(error) { console.error('[shop/worker]',error.code || 'Hosting configuration error') } }
-  const timer=setInterval(poll,5000)
-  timer.unref()
-  poll()
-  return timer
+  try {
+    const cfg = shopConfiguration()
+    if (!cfg.connectionString) return null
+    const poll=()=>{ try { getShopService().tick().catch(error=>console.error('[shop/worker]',error.code || 'Hosting configuration error')) } catch(error) { console.error('[shop/worker]',error.code || 'Hosting configuration error') } }
+    const timer=setInterval(poll,5000)
+    timer.unref()
+    poll()
+    return timer
+  } catch {
+    return null
+  }
 }
