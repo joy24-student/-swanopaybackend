@@ -12917,8 +12917,13 @@ fun BusinessProfileScreen(viewModel: AppViewModel) {
     val isBangla = languageState.lowercase() == "bangla" || languageState == "বাংলা"
 
     var activeTabState by remember { mutableStateOf("General") } // "General", "API Keys", "Security"
+    val isRefreshingKyc by viewModel.isRefreshingKyc.collectAsState()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshMerchantKycStatus()
+    }
 
     var isUploadingPhoto by remember { mutableStateOf(false) }
 
@@ -13300,92 +13305,312 @@ fun BusinessProfileScreen(viewModel: AppViewModel) {
                             }
                         }
                     }
-                    "Security" -> {
+                    "Security", "Security & KYC", "Security & Sync" -> {
                         item {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val kycStatusState = activeProfile.kycStatus
+                            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                val kycStatusState = activeProfile.kycStatus.uppercase()
+                                val isVerified = kycStatusState in listOf("VERIFIED", "APPROVED")
+                                val isPending = kycStatusState == "PENDING"
+                                val isRejected = kycStatusState == "REJECTED"
+
+                                val statusColor = when {
+                                    isVerified -> Color(0xFF10B981)
+                                    isPending -> Color(0xFFF59E0B)
+                                    isRejected -> Color(0xFFEF4444)
+                                    else -> Color(0xFF6B7280)
+                                }
+
+                                val statusBg = when {
+                                    isVerified -> Color(0xFF10B981).copy(alpha = 0.1f)
+                                    isPending -> Color(0xFFF59E0B).copy(alpha = 0.1f)
+                                    isRejected -> Color(0xFFEF4444).copy(alpha = 0.1f)
+                                    else -> if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                                }
+
+                                val statusBorder = when {
+                                    isVerified -> Color(0xFF10B981).copy(alpha = 0.35f)
+                                    isPending -> Color(0xFFF59E0B).copy(alpha = 0.35f)
+                                    isRejected -> Color(0xFFEF4444).copy(alpha = 0.35f)
+                                    else -> if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                }
+
+                                // 1. Main NID Verification Status & Sync Card
                                 Card(
                                     shape = RoundedCornerShape(24.dp),
                                     colors = CardDefaults.cardColors(containerColor = AppCardBg),
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        if (kycStatusState != "VERIFIED") {
-                                            viewModel.navigateTo("KycVerification")
-                                        }
-                                    },
-                                    border = BorderStroke(
-                                        1.dp, 
-                                        when (kycStatusState) {
-                                            "VERIFIED" -> Color(0xFF10B981).copy(alpha = 0.3f)
-                                            "PENDING" -> Color(0xFFF59E0B).copy(alpha = 0.3f)
-                                            else -> Color(0xFFEF4444).copy(alpha = 0.3f)
-                                        }
-                                    ),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    border = BorderStroke(1.2.dp, statusBorder),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier.padding(18.dp),
+                                        verticalArrangement = Arrangement.spacedBy(14.dp)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .background(
-                                                    when (kycStatusState) {
-                                                        "VERIFIED" -> Color(0xFF10B981).copy(alpha = 0.05f)
-                                                        "PENDING" -> Color(0xFFF59E0B).copy(alpha = 0.05f)
-                                                        else -> Color(0xFFEF4444).copy(alpha = 0.05f)
-                                                    }, 
-                                                    RoundedCornerShape(12.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
+                                        // Header Row with Icon, Status Label, and Sync Button
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(
-                                                imageVector = when (kycStatusState) {
-                                                    "VERIFIED" -> Icons.Default.VerifiedUser
-                                                    "PENDING" -> Icons.Default.Pending
-                                                    else -> Icons.Default.GppBad
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(46.dp)
+                                                    .background(statusBg, RoundedCornerShape(14.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = when {
+                                                        isVerified -> Icons.Default.Verified
+                                                        isPending -> Icons.Default.Pending
+                                                        isRejected -> Icons.Default.GppBad
+                                                        else -> Icons.Default.Shield
+                                                    },
+                                                    contentDescription = null,
+                                                    tint = statusColor,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.width(14.dp))
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (isBangla) "এনআইডি ভেরিফিকেশন স্ট্যাটাস" else "NID VERIFICATION STATUS",
+                                                    fontSize = 11.sp,
+                                                    color = AppTextSecondary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = when {
+                                                        isVerified -> if (isBangla) "যাচাইকৃত (লেভেল ২ অ্যাক্টিভ)" else "Fully Verified (Level 2 Active)"
+                                                        isPending -> if (isBangla) "পর্যালোচনার জন্য অপেক্ষারত" else "Under Compliance Review"
+                                                        isRejected -> if (isBangla) "যাচাইকরণ প্রত্যাখ্যাত" else "Verification Rejected"
+                                                        else -> if (isBangla) "যাচাই করা হয়নি" else "Unverified (Action Required)"
+                                                    },
+                                                    fontSize = 14.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = statusColor
+                                                )
+                                            }
+
+                                            // Sync KYC / NID Status Button
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.refreshMerchantKycStatus { s, _ ->
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (isBangla) "এনআইডি স্ট্যাটাস সিঙ্ক হয়েছে: $s" else "NID status refreshed: $s",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
                                                 },
-                                                contentDescription = null,
-                                                tint = when (kycStatusState) {
-                                                    "VERIFIED" -> Color(0xFF006E2A)
-                                                    "PENDING" -> Color(0xFFB45309)
-                                                    else -> Color(0xFFB91C1C)
-                                                },
-                                                modifier = Modifier.size(22.dp)
-                                            )
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .background(if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9), CircleShape)
+                                            ) {
+                                                if (isRefreshingKyc) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = BrandPurple
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Sync,
+                                                        contentDescription = "Sync NID Status",
+                                                        tint = BrandPurple,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
                                         }
 
-                                        Spacer(modifier = Modifier.width(16.dp))
+                                        HorizontalDivider(color = AppDividerColor, thickness = 1.dp)
 
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "KYC VERIFICATION",
-                                                fontSize = 11.sp,
-                                                color = AppTextSecondary,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 0.5.sp
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = when (kycStatusState) {
-                                                    "VERIFIED" -> "Fully Verified (Level 2)"
-                                                    "PENDING" -> "Pending Verification"
-                                                    else -> "Unverified (Tap to verify)"
-                                                },
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = when (kycStatusState) {
-                                                    "VERIFIED" -> Color(0xFF006E2A)
-                                                    "PENDING" -> Color(0xFFB45309)
-                                                    else -> Color(0xFFB91C1C)
+                                        // Detailed NID Information Grid
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) "জাতীয় পরিচয়পত্র (NID) নম্বর:" else "National ID (NID) Number:",
+                                                    fontSize = 12.5.sp,
+                                                    color = AppTextSecondary
+                                                )
+                                                Text(
+                                                    text = activeProfile.nidNumber.takeIf { it.isNotBlank() } ?: (if (isBangla) "প্রদান করা হয়নি" else "Not submitted"),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                                )
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) "হোল্ডারের নাম:" else "Holder Legal Name:",
+                                                    fontSize = 12.5.sp,
+                                                    color = AppTextSecondary
+                                                )
+                                                Text(
+                                                    text = activeProfile.accountHolder.ifBlank { activeProfile.businessName },
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                                                )
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) "সেটেলমেন্ট টায়ার:" else "Settlement Tier:",
+                                                    fontSize = 12.5.sp,
+                                                    color = AppTextSecondary
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = if (isVerified) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF6B7280).copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = if (isVerified) "Tier 2 (Unlimited BDT)" else "Tier 1 (Restricted)",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isVerified) Color(0xFF10B981) else Color(0xFF6B7280),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
                                                 }
-                                            )
+                                            }
+                                        }
+
+                                        // Conditional Status Banner & Action Buttons
+                                        if (isRejected) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFFEF4444).copy(alpha = 0.08f),
+                                                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.25f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Text(
+                                                        text = if (isBangla) "প্রত্যাখ্যানের কারণ:" else "Rejection Reason:",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFEF4444)
+                                                    )
+                                                    Text(
+                                                        text = activeProfile.kycRejectionReason.ifBlank {
+                                                            if (isBangla) "এনআইডি ছবি পরিষ্কার ছিল না বা তথ্য মেলেনি। অনুগ্রহ করে আবার আবেদন করুন।"
+                                                            else "NID photo was unclear or details did not match. Please re-apply."
+                                                        },
+                                                        fontSize = 12.sp,
+                                                        color = if (isDarkMode) Color.White.copy(alpha = 0.9f) else Color(0xFF7F1D1D)
+                                                    )
+                                                }
+                                            }
+
+                                            Button(
+                                                onClick = { viewModel.navigateTo("KycVerification") },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                                            ) {
+                                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = if (isBangla) "এনআইডি পুনরায় জমা দিন (Re-apply)" else "Re-apply NID Verification",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        } else if (isPending) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFFF59E0B).copy(alpha = 0.08f),
+                                                border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.25f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Pending, null, tint = Color(0xFFF59E0B), modifier = Modifier.size(20.dp))
+                                                    Text(
+                                                        text = if (isBangla) "আপনার এনআইডি নথি পর্যালোচনা চলছে। সাধারণত ২-৬ ঘণ্টার মধ্যে যাচাই সম্পন্ন হয়।"
+                                                        else "Your NID documents are under compliance review. Review usually completes within 2-6 hours.",
+                                                        fontSize = 12.sp,
+                                                        color = if (isDarkMode) Color.White.copy(alpha = 0.9f) else Color(0xFF78350F)
+                                                    )
+                                                }
+                                            }
+                                        } else if (!isVerified) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = BrandPurple.copy(alpha = 0.08f),
+                                                border = BorderStroke(1.dp, BrandPurple.copy(alpha = 0.25f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) "আনলিমিটেড মোবাইল ব্যাংকিং সেটেলমেন্ট এবং পেমেন্ট ফর্ম সক্রিয় করতে এনআইডি ভেরিফিকেশন সম্পন্ন করুন।"
+                                                    else "Verify your National ID (NID) to unlock unlimited payments, instant settlements, and hosted form branding.",
+                                                    fontSize = 12.sp,
+                                                    color = if (isDarkMode) Color.White.copy(alpha = 0.9f) else Color(0xFF312E81),
+                                                    modifier = Modifier.padding(12.dp)
+                                                )
+                                            }
+
+                                            Button(
+                                                onClick = { viewModel.navigateTo("KycVerification") },
+                                                colors = ButtonDefaults.buttonColors(containerColor = BrandPurple),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                                            ) {
+                                                Icon(Icons.Default.VerifiedUser, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = if (isBangla) "এনআইডি ভেরিফাই করুন (Verify NID Now)" else "Verify NID Now",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        } else {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFF10B981).copy(alpha = 0.08f),
+                                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.25f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Text(
+                                                        text = if (isBangla) "✓ এনআইডি নথি ও বায়োমেট্রিক অনুমোদিত" else "✓ NID Document & Biometrics Approved",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF10B981)
+                                                    )
+                                                    Text(
+                                                        text = if (isBangla) "✓ আনলিমিটেড অটো-সেটেলমেন্ট ও ওয়েব স্টোরফ্রন্ট লাইভ" else "✓ Unlimited Auto-Settlements & Web Storefront Live",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF10B981)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
 
+                                // 2. Security Controls Card
                                 Card(
                                     shape = RoundedCornerShape(24.dp),
                                     colors = CardDefaults.cardColors(containerColor = AppCardBg),
@@ -13393,22 +13618,34 @@ fun BusinessProfileScreen(viewModel: AppViewModel) {
                                     border = BorderStroke(1.dp, AppCardBorderColor),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text(
-                                            text = "SECURITY CONTROLS",
+                                            text = if (isBangla) "ডিভাইস ও সিকিউরিটি কন্ট্রোল" else "DEVICE & SECURITY CONTROLS",
                                             fontSize = 11.sp,
                                             color = AppTextSecondary,
                                             fontWeight = FontWeight.Bold,
                                             letterSpacing = 0.5.sp
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
+
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Biometric Sign In", fontSize = 14.sp, color = AppTextPrimary, fontWeight = FontWeight.Medium)
+                                            Column {
+                                                Text(
+                                                    text = if (isBangla) "বায়োমেট্রিক সাইন ইন" else "Biometric Sign In",
+                                                    fontSize = 14.sp,
+                                                    color = AppTextPrimary,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = if (isBangla) "ফিঙ্গারপ্রিন্ট বা ফেস আনলক সক্রিয় রাখুন" else "Fingerprint or Face unlock on app launch",
+                                                    fontSize = 11.5.sp,
+                                                    color = AppTextSecondary
+                                                )
+                                            }
                                             val isBioLocked by viewModel.isBiometricLocked.collectAsState()
                                             Switch(
                                                 checked = isBioLocked,

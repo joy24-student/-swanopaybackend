@@ -292,6 +292,23 @@ app.use('/v1/kyc', kycRouter)
 app.use('/v1/oauth', oauthRouter)
 app.use('/functions/v1', oauthRouter)
 
+// Branded Hosted Forms Route Registration
+app.post('/v1/routes', (req, res) => {
+  const formId = (req.body?.form_id || '').toLowerCase().replace(/-/g, '')
+  const slug = (req.body?.slug || formId || '').trim()
+  const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
+  return res.json({
+    ok: true,
+    public_id: formId,
+    public_url: `${publicOrigin}/f/${slug || formId}`,
+    slug_url: `${publicOrigin}/f/${slug || formId}`
+  })
+})
+
+app.delete('/v1/routes/:id', (_req, res) => {
+  return res.status(200).json({ ok: true })
+})
+
 // Enterprise SMS Gateway & OTP Verification API
 app.use('/v1/sms-gateway', smsGatewayRouter(io, merchantHeartbeatMap))
 

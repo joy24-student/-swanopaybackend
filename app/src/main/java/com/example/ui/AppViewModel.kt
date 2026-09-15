@@ -80,7 +80,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AppRepository(application.applicationContext)
     val installationId: String get() = repository.installationId
-    private val hostedFormRouterOrigin = "https://forms.swapnopay.top"
+    private val hostedFormRouterOrigin = "https://pay.swapnopay.top"
     val profiles = repository.getProfiles()
     private val _activeProfile = MutableStateFlow(profiles.first())
     val activeProfile: StateFlow<MerchantProfileEntity> = _activeProfile.asStateFlow()
@@ -1565,31 +1565,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val isRefreshingKyc = MutableStateFlow(false)
+
     fun refreshMerchantKycStatus(onComplete: ((String, String) -> Unit)? = null) {
         val merchantId = _activeProfile.value.id
+        isRefreshingKyc.value = true
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val profile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            if (profile != null && profile.supabaseUrl.isNotBlank() && profile.anonKey.isNotBlank()) {
-                com.example.data.remote.SupabaseClient.fetchMerchantKycStatus(
-                    url = profile.supabaseUrl,
-                    anonKey = profile.anonKey,
-                    token = profile.authSessionToken.ifEmpty { profile.anonKey },
-                    merchantId = merchantId,
-                    onSuccess = { status, reason, _, _, _ ->
-                        val updated = _activeProfile.value.copy(
-                            kycStatus = status.uppercase(),
-                            kycRejectionReason = reason
-                        )
-                        updateMerchantProfile(updated)
-                        logFirebaseStatus("Refreshed KYC status from Supabase: $status (Reason: $reason)")
-                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            onComplete?.invoke(status, reason)
+            try {
+                val profile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
+                if (profile != null && profile.supabaseUrl.isNotBlank() && profile.anonKey.isNotBlank()) {
+                    com.example.data.remote.SupabaseClient.fetchMerchantKycStatus(
+                        url = profile.supabaseUrl,
+                        anonKey = profile.anonKey,
+                        token = profile.authSessionToken.ifEmpty { profile.anonKey },
+                        merchantId = merchantId,
+                        onSuccess = { status, reason, nidNum, _, _ ->
+                            val updated = _activeProfile.value.copy(
+                                kycStatus = status.uppercase(),
+                                kycRejectionReason = reason,
+                                nidNumber = if (nidNum.isNotBlank()) nidNum else _activeProfile.value.nidNumber
+                            )
+                            updateMerchantProfile(updated)
+                            logFirebaseStatus("Refreshed KYC status from Supabase: $status (Reason: $reason)")
+                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                isRefreshingKyc.value = false
+                                onComplete?.invoke(status, reason)
+                            }
+                        },
+                        onFailure = { err ->
+                            logFirebaseStatus("Fetch KYC status notice: $err")
+                            isRefreshingKyc.value = false
                         }
-                    },
-                    onFailure = { err ->
-                        logFirebaseStatus("Fetch KYC status notice: $err")
-                    }
-                )
+                    )
+                } else {
+                    isRefreshingKyc.value = false
+                }
+            } catch (e: Exception) {
+                isRefreshingKyc.value = false
             }
         }
     }
@@ -4415,17 +4427,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun hostedFormPublicUrl(): String {
         if (formStatus.value != "PUBLISHED") return ""
-        val publicId = activeFormId.value.lowercase().replace("-", "")
-        val brandedUrl = if (publicId.matches(Regex("^[0-9a-f]{32}$"))) "$hostedFormRouterOrigin/f/$publicId" else ""
-        val routeState = hostedFormRouteStatus.value[activeFormId.value]
-        if (brandedUrl.isNotBlank() && routeState != "FAILED" && routeState != "PENDING") return brandedUrl
-        return hostedFormDirectUrl()
+        val slug = formSlug.value.trim().ifBlank { activeFormId.value }
+        return "$hostedFormRouterOrigin/f/$slug"
     }
 
     fun hostedFormDirectUrl(): String {
-        val baseUrl = supabaseUrl.value.trimEnd('/')
-        val encodedSlug = android.net.Uri.encode(formSlug.value.trim())
-        return if (baseUrl.isBlank() || encodedSlug.isBlank()) "" else "$baseUrl/functions/v1/hosted-form?slug=$encodedSlug"
+        val slug = formSlug.value.trim().ifBlank { activeFormId.value }
+        return "$hostedFormRouterOrigin/f/$slug"
     }
 
     private fun registerBrandedHostedFormRoute(form: HostedFormModel) {
@@ -4493,6 +4501,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun hostedFormToJson(form: HostedFormModel): org.json.JSONObject = org.json.JSONObject().apply {
         put("id", form.id)
+        put("merchant_id", activeProfile.value.id.ifBlank { "00000000-0000-0000-0000-000000000001" })
+        val effectiveAmount = form.products.firstOrNull()?.let { if (it.salePrice > 0.0) it.salePrice else it.price }
+            ?: form.fields.find { it.type == FormFieldType.CUSTOM_AMOUNT }?.minValue
+            ?: 0.0
+        put("amount", effectiveAmount)
         put("title", form.title)
         put("description", form.description)
         put("slug", form.slug)

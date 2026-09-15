@@ -318,8 +318,17 @@
       }
     };
 
-    function isUuid(val) {
-      return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    function normalizeToUuid(val) {
+      if (!val) return null;
+      const str = String(val).trim().toLowerCase();
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
+        return str;
+      }
+      const clean = str.replace(/[^0-9a-f]/g, '');
+      if (clean.length === 32) {
+        return `${clean.slice(0,8)}-${clean.slice(8,12)}-${clean.slice(12,16)}-${clean.slice(16,20)}-${clean.slice(20,32)}`;
+      }
+      return null;
     }
 
     function selectPaymentMethod(method) {
@@ -330,7 +339,11 @@
     }
 
     function loadPaymentFormDetails() {
-      const filter = isUuid(formIdentifier) ? `id=eq.${formIdentifier}` : `slug=eq.${encodeURIComponent(formIdentifier)}`;
+      const parsedUuid = normalizeToUuid(formIdentifier);
+      const encodedSlug = encodeURIComponent(formIdentifier);
+      const filter = parsedUuid
+        ? `or=(id.eq.${parsedUuid},slug.eq.${encodedSlug})`
+        : `slug=eq.${encodedSlug}`;
       fetch(`${supabaseUrl}/rest/v1/payment_forms?${filter}&select=*`, {
         headers: {
           "apikey": supabaseAnonKey,
