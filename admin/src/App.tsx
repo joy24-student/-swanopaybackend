@@ -14,24 +14,103 @@ import SystemHealth from './pages/SystemHealth'
 import MfsRegexManager from './pages/MfsRegexManager'
 import { AuthProvider, RequireAdmin } from './auth'
 import { ToastProvider } from './components/ToastProvider'
+import AdminLayout from './components/AdminLayout'
 
-export default function App(){
+export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
         <Routes>
-          <Route path="/login" element={<Login/>} />
-          <Route path="/dashboard" element={<RequireAdmin><Dashboard/></RequireAdmin>} />
-          <Route path="/merchants" element={<RequireAdmin><Merchants/></RequireAdmin>} />
-          <Route path="/merchants/:id" element={<RequireAdmin><MerchantDetail/></RequireAdmin>} />
-          <Route path="/submissions" element={<RequireAdmin><Submissions/></RequireAdmin>} />
-          <Route path="/connect-supabase" element={<RequireAdmin><ConnectSupabase/></RequireAdmin>} />
-          <Route path="/settings" element={<RequireAdmin><SystemSettings/></RequireAdmin>} />
-          <Route path="/gateway-settings" element={<RequireAdmin><GatewaySettings/></RequireAdmin>} />
-          <Route path="/support" element={<RequireAdmin><SupportHelpdesk/></RequireAdmin>} />
-          <Route path="/analytics" element={<RequireAdmin><PaymentAnalytics/></RequireAdmin>} />
-          <Route path="/health" element={<RequireAdmin><SystemHealth/></RequireAdmin>} />
-          <Route path="/mfs-patterns" element={<RequireAdmin><MfsRegexManager/></RequireAdmin>} />
+          <Route path="/login" element={<Login />} />
+          
+          <Route path="/dashboard" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <Dashboard />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/merchants" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <Merchants />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/merchants/:id" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <MerchantDetail />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/submissions" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <Submissions />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/connect-supabase" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <ConnectSupabase />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/settings" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <SystemSettings />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/gateway-settings" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <GatewaySettings />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/support" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <SupportHelpdesk />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/analytics" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <PaymentAnalytics />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/health" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <SystemHealth />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/mfs-patterns" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <MfsRegexManager />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </ToastProvider>
