@@ -54,9 +54,10 @@ CREATE TABLE IF NOT EXISTS public.merchants (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Ensure user_id column safely handles text or uuid strings
+-- Drop strict foreign key constraint on user_id if present so external user IDs don't throw 23503
 DO $$
 BEGIN
+  ALTER TABLE public.merchants DROP CONSTRAINT IF EXISTS merchants_user_id_fkey;
   ALTER TABLE public.merchants ALTER COLUMN user_id TYPE TEXT USING user_id::text;
 EXCEPTION WHEN OTHERS THEN
   NULL;
@@ -318,7 +319,7 @@ INSERT INTO public.merchants (
 ) VALUES 
 (
   'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-  '11111111-1111-1111-1111-111111111111',
+  NULL,
   'Sunrise Electronics & IT',
   'sunrise.electronics.bd@gmail.com',
   '+8801712345678',
@@ -337,7 +338,7 @@ INSERT INTO public.merchants (
 ),
 (
   'b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e',
-  '22222222-2222-2222-2222-222222222222',
+  NULL,
   'Tech Valley Superstore Ltd.',
   'contact@techvalleybd.com',
   '+8801823456789',
@@ -356,7 +357,7 @@ INSERT INTO public.merchants (
 ),
 (
   'c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f',
-  '33333333-3333-3333-3333-333333333333',
+  NULL,
   'Green Life Organic Foods',
   'info@greenlifeorganic.com',
   '+8801934567890',
@@ -375,7 +376,7 @@ INSERT INTO public.merchants (
 ),
 (
   'd4e5f6a7-b89c-0d1e-2f3a-4b5c6d7e8f9a',
-  '44444444-4444-4444-4444-444444444444',
+  NULL,
   'Dream Mart Bangladesh',
   'support@dreammart.com.bd',
   '+8801645678901',
