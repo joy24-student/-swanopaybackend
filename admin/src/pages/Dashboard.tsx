@@ -10,31 +10,10 @@ import AddMerchantModal from '../components/AddMerchantModal'
 import KycInspectionModal from '../components/KycInspectionModal'
 
 // Chart.js registration
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js'
+import { Chart as ChartJS, registerables } from 'chart.js'
 import { Chart } from 'react-chartjs-2'
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-)
+ChartJS.register(...registerables)
 
 export default function Dashboard() {
   // State
