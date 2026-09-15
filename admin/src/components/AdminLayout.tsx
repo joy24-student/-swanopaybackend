@@ -39,7 +39,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       )
     },
     {
-      to: '/merchants?filter=pending',
+      to: '/kyc-reviews',
       label: 'KYC Reviews',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

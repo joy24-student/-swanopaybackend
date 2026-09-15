@@ -7,6 +7,7 @@ import {
   GATEWAY_CONFIG_ID
 } from '../adminSupabaseClient'
 import AddMerchantModal from '../components/AddMerchantModal'
+import KycInspectionModal from '../components/KycInspectionModal'
 
 // Chart.js registration
 import {
@@ -46,6 +47,8 @@ export default function Dashboard() {
   const [recentSubmissions, setRecentSubmissions] = useState<any[]>([])
   const [timeRange, setTimeRange] = useState<'7' | '30'>('7')
   const [isAddMerchantOpen, setIsAddMerchantOpen] = useState(false)
+  const [selectedKycMerchant, setSelectedKycMerchant] = useState<any | null>(null)
+  const [isKycModalOpen, setIsKycModalOpen] = useState(false)
   const [dbLatency, setDbLatency] = useState<number>(24)
   const [lastCheckedTime, setLastCheckedTime] = useState<string>('')
 
@@ -100,17 +103,35 @@ export default function Dashboard() {
         .limit(10)
 
       if (count !== null) setMerchantCount(count)
-      if (merchants) {
-        setMerchantList(merchants)
-        // Extract pending KYC
-        const pending = merchants.filter((m: any) =>
+      if (merchants) setMerchantList(merchants)
+
+      // Fetch accurate pending KYC count and queue
+      const { data: pendingKyc, count: pCount } = await adminSupabase
+        .from('merchants')
+        .select('*', { count: 'exact' })
+        .or('kyc_status.eq.PENDING,kyc_status.eq.PENDING_REVIEW')
+        .order('kyc_submitted_at', { ascending: false, nullsFirst: false })
+        .limit(10)
+
+      if (pCount !== null) {
+        setPendingKycCount(pCount)
+      } else if (pendingKyc) {
+        setPendingKycCount(pendingKyc.length)
+      }
+
+      if (pendingKyc && pendingKyc.length > 0) {
+        setKycQueue(pendingKyc)
+      } else if (merchants) {
+        const fallbackPending = merchants.filter((m: any) =>
           m.kyc_status === 'PENDING' || m.kyc_status === 'PENDING_REVIEW'
         )
-        setPendingKycCount(pending.length)
-        setKycQueue(pending)
+        if (fallbackPending.length > 0) {
+          setKycQueue(fallbackPending)
+          setPendingKycCount(fallbackPending.length)
+        }
       }
     } catch (err: any) {
-      console.warn('[Dashboard] merchants:', err.message)
+      console.warn('[Dashboard] merchants & kyc:', err.message)
     }
 
     // 3. Fetch Recent Transactions from orders or payment_events
@@ -1073,14 +1094,31 @@ export default function Dashboard() {
               </svg>
               <span style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>KYC Review Queue</span>
             </div>
-            <Link to="/merchants?filter=pending" style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}>
+            <Link to="/kyc-reviews" style={{ fontSize: 12, fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}>
               View All
             </Link>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {displayKyc.map((kyc: any, idx: number) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div
+                key={idx}
+                onClick={() => {
+                  setSelectedKycMerchant(kyc)
+                  setIsKycModalOpen(true)
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 8px',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease'
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{
                     width: 34,
@@ -1101,17 +1139,17 @@ export default function Dashboard() {
                       {kyc.business_name || kyc.name}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748B' }}>
-                      {kyc.email}
+                      {kyc.email || 'Click to review'}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
                   <span className="status-pill pending" style={{ fontSize: 10.5 }}>
-                    Pending
+                    {kyc.kyc_status || 'Pending'}
                   </span>
                   <div style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 2 }}>
-                    {kyc.time || '2 hours ago'}
+                    {kyc.time || (kyc.kyc_submitted_at ? new Date(kyc.kyc_submitted_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Pending review')}
                   </div>
                 </div>
               </div>
@@ -1218,6 +1256,19 @@ export default function Dashboard() {
         isOpen={isAddMerchantOpen}
         onClose={() => setIsAddMerchantOpen(false)}
         onMerchantCreated={() => loadDashboardData()}
+      />
+
+      {/* KYC Document Inspection Modal */}
+      <KycInspectionModal
+        merchant={selectedKycMerchant}
+        isOpen={isKycModalOpen}
+        onClose={() => {
+          setIsKycModalOpen(false)
+          setSelectedKycMerchant(null)
+        }}
+        onActionComplete={() => {
+          loadDashboardData()
+        }}
       />
     </div>
   )

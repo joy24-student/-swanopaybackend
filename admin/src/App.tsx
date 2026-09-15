@@ -12,6 +12,7 @@ import SupportHelpdesk from './pages/SupportHelpdesk'
 import PaymentAnalytics from './pages/PaymentAnalytics'
 import SystemHealth from './pages/SystemHealth'
 import MfsRegexManager from './pages/MfsRegexManager'
+import KycReviews from './pages/KycReviews'
 import { AuthProvider, RequireAdmin } from './auth'
 import { ToastProvider } from './components/ToastProvider'
 import AdminLayout from './components/AdminLayout'
@@ -43,6 +44,14 @@ export default function App() {
             <RequireAdmin>
               <AdminLayout>
                 <MerchantDetail />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/kyc-reviews" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <KycReviews />
               </AdminLayout>
             </RequireAdmin>
           } />
