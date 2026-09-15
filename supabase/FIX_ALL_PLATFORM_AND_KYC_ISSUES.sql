@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS public.merchants (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Ensure user_id column safely handles text or uuid strings
+DO $$
+BEGIN
+  ALTER TABLE public.merchants ALTER COLUMN user_id TYPE TEXT USING user_id::text;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
 -- Add all required KYC columns
 ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ACTIVE';
 ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
@@ -77,7 +85,6 @@ ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT;
 ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS kyc_reviewed_by TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_merchants_kyc_status ON public.merchants(kyc_status);
-CREATE INDEX IF NOT EXISTS idx_merchants_user_id ON public.merchants(user_id);
 
 -- ------------------------------------------------------------------------------
 -- 4. FIX PUBLIC.GATEWAY_CONFIG TABLE & SINGLETON ROW
@@ -311,7 +318,7 @@ INSERT INTO public.merchants (
 ) VALUES 
 (
   'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-  'usr_sunrise_01',
+  '11111111-1111-1111-1111-111111111111',
   'Sunrise Electronics & IT',
   'sunrise.electronics.bd@gmail.com',
   '+8801712345678',
@@ -330,7 +337,7 @@ INSERT INTO public.merchants (
 ),
 (
   'b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e',
-  'usr_techvalley_02',
+  '22222222-2222-2222-2222-222222222222',
   'Tech Valley Superstore Ltd.',
   'contact@techvalleybd.com',
   '+8801823456789',
@@ -349,7 +356,7 @@ INSERT INTO public.merchants (
 ),
 (
   'c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f',
-  'usr_greenlife_03',
+  '33333333-3333-3333-3333-333333333333',
   'Green Life Organic Foods',
   'info@greenlifeorganic.com',
   '+8801934567890',
@@ -368,7 +375,7 @@ INSERT INTO public.merchants (
 ),
 (
   'd4e5f6a7-b89c-0d1e-2f3a-4b5c6d7e8f9a',
-  'usr_dreammart_04',
+  '44444444-4444-4444-4444-444444444444',
   'Dream Mart Bangladesh',
   'support@dreammart.com.bd',
   '+8801645678901',
