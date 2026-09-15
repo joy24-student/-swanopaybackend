@@ -989,15 +989,17 @@ export async function submitMerchantKyc({
 
   let updatedMerchant = null
   try {
-    const { data, error } = await admin
+    // First, try updating by ID or user_id
+    const { data: d1 } = await admin
       .from('merchants')
       .update(updatePayload)
       .eq('id', merchant_id)
       .select('*')
       .maybeSingle()
 
-    if (error) {
-      console.warn('[kyc] Failed to update merchants table by id, trying user_id:', error.message)
+    if (d1) {
+      updatedMerchant = d1
+    } else {
       const { data: d2 } = await admin
         .from('merchants')
         .update(updatePayload)
@@ -1005,17 +1007,40 @@ export async function submitMerchantKyc({
         .select('*')
         .maybeSingle()
       updatedMerchant = d2
-    } else {
-      updatedMerchant = data
+    }
+
+    // If still null (no row existed in public.merchants), INSERT/UPSERT a new merchant row!
+    if (!updatedMerchant) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchant_id)
+      const newMerchantPayload = {
+        business_name: nid_name ? String(nid_name).trim() : `Merchant (${String(merchant_id).slice(-6)})`,
+        status: 'PENDING_VERIFICATION',
+        user_id: merchant_id,
+        ...updatePayload
+      }
+      if (isUuid) {
+        newMerchantPayload.id = merchant_id
+      }
+
+      const { data: insertedData, error: insErr } = await admin
+        .from('merchants')
+        .upsert(newMerchantPayload, { onConflict: isUuid ? 'id' : undefined })
+        .select('*')
+        .maybeSingle()
+
+      if (!insErr && insertedData) {
+        updatedMerchant = insertedData
+      }
     }
   } catch (err) {
-    console.warn('[kyc] Supabase merchants table update warning:', err.message)
+    console.warn('[kyc] Supabase merchants table upsert warning:', err.message)
   }
 
   // 2. Also record in merchant_kyc_submissions if table exists
   try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchant_id)
     await admin.from('merchant_kyc_submissions').insert({
-      merchant_id,
+      merchant_id: isUuid ? merchant_id : (updatedMerchant?.id || null),
       nid_number: String(nid_number).trim(),
       nid_name: nid_name ? String(nid_name).trim() : null,
       nid_dob: nid_dob ? String(nid_dob).trim() : null,
@@ -1028,7 +1053,7 @@ export async function submitMerchantKyc({
       submitted_at: now,
     })
   } catch (err) {
-    // Ignore if table not yet created
+    // Ignore if table not yet created or FK constraint skipped
   }
 
   return updatedMerchant || { id: merchant_id, merchant_id, ...updatePayload }

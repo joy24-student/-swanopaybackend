@@ -319,16 +319,32 @@ object SupabaseClient {
                     if (response.isSuccessful) {
                         onSuccess()
                     } else {
-                        val fallbackReq = Request.Builder()
-                            .url("$cleanUrl/rest/v1/merchants?user_id=eq.$merchantId")
+                        val upsertBody = JSONObject().apply {
+                            if (merchantId.contains("-")) put("id", merchantId)
+                            put("user_id", merchantId)
+                            put("business_name", if (nidName.isNotBlank()) nidName.trim() else "Mobile Merchant")
+                            put("nid_number", nidNumber.trim())
+                            if (nidName.isNotBlank()) put("nid_name", nidName.trim())
+                            if (nidDob.isNotBlank()) put("nid_dob", nidDob.trim())
+                            if (frontUrl.isNotBlank()) put("nid_front_url", frontUrl.trim())
+                            if (backUrl.isNotBlank()) put("nid_back_url", backUrl.trim())
+                            if (selfieUrl.isNotBlank()) put("face_photo_url", selfieUrl.trim())
+                            put("kyc_status", "PENDING")
+                            put("status", "PENDING_VERIFICATION")
+                            put("kyc_submitted_at", nowIso)
+                        }.toString()
+
+                        val upsertReq = Request.Builder()
+                            .url("$cleanUrl/rest/v1/merchants")
                             .addHeader("apikey", anonKey)
                             .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
                             .addHeader("Content-Type", "application/json")
-                            .addHeader("Prefer", "return=minimal")
-                            .patch(body.toRequestBody(JSON_MEDIA_TYPE))
+                            .addHeader("Prefer", "resolution=merge-duplicates")
+                            .post(upsertBody.toRequestBody(JSON_MEDIA_TYPE))
                             .build()
+
                         try {
-                            client.newCall(fallbackReq).execute().use { fbRes ->
+                            client.newCall(upsertReq).execute().use { fbRes ->
                                 if (fbRes.isSuccessful) onSuccess() else onFailure(response.parseError(response.body?.string()))
                             }
                         } catch (e: Exception) {
