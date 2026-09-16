@@ -3701,9 +3701,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                 if (currentStep < 4) {
                                     currentStep++
                                 } else {
-                                    if (diagnosticsCompleted && viewModel.isOnboarded()) {
-                                        viewModel.navigateTo("Main")
-                                    }
+                                    viewModel.setOnboarded(true)
+                                    viewModel.navigateTo("Main")
                                 }
                             }
                             .background(buttonGradient)

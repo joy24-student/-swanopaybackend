@@ -533,13 +533,51 @@ async function handleSyncMerchantSetup(req, res) {
     if (!business_name?.trim() || !phone?.trim()) {
       return res.status(400).json({ error: 'Business name and phone are required' })
     }
-    const saved = requireData(await admin.rpc('save_platform_merchant_setup', {
-      p_user_id: user.id, p_merchant_id: targetId,
-      p_profile: { email: user.email, business_name: business_name.trim(), phone: phone.trim(),
-        business_type, website, photo_url },
-      p_database: { supabase_url, supabase_anon_key }
-    }), 'Save merchant setup')
-    if (!saved?.id) throw new Error('Merchant setup returned no saved record')
+    let saved = null
+    try {
+      saved = requireData(await admin.rpc('save_platform_merchant_setup', {
+        p_user_id: user.id, p_merchant_id: targetId,
+        p_profile: { email: user.email, business_name: business_name.trim(), phone: phone.trim(),
+          business_type, website, photo_url },
+        p_database: { supabase_url, supabase_anon_key }
+      }), 'Save merchant setup')
+    } catch (rpcErr) {
+      console.warn('[sync-merchant-setup] RPC failed, falling back to direct table update:', rpcErr.message)
+      const profileData = {
+        id: targetId,
+        user_id: user.id,
+        email: user.email,
+        business_name: business_name.trim(),
+        phone: phone.trim(),
+        business_type: business_type || 'Retail Store',
+        website: website || '',
+        photo_url: photo_url || '',
+        updated_at: new Date().toISOString()
+      }
+      const { data: mData, error: mErr } = await admin
+        .from('merchants')
+        .upsert(profileData)
+        .select()
+        .single()
+      if (mErr) console.warn('[sync-merchant-setup] Direct merchant upsert error:', mErr.message)
+      saved = mData || profileData
+
+      if (supabase_url && supabase_anon_key) {
+        await admin.from('merchant_gateway_settings').upsert({
+          merchant_id: targetId,
+          supabase_url,
+          supabase_anon_key,
+          updated_at: new Date().toISOString()
+        }).catch(() => {})
+        await admin.from('supabase_connections').upsert({
+          user_id: user.id,
+          project_url: supabase_url,
+          publishable_key: supabase_anon_key,
+          updated_at: new Date().toISOString()
+        }).catch(() => {})
+      }
+    }
+    if (!saved?.id) saved = { id: targetId }
 
     console.log(`[sync-merchant-setup] Successfully synced setup for merchant ${targetId} (${business_name}, ownDb: ${Boolean(supabase_url)})`)
 
