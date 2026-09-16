@@ -1,6 +1,20 @@
 import React, { useEffect, useState } from 'react'
 import { adminSupabase } from '../adminSupabaseClient'
 import { Link } from 'react-router-dom'
+import {
+  LifeBuoy,
+  Ticket,
+  MessageSquare,
+  Lightbulb,
+  Check,
+  X,
+  Send,
+  Search,
+  Settings,
+  RefreshCw,
+  Clock,
+  User,
+} from 'lucide-react'
 
 interface SupportTicket {
   id: string
@@ -245,21 +259,27 @@ export default function SupportHelpdesk() {
   const filteredFeatures = featureRequests.filter(f => featureFilter === 'ALL' || f.status === featureFilter)
 
   return (
-    <div className="container">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
-      <div className="header">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1>🎫 Helpdesk & Merchant Support</h1>
-          <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <LifeBuoy size={22} color="var(--brand-primary)" />
+              Helpdesk & Merchant Support
+            </h1>
+          </div>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>
             Real-time support tickets, feature requests, and live merchant chat.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link to="/settings">
-            <button className="button" style={{ background: '#7C3AED' }}>📋 System CMS</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Link to="/settings" className="btn btn-secondary btn-sm">
+            <Settings size={13} />
+            System CMS
           </Link>
-          <Link to="/dashboard">
-            <button className="button" style={{ background: '#64748B' }}>Dashboard</button>
+          <Link to="/dashboard" className="btn btn-primary btn-sm">
+            Overview Dashboard
           </Link>
         </div>
       </div>
@@ -267,35 +287,52 @@ export default function SupportHelpdesk() {
       {/* Action Banner */}
       {ticketActionMsg && (
         <div style={{
-          padding: '10px 16px', background: ticketActionMsg.startsWith('Error') ? '#FEF2F2' : '#ECFDF5',
-          border: `1px solid ${ticketActionMsg.startsWith('Error') ? '#EF4444' : '#10B981'}`,
-          borderRadius: 8, color: ticketActionMsg.startsWith('Error') ? '#991B1B' : '#065F46',
-          marginBottom: 16, fontWeight: 600, fontSize: 13
+          padding: '10px 16px',
+          background: ticketActionMsg.startsWith('Error') ? 'var(--danger-subtle)' : 'var(--success-subtle)',
+          border: `1px solid ${ticketActionMsg.startsWith('Error') ? 'var(--danger-border)' : 'var(--success)'}`,
+          borderRadius: 8,
+          color: ticketActionMsg.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
+          fontWeight: 600, fontSize: 13
         }}>
           {ticketActionMsg}
         </div>
       )}
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border-default)', paddingBottom: 2 }}>
         {[
-          { key: 'tickets', label: `🎫 Support Tickets (${tickets.filter(t => t.status === 'OPEN').length} Open)` },
-          { key: 'live_chat', label: `💬 Live Merchant Chat (${merchantIds.length} Threads)` },
-          { key: 'feature_requests', label: `💡 Feature Requests (${featureRequests.length})` },
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className="button"
-            style={{
-              background: activeTab === tab.key ? '#4F46E5' : '#E2E8F0',
-              color: activeTab === tab.key ? 'white' : '#1E293B',
-              fontWeight: 'bold', padding: '8px 16px', fontSize: 13
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+          { key: 'tickets', label: `Support Tickets (${tickets.filter(t => t.status === 'OPEN').length} Open)`, icon: Ticket },
+          { key: 'live_chat', label: `Live Merchant Chat (${merchantIds.length} Threads)`, icon: MessageSquare },
+          { key: 'feature_requests', label: `Feature Requests (${featureRequests.length})`, icon: Lightbulb },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '9px 14px',
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                background: isActive ? 'var(--brand-subtle)' : 'transparent',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--brand-primary)' : '2px solid transparent',
+                borderRadius: '6px 6px 0 0',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── TAB 1: SUPPORT TICKETS ── */}
@@ -322,11 +359,14 @@ export default function SupportHelpdesk() {
           <div style={{ display: 'grid', gridTemplateColumns: selectedTicket ? '1fr 1fr' : '1fr', gap: 14 }}>
             {/* Ticket List */}
             <div className="card">
-              <h3 style={{ marginTop: 0 }}>📋 Support Tickets ({filteredTickets.length})</h3>
+              <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Ticket size={16} color="var(--brand-primary)" />
+                Support Tickets ({filteredTickets.length})
+              </h3>
               {ticketsLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#64748B' }}>Loading support tickets...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>Loading support tickets...</div>
               ) : filteredTickets.length === 0 ? (
-                <div style={{ padding: 30, textAlign: 'center', color: '#94A3B8' }}>No tickets match the selected filter.</div>
+                <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>No tickets match the selected filter.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {filteredTickets.map(t => (
@@ -335,25 +375,22 @@ export default function SupportHelpdesk() {
                       onClick={() => setSelectedTicket(t)}
                       style={{
                         padding: 12, borderRadius: 8, cursor: 'pointer',
-                        border: `1px solid ${selectedTicket?.id === t.id ? '#4F46E5' : '#E2E8F0'}`,
-                        background: selectedTicket?.id === t.id ? '#EEF2FF' : 'white',
+                        border: `1px solid ${selectedTicket?.id === t.id ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+                        background: selectedTicket?.id === t.id ? 'var(--brand-subtle)' : 'var(--bg-surface)',
                         transition: 'all 0.15s'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: 14, color: '#1E293B' }}>{t.subject}</strong>
-                        <span style={{
-                          padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700,
-                          background: t.status === 'OPEN' ? '#FEF2F2' : t.status === 'IN_PROGRESS' ? '#FEF3C7' : '#ECFDF5',
-                          color: t.status === 'OPEN' ? '#EF4444' : t.status === 'IN_PROGRESS' ? '#D97706' : '#065F46'
-                        }}>
+                        <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>{t.subject}</strong>
+                        <span className={`status-pill ${t.status === 'OPEN' ? 'danger' : t.status === 'IN_PROGRESS' ? 'warning' : 'success'}`}>
+                          <span className="status-dot" />
                           {t.status}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                         Merchant: {t.business_name || t.merchant_id || 'Guest'} • Category: {t.category}
                       </div>
-                      <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
                         Submitted: {new Date(t.created_at).toLocaleString()}
                       </div>
                     </div>
@@ -366,17 +403,22 @@ export default function SupportHelpdesk() {
             {selectedTicket && (
               <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ margin: 0 }}>🔍 Ticket Detail</h3>
-                  <button onClick={() => setSelectedTicket(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Ticket size={16} color="var(--brand-primary)" />
+                    Ticket Details
+                  </h3>
+                  <button className="btn-ghost btn-icon" onClick={() => setSelectedTicket(null)}>
+                    <X size={15} />
+                  </button>
                 </div>
                 <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div><strong>Subject:</strong> {selectedTicket.subject}</div>
-                  <div><strong>Category:</strong> <span style={{ background: '#F1F5F9', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{selectedTicket.category}</span></div>
+                  <div><strong>Category:</strong> <span style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{selectedTicket.category}</span></div>
                   <div><strong>Merchant:</strong> {selectedTicket.business_name || '--'} ({selectedTicket.email || '--'})</div>
                   <div><strong>Status:</strong> <span style={{ fontWeight: 700 }}>{selectedTicket.status}</span></div>
                   <div>
                     <strong>Description:</strong>
-                    <div style={{ padding: 10, background: '#F8FAFC', borderRadius: 6, border: '1px solid #E2E8F0', marginTop: 4, whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                    <div style={{ padding: 10, background: 'var(--bg-subtle)', borderRadius: 6, border: '1px solid var(--border-default)', marginTop: 4, whiteSpace: 'pre-wrap', fontSize: 12 }}>
                       {selectedTicket.description}
                     </div>
                   </div>
@@ -384,7 +426,7 @@ export default function SupportHelpdesk() {
                   {selectedTicket.admin_reply && (
                     <div>
                       <strong>Previous Admin Reply:</strong>
-                      <div style={{ padding: 10, background: '#ECFDF5', borderRadius: 6, border: '1px solid #10B981', marginTop: 4, fontSize: 12, color: '#065F46' }}>
+                      <div style={{ padding: 10, background: 'var(--success-subtle)', borderRadius: 6, border: '1px solid var(--success)', marginTop: 4, fontSize: 12, color: 'var(--success)' }}>
                         {selectedTicket.admin_reply}
                       </div>
                     </div>
@@ -393,7 +435,7 @@ export default function SupportHelpdesk() {
                   <div style={{ marginTop: 10 }}>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Admin Response Message</label>
                     <textarea
-                      className="input"
+                      className="textarea"
                       value={adminReplyText}
                       onChange={e => setAdminReplyText(e.target.value)}
                       placeholder="Type your resolution or support reply here..."
@@ -402,13 +444,14 @@ export default function SupportHelpdesk() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    <button className="button" onClick={() => handleUpdateTicketStatus(selectedTicket, 'IN_PROGRESS')} style={{ background: '#D97706', fontSize: 11 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleUpdateTicketStatus(selectedTicket, 'IN_PROGRESS')}>
                       Mark In Progress
                     </button>
-                    <button className="button" onClick={() => handleUpdateTicketStatus(selectedTicket, 'RESOLVED')} style={{ background: '#10B981', fontSize: 11 }}>
-                      ✅ Resolve Ticket
+                    <button className="btn btn-primary btn-sm" onClick={() => handleUpdateTicketStatus(selectedTicket, 'RESOLVED')}>
+                      <Check size={13} />
+                      Resolve Ticket
                     </button>
-                    <button className="button" onClick={() => handleUpdateTicketStatus(selectedTicket, 'CLOSED')} style={{ background: '#64748B', fontSize: 11 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleUpdateTicketStatus(selectedTicket, 'CLOSED')}>
                       Close Ticket
                     </button>
                   </div>
@@ -424,11 +467,14 @@ export default function SupportHelpdesk() {
         <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 14 }}>
           {/* Thread List */}
           <div className="card" style={{ padding: 12 }}>
-            <h4 style={{ marginTop: 0, marginBottom: 10 }}>💬 Active Threads</h4>
+            <h4 style={{ marginTop: 0, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <MessageSquare size={15} color="var(--brand-primary)" />
+              Active Threads
+            </h4>
             {chatLoading ? (
-              <div style={{ fontSize: 12, color: '#64748B' }}>Loading chats...</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading chats...</div>
             ) : merchantIds.length === 0 ? (
-              <div style={{ fontSize: 12, color: '#94A3B8' }}>No live chat threads yet.</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No live chat threads yet.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {merchantIds.map(mId => {
@@ -439,13 +485,13 @@ export default function SupportHelpdesk() {
                       onClick={() => setSelectedMerchantId(mId)}
                       style={{
                         padding: 10, borderRadius: 8, cursor: 'pointer',
-                        border: `1px solid ${selectedMerchantId === mId ? '#4F46E5' : '#E2E8F0'}`,
-                        background: selectedMerchantId === mId ? '#EEF2FF' : 'white',
+                        border: `1px solid ${selectedMerchantId === mId ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+                        background: selectedMerchantId === mId ? 'var(--brand-subtle)' : 'var(--bg-surface)',
                       }}
                     >
-                      <div style={{ fontWeight: 700, fontSize: 12, color: '#1E293B' }}>Merchant: {mId.slice(0, 12)}...</div>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text-primary)' }}>Merchant: {mId.slice(0, 12)}...</div>
                       {lastMsg && (
-                        <div style={{ fontSize: 11, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                           {lastMsg.sender === 'PLATFORM_OWNER' ? 'You: ' : ''}{lastMsg.message}
                         </div>
                       )}
@@ -460,15 +506,18 @@ export default function SupportHelpdesk() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 500 }}>
             {selectedMerchantId ? (
               <>
-                <div style={{ paddingBottom: 10, borderBottom: '1px solid #E2E8F0', marginBottom: 10 }}>
-                  <strong style={{ fontSize: 14 }}>💬 Conversation with Merchant <code>{selectedMerchantId}</code></strong>
-                  <span style={{ fontSize: 11, color: '#10B981', marginLeft: 10 }}>● Connected via Supabase Realtime</span>
+                <div style={{ paddingBottom: 10, borderBottom: '1px solid var(--border-default)', marginBottom: 10 }}>
+                  <strong style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <MessageSquare size={15} color="var(--brand-primary)" />
+                    Conversation with Merchant <code>{selectedMerchantId}</code>
+                  </strong>
+                  <span style={{ fontSize: 11, color: 'var(--success)', marginLeft: 10 }}>● Live Connected</span>
                 </div>
 
                 {/* Messages Box */}
                 <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 6 }}>
                   {activeMerchantMessages.length === 0 ? (
-                    <div style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', marginTop: 40 }}>No messages in this chat yet.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 40 }}>No messages in this chat yet.</div>
                   ) : (
                     activeMerchantMessages.map(msg => {
                       const isOwner = msg.sender === 'PLATFORM_OWNER'
@@ -478,8 +527,8 @@ export default function SupportHelpdesk() {
                           style={{
                             alignSelf: isOwner ? 'flex-end' : 'flex-start',
                             maxWidth: '75%', padding: '8px 12px', borderRadius: 10,
-                            background: isOwner ? '#4F46E5' : '#F1F5F9',
-                            color: isOwner ? 'white' : '#1E293B',
+                            background: isOwner ? 'var(--brand-primary)' : 'var(--bg-subtle)',
+                            color: isOwner ? '#FFFFFF' : 'var(--text-primary)',
                             fontSize: 13,
                           }}
                         >
@@ -502,13 +551,14 @@ export default function SupportHelpdesk() {
                     onKeyDown={e => e.key === 'Enter' && handleSendChatReply()}
                     placeholder="Type a message to merchant..."
                   />
-                  <button className="button" onClick={handleSendChatReply} style={{ background: '#4F46E5', width: 90 }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleSendChatReply} style={{ minWidth: 80 }}>
+                    <Send size={13} />
                     Send
                   </button>
                 </div>
               </>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94A3B8' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                 Select a merchant thread to start chatting.
               </div>
             )}
@@ -520,15 +570,15 @@ export default function SupportHelpdesk() {
       {activeTab === 'feature_requests' && (
         <div>
           <div className="card" style={{ marginBottom: 14, padding: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>Filter Status:</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>Filter Status:</span>
             {['ALL', 'PENDING', 'UNDER_REVIEW', 'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'].map(st => (
               <button
                 key={st}
                 onClick={() => setFeatureFilter(st)}
                 style={{
                   padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                  background: featureFilter === st ? '#4F46E5' : '#F1F5F9',
-                  color: featureFilter === st ? 'white' : '#475569'
+                  background: featureFilter === st ? 'var(--brand-primary)' : 'var(--bg-subtle)',
+                  color: featureFilter === st ? 'white' : 'var(--text-secondary)'
                 }}
               >
                 {st}
@@ -539,11 +589,14 @@ export default function SupportHelpdesk() {
           <div style={{ display: 'grid', gridTemplateColumns: selectedFeature ? '1fr 1fr' : '1fr', gap: 14 }}>
             {/* Feature List */}
             <div className="card">
-              <h3 style={{ marginTop: 0 }}>💡 Merchant Feature Requests ({filteredFeatures.length})</h3>
+              <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Lightbulb size={16} color="var(--brand-primary)" />
+                Merchant Feature Requests ({filteredFeatures.length})
+              </h3>
               {featuresLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#64748B' }}>Loading feature requests...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>Loading feature requests...</div>
               ) : filteredFeatures.length === 0 ? (
-                <div style={{ padding: 30, textAlign: 'center', color: '#94A3B8' }}>No feature requests match the selected filter.</div>
+                <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>No feature requests match the selected filter.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {filteredFeatures.map(f => (
@@ -552,21 +605,18 @@ export default function SupportHelpdesk() {
                       onClick={() => setSelectedFeature(f)}
                       style={{
                         padding: 12, borderRadius: 8, cursor: 'pointer',
-                        border: `1px solid ${selectedFeature?.id === f.id ? '#4F46E5' : '#E2E8F0'}`,
-                        background: selectedFeature?.id === f.id ? '#EEF2FF' : 'white',
+                        border: `1px solid ${selectedFeature?.id === f.id ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+                        background: selectedFeature?.id === f.id ? 'var(--brand-subtle)' : 'var(--bg-surface)',
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: 14, color: '#1E293B' }}>{f.title}</strong>
-                        <span style={{
-                          padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700,
-                          background: f.status === 'COMPLETED' ? '#ECFDF5' : f.status === 'PLANNED' ? '#E0F2FE' : '#F1F5F9',
-                          color: f.status === 'COMPLETED' ? '#065F46' : f.status === 'PLANNED' ? '#0369A1' : '#475569'
-                        }}>
+                        <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>{f.title}</strong>
+                        <span className={`status-pill ${f.status === 'COMPLETED' ? 'success' : f.status === 'PLANNED' ? 'info' : 'neutral'}`}>
+                          <span className="status-dot" />
                           {f.status}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
                         Category: {f.category} • Priority: <span style={{ fontWeight: 700 }}>{f.priority}</span>
                       </div>
                     </div>
@@ -579,8 +629,13 @@ export default function SupportHelpdesk() {
             {selectedFeature && (
               <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h3 style={{ margin: 0 }}>🔍 Feature Request Detail</h3>
-                  <button onClick={() => setSelectedFeature(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Lightbulb size={16} color="var(--brand-primary)" />
+                    Feature Request Details
+                  </h3>
+                  <button className="btn-ghost btn-icon" onClick={() => setSelectedFeature(null)}>
+                    <X size={15} />
+                  </button>
                 </div>
                 <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div><strong>Title:</strong> {selectedFeature.title}</div>
@@ -589,7 +644,7 @@ export default function SupportHelpdesk() {
                   <div><strong>Status:</strong> {selectedFeature.status}</div>
                   <div>
                     <strong>Description:</strong>
-                    <div style={{ padding: 10, background: '#F8FAFC', borderRadius: 6, border: '1px solid #E2E8F0', marginTop: 4, fontSize: 12 }}>
+                    <div style={{ padding: 10, background: 'var(--bg-subtle)', borderRadius: 6, border: '1px solid var(--border-default)', marginTop: 4, fontSize: 12 }}>
                       {selectedFeature.description}
                     </div>
                   </div>
@@ -597,7 +652,7 @@ export default function SupportHelpdesk() {
                   {selectedFeature.admin_notes && (
                     <div>
                       <strong>Admin Notes:</strong>
-                      <div style={{ padding: 10, background: '#EFF6FF', borderRadius: 6, border: '1px solid #3B82F6', marginTop: 4, fontSize: 12 }}>
+                      <div style={{ padding: 10, background: 'var(--brand-subtle)', borderRadius: 6, border: '1px solid var(--border-default)', marginTop: 4, fontSize: 12 }}>
                         {selectedFeature.admin_notes}
                       </div>
                     </div>
@@ -606,7 +661,7 @@ export default function SupportHelpdesk() {
                   <div style={{ marginTop: 10 }}>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Admin Roadmap Note</label>
                     <textarea
-                      className="input"
+                      className="textarea"
                       value={featureAdminNotes}
                       onChange={e => setFeatureAdminNotes(e.target.value)}
                       placeholder="Add notes for merchant or dev team..."
@@ -615,16 +670,17 @@ export default function SupportHelpdesk() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    <button className="button" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'UNDER_REVIEW')} style={{ background: '#D97706', fontSize: 11 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'UNDER_REVIEW')}>
                       Under Review
                     </button>
-                    <button className="button" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'PLANNED')} style={{ background: '#0284C7', fontSize: 11 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'PLANNED')}>
                       Plan for Release
                     </button>
-                    <button className="button" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'COMPLETED')} style={{ background: '#10B981', fontSize: 11 }}>
-                      ✅ Complete Feature
+                    <button className="btn btn-primary btn-sm" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'COMPLETED')}>
+                      <Check size={13} />
+                      Complete Feature
                     </button>
-                    <button className="button" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'REJECTED')} style={{ background: '#EF4444', fontSize: 11 }}>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleUpdateFeatureStatus(selectedFeature, 'REJECTED')}>
                       Reject
                     </button>
                   </div>

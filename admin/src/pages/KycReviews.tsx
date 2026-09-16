@@ -1,6 +1,23 @@
 import React, { useEffect, useState } from 'react'
-import { adminSupabase } from '../adminSupabaseClient'
+import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient'
 import { Link } from 'react-router-dom'
+import {
+  ShieldCheck,
+  Search,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  ExternalLink,
+  User,
+  CreditCard,
+  FileText,
+  AlertTriangle,
+  Image as ImageIcon,
+  Check,
+  X,
+  RefreshCw,
+  Eye
+} from 'lucide-react'
 
 interface KycRecord {
   id: string
@@ -41,9 +58,9 @@ export default function KycReviews() {
         .select('*')
         .order('kyc_submitted_at', { ascending: false, nullsFirst: false })
 
-      if (!error && data) {
+      if (error) throw error
+      if (data) {
         setSubmissions(data as KycRecord[])
-        // Auto-select first pending record if none selected
         if (!selectedMerchant && data.length > 0) {
           const firstPending = data.find((m: any) => m.kyc_status === 'PENDING' || m.kyc_status === 'PENDING_REVIEW')
           setSelectedMerchant(firstPending || data[0])
@@ -51,6 +68,7 @@ export default function KycReviews() {
       }
     } catch (err: any) {
       console.error('[KycReviews] fetch error:', err.message)
+      setActionMessage({ type: 'error', text: 'KYC records could not be loaded: ' + err.message })
     } finally {
       setLoading(false)
     }
@@ -59,7 +77,6 @@ export default function KycReviews() {
   useEffect(() => {
     loadKycRecords()
 
-    // Real-time subscription to merchants table
     const channel = adminSupabase
       .channel('kyc_reviews_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'merchants' }, () => {
@@ -72,40 +89,24 @@ export default function KycReviews() {
     }
   }, [])
 
-  // Format document URL
   function formatImageUrl(url?: string | null) {
     if (!url) return null
     if (url.startsWith('http') || url.startsWith('data:')) return url
-    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://pay.swapnopay.top'
+    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
     return `${backend.replace(/\/$/, '')}/${url.replace(/^\//, '')}`
   }
 
-  // Handle Approve
   async function handleApprove(merchantId: string) {
     setActionLoading(true)
     setActionMessage(null)
-    const now = new Date().toISOString()
 
     try {
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update({
-          kyc_status: 'VERIFIED',
-          status: 'ACTIVE',
-          kyc_reviewed_at: now,
-          kyc_reviewed_by: 'ADMIN',
-          kyc_rejection_reason: null,
-          updated_at: now
-        })
-        .eq('id', merchantId)
-
-      if (error) throw error
-
+      const reviewed = await reviewMerchantIdentity(merchantId, 'APPROVE')
       setActionMessage({ type: 'success', text: 'KYC Approved! Merchant is now Verified and Active.' })
       await loadKycRecords()
 
       if (selectedMerchant?.id === merchantId) {
-        setSelectedMerchant(prev => prev ? { ...prev, kyc_status: 'VERIFIED', status: 'ACTIVE' } : null)
+        setSelectedMerchant(prev => prev ? { ...prev, ...reviewed } : null)
       }
     } catch (err: any) {
       setActionMessage({ type: 'error', text: err.message || 'Failed to approve KYC.' })
@@ -114,7 +115,6 @@ export default function KycReviews() {
     }
   }
 
-  // Handle Reject
   async function handleReject(merchantId: string) {
     if (!rejectReason.trim()) {
       alert('Please specify a rejection reason to inform the merchant on their app.')
@@ -123,22 +123,9 @@ export default function KycReviews() {
 
     setActionLoading(true)
     setActionMessage(null)
-    const now = new Date().toISOString()
 
     try {
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update({
-          kyc_status: 'REJECTED',
-          kyc_rejection_reason: rejectReason.trim(),
-          kyc_reviewed_at: now,
-          kyc_reviewed_by: 'ADMIN',
-          updated_at: now
-        })
-        .eq('id', merchantId)
-
-      if (error) throw error
-
+      await reviewMerchantIdentity(merchantId, 'REJECT', rejectReason.trim())
       setActionMessage({ type: 'success', text: 'KYC Rejected. Reason communicated to the merchant app.' })
       setIsRejecting(false)
       setRejectReason('')
@@ -154,7 +141,6 @@ export default function KycReviews() {
     }
   }
 
-  // Filtered submissions
   const filteredList = submissions.filter(m => {
     if (filter === 'PENDING' && !(m.kyc_status === 'PENDING' || m.kyc_status === 'PENDING_REVIEW')) return false
     if (filter === 'VERIFIED' && m.kyc_status !== 'VERIFIED') return false
@@ -179,43 +165,55 @@ export default function KycReviews() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Top Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 16
+      }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.5px', margin: 0 }}>
-            🛡️ KYC & Identity Verification
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.4px', margin: 0 }}>
+            KYC & Identity Verification
           </h1>
-          <p style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>
-            Review merchant NID identity cards, biometric selfie scans, and approve/reject platform verification.
-          </p>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
+            Review merchant NID identity cards, selfie validation scans, and approve/reject compliance access.
+          </div>
         </div>
 
-        {/* Quick Filter Tabs */}
-        <div style={{ display: 'flex', background: '#F1F5F9', padding: 4, borderRadius: 10, gap: 4 }}>
+        {/* Filter Tabs */}
+        <div style={{
+          display: 'flex',
+          background: 'var(--bg-subtle)',
+          padding: 3,
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border-default)',
+          gap: 2
+        }}>
           {[
             { id: 'PENDING', label: `Pending (${pendingCount})` },
             { id: 'VERIFIED', label: `Verified (${verifiedCount})` },
             { id: 'REJECTED', label: `Rejected (${rejectedCount})` },
             { id: 'ALL', label: `All (${submissions.length})` }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id as any)}
-              style={{
-                border: 'none',
-                background: filter === tab.id ? 'white' : 'transparent',
-                color: filter === tab.id ? '#2563EB' : '#64748B',
-                fontWeight: filter === tab.id ? 700 : 500,
-                fontSize: 12.5,
-                padding: '7px 14px',
-                borderRadius: 8,
-                cursor: 'pointer',
-                boxShadow: filter === tab.id ? '0 2px 4px rgba(0,0,0,0.06)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+          ].map(tab => {
+            const isActive = filter === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setFilter(tab.id as any)}
+                className="btn btn-sm"
+                style={{
+                  border: 'none',
+                  background: isActive ? 'var(--bg-surface)' : 'transparent',
+                  color: isActive ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                  fontWeight: isActive ? 700 : 500,
+                  boxShadow: isActive ? 'var(--shadow-xs)' : 'none'
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -223,51 +221,69 @@ export default function KycReviews() {
       {actionMessage && (
         <div style={{
           padding: '12px 18px',
-          borderRadius: 12,
-          background: actionMessage.type === 'success' ? '#ECFDF5' : '#FEF2F2',
-          border: `1px solid ${actionMessage.type === 'success' ? '#A7F3D0' : '#FECACA'}`,
-          color: actionMessage.type === 'success' ? '#065F46' : '#991B1B',
+          borderRadius: 'var(--radius-md)',
+          background: actionMessage.type === 'success' ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+          border: `1px solid ${actionMessage.type === 'success' ? 'var(--success-border)' : 'var(--danger-border)'}`,
+          color: actionMessage.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
           fontWeight: 600,
-          fontSize: 13.5,
+          fontSize: 13,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
           <span>{actionMessage.text}</span>
-          <button onClick={() => setActionMessage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>✕</button>
+          <button onClick={() => setActionMessage(null)} className="btn-icon btn-ghost" style={{ width: 22, height: 22 }}>
+            <X size={14} />
+          </button>
         </div>
       )}
 
-      {/* Main Two-Column View */}
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 24, alignItems: 'start' }}>
-        {/* Left Column: Submissions Queue */}
-        <div className="card" style={{ padding: 18, maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Two-Column Layout */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '360px 1fr',
+        gap: 20,
+        alignItems: 'start'
+      }}>
+        {/* Left Column: Submissions Queue List */}
+        <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Search Input */}
-          <div style={{ marginBottom: 14 }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'var(--bg-subtle)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '7px 12px'
+          }}>
+            <Search size={14} color="var(--text-muted)" />
             <input
               type="text"
-              placeholder="Search by name, email, NID..."
+              placeholder="Search queue by name, phone, NID..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
-                width: '100%',
-                padding: '9px 12px',
-                borderRadius: 8,
-                border: '1px solid #CBD5E1',
-                fontSize: 13,
+                border: 'none',
                 outline: 'none',
-                boxSizing: 'border-box'
+                background: 'transparent',
+                fontSize: 12.5,
+                color: 'var(--text-primary)',
+                width: '100%',
+                fontFamily: 'inherit'
               }}
             />
           </div>
 
-          {/* Queue List */}
-          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+          {/* Queue List Container */}
+          <div style={{ maxHeight: 600, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 24, color: '#64748B', fontSize: 13 }}>Loading verification queue...</div>
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
+                Loading verification queue...
+              </div>
             ) : filteredList.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 32, color: '#94A3B8', fontSize: 13 }}>
-                No KYC submissions found in this category.
+              <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 13 }}>
+                No submissions found in this category.
               </div>
             ) : (
               filteredList.map(m => {
@@ -280,29 +296,27 @@ export default function KycReviews() {
                     onClick={() => { setSelectedMerchant(m); setIsRejecting(false); }}
                     style={{
                       padding: '12px 14px',
-                      borderRadius: 12,
-                      background: isSelected ? '#EFF6FF' : '#FFFFFF',
-                      border: `1px solid ${isSelected ? '#93C5FD' : '#F1F5F9'}`,
+                      borderRadius: 'var(--radius-md)',
+                      background: isSelected ? 'var(--brand-subtle)' : 'var(--bg-surface)',
+                      border: `1px solid ${isSelected ? 'var(--brand-border)' : 'var(--border-default)'}`,
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease'
+                      transition: 'all var(--transition-fast)'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>
-                        {m.business_name}
-                      </div>
-                      <span className={`status-pill ${isVerified ? 'success' : isPending ? 'pending' : 'failed'}`} style={{ fontSize: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: isSelected ? 'var(--brand-primary)' : 'var(--text-primary)' }}>
+                        {m.business_name || 'Store Merchant'}
+                      </span>
+                      <span className={`status-pill ${isVerified ? 'success' : isPending ? 'warning' : 'danger'}`} style={{ fontSize: 10 }}>
+                        <span className="status-dot" />
                         {m.kyc_status}
                       </span>
                     </div>
-
-                    <div style={{ fontSize: 12, color: '#64748B', marginBottom: 6 }}>
-                      {m.email || m.phone || 'No contact email'}
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {m.phone || m.email || 'No contact'}
                     </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: '#94A3B8' }}>
-                      <span>NID: {m.nid_number || 'Not provided'}</span>
-                      <span>{m.kyc_submitted_at ? new Date(m.kyc_submitted_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Recent'}</span>
+                    <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 4 }}>
+                      NID: {m.nid_number || 'Pending'} • {m.kyc_submitted_at ? new Date(m.kyc_submitted_at).toLocaleDateString() : 'Recent'}
                     </div>
                   </div>
                 )
@@ -311,276 +325,255 @@ export default function KycReviews() {
           </div>
         </div>
 
-        {/* Right Column: Detailed Document & Verification Inspector */}
+        {/* Right Column: Inspection Panel */}
         {selectedMerchant ? (
-          <div className="card" style={{ padding: 28 }}>
-            {/* Merchant Header Bar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 20, borderBottom: '1px solid #F1F5F9', marginBottom: 24 }}>
+          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Header info */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 16 }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
                     {selectedMerchant.business_name}
                   </h2>
-                  <span className={`status-pill ${selectedMerchant.kyc_status === 'VERIFIED' ? 'success' : selectedMerchant.kyc_status === 'REJECTED' ? 'failed' : 'pending'}`}>
+                  <span className={`status-pill ${selectedMerchant.kyc_status === 'VERIFIED' ? 'success' : selectedMerchant.kyc_status === 'PENDING' ? 'warning' : 'danger'}`}>
+                    <span className="status-dot" />
                     {selectedMerchant.kyc_status}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>
-                  Merchant ID: <code style={{ color: '#2563EB', fontWeight: 600 }}>{selectedMerchant.id}</code>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Merchant ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{selectedMerchant.id}</span>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: 10 }}>
-                {selectedMerchant.kyc_status !== 'VERIFIED' && (
-                  <button
-                    onClick={() => handleApprove(selectedMerchant.id)}
-                    disabled={actionLoading}
-                    style={{
-                      background: '#10B981',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 18px',
-                      borderRadius: 10,
-                      fontWeight: 700,
-                      fontSize: 13,
-                      cursor: actionLoading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
-                    }}
-                  >
-                    ✓ Approve & Verify
-                  </button>
-                )}
-
-                {selectedMerchant.kyc_status !== 'REJECTED' && !isRejecting && (
-                  <button
-                    onClick={() => setIsRejecting(true)}
-                    disabled={actionLoading}
-                    style={{
-                      background: '#FEF2F2',
-                      color: '#DC2626',
-                      border: '1px solid #FECACA',
-                      padding: '10px 18px',
-                      borderRadius: 10,
-                      fontWeight: 700,
-                      fontSize: 13,
-                      cursor: actionLoading ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    ✕ Reject
-                  </button>
-                )}
-              </div>
+              <Link to={`/merchants/${selectedMerchant.id}`} className="btn btn-secondary btn-sm">
+                <span>Merchant Profile</span>
+                <ExternalLink size={12} />
+              </Link>
             </div>
 
-            {/* Rejection Input Box */}
-            {isRejecting && (
-              <div style={{
-                background: '#FEF2F2',
-                border: '1px solid #FECACA',
-                borderRadius: 14,
-                padding: 16,
-                marginBottom: 24
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#991B1B', marginBottom: 6 }}>
-                  Specify Rejection Reason (Sent to Mobile App):
-                </div>
-                <input
-                  type="text"
-                  placeholder="e.g. NID image is blurry, name mismatch, or expired document"
-                  value={rejectReason}
-                  onChange={e => setRejectReason(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    border: '1px solid #F87171',
-                    fontSize: 13,
-                    outline: 'none',
-                    marginBottom: 10,
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button
-                    onClick={() => handleReject(selectedMerchant.id)}
-                    disabled={actionLoading}
-                    style={{
-                      background: '#DC2626',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 16px',
-                      borderRadius: 8,
-                      fontWeight: 700,
-                      fontSize: 12.5,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Confirm Rejection
-                  </button>
-                  <button
-                    onClick={() => setIsRejecting(false)}
-                    style={{
-                      background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
-                      padding: '8px 16px',
-                      borderRadius: 8,
-                      fontWeight: 600,
-                      fontSize: 12.5,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Merchant Extracted Info */}
+            {/* Merchant Details Grid */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 16,
-              background: '#F8FAFC',
-              borderRadius: 14,
-              padding: 18,
-              marginBottom: 28
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 12,
+              background: 'var(--bg-subtle)',
+              padding: 14,
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-default)'
             }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>NID Number</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A', marginTop: 4, fontFamily: 'monospace' }}>
-                  {selectedMerchant.nid_number || '—'}
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>NID Name</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+                  {selectedMerchant.nid_name || selectedMerchant.business_name}
                 </div>
               </div>
-
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>NID Full Name</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>
-                  {selectedMerchant.nid_name || '—'}
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>NID Number</div>
+                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--brand-primary)', marginTop: 2 }}>
+                  {selectedMerchant.nid_number || 'Not provided'}
                 </div>
               </div>
-
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Date of Birth</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Date of Birth</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
                   {selectedMerchant.nid_dob || '—'}
                 </div>
               </div>
-
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Submission Date</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>
-                  {selectedMerchant.kyc_submitted_at ? new Date(selectedMerchant.kyc_submitted_at).toLocaleString() : '—'}
-                </div>
-              </div>
             </div>
 
-            {/* Document Previews (Front, Back, Face) */}
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', marginBottom: 14 }}>
-              Submitted Verification Documents & Biometrics
-            </h3>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
-              {/* Document 1: NID Front */}
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden', background: '#FFFFFF' }}>
-                <div style={{ padding: '10px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 12.5, fontWeight: 700, color: '#334155' }}>
-                  📄 NID Front Card
-                </div>
-                <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', position: 'relative' }}>
-                  {formatImageUrl(selectedMerchant.nid_front_url) ? (
+            {/* Document Photos Grid */}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>
+                Submitted Verification Documents
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+                {/* NID Front */}
+                <div style={{
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 10,
+                  background: 'var(--bg-surface)'
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    NID Front Side
+                  </div>
+                  {selectedMerchant.nid_front_url ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.nid_front_url)!}
+                      src={formatImageUrl(selectedMerchant.nid_front_url) || ''}
                       alt="NID Front"
                       onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.nid_front_url))}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
+                      style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (
-                    <div style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', padding: 20 }}>
-                      No front card image uploaded
+                    <div style={{ height: 130, background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}>
+                      Not Uploaded
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Document 2: NID Back */}
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden', background: '#FFFFFF' }}>
-                <div style={{ padding: '10px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 12.5, fontWeight: 700, color: '#334155' }}>
-                  📄 NID Back Card
-                </div>
-                <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', position: 'relative' }}>
-                  {formatImageUrl(selectedMerchant.nid_back_url) ? (
+                {/* NID Back */}
+                <div style={{
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 10,
+                  background: 'var(--bg-surface)'
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    NID Back Side
+                  </div>
+                  {selectedMerchant.nid_back_url ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.nid_back_url)!}
+                      src={formatImageUrl(selectedMerchant.nid_back_url) || ''}
                       alt="NID Back"
                       onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.nid_back_url))}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
+                      style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (
-                    <div style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', padding: 20 }}>
-                      No back card image uploaded
+                    <div style={{ height: 130, background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}>
+                      Not Uploaded
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Document 3: Biometric Face Selfie */}
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden', background: '#FFFFFF' }}>
-                <div style={{ padding: '10px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 12.5, fontWeight: 700, color: '#334155' }}>
-                  🤳 Live Biometric Face Scan
-                </div>
-                <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', position: 'relative' }}>
-                  {formatImageUrl(selectedMerchant.face_photo_url) ? (
+                {/* Face Photo */}
+                <div style={{
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 10,
+                  background: 'var(--bg-surface)'
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Biometric Selfie
+                  </div>
+                  {selectedMerchant.face_photo_url ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.face_photo_url)!}
-                      alt="Face Selfie"
+                      src={formatImageUrl(selectedMerchant.face_photo_url) || ''}
+                      alt="Selfie"
                       onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.face_photo_url))}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
+                      style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (
-                    <div style={{ color: '#94A3B8', fontSize: 12, textAlign: 'center', padding: 20 }}>
-                      No face photo uploaded
+                    <div style={{ height: 130, background: 'var(--bg-subtle)', borderRadius: 'var(--radius-xs)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}>
+                      Not Uploaded
                     </div>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* Rejection Form & Actions */}
+            {isRejecting ? (
+              <div style={{
+                background: 'var(--danger-subtle)',
+                border: '1px solid var(--danger-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger-text)' }}>
+                  Reject Application & Notify Merchant
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['Unclear NID Photo', 'Name Mismatch with NID', 'Expired NID Document', 'Blury Selfie Photo'].map(reason => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => setRejectReason(reason)}
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: 11 }}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  placeholder="Specify clear instructions for the merchant to correct their NID upload..."
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: 10,
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--danger-border)',
+                    fontSize: 12.5,
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit'
+                  }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button onClick={() => setIsRejecting(false)} className="btn btn-secondary btn-sm">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleReject(selectedMerchant.id)}
+                    disabled={actionLoading}
+                    className="btn btn-danger btn-sm"
+                  >
+                    Confirm Rejection
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 12,
+                borderTop: '1px solid var(--border-subtle)',
+                paddingTop: 16
+              }}>
+                <button
+                  onClick={() => setIsRejecting(true)}
+                  className="btn btn-danger btn-sm"
+                  style={{ gap: 6 }}
+                >
+                  <X size={14} />
+                  <span>Reject Application</span>
+                </button>
+                <button
+                  onClick={() => handleApprove(selectedMerchant.id)}
+                  disabled={actionLoading}
+                  className="btn btn-primary btn-sm"
+                  style={{ gap: 6 }}
+                >
+                  <Check size={14} />
+                  <span>Approve & Verify Merchant</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="card" style={{ padding: 48, textAlign: 'center', color: '#94A3B8' }}>
-            Select a merchant submission from the left queue to inspect documents.
+          <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+            Select a merchant from the queue to inspect verification documents.
           </div>
         )}
       </div>
 
-      {/* Lightbox Zoom Modal */}
+      {/* Image Zoom Modal */}
       {previewImage && (
         <div
           onClick={() => setPreviewImage(null)}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(5px)',
+            background: 'rgba(0,0,0,0.85)',
+            zIndex: 300,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000,
             padding: 24,
             cursor: 'zoom-out'
           }}
         >
           <img
             src={previewImage}
-            alt="Enlarged Document Preview"
-            style={{
-              maxWidth: '90vw',
-              maxHeight: '85vh',
-              borderRadius: 14,
-              boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
-              objectFit: 'contain'
-            }}
+            alt="Zoomed preview"
+            style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}
           />
         </div>
       )}

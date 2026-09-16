@@ -1185,11 +1185,15 @@ fun SupportScreen(viewModel: AppViewModel) {
                                                 Button(
                                                     onClick = {
                                                         if (ticketSubject.trim().isNotEmpty() && ticketDesc.trim().isNotEmpty()) {
-                                                            val genId = java.util.UUID.randomUUID().toString()
-                                                            lastSubmittedTicketId = genId
-                                                            viewModel.submitSupportTicket(ticketCategory, ticketSubject.trim(), ticketDesc.trim())
-                                                            ticketSubmitted = true
-                                                            Toast.makeText(context, "Ticket submitted to Admin Panel!", Toast.LENGTH_SHORT).show()
+                                                            viewModel.submitSupportTicket(ticketCategory, ticketSubject.trim(), ticketDesc.trim()) { saved ->
+                                                                if (saved) {
+                                                                    lastSubmittedTicketId = viewModel.lastSavedSupportTicketId.value
+                                                                    ticketSubmitted = true
+                                                                    Toast.makeText(context, "Ticket submitted to Admin Panel!", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    Toast.makeText(context, "Ticket was not saved. Please retry.", Toast.LENGTH_LONG).show()
+                                                                }
+                                                            }
                                                         }
                                                     },
                                                     colors = ButtonDefaults.buttonColors(containerColor = BrandPurple),

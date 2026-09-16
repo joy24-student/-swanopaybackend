@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { X, UserPlus, Loader2 } from 'lucide-react'
 import { adminSupabase } from '../adminSupabaseClient'
 
 interface AddMerchantModalProps {
@@ -103,19 +104,21 @@ export default function AddMerchantModal({ isOpen, onClose, onMerchantCreated }:
           </div>
           <button
             onClick={onClose}
+            aria-label="Close modal"
             style={{
               background: '#F1F5F9',
               border: 'none',
               borderRadius: '50%',
               width: 32,
               height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
-              color: '#64748B',
-              fontSize: 16,
-              fontWeight: 700
+              color: '#64748B'
             }}
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -278,10 +281,24 @@ export default function AddMerchantModal({ isOpen, onClose, onMerchantCreated }:
                 fontWeight: 700,
                 color: 'white',
                 cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1
+                opacity: loading ? 0.7 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8
               }}
             >
-              {loading ? 'Creating...' : '+ Register Merchant'}
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="spin" />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus size={16} />
+                  <span>Register Merchant</span>
+                </>
+              )}
             </button>
           </div>
         </form>

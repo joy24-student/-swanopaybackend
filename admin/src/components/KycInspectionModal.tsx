@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { adminSupabase } from '../adminSupabaseClient'
+import { X, FileText, Camera, Check, Loader2 } from 'lucide-react'
+import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient'
 
 interface KycInspectionModalProps {
   merchant: any | null
@@ -19,7 +20,7 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
   function formatImageUrl(url?: string | null) {
     if (!url) return null
     if (url.startsWith('http') || url.startsWith('data:')) return url
-    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://pay.swapnopay.top'
+    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
     return `${backend.replace(/\/$/, '')}/${url.replace(/^\//, '')}`
   }
 
@@ -27,19 +28,7 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
     setLoading(true)
     const now = new Date().toISOString()
     try {
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update({
-          kyc_status: 'VERIFIED',
-          status: 'ACTIVE',
-          kyc_reviewed_at: now,
-          kyc_reviewed_by: 'ADMIN',
-          kyc_rejection_reason: null,
-          updated_at: now
-        })
-        .eq('id', merchant.id)
-
-      if (error) throw error
+      await reviewMerchantIdentity(merchant.id, 'APPROVE')
 
       onActionComplete()
       onClose()
@@ -58,18 +47,7 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
     setLoading(true)
     const now = new Date().toISOString()
     try {
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update({
-          kyc_status: 'REJECTED',
-          kyc_rejection_reason: rejectReason.trim(),
-          kyc_reviewed_at: now,
-          kyc_reviewed_by: 'ADMIN',
-          updated_at: now
-        })
-        .eq('id', merchant.id)
-
-      if (error) throw error
+      await reviewMerchantIdentity(merchant.id, 'REJECT', rejectReason.trim())
 
       onActionComplete()
       onClose()
@@ -119,18 +97,21 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
           </div>
           <button
             onClick={onClose}
+            aria-label="Close modal"
             style={{
               background: '#F1F5F9',
               border: 'none',
               borderRadius: '50%',
               width: 32,
               height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
-              fontWeight: 700,
               color: '#64748B'
             }}
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -169,8 +150,9 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
           {/* Front */}
           <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
-              📄 NID Front
+            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FileText size={14} color="#64748B" />
+              <span>NID Front</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {formatImageUrl(merchant.nid_front_url) ? (
@@ -188,8 +170,9 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
 
           {/* Back */}
           <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
-              📄 NID Back
+            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FileText size={14} color="#64748B" />
+              <span>NID Back</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {formatImageUrl(merchant.nid_back_url) ? (
@@ -207,8 +190,9 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
 
           {/* Face */}
           <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
-              🤳 Face Selfie
+            <div style={{ padding: '8px 12px', background: '#F8FAFC', fontSize: 11.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Camera size={14} color="#64748B" />
+              <span>Face Selfie</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {formatImageUrl(merchant.face_photo_url) ? (
@@ -245,9 +229,30 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
             <button
               onClick={handleApprove}
               disabled={loading}
-              style={{ padding: '10px 22px', background: '#10B981', border: 'none', borderRadius: 10, fontWeight: 700, color: 'white', cursor: loading ? 'not-allowed' : 'pointer' }}
+              style={{
+                padding: '10px 22px',
+                background: '#10B981',
+                border: 'none',
+                borderRadius: 10,
+                fontWeight: 700,
+                color: 'white',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6
+              }}
             >
-              {loading ? 'Verifying...' : '✓ Approve & Activate'}
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="spin" />
+                  <span>Verifying...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={16} />
+                  <span>Approve & Activate</span>
+                </>
+              )}
             </button>
           )}
         </div>

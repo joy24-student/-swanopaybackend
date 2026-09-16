@@ -20,6 +20,8 @@ import { adminRouter } from './routes/admin.js'
 import { keysRouter } from './routes/keys.js'
 import shopRouter from './routes/shop.js'
 import { kycRouter } from './routes/kyc.js'
+import { merchantRouter } from './routes/merchant.js'
+import { requirePlatformUser } from './services/merchantAccount.js'
 import oauthRouter from './routes/oauth.js'
 import { smsGatewayRouter } from './routes/smsGateway.js'
 import { startShopWorker } from './services/shopService.js'
@@ -113,6 +115,9 @@ app.use(cors(corsOptions))
 app.options('*', cors(corsOptions))
 
 // Capture raw body for HMAC verification on /v1/payment/verify
+// Three base64 documents can exceed the normal API body limit. Authenticate
+// before reading this larger payload and keep other routes at 2 MB.
+app.use('/v1/kyc/submit', requirePlatformUser, express.json({ limit: '26mb', strict: true }))
 app.use(express.json({ limit: '2mb', strict: true, verify: (req, _res, buffer) => { req.rawBody = buffer.toString('utf8') } }))
 
 // Global rate limiting
@@ -287,6 +292,7 @@ startShopWorker()
 
 // KYC identity verification routes
 app.use('/v1/kyc', kycRouter)
+app.use('/v1/merchant', merchantRouter)
 
 // Supabase OAuth 2.0 control plane routes
 app.use('/v1/oauth', oauthRouter)

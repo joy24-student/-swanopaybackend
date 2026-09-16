@@ -2,35 +2,25 @@
 // This connects to the PLATFORM OWNER'S Supabase project (NOT merchant databases).
 // Use this for: gateway_config, platform_api_keys, payment_events, admin_users.
 
-import { createClient } from '@supabase/supabase-js'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from './supabaseClient'
+export const adminSupabase = supabase
+export const ADMIN_SUPABASE_URL = SUPABASE_URL
+export const ADMIN_SUPABASE_ANON_KEY = SUPABASE_ANON_KEY
+export const isAdminSupabaseConfigured = isSupabaseConfigured
 
-function resolveSupabaseUrl(envUrl: string | undefined): string {
-  if (!envUrl || envUrl.includes('YOUR_ADMIN_PROJECT_REF') || envUrl.includes('placeholder')) {
-    return 'https://tldubojeokgyoclxnzkb.supabase.co'
-  }
-  return envUrl
+export async function reviewMerchantIdentity(merchantId: string, action: 'APPROVE' | 'REJECT', reason = '') {
+  const { data: { session } } = await adminSupabase.auth.getSession()
+  if (!session) throw new Error('Please sign in to the admin panel again.')
+  const base = (import.meta as any).env.VITE_BACKEND_URL || 'https://api.swapnopay.top'
+  const response = await fetch(`${base.replace(/\/$/, '')}/v1/admin/kyc/${encodeURIComponent(merchantId)}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ action, reason }),
+  })
+  const result = await response.json()
+  if (!response.ok || !result.ok || !result.merchant?.id) throw new Error(result.error || 'KYC review was not saved.')
+  return result.merchant
 }
-
-function resolveSupabaseKey(envKey: string | undefined): string {
-  if (!envKey || envKey.includes('YOUR_ADMIN_ANON_KEY') || envKey.includes('placeholder')) {
-    return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
-  }
-  return envKey
-}
-
-export const ADMIN_SUPABASE_URL = resolveSupabaseUrl((import.meta as any).env.VITE_ADMIN_SUPABASE_URL)
-export const ADMIN_SUPABASE_ANON_KEY = resolveSupabaseKey((import.meta as any).env.VITE_ADMIN_SUPABASE_ANON_KEY)
-
-export const isAdminSupabaseConfigured = Boolean(ADMIN_SUPABASE_URL && ADMIN_SUPABASE_ANON_KEY)
-
-// Anon key is safe for browser — Supabase Auth + RLS enforces access control.
-// The admin_users table RLS ensures only authenticated admin users can read/write.
-export const adminSupabase = createClient(
-  ADMIN_SUPABASE_URL,
-  ADMIN_SUPABASE_ANON_KEY
-)
-
-
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers

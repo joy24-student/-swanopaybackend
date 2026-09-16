@@ -137,6 +137,8 @@ class AppRepository(private val context: Context) {
         dao.deleteSupabaseProfile(id)
     }
 
+    suspend fun deactivateSupabaseProfiles() = dao.deactivateAllProfiles()
+
     suspend fun selectActiveSupabaseProfile(profileId: String) {
         dao.deactivateAllProfiles()
         dao.activateProfile(profileId)

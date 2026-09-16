@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { adminSupabase } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
+import { FileSpreadsheet, Download, Search, FileText, X, Eye } from 'lucide-react';
 
 interface FormSubmission {
   id: string;
@@ -93,16 +94,19 @@ export default function Submissions() {
   return (
     <div className="container">
       {/* Header */}
-      <div className="header">
+      <div className="header" style={{ marginBottom: 20 }}>
         <div>
-          <h1>📄 Hosted Form Submissions ({rows.length})</h1>
-          <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FileSpreadsheet size={24} color="var(--brand-primary, #4F46E5)" />
+            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Hosted Form Submissions ({rows.length})</h1>
+          </div>
+          <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 13 }}>
             Inspect submissions captured across all merchant payment forms.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="button" onClick={handleExportCSV} style={{ background: '#059669' }}>
-            📥 Export CSV
+          <button className="button" onClick={handleExportCSV} style={{ background: '#059669', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Download size={15} /> Export CSV
           </button>
           <Link to="/dashboard">
             <button className="button" style={{ background: '#64748B' }}>Dashboard</button>
@@ -111,12 +115,13 @@ export default function Submissions() {
       </div>
 
       {/* Search */}
-      <div className="card" style={{ marginBottom: 16, padding: 12 }}>
+      <div className="card" style={{ marginBottom: 16, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Search size={16} color="#94A3B8" />
         <input
-          className="input"
+          style={{ border: 'none', outline: 'none', width: '100%', fontSize: '0.9rem', background: 'transparent' }}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Search submissions by Merchant, Form ID, Customer Name, Phone, or Email..."
+          placeholder="Search submissions by Merchant, Form ID, Customer Name, Phone, or Email..."
         />
       </div>
 
@@ -162,9 +167,10 @@ export default function Submissions() {
                   <td>
                     <button
                       className="button"
-                      style={{ padding: '4px 10px', fontSize: 11, background: '#4F46E5' }}
+                      style={{ padding: '5px 12px', fontSize: 11, background: '#4F46E5', display: 'inline-flex', alignItems: 'center', gap: 5 }}
                       onClick={() => setSelectedSub(r)}
                     >
+                      <Eye size={13} />
                       Inspect Answers
                     </button>
                   </td>
@@ -180,8 +186,17 @@ export default function Submissions() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div className="card" style={{ maxWidth: 540, width: '100%', background: 'white', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: '1px solid #E2E8F0', paddingBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>📄 Submission Answers</h3>
-              <button onClick={() => setSelectedSub(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748B' }}>✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FileText size={18} color="#4F46E5" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Submission Answers</h3>
+              </div>
+              <button
+                onClick={() => setSelectedSub(null)}
+                aria-label="Close modal"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
             </div>
             <pre style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 12, overflowX: 'auto', border: '1px solid #E2E8F0', color: '#1E293B' }}>
               {JSON.stringify(selectedSub.submission, null, 2)}

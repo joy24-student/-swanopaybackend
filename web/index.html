@@ -75,6 +75,226 @@
       pointer-events: none;
     }
 
+    /* ── 3D Engine, Interactive Physics & Multi-Layout Styling ──────────── */
+    .perspective-stage {
+      perspective: 1400px;
+      transform-style: preserve-3d;
+    }
+    .preserve-3d {
+      transform-style: preserve-3d;
+    }
+    .tilt-3d {
+      transform-style: preserve-3d;
+      transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+      will-change: transform;
+      position: relative;
+      /* Identity transform properties per Modern Web Guidance */
+      translate: 0px 0px;
+      rotate: 0deg;
+      scale: 1;
+    }
+    .tilt-3d::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 50%), rgba(255,255,255,0.22), transparent 60%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 25;
+    }
+    .tilt-3d:hover::after {
+      opacity: 1;
+    }
+    .translate-z-10 { transform: translateZ(10px); }
+    .translate-z-20 { transform: translateZ(20px); }
+    .translate-z-30 { transform: translateZ(30px); }
+    .translate-z-40 { transform: translateZ(40px); }
+    .translate-z-50 { transform: translateZ(50px); }
+    .translate-z-60 { transform: translateZ(60px); }
+
+    /* 3D Holographic Card */
+    .holo-card {
+      position: relative;
+      width: 100%;
+      max-width: 330px;
+      aspect-ratio: 1.586;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 45%, #020617 100%);
+      border: 1.5px solid rgba(251, 191, 36, 0.45);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65), 0 0 35px rgba(245, 158, 11, 0.22);
+      overflow: hidden;
+      transform-style: preserve-3d;
+      user-select: none;
+    }
+    .holo-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(125deg, rgba(255,255,255,0.4) 0%, rgba(251,191,36,0.25) 28%, transparent 50%, rgba(59,130,246,0.25) 72%, rgba(255,255,255,0.3) 100%);
+      opacity: 0.6;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      transition: transform 0.6s ease;
+    }
+    .holo-card:hover::before {
+      transform: translateX(40%) translateY(-15%);
+    }
+    .emv-chip {
+      width: 42px;
+      height: 32px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #fef08a 0%, #ca8a04 100%);
+      position: relative;
+      border: 1px solid #eab308;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.6), 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .emv-chip::after {
+      content: "";
+      position: absolute;
+      inset: 4px 6px;
+      border: 1px solid rgba(161, 98, 7, 0.5);
+      border-radius: 3px;
+    }
+
+    /* 3D Phone Shell in Hero */
+    .hero-phone-shell {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+      border-radius: 40px;
+      background: #020617;
+      border: 2px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.8), 0 0 50px rgba(245, 158, 11, 0.18);
+      padding: 10px;
+      transform-style: preserve-3d;
+    }
+
+    /* Live Animated SMS Toast */
+    @keyframes dropInSms {
+      0% { opacity: 0; transform: translateY(-30px) scale(0.9); }
+      15% { opacity: 1; transform: translateY(0) scale(1); }
+      85% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-10px) scale(0.95); }
+    }
+    .animate-sms-stream {
+      animation: dropInSms 5.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    }
+
+    /* Multi-Layout Switcher Styling */
+    .layout-nav-dock {
+      background: rgba(15, 23, 42, 0.04);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 9999px;
+      padding: 5px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: inline-flex;
+      gap: 6px;
+    }
+    .dark .layout-nav-dock {
+      background: rgba(15, 23, 42, 0.7);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    .layout-tab-btn {
+      padding: 8px 18px;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #64748b;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dark .layout-tab-btn {
+      color: #94a3b8;
+    }
+    .layout-tab-btn:hover {
+      color: #0f172a;
+    }
+    .dark .layout-tab-btn:hover {
+      color: #fff;
+    }
+    .layout-tab-btn.active {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: #000 !important;
+      font-weight: 800;
+      box-shadow: 0 6px 20px -4px rgba(245, 158, 11, 0.45);
+    }
+
+    /* Layout View Containers */
+    .layout-view-container {
+      display: none;
+      animation: fadeScaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .layout-view-container.active {
+      display: block;
+    }
+    @keyframes fadeScaleIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.99); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Bento Grid Classes */
+    .bento-card {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 1.5rem;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.08);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .bento-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px -15px rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .dark .bento-card {
+      background: rgba(15, 23, 42, 0.82);
+      border-color: rgba(255, 255, 255, 0.07);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.45);
+    }
+    .dark .bento-card:hover {
+      border-color: rgba(245, 158, 11, 0.45);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+    }
+
+    /* Pipeline Flow Styles */
+    .pipeline-step-node {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+    .pipeline-step-node:hover, .pipeline-step-node.active {
+      transform: scale(1.03);
+      border-color: #f59e0b !important;
+      box-shadow: 0 12px 30px -8px rgba(245, 158, 11, 0.3);
+    }
+    @keyframes pulseBeam {
+      0% { transform: scaleX(0); opacity: 0; transform-origin: left; }
+      50% { transform: scaleX(1); opacity: 1; transform-origin: left; }
+      51% { transform: scaleX(1); opacity: 1; transform-origin: right; }
+      100% { transform: scaleX(0); opacity: 0; transform-origin: right; }
+    }
+    .pipeline-beam {
+      animation: pulseBeam 2.5s ease-in-out infinite;
+    }
+
+    /* Interactive Terminal */
+    .code-terminal {
+      background: #090d16;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+
     body {
       background:
         radial-gradient(circle at top, rgba(251, 191, 36, 0.10), transparent 28%),
@@ -1110,6 +1330,7 @@
   <!-- ── 2. HERO SECTION ─────────────────────────────────────────────────── -->
   <main id="main-content">
   <div class="hero-section relative w-full min-h-screen bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-2xl pt-24 md:pt-28" style="background-image: url('assets/hero-bg.jpg');">
+    <canvas id="hero-particle-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-70"></canvas>
     <div class="absolute inset-0 bg-white/5 dark:bg-[#08090d]/60 pointer-events-none"></div>
 
     <div class="relative z-10 flex flex-col min-h-screen">
@@ -1142,6 +1363,8 @@
                 <div class="glass-panel inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/10 border border-slate-200/80 dark:border-amber-500/30 text-slate-800 dark:text-amber-400 text-xs font-extrabold shadow-sm">
                   <span class="text-amber-500 text-sm">★</span>
                   <span data-en="PAYMENTS FOR BANGLADESH" data-bn="স্বপ্নপে আত্মপ্রকাশ">PAYMENTS FOR BANGLADESH</span>
+                  <svg class="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                  <span data-en="NEXT-GEN BANGLADESH PAYMENT PLATFORM" data-bn="স্বপ্নপে আধুনিক ডিজিটাল ফিনটেক প্ল্যাটফর্ম">NEXT-GEN BANGLADESH PAYMENT PLATFORM</span>
                 </div>
 
                 <h1 class="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.08] font-heading">
@@ -1156,11 +1379,13 @@
                 <div class="hero-actions flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-2">
                   <a href="#download" class="gold-gradient-btn text-sm font-black px-7 py-3.5 rounded-full flex items-center gap-2 shadow-[0_16px_32px_rgba(245,158,11,0.28)] hover:scale-[1.02] transition-all active:scale-[0.98] border border-amber-500/20">
                     <span class="material-symbols-outlined text-lg">download</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     <span data-en="Download SwapnoPay" data-bn="স্বপ্নপে ডাউনলোড করুন">Download SwapnoPay</span>
                   </a>
 
                   <button onclick="openVideoModal()" class="px-6 py-3.5 rounded-full bg-white/80 dark:bg-slate-900/80 text-slate-800 dark:text-slate-100 text-sm font-bold border border-slate-200/80 dark:border-slate-700/80 hover:bg-amber-500/10 hover:border-amber-500/40 backdrop-blur-md flex items-center gap-2 transition-all shadow-[0_10px_25px_rgba(15,23,42,0.06)] active:scale-[0.98]">
                     <span class="material-symbols-outlined text-amber-500">play_circle</span>
+                    <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     <span data-en="Watch Introduction" data-bn="ভিডিও দেখুন">Watch Introduction</span>
                   </button>
                 </div>
@@ -1175,6 +1400,23 @@
 
           <!-- Right Column Space for Image 1 Backdrop phones -->
           <div class="lg:col-span-5 hidden lg:block h-[500px]"></div>
+          <!-- Right Column: 3D Interactive Device & Holographic Deck -->
+          <div class="lg:col-span-5 w-full flex justify-center perspective-stage py-6 relative z-10">
+            <div id="hero-3d-cluster" class="preserve-3d relative w-full max-w-[390px] flex flex-col items-center">
+              
+              <!-- Floating 3D Platinum Holographic Card -->
+              <div id="hero-holo-card" class="holo-card tilt-3d mb-[-36px] z-30 translate-z-40 cursor-pointer" title="Hover to interact with 3D Holo-Card">
+                <div class="p-5 h-full flex flex-col justify-between relative z-10">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2.5">
+                      <div class="emv-chip"></div>
+                      <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-[10px] font-black tracking-widest text-amber-400 uppercase">SWAPNOPAY</div>
+                      <div class="text-[7px] tracking-wider text-slate-400 uppercase font-mono">PLATINUM MERCHANT</div>
+                    </div>
+                  </div>
 
           <div class="hero-preview lg:hidden w-full max-w-sm mx-auto pt-8">
             <div class="phone-shell relative mx-auto w-full max-w-[320px] rounded-[2.2rem] border border-slate-200/80 bg-slate-950 p-2.5 shadow-[0_30px_80px_rgba(15,23,42,0.35)]">
@@ -1184,6 +1426,17 @@
                   <div class="flex items-center justify-between text-[10px] font-bold text-slate-300">
                     <span>9:41</span>
                     <span>5G</span>
+                  <div class="my-1.5">
+                    <div class="font-mono text-sm sm:text-base font-bold tracking-[0.22em] text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                      5412 •••• •••• 9821
+                    </div>
+                    <div class="flex items-center justify-between text-[8px] text-slate-400 mt-1">
+                      <span>EXP: 09/29</span>
+                      <span class="text-emerald-400 font-bold flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        GATEWAY ACTIVE
+                      </span>
+                    </div>
                   </div>
                   <div class="mt-4 rounded-2xl border border-amber-500/20 bg-slate-900/80 p-3 shadow-inner shadow-amber-500/10">
                     <div class="flex items-center justify-between">
@@ -1192,6 +1445,11 @@
                         <p class="mt-1 text-xl font-black text-white">৳24,300</p>
                       </div>
                       <div class="rounded-xl bg-emerald-500/20 px-2 py-1 text-[9px] font-bold text-emerald-300">+18.4%</div>
+
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-[7px] text-slate-400 uppercase tracking-widest">AUTHORIZED MERCHANT</div>
+                      <div class="text-xs font-bold text-slate-100 tracking-wider">RAHMAN ENTERPRISE</div>
                     </div>
                     <div class="mt-3 grid grid-cols-3 gap-2 text-[9px] text-slate-300">
                       <div class="rounded-xl bg-slate-800/80 p-2 text-center">
@@ -1206,43 +1464,136 @@
                         <div class="text-slate-400">Stock</div>
                         <div class="mt-1 font-bold text-white">89</div>
                       </div>
+                    <div class="flex items-center gap-1">
+                      <span class="px-2 py-0.5 rounded-md bg-pink-500/20 border border-pink-500/40 text-[8px] font-black text-pink-300">bKash</span>
+                      <span class="px-2 py-0.5 rounded-md bg-orange-500/20 border border-orange-500/40 text-[8px] font-black text-orange-300">Nagad</span>
                     </div>
                   </div>
                 </div>
+              </div>
 
                 <div class="px-4 pb-4 space-y-3">
                   <div class="rounded-2xl bg-slate-900/70 p-3 border border-slate-800">
                     <div class="flex items-center justify-between text-[10px] text-slate-300">
                       <span>Recent payments</span>
                       <span class="text-amber-400">Live</span>
+              <!-- 3D Smartphone Frame with Live Transaction Simulation -->
+              <div id="hero-phone-shell" class="hero-phone-shell tilt-3d z-20 translate-z-20 w-full">
+                <!-- Phone Top Bar & Dynamic Island -->
+                <div class="flex items-center justify-between px-3 pt-1 pb-2">
+                  <span class="text-[10px] font-mono font-bold text-slate-300" id="live-sim-clock">09:41</span>
+                  <div class="w-16 h-3.5 bg-slate-900 rounded-full border border-slate-700/60 flex items-center justify-end px-1.5">
+                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                  </div>
+                  <div class="flex items-center gap-1 text-[9px] text-slate-400 font-mono">
+                    <span>5G</span>
+                    <span class="text-emerald-400">●</span>
+                  </div>
+                </div>
+
+                <!-- Phone Internal Screen -->
+                <div class="rounded-[28px] overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-[#0b0f19] border border-slate-800 p-3 space-y-2.5">
+                  
+                  <!-- Live Animated Carrier SMS Dropdown Notification -->
+                  <div id="live-sms-banner" class="animate-sms-stream bg-slate-800/90 border border-amber-500/40 rounded-xl p-2.5 shadow-lg backdrop-blur-md transition-all">
+                    <div class="flex items-start justify-between">
+                      <div class="flex items-center gap-2">
+                        <div id="live-carrier-badge" class="w-6 h-6 rounded-lg bg-pink-600 text-white flex items-center justify-center font-black text-[9px] shadow-sm">
+                          bK
+                        </div>
+                        <div>
+                          <div class="text-[10px] font-bold text-white flex items-center gap-1.5">
+                            <span id="live-carrier-sender">bKash 16247</span>
+                            <span class="text-[8px] text-amber-400 font-mono">Just Now</span>
+                          </div>
+                          <p class="text-[9px] text-slate-300 font-mono leading-tight mt-0.5" id="live-sms-body">
+                            You received Tk 1,250.00 from 01712963652. TrxID: <span class="text-amber-400 font-bold underline">9H8B7G6F5E</span>
+                          </p>
+                        </div>
+                      </div>
                     </div>
                     <div class="mt-3 space-y-2">
                       <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
                         <span>bKash</span>
                         <span class="font-bold text-emerald-300">৳1,260</span>
+                  </div>
+
+                  <!-- Real-Time Auto-Match Instant Toast -->
+                  <div id="live-match-toast" class="bg-emerald-500/15 border border-emerald-500/40 rounded-xl p-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <div class="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center text-[10px] font-black">
+                        ✓
                       </div>
                       <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
                         <span>Nagad</span>
                         <span class="font-bold text-emerald-300">৳820</span>
+                      <div>
+                        <div class="text-[10px] font-extrabold text-emerald-300">AUTO-MATCHED & CREDITED</div>
+                        <div class="text-[7.5px] text-slate-400 font-mono">Regex Match in 0.8s • Webhook Sent</div>
                       </div>
                       <div class="flex items-center justify-between rounded-xl bg-slate-800/80 px-2.5 py-2 text-[10px] text-slate-200">
                         <span>Rocket</span>
                         <span class="font-bold text-emerald-300">৳2,340</span>
                       </div>
                     </div>
+                    <span class="text-xs font-black text-emerald-400" id="live-match-amount">+৳1,250</span>
                   </div>
 
                   <div class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-[10px] text-slate-200">
                     <div class="flex items-center justify-between">
                       <span class="font-bold text-amber-300">AI Copilot</span>
                       <span>Ready</span>
+                  <!-- Real-Time Dashboard KPI Cards -->
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5">
+                      <div class="text-[8px] uppercase tracking-wider text-slate-400">TODAY'S SALES</div>
+                      <div class="text-base font-black text-white mt-0.5" id="hero-live-balance">৳25,550</div>
+                      <div class="text-[8px] text-emerald-400 font-bold mt-0.5">↑ +18.4% today</div>
                     </div>
                     <div class="mt-2 rounded-xl bg-slate-950/60 px-2 py-2 leading-relaxed text-slate-300">
                       “Need stock update for rice? I can reconcile it.”
+                    <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5">
+                      <div class="text-[8px] uppercase tracking-wider text-slate-400">CUSTOMER DUES</div>
+                      <div class="text-base font-black text-amber-400 mt-0.5">৳2,100</div>
+                      <div class="text-[8px] text-slate-400 font-bold mt-0.5">Digital Khata</div>
                     </div>
                   </div>
+
+                  <!-- Quick Simulation Trigger Controls -->
+                  <div class="pt-0.5 flex items-center justify-between text-[9px] border-t border-slate-800/80 pt-2">
+                    <span class="text-slate-400 font-medium">Test Live:</span>
+                    <div class="flex gap-1">
+                      <button type="button" onclick="triggerHeroSimulation('bkash')" class="px-2 py-0.5 rounded bg-pink-500/20 text-pink-300 hover:bg-pink-500/40 font-bold transition-all text-[8.5px]">bKash</button>
+                      <button type="button" onclick="triggerHeroSimulation('nagad')" class="px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 hover:bg-orange-500/40 font-bold transition-all text-[8.5px]">Nagad</button>
+                      <button type="button" onclick="triggerHeroSimulation('rocket')" class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 hover:bg-purple-500/40 font-bold transition-all text-[8.5px]">Rocket</button>
+                    </div>
+                  </div>
+
                 </div>
               </div>
+
+              <!-- 3D Floating Depth Pill: Instant Settlement -->
+              <div class="hidden sm:flex absolute -left-6 top-1/3 preserve-3d translate-z-50 bg-slate-900/90 border border-amber-500/30 text-white rounded-xl p-2 shadow-xl backdrop-blur-md items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <div>
+                  <div class="text-[9px] font-black text-amber-400">0.8s Settlement</div>
+                  <div class="text-[7.5px] text-slate-400">Zero Charge</div>
+                </div>
+              </div>
+
+              <!-- 3D Floating Depth Pill: Offline Sync -->
+              <div class="hidden sm:flex absolute -right-6 bottom-14 preserve-3d translate-z-50 bg-slate-900/90 border border-emerald-500/30 text-white rounded-xl p-2 shadow-xl backdrop-blur-md items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                </div>
+                <div>
+                  <div class="text-[9px] font-black text-emerald-400">Offline SQLite</div>
+                  <div class="text-[7.5px] text-slate-400">AES-256 Encrypted</div>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -1261,6 +1612,34 @@
       <div class="flex items-center gap-2"><span class="text-amber-500">🗣️</span><span>Bilingual Bangla/English</span></div>
       <div class="flex items-center gap-2"><span class="text-amber-500">🤖</span><span>AI Copilot</span></div>
       <div class="flex items-center gap-2"><span class="text-amber-500">💻</span><span>Developer Friendly</span></div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span data-en="Automated Payments" data-bn="অটোমেটেড পেমেন্ট">Automated Payments</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+        <span data-en="Offline-Ready" data-bn="অফলাইন উপযোগী">Offline-Ready</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+        <span data-en="Real-Time WebSockets" data-bn="রিয়েল-টাইম ওয়েব সকেট">Real-Time WebSockets</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        <span data-en="Bank-Grade Security" data-bn="ব্যাংক-গ্রেড নিরাপত্তা">Bank-Grade Security</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+        <span data-en="Bilingual Bangla/English" data-bn="বাংলা ও ইংরেজি উভয়েই">Bilingual Bangla/English</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <span data-en="AI Copilot" data-bn="এআই কো-পাইলট">AI Copilot</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        <span data-en="Developer Friendly" data-bn="ডেভেলপার ফ্রেন্ডলি">Developer Friendly</span>
+      </div>
     </div>
   </section>
 
@@ -1423,6 +1802,427 @@
     </div>
   </section>
 
+  <!-- ── 4B. MULTI-LAYOUT INTERACTIVE PLATFORM EXPLORER ───────────────────── -->
+  <section id="platform-explorer" class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full space-y-10">
+    <div class="text-center space-y-4 max-w-3xl mx-auto">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 text-xs font-black uppercase tracking-widest">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+        <span data-en="MULTI-LAYOUT INTERACTIVE EXPERIENCE" data-bn="মাল্টি-লেআউট ইন্টারেক্টিভ এক্সপেরিয়েন্স">MULTI-LAYOUT INTERACTIVE EXPERIENCE</span>
+      </div>
+      <h2 class="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 dark:text-white font-heading tracking-tight">
+        Experience SwapnoPay in <span class="gold-gradient-text" data-en="Every Dimension" data-bn="প্রতিটি মাত্রায়">Every Dimension</span>
+      </h2>
+      <p class="text-sm md:text-base text-slate-600 dark:text-slate-400 font-normal max-w-2xl mx-auto" data-en="Toggle between 4 dynamic architectural layouts to inspect our automated carrier regex engine, offline sync pipeline, and real-time merchant terminal." data-bn="স্বপ্নপে-এর অটোমেটেড ক্যারিয়ার ইঞ্জিন, অফলাইন সিঙ্ক এবং রিয়েল-টাইম মার্চেন্ট টার্মিনাল ৪টি ভিন্ন লেআউটে সরাসরি পরখ করুন।">
+        Toggle between 4 dynamic architectural layouts to inspect our automated carrier regex engine, offline sync pipeline, and real-time merchant terminal.
+      </p>
+
+      <!-- Layout Switcher Pill Navigation Dock -->
+      <div class="flex justify-center pt-2">
+        <div class="layout-nav-dock shadow-xl" role="tablist" aria-label="Layout view options">
+          <button type="button" class="layout-tab-btn active" onclick="switchExplorerLayout('bento', this)" id="tab-btn-bento" role="tab" aria-selected="true">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            <span data-en="Bento Matrix" data-bn="বেন্টো ম্যাট্রিক্স">Bento Matrix</span>
+          </button>
+          <button type="button" class="layout-tab-btn" onclick="switchExplorerLayout('pipeline', this)" id="tab-btn-pipeline" role="tab" aria-selected="false">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+            <span data-en="3D Pipeline Flow" data-bn="৩ডি পাইপলাইন ফ্লো">3D Pipeline Flow</span>
+          </button>
+          <button type="button" class="layout-tab-btn" onclick="switchExplorerLayout('simulator', this)" id="tab-btn-simulator" role="tab" aria-selected="false">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            <span data-en="Live Split Simulator" data-bn="লাইভ স্প্লিট সিমুলেটর">Live Split Simulator</span>
+          </button>
+          <button type="button" class="layout-tab-btn" onclick="switchExplorerLayout('architecture', this)" id="tab-btn-architecture" role="tab" aria-selected="false">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            <span data-en="Dev Architecture" data-bn="ডেভেলপার আর্কিটেকচার">Dev Architecture</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LAYOUT 1: BENTO MATRIX (Apple / Linear Caliber) ────────────────── -->
+    <div id="layout-view-bento" class="layout-view-container active">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+        
+        <!-- Bento Item 1: Carrier RegEx Engine (Span 7) -->
+        <div class="bento-card tilt-3d md:col-span-7 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-bold">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </span>
+                <span class="text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">Carrier SMS Regex Engine</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold font-mono">100% Accuracy</span>
+            </div>
+            <h3 class="text-xl font-black text-slate-900 dark:text-white mb-2" data-en="Sub-Second Automated Payment Matching" data-bn="পলক ফেলতেই স্বয়ংক্রিয় পেমেন্ট ম্যাচিং">
+              Sub-Second Automated Payment Matching
+            </h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 mb-4 leading-relaxed" data-en="Proprietary regex engine parses carrier SMS directly on the Android hardware, eliminating expensive merchant aggregators." data-bn="অ্যান্ড্রয়েড ডিভাইসে সরাসরি ক্যারিয়ার এসএমএস পার্স করে পেমেন্ট রিকনসাইল করে কোনো অতিরিক্ত গেটওয়ে চার্জ ছাড়াই।">
+              Proprietary regex engine parses carrier SMS directly on the Android hardware, eliminating expensive merchant aggregators.
+            </p>
+            
+            <!-- Interactive Regex Visualizer Pad -->
+            <div class="rounded-xl bg-slate-950 p-3.5 border border-slate-800 text-[11px] font-mono space-y-2">
+              <div class="flex items-center justify-between text-[9px] text-slate-400 border-b border-slate-800 pb-1.5">
+                <span class="text-amber-400 font-bold">PARSED SMS PAYLOAD</span>
+                <span class="text-emerald-400">MATCH LATENCY: 8ms</span>
+              </div>
+              <div class="text-slate-300 leading-relaxed">
+                You have received <span class="bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40 font-bold">Tk 1,250.00</span> from <span class="bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/40">01712963652</span>. Fee Tk 0.00. Balance Tk 48,250.00. TrxID <span class="bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 font-bold">9H8B7G6F5E</span>.
+              </div>
+              <div class="flex flex-wrap gap-2 pt-1 text-[9px]">
+                <span class="text-slate-400">Extracted:</span>
+                <span class="text-amber-400">Amount: 1250.00</span> • 
+                <span class="text-blue-400">Sender: 01712963652</span> • 
+                <span class="text-emerald-400">TrxID: 9H8B7G6F5E</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-slate-500">
+            <span>Supports Personal, Agent & Merchant numbers</span>
+            <span class="text-amber-500 font-bold">Zero Gateway Charge</span>
+          </div>
+        </div>
+
+        <!-- Bento Item 2: Offline SQLite Sync (Span 5) -->
+        <div class="bento-card tilt-3d md:col-span-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                </span>
+                <span class="text-xs font-extrabold uppercase tracking-wider text-blue-500">Offline-First Engine</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold font-mono">SQLite + Room</span>
+            </div>
+            <h3 class="text-xl font-black text-slate-900 dark:text-white mb-2" data-en="Zero Downtime When Internet Drops" data-bn="ইন্টারনেট ছাড়াই নিরবচ্ছিন্ন কার্যক্রম">
+              Zero Downtime When Internet Drops
+            </h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 mb-4 leading-relaxed" data-en="All billing, receipts, and customer ledgers write instantly to local AES-256 encrypted database, syncing to cloud upon reconnection." data-bn="বিদ্যুৎ বা ইন্টারনেট চলে গেলেও স্থানীয় ডাটাবেজে তাৎক্ষণিক বিলিং ও রিকনসিল হয় এবং নেট পেলেই স্বয়ংক্রিয় ক্লাউড সিঙ্ক হয়।">
+              All billing, receipts, and customer ledgers write instantly to local AES-256 encrypted database, syncing to cloud upon reconnection.
+            </p>
+
+            <div class="rounded-xl bg-slate-950 p-3 border border-slate-800 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
+                <span class="text-white font-mono text-[11px]">Local DB State: Online</span>
+              </div>
+              <span class="text-slate-400 font-mono text-[10px]">Queue: 0 pending</span>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+            <span>Room DB • AES-256</span>
+            <span class="text-blue-400 font-bold">Auto Background Sync</span>
+          </div>
+        </div>
+
+        <!-- Bento Item 3: POS Terminal (Span 4) -->
+        <div class="bento-card tilt-3d md:col-span-4">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold mb-3">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          </div>
+          <h4 class="text-lg font-black text-slate-900 dark:text-white mb-1" data-en="High-Speed POS & Barcode" data-bn="দ্রুতগতির পস ও বারকোড">High-Speed POS & Barcode</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3" data-en="Add items in seconds, scan barcodes with phone camera, and print 58mm/80mm Bluetooth thermal receipts." data-bn="ক্যামেরা দিয়ে বারকোড স্ক্যান, দ্রুত ইনভয়েস তৈরি এবং ব্লুটুথ থার্মাল রিসিট প্রিন্ট করুন।">
+            Add items in seconds, scan barcodes with phone camera, and print 58mm/80mm Bluetooth thermal receipts.
+          </p>
+          <div class="bg-slate-100 dark:bg-slate-900/90 rounded-xl p-2.5 text-[11px] space-y-1">
+            <div class="flex justify-between font-bold text-slate-800 dark:text-slate-200"><span>Sale #ORD-982</span><span>৳ 2,450.00</span></div>
+            <div class="flex justify-between text-slate-500 text-[10px]"><span>Bluetooth Printer</span><span class="text-emerald-500">Connected</span></div>
+          </div>
+        </div>
+
+        <!-- Bento Item 4: Digital Khata / Ledger (Span 4) -->
+        <div class="bento-card tilt-3d md:col-span-4">
+          <div class="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold mb-3">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <h4 class="text-lg font-black text-slate-900 dark:text-white mb-1" data-en="Digital Bakir Khata" data-bn="ডিজিটাল বাকির খাতা">Digital Bakir Khata</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3" data-en="Track customer credits, send automated WhatsApp/SMS reminders, and receive payments with one tap." data-bn="বাকির হিসাব রাখা, কাস্টমারকে অটো এসএমএস তাগাদা পাঠানো এবং সহজে বকেয়া আদায়।">
+            Track customer credits, send automated WhatsApp/SMS reminders, and receive payments with one tap.
+          </p>
+          <div class="bg-slate-100 dark:bg-slate-900/90 rounded-xl p-2.5 text-[11px] space-y-1">
+            <div class="flex justify-between font-bold text-slate-800 dark:text-slate-200"><span>Customer: Tanvir</span><span class="text-amber-500">৳ 850 Due</span></div>
+            <div class="flex justify-between text-slate-500 text-[10px]"><span>Auto Reminder</span><span class="text-emerald-500">Sent via SMS</span></div>
+          </div>
+        </div>
+
+        <!-- Bento Item 5: AI Financial Copilot (Span 4) -->
+        <div class="bento-card tilt-3d md:col-span-4">
+          <div class="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold mb-3">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </div>
+          <h4 class="text-lg font-black text-slate-900 dark:text-white mb-1" data-en="AI Business Copilot" data-bn="এআই বিজনেস কো-পাইলট">AI Business Copilot</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3" data-en="Voice-enabled intelligent insights on inventory alerts, daily profits, and smart stock replenishment recommendations." data-bn="দৈনিক লাভ-ক্ষতির বিশ্লেষণ, কম স্টক অ্যালার্ট এবং ভয়েস নির্দেশনায় নির্ভুল রিপোর্ট।">
+            Voice-enabled intelligent insights on inventory alerts, daily profits, and smart stock replenishment recommendations.
+          </p>
+          <div class="bg-slate-100 dark:bg-slate-900/90 rounded-xl p-2.5 text-[11px] space-y-1">
+            <div class="text-slate-800 dark:text-slate-200 font-bold">"Restock 5 items before Friday"</div>
+            <div class="text-slate-500 text-[10px]">Predicted demand peak detected</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── LAYOUT 2: 3D PIPELINE FLOW (Stripe Caliber) ────────────────────── -->
+    <div id="layout-view-pipeline" class="layout-view-container">
+      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-8">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-6">
+          <div>
+            <span class="text-xs font-mono font-bold text-amber-500 uppercase tracking-widest">End-to-End Payment Architecture</span>
+            <h3 class="text-2xl font-black text-slate-900 dark:text-white mt-1" data-en="The 5-Stage Zero-Trust Payment Pipeline" data-bn="৫-ধাপের সম্পূর্ণ সুরক্ষিত পেমেন্ট পাইপলাইন">
+              The 5-Stage Zero-Trust Payment Pipeline
+            </h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+            <span class="text-xs font-mono text-emerald-400 font-bold">Active Pipeline: 99.98% SLA</span>
+          </div>
+        </div>
+
+        <!-- 5-Step Visual Pipeline Nodes -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 relative">
+          
+          <!-- Step 1 -->
+          <div class="pipeline-step-node active bg-slate-100 dark:bg-slate-900/90 border-2 border-amber-500/50 rounded-2xl p-4 flex flex-col justify-between" onclick="inspectPipelineNode(1)">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs">1</span>
+                <span class="text-[9px] font-mono text-slate-400">0ms</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white">Customer Checkout</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Buyer scans QR or sends money via bKash/Nagad.</p>
+            </div>
+            <div class="mt-4 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-amber-500 font-mono">Input: BDT 1,250</div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="pipeline-step-node bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between" onclick="inspectPipelineNode(2)">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-7 h-7 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-black text-xs">2</span>
+                <span class="text-[9px] font-mono text-slate-400">~600ms</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white">Carrier Telemetry</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">MFS cellular carrier broadcasts official broadcast SMS.</p>
+            </div>
+            <div class="mt-4 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-pink-400 font-mono">SIM: 16247</div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="pipeline-step-node bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between" onclick="inspectPipelineNode(3)">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-7 h-7 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-black text-xs">3</span>
+                <span class="text-[9px] font-mono text-slate-400">&lt;10ms</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white">Device RegEx</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Device daemon extracts amount, TrxID & sender atomically.</p>
+            </div>
+            <div class="mt-4 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-blue-400 font-mono">TrxID: 9H8B7G6F5E</div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="pipeline-step-node bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between" onclick="inspectPipelineNode(4)">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-xs">4</span>
+                <span class="text-[9px] font-mono text-slate-400">&lt;5ms</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white">Offline Ledger</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Writes to encrypted SQLite and triggers thermal receipt.</p>
+            </div>
+            <div class="mt-4 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-emerald-400 font-mono">SQLite: Committed</div>
+          </div>
+
+          <!-- Step 5 -->
+          <div class="pipeline-step-node bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between" onclick="inspectPipelineNode(5)">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-7 h-7 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-black text-xs">5</span>
+                <span class="text-[9px] font-mono text-slate-400">~120ms</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white">Cloud Webhook</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">HMAC-signed webhook dispatches to merchant web store.</p>
+            </div>
+            <div class="mt-4 pt-2 border-t border-slate-200 dark:border-slate-800 text-[10px] text-purple-400 font-mono">HTTP 200 OK</div>
+          </div>
+
+        </div>
+
+        <!-- Pipeline Live Node Inspector Details -->
+        <div id="pipeline-inspector-panel" class="rounded-2xl bg-slate-950 p-4 border border-slate-800 font-mono text-xs">
+          <div class="flex items-center justify-between text-slate-400 text-[11px] mb-2">
+            <span class="text-amber-400 font-bold" id="pipeline-inspector-title">STAGE 1: CUSTOMER CHECKOUT SESSION</span>
+            <span class="text-slate-500">IDEMPOTENCY: IDMP-8971239</span>
+          </div>
+          <pre class="text-emerald-400 text-[11px] overflow-x-auto" id="pipeline-inspector-code">{
+  "order_id": "ORD-2026-9812",
+  "amount": 1250.00,
+  "currency": "BDT",
+  "method": "bKash Personal",
+  "assigned_receiver": "01784992118",
+  "status": "WAITING_FOR_CARRIER_SMS"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LAYOUT 3: SPLIT-SCREEN LIVE SIMULATOR ─────────────────────────── -->
+    <div id="layout-view-simulator" class="layout-view-container">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        
+        <!-- Left Column: Customer Hosted Payment Widget Simulator -->
+        <div class="lg:col-span-6 ui-card rounded-3xl p-6 md:p-8 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div>
+              <span class="text-[10px] font-mono font-bold text-amber-500 uppercase">Interactive Buyer Checkout</span>
+              <h3 class="text-xl font-black text-slate-900 dark:text-white" data-en="Simulate a Customer Payment" data-bn="কাস্টমার পেমেন্ট সিমুলেশন">Simulate a Customer Payment</h3>
+            </div>
+            <span class="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-mono font-bold">Hosted Widget</span>
+          </div>
+
+          <!-- Select Amount Presets -->
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-600 dark:text-slate-300">Select Order Amount:</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" onclick="setSimAmount(500, this)" class="sim-amt-btn py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-sm text-slate-800 dark:text-slate-200 hover:border-amber-500">৳ 500</button>
+              <button type="button" onclick="setSimAmount(1250, this)" class="sim-amt-btn active py-2.5 rounded-xl border-2 border-amber-500 bg-amber-500/10 font-black text-sm text-amber-600 dark:text-amber-400">৳ 1,250</button>
+              <button type="button" onclick="setSimAmount(3800, this)" class="sim-amt-btn py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-sm text-slate-800 dark:text-slate-200 hover:border-amber-500">৳ 3,800</button>
+            </div>
+          </div>
+
+          <!-- Select Carrier Method -->
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-600 dark:text-slate-300">Select MFS Carrier:</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" onclick="setSimCarrier('bkash', this)" class="sim-carrier-btn active py-2 rounded-xl bg-pink-600 text-white font-black text-xs shadow-md">bKash</button>
+              <button type="button" onclick="setSimCarrier('nagad', this)" class="sim-carrier-btn py-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold text-xs">Nagad</button>
+              <button type="button" onclick="setSimCarrier('rocket', this)" class="sim-carrier-btn py-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold text-xs">Rocket</button>
+            </div>
+          </div>
+
+          <!-- Submit Payment Action -->
+          <button type="button" onclick="executeSplitSimulatorPayment()" class="w-full gold-gradient-btn py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 active:scale-[0.98]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            <span id="sim-btn-label">Send Simulated Payment (৳1,250)</span>
+          </button>
+
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 text-center">
+            Watch the merchant screen on the right update instantaneously without page reloads!
+          </p>
+        </div>
+
+        <!-- Right Column: Merchant Android App Live Response -->
+        <div class="lg:col-span-6 flex justify-center">
+          <div class="w-full max-w-[340px] rounded-[36px] bg-slate-950 border-4 border-slate-800 p-3 shadow-2xl space-y-3">
+            <div class="flex justify-between items-center px-3 pt-1 text-[10px] text-slate-400 font-mono">
+              <span>MERCHANT REALTIME VIEW</span>
+              <span class="text-emerald-400">● CONNECTED</span>
+            </div>
+
+            <div class="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 p-4 border border-slate-800 space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs font-bold text-slate-300">Live Device Monitor</div>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-mono">Auto-Sync</span>
+              </div>
+
+              <!-- Animated incoming notification box -->
+              <div id="sim-incoming-box" class="rounded-xl bg-slate-800/90 border border-amber-500/30 p-3 text-xs space-y-1 transition-all">
+                <div class="flex items-center justify-between">
+                  <span class="text-amber-400 font-bold font-mono" id="sim-carrier-header">bKash Carrier SMS</span>
+                  <span class="text-[9px] text-slate-400 font-mono" id="sim-timestamp">Just Now</span>
+                </div>
+                <p class="text-[10px] text-slate-300 font-mono" id="sim-sms-text">
+                  Received Tk 1,250.00 from 01712963652. TrxID: 9H8B7G6F5E.
+                </p>
+              </div>
+
+              <!-- Success Badge -->
+              <div class="rounded-xl bg-emerald-500/20 border border-emerald-500/40 p-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black">
+                  ✓
+                </div>
+                <div>
+                  <div class="text-xs font-black text-emerald-300" id="sim-matched-amount">৳1,250 CREDITED INSTANTLY</div>
+                  <div class="text-[10px] text-slate-400">Merchant Balance Reconciled</div>
+                </div>
+              </div>
+
+              <!-- Realtime Counter -->
+              <div class="rounded-xl bg-slate-900 p-3 border border-slate-800 flex justify-between items-center">
+                <span class="text-xs text-slate-400">Total Today</span>
+                <span class="text-lg font-black text-white" id="sim-total-display">৳ 26,800.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── LAYOUT 4: DEVELOPER ARCHITECTURE & TERMINAL ───────────────────── -->
+    <div id="layout-view-architecture" class="layout-view-container">
+      <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <div>
+            <span class="text-xs font-mono font-bold text-amber-500 uppercase tracking-widest">Enterprise SDK & Webhook Architecture</span>
+            <h3 class="text-2xl font-black text-slate-900 dark:text-white mt-1" data-en="Integrate in Under 5 Minutes" data-bn="৫ মিনিটেরও কম সময়ে ইন্টিগ্রেশন">
+              Integrate in Under 5 Minutes
+            </h3>
+          </div>
+          <div class="flex gap-2">
+            <a href="portal.html" class="px-4 py-2 rounded-full bg-amber-500 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-md">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              <span>Developer Portal</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Terminal Shell -->
+        <div class="code-terminal overflow-hidden">
+          <!-- Terminal Tab Bar -->
+          <div class="flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-800 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+              <span class="w-3 h-3 rounded-full bg-green-500"></span>
+              <span class="ml-2 font-mono text-slate-400 text-[11px]">SwapnoPay REST API v2.0</span>
+            </div>
+            
+            <!-- Language Switcher Tabs -->
+            <div class="flex gap-1.5 overflow-x-auto text-[11px] font-mono">
+              <button type="button" onclick="switchDevTab('curl', this)" class="dev-lang-tab active px-2.5 py-1 rounded bg-amber-500 text-slate-950 font-bold">cURL</button>
+              <button type="button" onclick="switchDevTab('node', this)" class="dev-lang-tab px-2.5 py-1 rounded text-slate-400 hover:text-white font-bold">Node.js</button>
+              <button type="button" onclick="switchDevTab('python', this)" class="dev-lang-tab px-2.5 py-1 rounded text-slate-400 hover:text-white font-bold">Python</button>
+              <button type="button" onclick="switchDevTab('php', this)" class="dev-lang-tab px-2.5 py-1 rounded text-slate-400 hover:text-white font-bold">PHP</button>
+              <button type="button" onclick="switchDevTab('kotlin', this)" class="dev-lang-tab px-2.5 py-1 rounded text-slate-400 hover:text-white font-bold">Android Kotlin</button>
+            </div>
+          </div>
+
+          <!-- Code Snippet Display -->
+          <div class="p-4 md:p-6 text-xs md:text-sm font-mono overflow-x-auto">
+            <pre id="dev-code-output" class="text-emerald-400 leading-relaxed">curl -X POST "https://api.swapnopay.top/v1/payment/create" \
+  -H "Authorization: Bearer sp_live_98a7..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": "ORD-9821",
+    "amount": 1250.00,
+    "customer_phone": "01712963652",
+    "webhook_url": "https://yoursite.com/api/webhooks/swapnopay"
+  }'</pre>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </section>
+
   <!-- ── 5. CORE FEATURES OVERVIEW (8 Cards + UI Aesthetics + Gold Ribbon) ── -->
   <section id="features" class="py-16 px-4 md:px-8 max-w-7xl mx-auto w-full space-y-12">
     
@@ -1549,6 +2349,11 @@
             <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400">⚛️ React</span>
             <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400">🟨 JS</span>
             <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400">🐘 PHP</span>
+            <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">Python</span>
+            <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">Kotlin</span>
+            <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">React</span>
+            <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">JS</span>
+            <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">PHP</span>
           </div>
         </div>
       </div>
@@ -1671,6 +2476,8 @@
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>⚡ REAL-TIME PAYMENT MATCHING</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>REAL-TIME PAYMENT MATCHING</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         How Payment Matching <span class="gold-gradient-text">Works</span>
@@ -1688,36 +2495,54 @@
           <div class="w-10 h-10 mx-auto rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center"><span class="material-symbols-outlined">payments</span></div>
           <div>1. Customer Pays</div>
           <span class="text-[10px] text-slate-400 font-normal">bKash/Nagad/Rocket</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">1</div>
+          <div class="text-slate-800 dark:text-slate-200">Customer Pays</div>
+          <div class="text-[10px] text-slate-500 font-normal">bKash/Nagad/Rocket</div>
         </div>
 
         <div id="flow-step-2" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 transition-all">
           <div class="w-10 h-10 mx-auto rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center"><span class="material-symbols-outlined">sms</span></div>
           <div>2. SMS Received</div>
           <span class="text-[10px] text-slate-400 font-normal">On Merchant Device</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">2</div>
+          <div class="text-slate-800 dark:text-slate-200">Carrier SMS</div>
+          <div class="text-[10px] text-slate-500 font-normal">Delivered to device</div>
         </div>
 
         <div id="flow-step-3" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 transition-all">
           <div class="w-10 h-10 mx-auto rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center"><span class="material-symbols-outlined">data_object</span></div>
           <div>3. Regex Parser</div>
           <span class="text-[10px] text-slate-400 font-normal">Extract TrxID & Amount</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">3</div>
+          <div class="text-slate-800 dark:text-slate-200">Regex Parser</div>
+          <div class="text-[10px] text-slate-500 font-normal">Extracts TrxID & Amt</div>
         </div>
 
         <div id="flow-step-4" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 transition-all">
           <div class="w-10 h-10 mx-auto rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center"><span class="material-symbols-outlined">verified</span></div>
           <div>4. Atomic Match</div>
           <span class="text-[10px] text-slate-400 font-normal">Double-check Order DB</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">4</div>
+          <div class="text-slate-800 dark:text-slate-200">Payment Engine</div>
+          <div class="text-[10px] text-slate-500 font-normal">Matches order instantly</div>
         </div>
 
         <div id="flow-step-5" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 transition-all">
           <div class="w-10 h-10 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><span class="material-symbols-outlined">cell_tower</span></div>
           <div>5. WebSocket Sync</div>
           <span class="text-[10px] text-slate-400 font-normal">Instant Web/POS Alert</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">5</div>
+          <div class="text-slate-800 dark:text-slate-200">Live Webhook</div>
+          <div class="text-[10px] text-slate-500 font-normal">Updates merchant DB</div>
         </div>
 
         <div id="flow-step-6" class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 transition-all">
           <div class="w-10 h-10 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><span class="material-symbols-outlined">receipt_long</span></div>
           <div>6. Receipt Printed</div>
           <span class="text-[10px] text-slate-400 font-normal">ESC/POS or PDF</span>
+          <div class="w-8 h-8 mx-auto rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-extrabold text-sm">6</div>
+          <div class="text-slate-800 dark:text-slate-200">Order Fulfilled</div>
+          <div class="text-[10px] text-slate-500 font-normal">Thermal receipt print</div>
         </div>
       </div>
 
@@ -1725,10 +2550,18 @@
         <div class="flex items-center gap-3">
           <span class="material-symbols-outlined text-amber-500">memory</span>
           <span id="flow-status-text" class="text-xs font-mono text-slate-500">System Ready. Click button to test real-time payment matching simulation.</span>
+      <!-- Live Interactive Simulation Control Inside Pipeline -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+        <div class="text-xs">
+          <span class="font-extrabold text-slate-800 dark:text-slate-200">Pipeline Simulator: </span>
+          <span id="flow-status-text" class="text-slate-500">Ready to test automated payment lifecycle.</span>
         </div>
         <button onclick="runPaymentSimulation()" class="gold-gradient-btn px-5 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 shadow-md">
           <span class="material-symbols-outlined text-sm">play_arrow</span>
           <span>Simulate Payment (৳ 1,250)</span>
+        <button onclick="runPaymentSimulation()" class="px-5 py-2.5 gold-gradient-btn text-xs font-black rounded-xl shadow-md flex items-center gap-1.5 flex-shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span>Run Live Simulation</span>
         </button>
       </div>
 
@@ -1740,6 +2573,8 @@
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>🛒 POINT OF SALE STUDIO</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        <span>POINT OF SALE STUDIO</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Interactive POS & <span class="gold-gradient-text">Smart Billing</span>
@@ -1834,6 +2669,8 @@
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>📖 DIGITAL LEDGER STUDIO</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        <span>DIGITAL LEDGER STUDIO</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         ব্যবসা খাতা <span class="gold-gradient-text">(Digital Ledger)</span>
@@ -1877,6 +2714,8 @@
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>🤖 AI COPILOT ENGINE</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <span>AI COPILOT ENGINE</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Conversational AI <span class="gold-gradient-text">(ব্যবসা AI)</span>
@@ -1925,6 +2764,8 @@
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>💻 DEVELOPER PLATFORM</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        <span>DEVELOPER PLATFORM</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Build with <span class="gold-gradient-text">SwapnoPay APIs & SDKs</span>
@@ -2232,6 +3073,8 @@ print("Payment URL:", payment.url)</pre>
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>🏪 INDUSTRY SOLUTIONS</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        <span>INDUSTRY SOLUTIONS</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Built for Every <span class="gold-gradient-text">Type of Business</span>
@@ -2244,24 +3087,36 @@ print("Payment URL:", payment.url)</pre>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div class="ui-card rounded-2xl p-5 space-y-2">
         <div class="text-amber-500 text-2xl">🏬</div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        </div>
         <h4 class="font-extrabold text-sm">Retail Shops</h4>
         <p class="text-[11px] text-slate-500">Fast POS checkout, thermal receipts, and stock tracking.</p>
       </div>
 
       <div class="ui-card rounded-2xl p-5 space-y-2">
         <div class="text-amber-500 text-2xl">🍔</div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
+        </div>
         <h4 class="font-extrabold text-sm">Restaurants</h4>
         <p class="text-[11px] text-slate-500">Table billing, QR menus, and bKash/Nagad payment matching.</p>
       </div>
 
       <div class="ui-card rounded-2xl p-5 space-y-2">
         <div class="text-amber-500 text-2xl">🛍️</div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+        </div>
         <h4 class="font-extrabold text-sm">Facebook Sellers</h4>
         <p class="text-[11px] text-slate-500">Instant payment links, due ledger, and SMS confirmation.</p>
       </div>
 
       <div class="ui-card rounded-2xl p-5 space-y-2">
         <div class="text-amber-500 text-2xl">💊</div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
         <h4 class="font-extrabold text-sm">Pharmacies</h4>
         <p class="text-[11px] text-slate-500">Barcode inventory, low-stock warnings, and due books.</p>
       </div>
@@ -2273,6 +3128,8 @@ print("Payment URL:", payment.url)</pre>
     <div class="text-center space-y-3 reveal" data-reveal>
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>💎 PRICING PLANS</span>
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>PRICING PLANS</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Simple Pricing. <span class="gold-gradient-text">Maximum Value.</span>
@@ -2404,6 +3261,8 @@ print("Payment URL:", payment.url)</pre>
     <div class="text-center space-y-3">
       <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/30">
         <span>❓ FREQUENTLY ASKED QUESTIONS</span>
+        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span data-en="FREQUENTLY ASKED QUESTIONS" data-bn="সাধারণ প্রশ্নাবলী">FREQUENTLY ASKED QUESTIONS</span>
       </div>
       <h2 class="text-3xl md:text-5xl font-black text-slate-900 dark:text-white font-heading">
         Got <span class="gold-gradient-text">Questions?</span>
@@ -2715,6 +3574,7 @@ print("Payment URL:", payment.url)</pre>
     function runPaymentSimulation() {
       const statusText = document.getElementById('flow-status-text');
       statusText.innerText = "⚡ Customer initiated bKash payment of ৳ 1,250...";
+      statusText.innerText = "Customer initiated bKash payment of ৳ 1,250...";
       
       let step = 1;
       const interval = setInterval(() => {
@@ -2730,8 +3590,13 @@ print("Payment URL:", payment.url)</pre>
         if (step === 3) statusText.innerText = "⚙️ Regex SMS Parser extracted TrxID: 9A8B7C & Amount: ৳ 1,250";
         if (step === 4) statusText.innerText = "🛡️ Atomic Payment Engine verified match against Order #9821!";
         if (step === 5) statusText.innerText = "📡 WebSocket notification dispatched to web dashboard!";
+        if (step === 2) statusText.innerText = "SMS Received on Merchant Device (TrxID: 9A8B7C)...";
+        if (step === 3) statusText.innerText = "Regex SMS Parser extracted TrxID: 9A8B7C & Amount: ৳ 1,250";
+        if (step === 4) statusText.innerText = "Atomic Payment Engine verified match against Order #9821!";
+        if (step === 5) statusText.innerText = "WebSocket notification dispatched to web dashboard!";
         if (step === 6) {
           statusText.innerText = "✅ Transaction Complete! Thermal Receipt Printed.";
+          statusText.innerText = "Transaction Complete! Thermal Receipt Printed.";
           clearInterval(interval);
         }
         step++;
@@ -2800,6 +3665,7 @@ print("Payment URL:", payment.url)</pre>
       output.innerHTML = `<div class="text-amber-400 font-bold">User: "${question}"</div>
       <div class="text-emerald-400 font-mono pt-1">
         🤖 SwapnoPay AI: Analyzing merchant transactions...<br>
+        [SwapnoPay Copilot Engine]: Analyzing merchant transactions...<br>
         • Today's Net Sales: ৳ 48,250.00<br>
         • Total Expenses: ৳ 3,500.00<br>
         • Estimated Net Profit: ৳ 12,450.00 (25.8% Margin)<br>
@@ -3047,6 +3913,393 @@ echo $payment->payment_url;`
       const name = document.getElementById('contact-name').value;
       alert(`Thank you ${name}! Your message has been sent to SwapnoPay support.`);
       e.target.reset();
+    }
+
+    /* ── 3D ENGINE & PHYSICS TILT CONTROLLER ────────────────────────────── */
+    function init3DTilt() {
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      if (isMobile) return;
+
+      const tiltElements = document.querySelectorAll('.tilt-3d');
+      tiltElements.forEach((el) => {
+        el.addEventListener('mousemove', (e) => {
+          const rect = el.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+          const rotX = (y - 0.5) * -18;
+          const rotY = (x - 0.5) * 18;
+
+          el.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) scale3d(1.02, 1.02, 1.02)`;
+          el.style.setProperty('--glare-x', `${(x * 100).toFixed(1)}%`);
+          el.style.setProperty('--glare-y', `${(y * 100).toFixed(1)}%`);
+        });
+
+        el.addEventListener('mouseleave', () => {
+          el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+        });
+      });
+
+      // Parallax tracking for Hero 3D cluster
+      const heroSection = document.getElementById('home');
+      const heroCluster = document.getElementById('hero-3d-cluster');
+      if (heroSection && heroCluster) {
+        heroSection.addEventListener('mousemove', (e) => {
+          const rect = heroSection.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width - 0.5;
+          const y = (e.clientY - rect.top) / rect.height - 0.5;
+          heroCluster.style.transform = `rotateY(${(x * 12).toFixed(2)}deg) rotateX(${(-y * 10).toFixed(2)}deg)`;
+        });
+        heroSection.addEventListener('mouseleave', () => {
+          heroCluster.style.transform = 'rotateY(0deg) rotateX(0deg)';
+        });
+      }
+    }
+    init3DTilt();
+
+    /* ── HERO INTERACTIVE PARTICLE CANVAS ───────────────────────────────── */
+    function initHeroParticleCanvas() {
+      const canvas = document.getElementById('hero-particle-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        canvas.style.display = 'none';
+        return;
+      }
+
+      let width = (canvas.width = canvas.offsetWidth);
+      let height = (canvas.height = canvas.offsetHeight);
+
+      window.addEventListener('resize', () => {
+        if (!canvas) return;
+        width = canvas.width = canvas.offsetWidth;
+        height = canvas.height = canvas.offsetHeight;
+      });
+
+      const numParticles = Math.min(45, Math.floor(width / 26));
+      const particles = [];
+
+      for (let i = 0; i < numParticles; i++) {
+        particles.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          vx: (Math.random() - 0.5) * 0.45,
+          vy: (Math.random() - 0.5) * 0.45,
+          radius: Math.random() * 1.8 + 1,
+          color: i % 3 === 0 ? 'rgba(245, 158, 11, 0.6)' : 'rgba(59, 130, 246, 0.45)',
+        });
+      }
+
+      let mouse = { x: -1000, y: -1000 };
+      canvas.parentElement?.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top;
+      });
+      canvas.parentElement?.addEventListener('mouseleave', () => {
+        mouse.x = -1000;
+        mouse.y = -1000;
+      });
+
+      let isVisible = true;
+      const obs = new IntersectionObserver((entries) => {
+        isVisible = entries[0].isIntersecting;
+      }, { threshold: 0.1 });
+      obs.observe(canvas);
+
+      function animate() {
+        if (isVisible) {
+          ctx.clearRect(0, 0, width, height);
+
+          // Update & Draw Particles
+          for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+
+            if (p.x < 0) p.x = width;
+            if (p.x > width) p.x = 0;
+            if (p.y < 0) p.y = height;
+            if (p.y > height) p.y = 0;
+
+            // Mouse interact
+            const dx = mouse.x - p.x;
+            const dy = mouse.y - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 100) {
+              p.x -= (dx / dist) * 1.5;
+              p.y -= (dy / dist) * 1.5;
+            }
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+
+            // Connect nearby nodes
+            for (let j = i + 1; j < particles.length; j++) {
+              const p2 = particles[j];
+              const dist2 = Math.hypot(p.x - p2.x, p.y - p2.y);
+              if (dist2 < 110) {
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.strokeStyle = `rgba(245, 158, 11, ${(1 - dist2 / 110) * 0.18})`;
+                ctx.lineWidth = 0.7;
+                ctx.stroke();
+              }
+            }
+          }
+        }
+        requestAnimationFrame(animate);
+      }
+      animate();
+    }
+    initHeroParticleCanvas();
+
+    /* ── HERO LIVE SIMULATION LOGIC ─────────────────────────────────────── */
+    let heroBalance = 25550;
+    const heroCarriers = {
+      bkash: { name: 'bKash 16247', color: 'bg-pink-600', short: 'bK', textCol: 'text-pink-300', amount: 1250, prefix: '9H8B' },
+      nagad: { name: 'Nagad 16167', color: 'bg-orange-600', short: 'NG', textCol: 'text-orange-300', amount: 850, prefix: '7N2K' },
+      rocket: { name: 'Rocket 16216', color: 'bg-purple-600', short: 'RK', textCol: 'text-purple-300', amount: 2340, prefix: 'RC5X' },
+    };
+
+    function triggerHeroSimulation(carrierKey) {
+      const c = heroCarriers[carrierKey] || heroCarriers.bkash;
+      const sender = document.getElementById('live-carrier-sender');
+      const badge = document.getElementById('live-carrier-badge');
+      const body = document.getElementById('live-sms-body');
+      const toastAmount = document.getElementById('live-match-amount');
+      const banner = document.getElementById('live-sms-banner');
+      const balanceEl = document.getElementById('hero-live-balance');
+
+      const randTrx = c.prefix + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+      if (sender) sender.innerText = c.name;
+      if (badge) {
+        badge.className = `w-6 h-6 rounded-lg ${c.color} text-white flex items-center justify-center font-black text-[9px] shadow-sm`;
+        badge.innerText = c.short;
+      }
+      if (body) {
+        body.innerHTML = `You received Tk ${c.amount}.00 from 01712963652. TrxID: <span class="text-amber-400 font-bold underline">${randTrx}</span>`;
+      }
+      if (toastAmount) {
+        toastAmount.innerText = `+৳${c.amount}`;
+      }
+
+      // Re-trigger animation
+      if (banner) {
+        banner.style.animation = 'none';
+        void banner.offsetWidth;
+        banner.style.animation = 'dropInSms 5.5s cubic-bezier(0.16, 1, 0.3, 1) infinite';
+      }
+
+      // Increment balance
+      heroBalance += c.amount;
+      if (balanceEl) {
+        balanceEl.innerText = `৳${heroBalance.toLocaleString()}`;
+      }
+    }
+
+    /* ── MULTI-LAYOUT EXPLORER CONTROLLER ───────────────────────────────── */
+    function switchExplorerLayout(layoutId, btn) {
+      document.querySelectorAll('.layout-tab-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      document.querySelectorAll('.layout-view-container').forEach((v) => {
+        v.classList.remove('active');
+      });
+
+      if (btn) {
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+      }
+
+      const target = document.getElementById(`layout-view-${layoutId}`);
+      if (target) {
+        target.classList.add('active');
+      }
+    }
+
+    /* ── 3D PIPELINE NODE INSPECTOR ─────────────────────────────────────── */
+    const pipelineData = {
+      1: {
+        title: 'STAGE 1: CUSTOMER CHECKOUT SESSION',
+        code: `{\n  "order_id": "ORD-2026-9812",\n  "amount": 1250.00,\n  "currency": "BDT",\n  "method": "bKash Personal",\n  "assigned_receiver": "01784992118",\n  "status": "WAITING_FOR_CARRIER_SMS"\n}`,
+      },
+      2: {
+        title: 'STAGE 2: TELECOM CARRIER BROADCAST',
+        code: `{\n  "originating_carrier": "bKash (16247)",\n  "raw_pdu": "0791880180000000040B91...",\n  "sim_slot": 1,\n  "carrier_timestamp": "2026-09-16T03:54:12+06:00",\n  "signal_dbm": -72\n}`,
+      },
+      3: {
+        title: 'STAGE 3: DEVICE REGEX PARSING ENGINE',
+        code: `{\n  "regex_matched": "^You have received Tk (?<amount>[\\\\d,.]+).+TrxID (?<trxid>[\\\\w]+)",\n  "extracted_amount": 1250.00,\n  "extracted_trxid": "9H8B7G6F5E",\n  "sender_phone": "01712963652",\n  "parser_latency_ms": 7.4\n}`,
+      },
+      4: {
+        title: 'STAGE 4: LOCAL SQLITE TRANSACTION LOG',
+        code: `{\n  "sql_operation": "INSERT OR REPLACE INTO local_reconciliations...",\n  "db_status": "COMMITTED_LOCAL",\n  "aes_cipher": "AES-256-GCM",\n  "printer_dispatch": "BLUETOOTH_PRINT_SUCCESS"\n}`,
+      },
+      5: {
+        title: 'STAGE 5: REALTIME CLOUD WEBHOOK DISPATCH',
+        code: `{\n  "event": "payment.succeeded",\n  "order_id": "ORD-2026-9812",\n  "trxid": "9H8B7G6F5E",\n  "hmac_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",\n  "http_response": 200\n}`,
+      },
+    };
+
+    function inspectPipelineNode(nodeNum) {
+      document.querySelectorAll('.pipeline-step-node').forEach((node, idx) => {
+        if (idx + 1 === nodeNum) {
+          node.classList.add('active', 'border-amber-500/50', 'ring-2', 'ring-amber-500/40');
+        } else {
+          node.classList.remove('active', 'border-amber-500/50', 'ring-2', 'ring-amber-500/40');
+        }
+      });
+
+      const item = pipelineData[nodeNum] || pipelineData[1];
+      const titleEl = document.getElementById('pipeline-inspector-title');
+      const codeEl = document.getElementById('pipeline-inspector-code');
+      if (titleEl) titleEl.innerText = item.title;
+      if (codeEl) codeEl.innerText = item.code;
+    }
+
+    /* ── SPLIT LIVE SIMULATOR CONTROLLER ────────────────────────────────── */
+    let simCurrentAmount = 1250;
+    let simCurrentCarrier = 'bkash';
+    let simTotalSales = 26800;
+
+    function setSimAmount(amt, btn) {
+      simCurrentAmount = amt;
+      document.querySelectorAll('.sim-amt-btn').forEach((b) => {
+        b.className = 'sim-amt-btn py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-sm text-slate-800 dark:text-slate-200 hover:border-amber-500';
+      });
+      if (btn) {
+        btn.className = 'sim-amt-btn active py-2.5 rounded-xl border-2 border-amber-500 bg-amber-500/10 font-black text-sm text-amber-600 dark:text-amber-400';
+      }
+      const label = document.getElementById('sim-btn-label');
+      if (label) label.innerText = `Send Simulated Payment (৳${amt.toLocaleString()})`;
+    }
+
+    function setSimCarrier(carrier, btn) {
+      simCurrentCarrier = carrier;
+      document.querySelectorAll('.sim-carrier-btn').forEach((b) => {
+        b.className = 'sim-carrier-btn py-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold text-xs';
+      });
+      if (btn) {
+        const col = carrier === 'bkash' ? 'bg-pink-600' : carrier === 'nagad' ? 'bg-orange-600' : 'bg-purple-600';
+        btn.className = `sim-carrier-btn active py-2 rounded-xl ${col} text-white font-black text-xs shadow-md`;
+      }
+    }
+
+    function executeSplitSimulatorPayment() {
+      const box = document.getElementById('sim-incoming-box');
+      const header = document.getElementById('sim-carrier-header');
+      const text = document.getElementById('sim-sms-text');
+      const matched = document.getElementById('sim-matched-amount');
+      const totalDisplay = document.getElementById('sim-total-display');
+      const timestamp = document.getElementById('sim-timestamp');
+
+      const randTrx = 'SP' + Math.floor(100000 + Math.random() * 900000);
+      const carrierName = simCurrentCarrier === 'bkash' ? 'bKash (16247)' : simCurrentCarrier === 'nagad' ? 'Nagad (16167)' : 'Rocket (16216)';
+
+      if (header) header.innerText = `${carrierName} Incoming SMS`;
+      if (timestamp) timestamp.innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (text) {
+        text.innerHTML = `Received <strong class="text-white">Tk ${simCurrentAmount.toLocaleString()}.00</strong> from 01712963652. TrxID: <span class="text-amber-400 font-bold">${randTrx}</span>`;
+      }
+      if (matched) {
+        matched.innerText = `৳${simCurrentAmount.toLocaleString()} CREDITED INSTANTLY`;
+      }
+
+      simTotalSales += simCurrentAmount;
+      if (totalDisplay) {
+        totalDisplay.innerText = `৳ ${simTotalSales.toLocaleString()}.00`;
+      }
+
+      if (box) {
+        box.classList.add('ring-2', 'ring-amber-500', 'bg-amber-500/20');
+        setTimeout(() => {
+          box.classList.remove('ring-2', 'ring-amber-500', 'bg-amber-500/20');
+        }, 1200);
+      }
+    }
+
+    /* ── DEVELOPER TERMINAL TAB SWITCHER ────────────────────────────────── */
+    const devSnippets = {
+      curl: `curl -X POST "https://api.swapnopay.top/v1/payment/create" \\
+  -H "Authorization: Bearer sp_live_98a7..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "order_id": "ORD-9821",
+    "amount": 1250.00,
+    "customer_phone": "01712963652",
+    "webhook_url": "https://yoursite.com/api/webhooks/swapnopay"
+  }'`,
+      node: `import { SwapnoPay } from '@swapnopay/sdk';
+
+const client = new SwapnoPay({ apiKey: process.env.SWAPNOPAY_KEY });
+
+const session = await client.payments.create({
+  orderId: "ORD-9821",
+  amount: 1250.00,
+  customerPhone: "01712963652",
+  webhookUrl: "https://yoursite.com/api/webhooks"
+});
+
+console.log("Hosted checkout URL:", session.paymentUrl);`,
+      python: `import swapnopay
+
+client = swapnopay.Client(api_key="sp_live_98a7...")
+
+payment = client.payments.create(
+    order_id="ORD-9821",
+    amount=1250.00,
+    customer_phone="01712963652",
+    webhook_url="https://yoursite.com/api/webhooks"
+)
+
+print(f"Payment initiated: {payment.url}")`,
+      php: `<?php
+require_once('vendor/autoload.php');
+
+$client = new \\SwapnoPay\\Client('sp_live_98a7...');
+$order = $client->payments->create([
+    'order_id' => 'ORD-9821',
+    'amount' => 1250.00,
+    'customer_phone' => '01712963652',
+    'webhook_url' => 'https://yoursite.com/api/webhooks'
+]);
+
+header("Location: " . $order->payment_url);
+exit();`,
+      kotlin: `val client = SwapnoPayClient(apiKey = "sp_live_98a7...")
+
+val request = PaymentRequest(
+    orderId = "ORD-9821",
+    amount = 1250.0,
+    customerPhone = "01712963652"
+)
+
+client.initiatePayment(request) { response ->
+    when (response) {
+        is PaymentResult.Success -> updateReceipt(response.trxId)
+        is PaymentResult.Failure -> showError(response.reason)
+    }
+}`,
+    };
+
+    function switchDevTab(lang, btn) {
+      document.querySelectorAll('.dev-lang-tab').forEach((b) => {
+        b.className = 'dev-lang-tab px-2.5 py-1 rounded text-slate-400 hover:text-white font-bold';
+      });
+      if (btn) {
+        btn.className = 'dev-lang-tab active px-2.5 py-1 rounded bg-amber-500 text-slate-950 font-bold';
+      }
+      const codeOutput = document.getElementById('dev-code-output');
+      if (codeOutput && devSnippets[lang]) {
+        codeOutput.innerText = devSnippets[lang];
+      }
     }
   </script>
 </body>

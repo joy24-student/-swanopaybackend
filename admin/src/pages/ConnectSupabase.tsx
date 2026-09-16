@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Zap, CheckCircle2, Loader2 } from 'lucide-react';
 
 interface Organization {
   id: string;
@@ -208,7 +209,7 @@ export default function ConnectSupabase() {
       <div className="header">
         <div>
           <h1 style={{ margin: 0, fontSize: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ color: '#3ECF8E' }}>⚡</span> Supabase Integration (OAuth 2.0)
+            <Zap size={22} color="#3ECF8E" /> Supabase Integration (OAuth 2.0)
           </h1>
           <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: 14 }}>
             Manage merchant Supabase organizations and projects using Management API tokens.
@@ -326,8 +327,8 @@ export default function ConnectSupabase() {
       {connectionStatus === 'CONNECTED' && (
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 16, color: '#10b981' }}>
-              ✓ Supabase Management API Authorized
+            <h3 style={{ margin: 0, fontSize: 16, color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CheckCircle2 size={16} /> Supabase Management API Authorized
             </h3>
             <button className="button" onClick={fetchOrganizationsAndProjects} disabled={loading}>
               Refresh Projects
@@ -432,7 +433,9 @@ export default function ConnectSupabase() {
       {/* Provisioning Progress */}
       {connectionStatus === 'PROVISIONING' && (
         <div className="card" style={{ textAlign: 'center', padding: 32 }}>
-          <div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            <Loader2 size={28} className="spin" color="#4f46e5" />
+          </div>
           <h3 style={{ margin: 0, color: '#4f46e5' }}>Provisioning Database</h3>
           <p style={{ color: '#64748b', fontSize: 14, marginTop: 8 }}>{provisioningMsg}</p>
         </div>
@@ -448,8 +451,9 @@ export default function ConnectSupabase() {
             marginBottom: 20,
           }}
         >
-          <h3 style={{ marginTop: 0, color: '#166534', fontSize: 16 }}>
-            🎉 Supabase Connection Ready & Linked!
+          <h3 style={{ marginTop: 0, color: '#166534', fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CheckCircle2 size={18} color="#166534" />
+            Supabase Connection Ready & Linked
           </h3>
           <div style={{ fontSize: 13, color: '#15803d', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div>

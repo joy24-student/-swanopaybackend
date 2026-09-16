@@ -1,91 +1,109 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { adminSupabase } from '../adminSupabaseClient';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { adminSupabase } from '../adminSupabaseClient'
+import AddMerchantModal from '../components/AddMerchantModal'
+import DetailDrawer from '../components/DetailDrawer'
+import KycInspectionModal from '../components/KycInspectionModal'
+import {
+  Users,
+  Search,
+  Plus,
+  ArrowUpDown,
+  ExternalLink,
+  ShieldCheck,
+  MoreHorizontal,
+  Copy,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Ban,
+  Database,
+  Mail,
+  Phone,
+  Store,
+  Calendar
+} from 'lucide-react'
 
 interface MerchantRecord {
-  id: string;
-  business_name: string;
-  email?: string;
-  phone?: string;
-  business_type?: string;
-  website?: string;
-  default_number?: string;
-  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
-  subscription_tier: 'STARTER' | 'PRO' | 'ENTERPRISE';
-  kyc_status?: string;
-  kyc_rejection_reason?: string;
-  nid_number?: string;
-  created_at?: string;
+  id: string
+  business_name: string
+  email?: string
+  phone?: string
+  business_type?: string
+  website?: string
+  default_number?: string
+  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION'
+  subscription_tier: 'STARTER' | 'PRO' | 'ENTERPRISE'
+  kyc_status?: string
+  kyc_rejection_reason?: string
+  nid_number?: string
+  nid_front_url?: string
+  nid_back_url?: string
+  created_at?: string
+  supabase_url?: string
+  supabase_anon_key?: string
 }
 
 export default function Merchants() {
-  const [rows, setRows] = useState<MerchantRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING_KYC' | 'VERIFIED_KYC' | 'SUSPENDED'>('ALL');
-  const [showAddModal, setShowAddModal] = useState(false);
-
-  // New Merchant Form
-  const [newBizName, setNewBizName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newBizType, setNewBizType] = useState('RETAIL');
-  const [newTier, setNewTier] = useState<'STARTER' | 'PRO' | 'ENTERPRISE'>('STARTER');
-  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState<MerchantRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING_KYC' | 'VERIFIED_KYC' | 'SUSPENDED'>('ALL')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [selectedMerchant, setSelectedMerchant] = useState<MerchantRecord | null>(null)
+  const [inspectKycMerchant, setInspectKycMerchant] = useState<MerchantRecord | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const loadMerchants = async () => {
-    let merchantsList: MerchantRecord[] = [];
-
     try {
       const { data, error } = await adminSupabase
         .from('merchants')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
       if (!error && data) {
-        merchantsList = data as MerchantRecord[];
+        setRows(data as MerchantRecord[])
       }
     } catch (e) {
-      console.warn('[Merchants] Supabase fetch warning:', e);
+      console.warn('[Merchants] Supabase fetch warning:', e)
+    } finally {
+      setLoading(false)
     }
-
-    setRows(merchantsList);
-    setLoading(false);
-  };
+  }
 
   useEffect(() => {
-    loadMerchants();
+    loadMerchants()
 
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search)
     if (params.get('filter') === 'pending') {
-      setStatusFilter('PENDING_KYC');
+      setStatusFilter('PENDING_KYC')
     }
 
-    // Subscribe to realtime updates on merchants table
     const channel = adminSupabase
       .channel('merchants_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'merchants' }, () => {
-        loadMerchants();
+        loadMerchants()
       })
-      .subscribe();
+      .subscribe()
 
     return () => {
-      adminSupabase.removeChannel(channel);
-    };
-  }, []);
+      adminSupabase.removeChannel(channel)
+    }
+  }, [])
 
   // Filtered rows
   const filteredRows = useMemo(() => {
-    let result = rows;
+    let result = rows
     if (statusFilter === 'PENDING_KYC') {
-      result = result.filter(r => r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW');
+      result = result.filter(r => r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW')
     } else if (statusFilter === 'VERIFIED_KYC') {
-      result = result.filter(r => r.kyc_status === 'VERIFIED');
+      result = result.filter(r => r.kyc_status === 'VERIFIED')
     } else if (statusFilter === 'SUSPENDED') {
-      result = result.filter(r => r.status === 'SUSPENDED');
+      result = result.filter(r => r.status === 'SUSPENDED')
     }
 
-    if (!search.trim()) return result;
-    const q = search.toLowerCase();
+    if (!search.trim()) return result
+    const q = search.toLowerCase()
     return result.filter(
       r =>
         (r.business_name || '').toLowerCase().includes(q) ||
@@ -94,260 +112,476 @@ export default function Merchants() {
         (r.nid_number || '').includes(q) ||
         (r.kyc_status || '').toLowerCase().includes(q) ||
         (r.subscription_tier || '').toLowerCase().includes(q)
-    );
-  }, [rows, search, statusFilter]);
-
-  // Create new merchant in Admin Supabase
-  const handleCreateMerchant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBizName.trim()) return alert('Business name is required');
-    setSaving(true);
-    try {
-      const randomBytes = new Uint8Array(24);
-      window.crypto.getRandomValues(randomBytes);
-      const secureSecret = 'whsec_' + Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-
-      const { error } = await adminSupabase.from('merchants').insert({
-        business_name: newBizName.trim(),
-        email: newEmail.trim() || null,
-        phone: newPhone.trim() || null,
-        business_type: newBizType,
-        subscription_tier: newTier,
-        status: 'ACTIVE',
-        webhook_secret: secureSecret,
-      });
-
-      if (error) throw new Error(error.message);
-      setShowAddModal(false);
-      setNewBizName('');
-      setNewEmail('');
-      setNewPhone('');
-      await loadMerchants();
-    } catch (err: any) {
-      alert('Failed to register merchant: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+    )
+  }, [rows, search, statusFilter])
 
   // Toggle Merchant Status
   const handleToggleStatus = async (merchantId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
-    if (!window.confirm(`Are you sure you want to mark this merchant as ${nextStatus}?`)) return;
+    const nextStatus = currentStatus === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
+    if (!window.confirm(`Are you sure you want to mark this merchant as ${nextStatus}?`)) return
 
     try {
       const { error } = await adminSupabase
         .from('merchants')
         .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq('id', merchantId);
+        .eq('id', merchantId)
 
-      if (error) throw new Error(error.message);
-      await loadMerchants();
+      if (error) throw new Error(error.message)
+      await loadMerchants()
+      if (selectedMerchant?.id === merchantId) {
+        setSelectedMerchant(prev => prev ? { ...prev, status: nextStatus } : null)
+      }
     } catch (err: any) {
-      alert('Failed to update status: ' + err.message);
+      alert('Failed to update status: ' + err.message)
     }
-  };
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(text)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const pendingCount = rows.filter(r => r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW').length
 
   return (
-    <div className="container">
-      {/* Header */}
-      <div className="header">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* ──────────────── Page Header ──────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 16
+      }}>
         <div>
-          <h1>🏪 Merchant Registry ({rows.length})</h1>
-          <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>
-            Manage registered merchants, subscription tiers, and API access permissions.
-          </p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.4px', margin: 0 }}>
+            Merchants & Storefronts
+          </h1>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
+            Manage registered retail stores, subscription tiers, Supabase database bindings, and KYC compliance.
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="button" onClick={() => setShowAddModal(true)} style={{ background: '#10B981' }}>
-            ➕ Add Merchant
-          </button>
-          <Link to="/dashboard">
-            <button className="button" style={{ background: '#64748B' }}>Back</button>
-          </Link>
-        </div>
+
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="btn btn-primary btn-sm"
+        >
+          <Plus size={14} />
+          <span>Add Merchant</span>
+        </button>
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="card" style={{ marginBottom: 16, padding: 12 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-          {[
-            { id: 'ALL', label: `All (${rows.length})` },
-            { id: 'PENDING_KYC', label: `⏳ Pending KYC (${rows.filter(r => r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW').length})`, alert: true },
-            { id: 'VERIFIED_KYC', label: `✅ Verified KYC (${rows.filter(r => r.kyc_status === 'VERIFIED').length})` },
-            { id: 'SUSPENDED', label: `🚫 Suspended (${rows.filter(r => r.status === 'SUSPENDED').length})` },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              className="button"
-              type="button"
-              onClick={() => setStatusFilter(tab.id as any)}
+      {/* ──────────────── Filter & Search Toolbar ──────────────── */}
+      <div className="card" style={{ padding: '12px 16px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          {/* Status Tabs */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { id: 'ALL', label: `All Merchants (${rows.length})` },
+              { id: 'PENDING_KYC', label: `Pending KYC (${pendingCount})`, alert: pendingCount > 0 },
+              { id: 'VERIFIED_KYC', label: `Verified (${rows.filter(r => r.kyc_status === 'VERIFIED').length})` },
+              { id: 'SUSPENDED', label: `Suspended (${rows.filter(r => r.status === 'SUSPENDED').length})` }
+            ].map(tab => {
+              const isActive = statusFilter === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id as any)}
+                  className="btn btn-sm"
+                  style={{
+                    background: isActive ? 'var(--brand-primary)' : 'var(--bg-subtle)',
+                    color: isActive ? 'var(--brand-contrast)' : 'var(--text-secondary)',
+                    border: tab.alert ? '1px solid var(--warning-border)' : '1px solid transparent',
+                    fontWeight: isActive ? 700 : 500
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Search Input */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'var(--bg-subtle)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '6px 12px',
+            width: 320,
+            maxWidth: '100%'
+          }}>
+            <Search size={14} color="var(--text-muted)" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Filter by name, phone, NID, email..."
               style={{
-                fontSize: 12,
-                padding: '4px 12px',
-                background: statusFilter === tab.id ? '#4F46E5' : '#F1F5F9',
-                color: statusFilter === tab.id ? '#FFFFFF' : '#334155',
-                border: tab.alert && rows.some(r => r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW') ? '1px solid #F59E0B' : '1px solid transparent',
-                fontWeight: statusFilter === tab.id ? 700 : 500,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: 12.5,
+                color: 'var(--text-primary)',
+                width: '100%',
+                fontFamily: 'inherit'
               }}
-            >
-              {tab.label}
-            </button>
-          ))}
+            />
+          </div>
         </div>
-        <input
-          className="input"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Search merchants by business name, email, phone, NID, or tier..."
-        />
       </div>
 
-      {/* Merchants Table */}
-      <div className="card">
+      {/* ──────────────── Merchants Table (Linear/Vercel Style) ──────────────── */}
+      <div className="table-container">
         {loading ? (
-          <div style={{ padding: 20, textAlign: 'center', color: '#64748B' }}>Loading merchants registry...</div>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            Loading merchants registry from database...
+          </div>
         ) : filteredRows.length === 0 ? (
-          <div style={{ padding: 30, textAlign: 'center', color: '#94A3B8' }}>No merchants match your search.</div>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            No merchants match your filter criteria.
+          </div>
         ) : (
-          <table className="table">
+          <table className="enterprise-table">
             <thead>
               <tr>
-                <th>Business Name</th>
+                <th>Merchant / Store</th>
                 <th>Contact</th>
-                <th>Type</th>
+                <th>Category</th>
                 <th>Status</th>
-                <th>KYC</th>
+                <th>KYC Verification</th>
                 <th>Tier</th>
-                <th>Created</th>
-                <th>Actions</th>
+                <th>Registered</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map(r => (
-                <tr key={r.id}>
-                  <td>
-                    <strong style={{ fontSize: 14, color: '#1E293B' }}>{r.business_name}</strong>
-                    <div style={{ fontSize: 10, color: '#94A3B8', fontFamily: 'monospace' }}>ID: {r.id.slice(0, 8)}...</div>
-                  </td>
-                  <td>
-                    <div>{r.email || '--'}</div>
-                    <div style={{ fontSize: 11, color: '#64748B' }}>{r.phone || '--'}</div>
-                  </td>
-                  <td><span style={{ fontSize: 11, background: '#F1F5F9', padding: '2px 6px', borderRadius: 4 }}>{r.business_type || 'RETAIL'}</span></td>
-                  <td>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-                      background: r.status === 'SUSPENDED' ? '#FEF2F2' : '#ECFDF5',
-                      color: r.status === 'SUSPENDED' ? '#EF4444' : '#065F46'
-                    }}>
-                      {r.status || 'ACTIVE'}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-                      background: r.kyc_status === 'VERIFIED' ? '#ECFDF5' :
-                                  r.kyc_status === 'REJECTED' ? '#FEF2F2' :
-                                  r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW' ? '#FEF3C7' : '#F1F5F9',
-                      color: r.kyc_status === 'VERIFIED' ? '#065F46' :
-                             r.kyc_status === 'REJECTED' ? '#991B1B' :
-                             r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW' ? '#92400E' : '#64748B',
-                      border: r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW' ? '1px solid #F59E0B' : 'none',
-                    }}>
-                      {r.kyc_status === 'VERIFIED' ? '✅ VERIFIED' :
-                       r.kyc_status === 'REJECTED' ? '❌ REJECTED' :
-                       r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW' ? '⏳ PENDING' : '⚪ UNVERIFIED'}
-                    </span>
-                    {r.nid_number && (
-                      <div style={{ fontSize: 10, color: '#64748B', fontFamily: 'monospace', marginTop: 2 }}>
-                        NID: {r.nid_number}
+              {filteredRows.map(r => {
+                const initial = (r.business_name || 'M')[0].toUpperCase()
+                const isSuspended = r.status === 'SUSPENDED'
+                const isVerifiedKyc = r.kyc_status === 'VERIFIED'
+                const isPendingKyc = r.kyc_status === 'PENDING' || r.kyc_status === 'PENDING_REVIEW'
+
+                return (
+                  <tr
+                    key={r.id}
+                    className="clickable"
+                    onClick={() => setSelectedMerchant(r)}
+                    title="Click to view detailed slide-over sheet"
+                  >
+                    {/* Merchant & Store */}
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--brand-subtle)',
+                          color: 'var(--brand-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 800,
+                          fontSize: 13,
+                          flexShrink: 0
+                        }}>
+                          {initial}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 13.5 }}>
+                            {r.business_name}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'var(--font-mono)' }}>
+                              {r.id.slice(0, 8)}...
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(r.id); }}
+                              className="btn-icon btn-ghost"
+                              style={{ width: 16, height: 16 }}
+                              title="Copy Merchant UUID"
+                            >
+                              <Copy size={10} color={copiedId === r.id ? 'var(--success)' : 'var(--text-subtle)'} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    {r.kyc_status === 'REJECTED' && r.kyc_rejection_reason && (
-                      <div style={{ fontSize: 10, color: '#B91C1C', marginTop: 3, maxWidth: 180, whiteSpace: 'normal', lineHeight: 1.2 }} title={r.kyc_rejection_reason}>
-                        <strong>Reason:</strong> {r.kyc_rejection_reason}
+                    </td>
+
+                    {/* Contact */}
+                    <td>
+                      <div style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{r.email || '—'}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{r.phone || '—'}</div>
+                    </td>
+
+                    {/* Category / Type */}
+                    <td>
+                      <span style={{
+                        padding: '2px 7px',
+                        borderRadius: 'var(--radius-xs)',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: 'var(--bg-subtle)',
+                        color: 'var(--text-secondary)'
+                      }}>
+                        {r.business_type || 'Retail Store'}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td>
+                      <span className={`status-pill ${isSuspended ? 'danger' : 'success'}`}>
+                        <span className="status-dot" />
+                        {isSuspended ? 'Suspended' : 'Active'}
+                      </span>
+                    </td>
+
+                    {/* KYC Verification */}
+                    <td>
+                      {isVerifiedKyc ? (
+                        <span className="status-pill success">
+                          <span className="status-dot" />
+                          Verified
+                        </span>
+                      ) : isPendingKyc ? (
+                        <span
+                          className="status-pill warning"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setInspectKycMerchant(r)
+                          }}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to inspect NID documents"
+                        >
+                          <span className="status-dot" />
+                          Pending Review
+                        </span>
+                      ) : (
+                        <span className="status-pill neutral">
+                          <span className="status-dot" />
+                          Unverified
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Tier */}
+                    <td>
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        fontFamily: 'var(--font-mono)',
+                        padding: '2px 6px',
+                        borderRadius: 'var(--radius-xs)',
+                        background: r.subscription_tier === 'ENTERPRISE' ? 'var(--brand-subtle)' : 'var(--bg-subtle)',
+                        color: r.subscription_tier === 'ENTERPRISE' ? 'var(--brand-primary)' : 'var(--text-secondary)'
+                      }}>
+                        {r.subscription_tier || 'STARTER'}
+                      </span>
+                    </td>
+
+                    {/* Registered Date */}
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent'}
+                    </td>
+
+                    {/* Actions */}
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/merchants/${r.id}`)
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          title="Open full merchant detail page"
+                        >
+                          <ExternalLink size={12} />
+                          <span>View</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleStatus(r.id, r.status)
+                          }}
+                          className={`btn btn-sm ${isSuspended ? 'btn-secondary' : 'btn-danger'}`}
+                          title={isSuspended ? 'Reactivate merchant account' : 'Suspend merchant account'}
+                        >
+                          {isSuspended ? 'Activate' : 'Suspend'}
+                        </button>
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-                      background: r.subscription_tier === 'ENTERPRISE' ? '#F3E8FF' : r.subscription_tier === 'PRO' ? '#E0F2FE' : '#F1F5F9',
-                      color: r.subscription_tier === 'ENTERPRISE' ? '#7E22CE' : r.subscription_tier === 'PRO' ? '#0369A1' : '#475569'
-                    }}>
-                      {r.subscription_tier || 'STARTER'}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 11, color: '#64748B' }}>
-                    {r.created_at ? new Date(r.created_at).toLocaleDateString() : '--'}
-                  </td>
-                  <td style={{ display: 'flex', gap: 6 }}>
-                    <Link to={`/merchants/${r.id}`}>
-                      <button className="button" style={{ padding: '4px 10px', fontSize: 11, background: '#4F46E5' }}>View</button>
-                    </Link>
-                    <button
-                      className="button"
-                      onClick={() => handleToggleStatus(r.id, r.status)}
-                      style={{ padding: '4px 10px', fontSize: 11, background: r.status === 'SUSPENDED' ? '#10B981' : '#EF4444' }}
-                    >
-                      {r.status === 'SUSPENDED' ? 'Activate' : 'Suspend'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {/* Add Merchant Modal */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div className="card" style={{ maxWidth: 480, width: '100%', background: 'white' }}>
-            <h3 style={{ marginTop: 0 }}>➕ Register New Merchant</h3>
-            <form onSubmit={handleCreateMerchant}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4 }}>Business Name *</label>
-                  <input className="input" value={newBizName} onChange={e => setNewBizName(e.target.value)} placeholder="e.g. DreamMart Store" required />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4 }}>Email Address</label>
-                  <input className="input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="owner@merchant.com" />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4 }}>Phone Number</label>
-                  <input className="input" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="+8801700000000" />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4 }}>Business Type</label>
-                  <select className="input" value={newBizType} onChange={e => setNewBizType(e.target.value)}>
-                    <option value="RETAIL">Retail & E-commerce</option>
-                    <option value="SERVICES">Digital Services</option>
-                    <option value="EDUCATION">Education & Courses</option>
-                    <option value="DONATION">Non-Profit & Donation</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 4 }}>Subscription Tier</label>
-                  <select className="input" value={newTier} onChange={e => setNewTier(e.target.value as any)}>
-                    <option value="STARTER">STARTER</option>
-                    <option value="PRO">PRO</option>
-                    <option value="ENTERPRISE">ENTERPRISE</option>
-                  </select>
-                </div>
+      {/* ──────────────── Detail Drawer (Slide-Over Sheet) ──────────────── */}
+      <DetailDrawer
+        isOpen={Boolean(selectedMerchant)}
+        onClose={() => setSelectedMerchant(null)}
+        title={selectedMerchant?.business_name || 'Merchant Profile'}
+        subtitle={`Registered ${selectedMerchant?.created_at ? new Date(selectedMerchant.created_at).toLocaleDateString() : 'Recently'}`}
+        badge={
+          <span className={`status-pill ${selectedMerchant?.status === 'ACTIVE' ? 'success' : 'danger'}`}>
+            <span className="status-dot" />
+            {selectedMerchant?.status || 'ACTIVE'}
+          </span>
+        }
+        footer={
+          <>
+            <button
+              onClick={() => setSelectedMerchant(null)}
+              className="btn btn-secondary btn-sm"
+            >
+              Close
+            </button>
+            {selectedMerchant && (
+              <button
+                onClick={() => navigate(`/merchants/${selectedMerchant.id}`)}
+                className="btn btn-primary btn-sm"
+              >
+                <span>Full Profile Page</span>
+                <ExternalLink size={13} />
+              </button>
+            )}
+          </>
+        }
+      >
+        {selectedMerchant && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Quick Overview Card */}
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Store size={18} color="var(--brand-primary)" />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Business Information</span>
               </div>
-              <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" className="button" onClick={() => setShowAddModal(false)} style={{ background: '#64748B' }}>Cancel</button>
-                <button type="submit" className="button" disabled={saving} style={{ background: '#10B981' }}>
-                  {saving ? 'Creating...' : 'Create Merchant'}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Business Type:</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedMerchant.business_type || 'Retail'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Email:</span>
+                <span style={{ color: 'var(--text-primary)' }}>{selectedMerchant.email || 'None'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Phone:</span>
+                <span style={{ color: 'var(--text-primary)' }}>{selectedMerchant.phone || 'None'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Subscription Tier:</span>
+                <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--brand-primary)' }}>
+                  {selectedMerchant.subscription_tier || 'STARTER'}
+                </span>
+              </div>
+            </div>
+
+            {/* KYC Status Card */}
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <ShieldCheck size={18} color="var(--brand-primary)" />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>KYC Compliance</span>
+                </div>
+                <span className={`status-pill ${selectedMerchant.kyc_status === 'VERIFIED' ? 'success' : selectedMerchant.kyc_status === 'PENDING' ? 'warning' : 'neutral'}`}>
+                  <span className="status-dot" />
+                  {selectedMerchant.kyc_status || 'UNVERIFIED'}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                NID Number: <strong style={{ color: 'var(--text-primary)' }}>{selectedMerchant.nid_number || 'Not Submitted'}</strong>
+              </div>
+              {(selectedMerchant.kyc_status === 'PENDING' || selectedMerchant.kyc_status === 'PENDING_REVIEW') && (
+                <button
+                  onClick={() => {
+                    setInspectKycMerchant(selectedMerchant)
+                  }}
+                  className="btn btn-primary btn-sm"
+                  style={{ width: '100%', marginTop: 6 }}
+                >
+                  <ShieldCheck size={14} />
+                  <span>Inspect Submitted NID Documents</span>
                 </button>
+              )}
+            </div>
+
+            {/* Supabase Database Connection */}
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Database size={18} color="var(--brand-primary)" />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Connected Database</span>
               </div>
-            </form>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {selectedMerchant.supabase_url ? (
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--success-text)' }}>
+                    {selectedMerchant.supabase_url}
+                  </span>
+                ) : (
+                  <span>Using Default Central Platform Database</span>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+      </DetailDrawer>
+
+      {/* KYC Inspection Modal */}
+      {inspectKycMerchant && (
+        <KycInspectionModal
+          isOpen={Boolean(inspectKycMerchant)}
+          merchant={inspectKycMerchant}
+          onClose={() => setInspectKycMerchant(null)}
+          onStatusUpdated={() => {
+            loadMerchants()
+            setInspectKycMerchant(null)
+          }}
+        />
       )}
+
+      {/* Add Merchant Modal */}
+      <AddMerchantModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onMerchantAdded={() => {
+          setShowAddModal(false)
+          loadMerchants()
+        }}
+      />
     </div>
-  );
+  )
 }

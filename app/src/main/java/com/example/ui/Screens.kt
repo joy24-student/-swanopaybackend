@@ -27778,68 +27778,53 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                         }
 
                         items(chatHistory) { msg: Map<String, String> ->
-                            val isUser = msg["role"] == "user"
-                            val bubbleBg = if (isUser) Color(0xFF0F172A) else cardBg
-                            val txtColor = if (isUser) Color.White else textMain
-                            val align = if (isUser) Alignment.End else Alignment.Start
-
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = align
-                            ) {
-                                Card(
-                                    shape = RoundedCornerShape(
-                                        topStart = 18.dp,
-                                        topEnd = 18.dp,
-                                        bottomStart = if (isUser) 18.dp else 4.dp,
-                                        bottomEnd = if (isUser) 4.dp else 18.dp
-                                    ),
-                                    colors = CardDefaults.cardColors(containerColor = bubbleBg),
-                                    border = BorderStroke(1.dp, if (isUser) Color(0xFF1E293B) else cardBorder),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                                    modifier = Modifier.widthIn(max = 300.dp)
-                                ) {
-                                    Text(
-                                        text = msg["content"] ?: "",
-                                        modifier = Modifier.padding(14.dp),
-                                        color = txtColor,
-                                        fontSize = 13.5.sp,
-                                        lineHeight = 19.sp
-                                    )
-                                }
-
-                                val actionStr = msg["action"]
-                                if (actionStr != null) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    ActionConfirmationCard(
-                                        actionJsonStr = actionStr,
-                                        isDarkMode = isDarkMode,
-                                        viewModel = viewModel
-                                    )
-                                }
-                            }
+                            StructuredAiMessageBubble(
+                                message = msg,
+                                isDarkMode = isDarkMode,
+                                viewModel = viewModel
+                            )
                         }
                     }
 
                     if (isThinking) {
                         item {
-                            Row(
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isDarkMode) Color(0xFF161A29) else Color(0xFFFAF5FF)
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDarkMode) Color(0xFF2E2448) else Color(0xFFF3E8FF)
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    .padding(vertical = 4.dp)
                             ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFFA855F7)
-                                )
-                                Text(
-                                    text = "AI thinking & processing...",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFA855F7)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = Color(0xFFA855F7)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "AI Copilot হিসাব ও ডেটা বিশ্লেষণ করছে...",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF475569)
+                                        )
+                                        Text(
+                                            text = "Analyzing business trends & formulating insights",
+                                            fontSize = 10.5.sp,
+                                            color = textMuted
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

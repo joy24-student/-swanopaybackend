@@ -106,13 +106,41 @@ CREATE INDEX IF NOT EXISTS payment_events_merchant_idx ON payment_events(merchan
 CREATE INDEX IF NOT EXISTS payment_events_order_idx ON payment_events(order_id);
 CREATE INDEX IF NOT EXISTS payment_events_status_idx ON payment_events(status, recorded_at DESC);
 
--- 6. Admin Users Table
+-- 6. Admin Users Table (Full Super Admin Schema)
 CREATE TABLE IF NOT EXISTS admin_users (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email       TEXT NOT NULL,
-  role        TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('super_admin','admin','viewer')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  role        TEXT NOT NULL DEFAULT 'super_admin' CHECK (role IN ('super_admin','admin','viewer')),
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS admin_users_email_lower_idx ON admin_users (lower(email));
+
+-- Admin Helper Functions (is_exist, is_admin, is_super_admin)
+CREATE OR REPLACE FUNCTION public.admin_is_exist(p_email TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM public.admin_users WHERE lower(email) = lower(trim(p_email)) AND is_active = true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin(p_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth AS $$
+BEGIN
+  IF p_user_id IS NULL THEN RETURN false; END IF;
+  RETURN EXISTS (SELECT 1 FROM public.admin_users WHERE id = p_user_id AND is_active = true AND role IN ('super_admin', 'admin'));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_super_admin(p_user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth AS $$
+BEGIN
+  IF p_user_id IS NULL THEN RETURN false; END IF;
+  RETURN EXISTS (SELECT 1 FROM public.admin_users WHERE id = p_user_id AND is_active = true AND role = 'super_admin');
+END;
+$$;
+
 
 -- 7. Webhook Secrets
 CREATE TABLE IF NOT EXISTS webhook_secrets (

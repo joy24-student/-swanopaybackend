@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { Bell, X } from 'lucide-react'
 import { adminSupabase } from '../adminSupabaseClient'
 
 export interface AdminNotification {
@@ -111,7 +112,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           }}
           title="Notification Center"
         >
-          🔔
+          <Bell size={20} />
           {unreadCount > 0 && (
             <span style={{
               position: 'absolute', top: -2, right: -2, background: '#EF4444', color: 'white',
@@ -131,7 +132,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           zIndex: 9999, border: '1px solid #E2E8F0', overflow: 'hidden', display: 'flex', flexDirection: 'column'
         }}>
           <div style={{ padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 14, color: '#1E293B' }}>🔔 Admin Notifications ({unreadCount} unread)</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Bell size={14} color="#4F46E5" />
+              <strong style={{ fontSize: 13, color: '#1E293B' }}>Admin Notifications ({unreadCount} unread)</strong>
+            </div>
             {unreadCount > 0 && (
               <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', color: '#4F46E5', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                 Mark all read
@@ -184,9 +188,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             <button
               onClick={() => dismissToast(toast.id)}
-              style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: 16, cursor: 'pointer', padding: 0 }}
+              aria-label="Dismiss toast"
+              style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
             >
-              ✕
+              <X size={15} />
             </button>
           </div>
         ))}
