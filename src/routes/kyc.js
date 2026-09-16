@@ -4,8 +4,11 @@
 import { Router } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { fileURLToPath } from 'node:url'
 import { submitMerchantKyc, listPendingKycSubmissions, reviewMerchantKyc } from '../services/adminSupabase.js'
+import { requirePlatformUser, requirePlatformMerchant } from '../services/merchantAccount.js'
 import { requireAdminSecret } from '../middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -21,16 +24,17 @@ try {
   console.warn('[kyc-routes] Uploads dir creation notice:', e.message)
 }
 
-function saveBase64Image(base64Data, prefix, merchantId) {
+async function saveBase64Image(base64Data, prefix, merchantId) {
   if (!base64Data || typeof base64Data !== 'string') return null
   try {
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
     const buffer = Buffer.from(cleanBase64, 'base64')
-    if (buffer.length === 0) return null
+    if (buffer.length === 0 || buffer.length > 6 * 1024 * 1024) throw new Error('Each identity image must be 1 byte to 6 MB')
 
-    const fileName = `${prefix}_${merchantId}_${Date.now()}.jpg`
+    const fileName = `${prefix}_${merchantId}_${randomUUID()}.jpg`
     const filePath = path.join(UPLOADS_DIR, fileName)
-    fs.writeFileSync(filePath, buffer)
+    const image = await sharp(buffer, { limitInputPixels: 40000000 }).rotate().jpeg({ quality: 90 }).toBuffer()
+    fs.writeFileSync(filePath, image)
     return `/uploads/kyc/${fileName}`
   } catch (err) {
     console.warn(`[kyc] Failed to save base64 image (${prefix}):`, err.message)
@@ -41,10 +45,9 @@ function saveBase64Image(base64Data, prefix, merchantId) {
 // ----------------------------------------------------------------------------
 // POST /v1/kyc/submit � Submit merchant NID & Biometric Face KYC
 // ----------------------------------------------------------------------------
-router.post('/submit', async (req, res) => {
+router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req, res) => {
   try {
     const {
-      merchant_id,
       nid_number,
       nid_name,
       nid_dob,
@@ -58,34 +61,37 @@ router.post('/submit', async (req, res) => {
       ocr_raw_text,
     } = req.body || {}
 
+    const merchant_id = req.platformAccount.merchantId
     if (!merchant_id) {
       return res.status(400).json({ error: 'merchant_id is required' })
     }
-    if (!nid_number || String(nid_number).trim().length < 10) {
+    if (!/^(?:[0-9]{10}|[0-9]{13}|[0-9]{17})$/.test(String(nid_number || '').trim())) {
       return res.status(400).json({ error: 'A valid NID number (at least 10 digits) is required' })
     }
-    if (!incomingFaceUrl && !selfie_base64) {
+    if (!front_base64 || !back_base64 || !selfie_base64 || liveness_passed !== true) {
       return res.status(400).json({ error: 'Live biometric face verification is required. NID documents cannot be submitted without face verification.' })
     }
 
     // Save base64 images if provided, otherwise preserve passed URLs
-    let frontUrl = incomingFrontUrl
+    let frontUrl = null
     if (front_base64) {
-      const saved = saveBase64Image(front_base64, 'nid_front', merchant_id)
+      const saved = await saveBase64Image(front_base64, 'nid_front', merchant_id)
       if (saved) frontUrl = saved
     }
 
-    let backUrl = incomingBackUrl
+    let backUrl = null
     if (back_base64) {
-      const saved = saveBase64Image(back_base64, 'nid_back', merchant_id)
+      const saved = await saveBase64Image(back_base64, 'nid_back', merchant_id)
       if (saved) backUrl = saved
     }
 
-    let faceUrl = incomingFaceUrl
+    let faceUrl = null
     if (selfie_base64) {
-      const saved = saveBase64Image(selfie_base64, 'live_selfie', merchant_id)
+      const saved = await saveBase64Image(selfie_base64, 'live_selfie', merchant_id)
       if (saved) faceUrl = saved
     }
+
+    if (!frontUrl || !backUrl || !faceUrl) throw new Error('All three identity images must be saved')
 
     const savedMerchant = await submitMerchantKyc({
       merchant_id,
@@ -101,7 +107,7 @@ router.post('/submit', async (req, res) => {
 
     // Broadcast realtime event to Admin Dashboard
     if (req.io) {
-      req.io.emit('admin:kyc_submitted', {
+      req.io.to('admin').emit('admin:kyc_submitted', {
         merchant_id,
         nid_number: String(nid_number).trim(),
         nid_name,
@@ -117,7 +123,7 @@ router.post('/submit', async (req, res) => {
       })
     }
 
-    console.log(`[kyc] ? Successfully submitted KYC for merchant ${merchant_id} (NID: ${nid_number})`)
+    console.log(`[kyc] ? Successfully submitted KYC for merchant ${merchant_id}`)
 
     res.json({
       ok: true,
@@ -168,12 +174,12 @@ router.post('/review', requireAdminSecret, async (req, res) => {
     const status = (action.toUpperCase() === 'REJECT') ? 'REJECTED' : 'VERIFIED'
 
     if (req.io) {
-      req.io.to(`merchant:${merchant_id}`).emit('merchant:kyc_status', {
+      req.io.to(`merchant:${updated.id}`).emit('merchant:kyc_status', {
         status,
         reason: reason || null,
         updated_at: new Date().toISOString(),
       })
-      req.io.emit('admin:kyc_reviewed', {
+      req.io.to('admin').emit('admin:kyc_reviewed', {
         merchant_id,
         status,
         reviewed_at: new Date().toISOString(),

@@ -29,17 +29,8 @@ export function initAdminSupabase() {
 }
 
 export function getAdminClient() {
-  if (!_adminClient) {
-    const url = process.env.ADMIN_SUPABASE_URL || process.env.SUPABASE_URL
-    const serviceKey = process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY
-    if (url && serviceKey) {
-      _adminClient = createClient(url, serviceKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-      return _adminClient
-    }
-    throw new Error('Admin Supabase not initialised — call initAdminSupabase() first')
-  }
+  if (!_adminClient) initAdminSupabase()
+
   return _adminClient
 }
 
@@ -957,183 +948,28 @@ export async function getAdminSystemOverview(heartbeatMap = null, io = null) {
 // Merchant KYC Verification (Admin Platform)
 // ──────────────────────────────────────────────────────────────────────────────
 
-export async function submitMerchantKyc({
-  merchant_id,
-  nid_number,
-  nid_name,
-  nid_dob,
-  nid_front_url,
-  nid_back_url,
-  face_photo_url,
-  liveness_passed = true,
-  ocr_raw_text = '',
-}) {
-  if (!merchant_id) throw new Error('merchant_id is required')
-  if (!nid_number) throw new Error('nid_number is required')
-
-  const admin = getAdminClient()
-  const now = new Date().toISOString()
-
-  // 1. Update merchants table
-  const updatePayload = {
-    nid_number: String(nid_number).trim(),
-    nid_name: nid_name ? String(nid_name).trim() : null,
-    nid_dob: nid_dob ? String(nid_dob).trim() : null,
-    nid_front_url: nid_front_url || null,
-    nid_back_url: nid_back_url || null,
-    face_photo_url: face_photo_url || null,
-    kyc_status: 'PENDING',
-    kyc_submitted_at: now,
-    updated_at: now,
-  }
-
-  let updatedMerchant = null
-  try {
-    // First, try updating by ID or user_id
-    const { data: d1 } = await admin
-      .from('merchants')
-      .update(updatePayload)
-      .eq('id', merchant_id)
-      .select('*')
-      .maybeSingle()
-
-    if (d1) {
-      updatedMerchant = d1
-    } else {
-      const { data: d2 } = await admin
-        .from('merchants')
-        .update(updatePayload)
-        .eq('user_id', merchant_id)
-        .select('*')
-        .maybeSingle()
-      updatedMerchant = d2
-    }
-
-    // If still null (no row existed in public.merchants), INSERT/UPSERT a new merchant row!
-    if (!updatedMerchant) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchant_id)
-      const newMerchantPayload = {
-        business_name: nid_name ? String(nid_name).trim() : `Merchant (${String(merchant_id).slice(-6)})`,
-        status: 'PENDING_VERIFICATION',
-        user_id: merchant_id,
-        ...updatePayload
-      }
-      if (isUuid) {
-        newMerchantPayload.id = merchant_id
-      }
-
-      const { data: insertedData, error: insErr } = await admin
-        .from('merchants')
-        .upsert(newMerchantPayload, { onConflict: isUuid ? 'id' : undefined })
-        .select('*')
-        .maybeSingle()
-
-      if (!insErr && insertedData) {
-        updatedMerchant = insertedData
-      }
-    }
-  } catch (err) {
-    console.warn('[kyc] Supabase merchants table upsert warning:', err.message)
-  }
-
-  // 2. Also record in merchant_kyc_submissions if table exists
-  try {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchant_id)
-    await admin.from('merchant_kyc_submissions').insert({
-      merchant_id: isUuid ? merchant_id : (updatedMerchant?.id || null),
-      nid_number: String(nid_number).trim(),
-      nid_name: nid_name ? String(nid_name).trim() : null,
-      nid_dob: nid_dob ? String(nid_dob).trim() : null,
-      nid_front_url: nid_front_url || null,
-      nid_back_url: nid_back_url || null,
-      face_photo_url: face_photo_url || null,
-      liveness_passed: Boolean(liveness_passed),
-      ocr_raw_text: ocr_raw_text || null,
-      status: 'PENDING',
-      submitted_at: now,
-    })
-  } catch (err) {
-    // Ignore if table not yet created or FK constraint skipped
-  }
-
-  return updatedMerchant || { id: merchant_id, merchant_id, ...updatePayload }
+export async function submitMerchantKyc(payload) {
+  const { data, error } = await getAdminClient().rpc('submit_platform_merchant_kyc', { p_submission: payload })
+  if (error) throw new Error('KYC was not saved: ' + error.message)
+  if (!data?.id) throw new Error('KYC was not saved: merchant not found')
+  return data
 }
 
 export async function listPendingKycSubmissions() {
-  const admin = getAdminClient()
-  try {
-    const { data, error } = await admin
-      .from('merchants')
-      .select('id, user_id, business_name, email, phone, nid_number, nid_name, nid_dob, nid_front_url, nid_back_url, face_photo_url, kyc_status, kyc_submitted_at, kyc_reviewed_at, kyc_rejection_reason, created_at')
-      .in('kyc_status', ['PENDING', 'PENDING_REVIEW', 'VERIFIED', 'REJECTED'])
-      .order('kyc_submitted_at', { ascending: false })
-
-    if (error) throw error
-    return data || []
-  } catch (err) {
-    // Fallback: select all merchants where nid_number is not null
-    const { data: fallback, error: e2 } = await admin
-      .from('merchants')
-      .select('*')
-      .not('nid_number', 'is', null)
-    if (e2) {
-      console.warn('[kyc] listPendingKycSubmissions warning:', e2.message)
-      return []
-    }
-    return fallback || []
-  }
+  const { data, error } = await getAdminClient().from('merchants').select('*')
+    .in('kyc_status', ['PENDING', 'PENDING_REVIEW', 'VERIFIED', 'REJECTED'])
+    .order('kyc_submitted_at', { ascending: false })
+  if (error) throw new Error('Unable to load KYC submissions: ' + error.message)
+  return data || []
 }
 
 export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_by = 'ADMIN' }) {
-  if (!merchantId) throw new Error('merchant_id is required')
-  const isApproved = action === 'APPROVE' || action === 'VERIFY' || action === 'APPROVED' || action === 'VERIFIED'
-  const status = isApproved ? 'VERIFIED' : 'REJECTED'
-  const now = new Date().toISOString()
-
-  const admin = getAdminClient()
-  const payload = {
-    kyc_status: status,
-    kyc_reviewed_at: now,
-    kyc_rejection_reason: status === 'REJECTED' ? (reason || 'Verification rejected by administrator') : null,
-    kyc_reviewed_by: reviewed_by,
-    updated_at: now,
-  }
-  if (status === 'VERIFIED') {
-    payload.status = 'ACTIVE'
-  }
-
-  const { data, error } = await admin
-    .from('merchants')
-    .update(payload)
-    .eq('id', merchantId)
-    .select('*')
-    .maybeSingle()
-
-  if (error) {
-    // Try updating by user_id
-    const { data: d2, error: e2 } = await admin
-      .from('merchants')
-      .update(payload)
-      .eq('user_id', merchantId)
-      .select('*')
-      .maybeSingle()
-    if (e2) throw new Error('Failed to update KYC review: ' + error.message)
-    return d2
-  }
-
-  // Also update submissions audit table if exists
-  try {
-    await admin
-      .from('merchant_kyc_submissions')
-      .update({
-        status: status === 'VERIFIED' ? 'APPROVED' : 'REJECTED',
-        reviewed_at: now,
-        reviewed_by,
-        rejection_reason: payload.kyc_rejection_reason,
-      })
-      .eq('merchant_id', merchantId)
-      .eq('status', 'PENDING')
-  } catch {}
-
+  if (!['APPROVE', 'VERIFY', 'REJECT'].includes(action)) throw new Error('Invalid review action')
+  const { data, error } = await getAdminClient().rpc('review_platform_merchant_kyc', {
+    p_merchant_id: merchantId, p_status: action === 'REJECT' ? 'REJECTED' : 'VERIFIED',
+    p_reason: reason || '', p_reviewer: reviewed_by,
+  })
+  if (error) throw new Error('KYC review was not saved: ' + error.message)
+  if (!data?.id) throw new Error('KYC merchant not found')
   return data
 }

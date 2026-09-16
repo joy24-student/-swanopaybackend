@@ -1,0 +1,94 @@
+import { getAdminClient } from './adminSupabase.js'
+
+export const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '')
+export const databaseOrigin = value => {
+  try { return new URL(value).origin.toLowerCase() } catch { return null }
+}
+
+export function requireData(result, operation) {
+  if (result.error) throw new Error(`${operation}: ${result.error.message}`)
+  return result.data
+}
+
+// Only call with the identity returned by platform Auth, never an unverified email.
+export async function lookupMerchantInAdminDb(email, userId, admin = getAdminClient()) {
+  if (!isUuid(userId)) throw new Error('A platform Auth user ID is required')
+  const cleanEmail = (email || '').trim().toLowerCase()
+  let merchant = requireData(await admin.from('merchants').select('*')
+    .eq('user_id', userId).maybeSingle(), 'Load merchant owner')
+  if (!merchant) {
+    merchant = requireData(await admin.from('merchants').select('*')
+      .eq('id', userId).maybeSingle(), 'Load legacy merchant')
+    if (merchant?.user_id && merchant.user_id !== userId) throw new Error('Merchant ownership mismatch')
+  }
+  if (!merchant && cleanEmail) {
+    const matches = requireData(await admin.from('merchants').select('*')
+      .ilike('email', cleanEmail.replace(/[\\%_]/g, '\\$&')).limit(2), 'Load merchant email') || []
+    if (matches.length > 1) throw new Error('Multiple merchant records match this account; admin must reconcile them')
+    merchant = matches[0] || null
+    if (merchant?.user_id && merchant.user_id !== userId) throw new Error('Merchant ownership mismatch')
+  }
+  // Claim only an unowned legacy row using an email already verified by Auth.
+  if (merchant && !merchant.user_id) {
+    merchant = requireData(await admin.from('merchants').update({ user_id: userId })
+      .eq('id', merchant.id).is('user_id', null).select('*').single(), 'Link merchant owner')
+  }
+  const merchantId = merchant?.id || userId
+  const gateway = requireData(await admin.from('merchant_gateway_settings').select('*')
+    .eq('merchant_id', merchantId).maybeSingle(), 'Load merchant database settings')
+  let connection = requireData(await admin.from('supabase_connections').select('*')
+    .eq('user_id', userId).maybeSingle(), 'Load account connection')
+  if (!connection && merchantId !== userId) {
+    connection = requireData(await admin.from('supabase_connections').select('*')
+      .eq('user_id', merchantId).maybeSingle(), 'Load legacy connection')
+  }
+  const platformOrigin = databaseOrigin(process.env.ADMIN_SUPABASE_URL)
+  const candidates = [
+    { url: gateway?.supabase_url, key: gateway?.supabase_anon_key },
+    { url: connection?.project_url, key: connection?.publishable_key },
+  ]
+  const own = candidates.find(({ url, key }) => key && databaseOrigin(url) && databaseOrigin(url) !== platformOrigin)
+  const name = merchant?.business_name || gateway?.merchant_name || ''
+  const placeholder = /^(my store|my business|google user|facebook user|demo store|business setup required)$/i.test(name.trim())
+  const onboarded = Boolean(merchant?.onboarded_at || own || (name.trim() && !placeholder && merchant?.phone))
+  return {
+    exists: Boolean(merchant || gateway || connection), isOnboarded: onboarded, isNewUser: !onboarded,
+    merchantId,
+    merchant: {
+      id: merchantId, user_id: userId, business_name: name, email: merchant?.email || cleanEmail,
+      phone: merchant?.phone || '', business_type: merchant?.business_type || 'Retail Store',
+      photo_url: merchant?.photo_url || gateway?.merchant_logo_url || '',
+      account_holder: merchant?.account_holder || name, status: merchant?.status || 'PENDING_VERIFICATION',
+      kyc_status: merchant?.kyc_status || 'UNVERIFIED', kyc_rejection_reason: merchant?.kyc_rejection_reason || '',
+      nid_number: merchant?.nid_number || '', nid_front_url: merchant?.nid_front_url || '', nid_back_url: merchant?.nid_back_url || '',
+    },
+    database: { has_own_database: Boolean(own), supabase_url: own?.url || '', supabase_anon_key: own?.key || '', project_ref: connection?.selected_project_ref || '' },
+  }
+}
+
+export async function requirePlatformUser(req, res, next) {
+  if (req.platformUser) return next()
+  const token = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]
+  if (!token) return res.status(401).json({ error: 'Sign in to your platform account first' })
+  try {
+    const { data, error } = await getAdminClient().auth.getUser(token)
+    if (error || !data?.user?.id || !data.user.email_confirmed_at) {
+      return res.status(401).json({ error: 'A valid, verified platform session is required' })
+    }
+    req.platformUser = data.user
+    next()
+  } catch (error) {
+    res.status(503).json({ error: 'Platform authentication is unavailable' })
+  }
+}
+
+export async function requirePlatformMerchant(req, res, next) {
+  try {
+    const account = await lookupMerchantInAdminDb(req.platformUser.email, req.platformUser.id)
+    if (!account.exists) return res.status(409).json({ error: 'Save your business profile before continuing' })
+    req.platformAccount = account
+    next()
+  } catch (error) {
+    res.status(503).json({ error: error.message })
+  }
+}

@@ -340,12 +340,12 @@ router.post('/kyc/:id/review', async (req, res) => {
     const updated = await reviewMerchantKyc(req.params.id, {
       action: action.toUpperCase(),
       reason,
-      reviewed_by: reviewed_by || 'PLATFORM_ADMIN',
+      reviewed_by: req.adminUser?.id || 'PLATFORM_ADMIN',
     })
 
     if (req.io) {
       const status = (action.toUpperCase() === 'REJECT') ? 'REJECTED' : 'VERIFIED'
-      req.io.to(`merchant:${req.params.id}`).emit('merchant:kyc_status', {
+      req.io.to(`merchant:${updated.id}`).emit('merchant:kyc_status', {
         status,
         reason: reason || null,
         updated_at: new Date().toISOString(),

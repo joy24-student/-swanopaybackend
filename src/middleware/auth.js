@@ -158,11 +158,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
           return next()
         }
 
-        // Allow any authenticated merchant user on the platform
-        if (user.role === 'authenticated' || user.aud === 'authenticated') {
-          req.merchantUser = user
-          return next()
-        }
+
       }
     } catch (err) {
       console.warn('[auth] Merchant/Admin JWT verification error:', err.message)
