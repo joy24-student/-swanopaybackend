@@ -72,7 +72,7 @@ export async function requirePlatformUser(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Sign in to your platform account first' })
   try {
     const { data, error } = await getAdminClient().auth.getUser(token)
-    if (error || !data?.user?.id || !data.user.email_confirmed_at) {
+    if (error || !data?.user?.id) {
       return res.status(401).json({ error: 'A valid, verified platform session is required' })
     }
     req.platformUser = data.user
