@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 
 interface DetailDrawerProps {
@@ -7,7 +7,8 @@ interface DetailDrawerProps {
   title: string
   subtitle?: string
   badge?: React.ReactNode
-  children: React.ReactNode
+  children?: React.ReactNode
+  tabs?: { key: string; label: string; content: React.ReactNode }[]
   footer?: React.ReactNode
   width?: number | string
 }
@@ -19,9 +20,13 @@ export default function DetailDrawer({
   subtitle,
   badge,
   children,
+  tabs,
   footer,
   width = 460
 }: DetailDrawerProps) {
+  const [selectedTab, setSelectedTab] = useState('')
+  const activeTab = tabs?.find(tab => tab.key === selectedTab) || tabs?.[0]
+  useEffect(() => { if (!isOpen) setSelectedTab('') }, [isOpen])
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -74,6 +79,15 @@ export default function DetailDrawer({
           </button>
         </div>
 
+        {tabs && tabs.length > 0 && (
+          <div role="tablist" style={{ display: 'flex', gap: 8, padding: '12px 22px' }}>
+            {tabs.map(tab => (
+              <button key={tab.key} role="tab" aria-selected={activeTab?.key === tab.key}
+                className={activeTab?.key === tab.key ? 'btn btn-primary' : 'btn btn-ghost'}
+                onClick={() => setSelectedTab(tab.key)}>{tab.label}</button>
+            ))}
+          </div>
+        )}
         {/* Drawer Scrollable Content */}
         <div style={{
           flex: 1,
@@ -81,7 +95,7 @@ export default function DetailDrawer({
           padding: '22px',
           background: 'var(--bg-canvas)'
         }}>
-          {children}
+          {activeTab ? activeTab.content : children}
         </div>
 
         {/* Drawer Footer */}
@@ -102,4 +116,3 @@ export default function DetailDrawer({
     </>
   )
 }
-

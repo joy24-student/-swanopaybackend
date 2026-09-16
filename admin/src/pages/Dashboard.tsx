@@ -882,7 +882,7 @@ export default function Dashboard() {
             setIsKycModalOpen(false)
             setSelectedKycMerchant(null)
           }}
-          onStatusUpdated={() => {
+          onActionComplete={() => {
             loadDashboardData()
             setIsKycModalOpen(false)
             setSelectedKycMerchant(null)
@@ -894,7 +894,7 @@ export default function Dashboard() {
       <AddMerchantModal
         isOpen={isAddMerchantOpen}
         onClose={() => setIsAddMerchantOpen(false)}
-        onMerchantAdded={() => {
+        onMerchantCreated={() => {
           setIsAddMerchantOpen(false)
           loadDashboardData()
         }}

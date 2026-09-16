@@ -82,8 +82,6 @@ data class EmployeeItem(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AppRepository(application.applicationContext)
-    val installationId: String get() = repository.getInstallationId()
-    private val hostedFormRouterOrigin = "https://forms.swapnopay.top"
     private val localAccountReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     val installationId: String get() = repository.installationId
     private val hostedFormRouterOrigin = "https://pay.swapnopay.top"
@@ -231,7 +229,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun recordStockChange(productId: String, type: String, qty: Double, price: Double) {
     fun recordStockChange(
         productId: String,
         type: String,
@@ -241,7 +238,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         referenceNote: String? = null
     ) {
         val normalizedType = if (type.equals("sale", ignoreCase = true)) "out" else "in"
-        recordStockChangeInternal(productId, normalizedType, qty, price)
         recordStockChangeInternal(productId, normalizedType, qty, price, supplierId, referenceNote)
     }
 
@@ -335,7 +331,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val createdAt = securityPrefs.getLong("session_created_at", 0L)
 
         val thirtyDaysMs = 30L * 24 * 3600 * 1000
-        val isValid = (!email.isNullOrEmpty()) && (createdAt == 0L || (System.currentTimeMillis() - createdAt) < thirtyDaysMs)
         val isValid = !token.isNullOrBlank() && !email.isNullOrBlank() && createdAt > 0L && (System.currentTimeMillis() - createdAt) < thirtyDaysMs
 
         val info = EncryptedSessionInfo(
@@ -694,8 +689,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             val onboarded = isOnboarded()
             val targetScreen = when {
-                !session.isValid || session.email.isNullOrEmpty() -> {
-                    if (!onboarded) "Onboarding" else "Login"
                 !session.isValid || session.email.isNullOrEmpty() || accountLookupFailed -> {
                     "Login"
                 }
@@ -877,7 +870,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val description: String = "Step-by-step video guide to configure SMS listener, match payments, and link webhooks.",
         val videoUrl: String = "",
         val duration: String = "3:45 min",
-        val thumbnailUrl: String = ""
         val thumbnailUrl: String = "",
         val category: String = "General"
     )
@@ -930,7 +922,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         ),
         val apiDocumentation: String = "",
         val faqs: List<SupportFaqItem> = listOf(
-            SupportFaqItem("Do I need a merchant account?", "No, SmartPay fully supports Personal, Agent, and Merchant accounts for bKash, Nagad, and Rocket."),
             SupportFaqItem("Do I need a merchant account?", "No, SwapnoPay fully supports Personal, Agent, and Merchant accounts for bKash, Nagad, and Rocket."),
             SupportFaqItem("How fast does automatic matching take?", "Typically 1 to 3 seconds after the mobile operator SMS is received on your Android device."),
             SupportFaqItem("Can I use multiple SIM cards?", "Yes! Dual-SIM Android devices are supported with simultaneous multi-gateway routing."),
@@ -946,7 +937,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 id = "matching",
                 title = "How automatic payment matching works",
                 category = "Automation",
-                content = "SmartPay uses automatic SMS pattern recognition to match incoming mobile payments (bKash, Nagad, Rocket) with merchant orders in real-time.\n\n1. When a customer initiates a payment on your site, an order is created with a unique amount and payment reference.\n2. Once payment is completed, your Android device receives the official gateway SMS.\n3. The SmartPay background processor parses the transaction ID, sender's phone, and exact amount from the SMS.\n4. If all parameters match, the order is instantly marked as PAID and webhook notifications are triggered."
                 content = "SwapnoPay uses automatic SMS pattern recognition to match incoming mobile payments (bKash, Nagad, Rocket) with merchant orders in real-time.\n\n1. When a customer initiates a payment on your site, an order is created with a unique amount and payment reference.\n2. Once payment is completed, your Android device receives the official gateway SMS.\n3. The SwapnoPay background processor parses the transaction ID, sender's phone, and exact amount from the SMS.\n4. If all parameters match, the order is instantly marked as PAID and webhook notifications are triggered."
             ),
             SupportArticleItem(
@@ -1004,44 +994,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val r2Bucket = MutableStateFlow<String>("swapnopay-kyc-docs")
     val r2PublicDomain = MutableStateFlow<String>("https://pub-r2.swapnopay.app")
 
-    fun listenToSystemConfig() {
     fun parseAndApplySystemConfigJson(json: org.json.JSONObject) {
         try {
-            val db = database ?: return
-            db.getReference("platform_owner/system_config")
-                .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                    override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                        if (snapshot.exists()) {
-                            val devPortal = snapshot.child("developer_portal_url").getValue(String::class.java)
-                                ?: snapshot.child("developerPortalUrl").getValue(String::class.java)
-                                ?: "https://developer.swapnopay.app"
-                            val devDocs = snapshot.child("developer_docs_url").getValue(String::class.java)
-                                ?: snapshot.child("developerDocsUrl").getValue(String::class.java)
-                                ?: "https://docs.swapnopay.app/api"
-                            val apiPortal = snapshot.child("api_portal_url").getValue(String::class.java)
-                                ?: snapshot.child("apiPortalUrl").getValue(String::class.java)
-                                ?: "https://developer.swapnopay.app/keys"
-                            val webhookDocs = snapshot.child("webhook_docs_url").getValue(String::class.java)
-                                ?: snapshot.child("webhookDocsUrl").getValue(String::class.java)
-                                ?: "https://docs.swapnopay.app/webhooks"
-                            val hotline = snapshot.child("support_hotline").getValue(String::class.java)
-                                ?: snapshot.child("supportHotline").getValue(String::class.java)
-                                ?: "+880 1794 827103"
-                            val email = snapshot.child("support_email").getValue(String::class.java)
-                                ?: snapshot.child("supportEmail").getValue(String::class.java)
-                                ?: "support@swapnopay.io"
-                            val whatsapp = snapshot.child("support_whatsapp").getValue(String::class.java)
-                                ?: snapshot.child("supportWhatsapp").getValue(String::class.java)
-                                ?: "+8801712963652"
-                            val address = snapshot.child("support_address").getValue(String::class.java)
-                                ?: snapshot.child("supportAddress").getValue(String::class.java)
-                                ?: "Level 14, Banani Tower, Dhaka, Bangladesh"
-                            val hours = snapshot.child("support_hours").getValue(String::class.java)
-                                ?: snapshot.child("supportHours").getValue(String::class.java)
-                                ?: "24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)"
-                            val notice = snapshot.child("system_notice").getValue(String::class.java)
-                                ?: snapshot.child("systemNotice").getValue(String::class.java)
-                                ?: ""
             val current = _systemRemoteConfig.value
             val devPortal = json.optString("developer_portal_url", current.developerPortalUrl)
             val devDocs = json.optString("developer_docs_url", current.developerDocsUrl)
@@ -1055,17 +1009,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val notice = json.optString("system_notice", current.systemNotice)
             val apiDocs = json.optString("api_documentation", current.apiDocumentation)
 
-                            // Parse Video Tutorial
-                            val videoSnap = snapshot.child("video_tutorial")
-                            val video = if (videoSnap.exists()) {
-                                SupportVideoTutorial(
-                                    title = videoSnap.child("title").getValue(String::class.java) ?: "Complete Automatic Matching Walkthrough",
-                                    description = videoSnap.child("description").getValue(String::class.java) ?: "",
-                                    videoUrl = videoSnap.child("videoUrl").getValue(String::class.java).orEmpty(),
-                                    duration = videoSnap.child("duration").getValue(String::class.java) ?: "3:45 min",
-                                    thumbnailUrl = videoSnap.child("thumbnailUrl").getValue(String::class.java) ?: ""
-                                )
-                            } else _systemRemoteConfig.value.videoTutorial
             // Parse video tutorials array
             val videosList = mutableListOf<SupportVideoTutorial>()
             val tutorialsArr = json.optJSONArray("video_tutorials")
@@ -1086,13 +1029,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-                            // Parse FAQs
-                            val faqsList = mutableListOf<SupportFaqItem>()
-                            snapshot.child("faqs").children.forEach { f ->
-                                val q = f.child("question").getValue(String::class.java) ?: ""
-                                val a = f.child("answer").getValue(String::class.java) ?: ""
-                                if (q.isNotBlank()) faqsList.add(SupportFaqItem(q, a))
-                            }
             // Fallback to single video_tutorial if array is empty
             val singleVideo = json.optJSONObject("video_tutorial")?.let { vo ->
                 SupportVideoTutorial(
@@ -1106,26 +1042,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } ?: current.videoTutorial
 
-                            // Parse Guides
-                            val guidesList = mutableListOf<SupportGuideItem>()
-                            snapshot.child("guides").children.forEach { g ->
-                                val t = g.child("title").getValue(String::class.java) ?: ""
-                                val d = g.child("description").getValue(String::class.java) ?: ""
-                                if (t.isNotBlank()) guidesList.add(SupportGuideItem(t, d))
-                            }
             if (videosList.isEmpty() && singleVideo.videoUrl.isNotBlank()) {
                 videosList.add(singleVideo)
             }
 
-                            // Parse Articles
-                            val articlesList = mutableListOf<SupportArticleItem>()
-                            snapshot.child("articles").children.forEach { art ->
-                                val id = art.child("id").getValue(String::class.java) ?: java.util.UUID.randomUUID().toString()
-                                val t = art.child("title").getValue(String::class.java) ?: ""
-                                val cat = art.child("category").getValue(String::class.java) ?: "General"
-                                val c = art.child("content").getValue(String::class.java) ?: ""
-                                if (t.isNotBlank()) articlesList.add(SupportArticleItem(id, t, cat, c))
-                            }
             // Parse FAQs
             val faqsList = mutableListOf<SupportFaqItem>()
             val faqsArr = json.optJSONArray("faqs")
@@ -1138,11 +1058,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-                            // Parse Ticket Categories
-                            val ticketCats = mutableListOf<String>()
-                            snapshot.child("ticket_categories").children.forEach { tc ->
-                                tc.getValue(String::class.java)?.let { if (it.isNotBlank()) ticketCats.add(it) }
-                            }
             // Parse Guides
             val guidesList = mutableListOf<SupportGuideItem>()
             val guidesArr = json.optJSONArray("guides")
@@ -1155,27 +1070,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-                            _systemRemoteConfig.value = SystemRemoteConfig(
-                                developerPortalUrl = devPortal,
-                                developerDocsUrl = devDocs,
-                                apiPortalUrl = apiPortal,
-                                webhookDocsUrl = webhookDocs,
-                                supportHotline = hotline,
-                                supportEmail = email,
-                                supportWhatsapp = whatsapp,
-                                supportAddress = address,
-                                supportHours = hours,
-                                systemNotice = notice,
-                                videoTutorial = video,
-                                faqs = if (faqsList.isNotEmpty()) faqsList else _systemRemoteConfig.value.faqs,
-                                guides = if (guidesList.isNotEmpty()) guidesList else _systemRemoteConfig.value.guides,
-                                articles = if (articlesList.isNotEmpty()) articlesList else _systemRemoteConfig.value.articles,
-                                ticketCategories = if (ticketCats.isNotEmpty()) ticketCats else _systemRemoteConfig.value.ticketCategories,
-                                lastUpdated = System.currentTimeMillis()
-                            )
-                            logFirebaseStatus("Synced remote system CMS & developer links from Admin Panel: $devPortal (FAQs: ${faqsList.size}, Articles: ${articlesList.size})")
-                        }
-                    }
             // Parse Articles
             val articlesList = mutableListOf<SupportArticleItem>()
             val articlesArr = json.optJSONArray("articles")
@@ -1190,10 +1084,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-                    override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
-                        logFirebaseStatus("listenToSystemConfig cancelled: ${error.message}")
-                    }
-                })
             // Parse Ticket Categories
             val ticketCats = mutableListOf<String>()
             val tcArr = json.optJSONArray("ticket_categories")
@@ -1226,215 +1116,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
             logFirebaseStatus("Synced remote system CMS & developer docs from Admin Panel (Videos: ${videosList.size}, Docs length: ${apiDocs.length})")
         } catch (e: Exception) {
-            logFirebaseStatus("listenToSystemConfig error: ${e.message}")
             Log.e("AppViewModel", "parseAndApplySystemConfigJson error: ${e.message}")
         }
     }
 
     fun fetchSystemConfigFromSupabase() {
         viewModelScope.launch {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val response = platformRequest("/v1/merchant/system-config")
                 parseAndApplySystemConfigJson(response.getJSONObject("config"))
             } catch (error: Exception) {
                 logFirebaseStatus("Official support settings could not be loaded: ${error.message}")
-                val active = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-                val url = active?.supabaseUrl?.ifEmpty { null }
-                val anonKey = active?.anonKey?.ifEmpty { null }
-                val token = active?.authSessionToken?.ifEmpty { anonKey } ?: anonKey
-
-                if (!url.isNullOrBlank() && !anonKey.isNullOrBlank()) {
-                    com.example.data.remote.SupabaseClient.fetchRecords(
-                        url = url,
-                        anonKey = anonKey,
-                        token = token ?: anonKey,
-                        tableName = "showcase_config",
-                        selectQuery = "*",
-                        onSuccess = { rows ->
-                            for (i in 0 until rows.length()) {
-                                val row = rows.optJSONObject(i) ?: continue
-                                if (row.optString("key") == "system_config") {
-                                    val v = row.optJSONObject("value") ?: continue
-                                    parseAndApplySystemConfigJson(v)
-                                    break
-                                }
-                            }
-                        },
-                        onFailure = { err ->
-                            Log.w("AppViewModel", "Supabase showcase_config fetch: $err")
-                        }
-                    )
-                }
-            } catch (e: Exception) {
-                Log.w("AppViewModel", "fetchSystemConfigFromSupabase error: ${e.message}")
             }
         }
     }
 
     fun listenToSystemConfig() {
         fetchSystemConfigFromSupabase()
-        try {
-            val db = database ?: return
-            db.getReference("platform_owner/system_config")
-                .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                    override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                        if (snapshot.exists()) {
-                            val devPortal = snapshot.child("developer_portal_url").getValue(String::class.java)
-                                ?: snapshot.child("developerPortalUrl").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.developerPortalUrl
-                            val devDocs = snapshot.child("developer_docs_url").getValue(String::class.java)
-                                ?: snapshot.child("developerDocsUrl").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.developerDocsUrl
-                            val apiPortal = snapshot.child("api_portal_url").getValue(String::class.java)
-                                ?: snapshot.child("apiPortalUrl").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.apiPortalUrl
-                            val webhookDocs = snapshot.child("webhook_docs_url").getValue(String::class.java)
-                                ?: snapshot.child("webhookDocsUrl").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.webhookDocsUrl
-                            val hotline = snapshot.child("support_hotline").getValue(String::class.java)
-                                ?: snapshot.child("supportHotline").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.supportHotline
-                            val email = snapshot.child("support_email").getValue(String::class.java)
-                                ?: snapshot.child("supportEmail").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.supportEmail
-                            val whatsapp = snapshot.child("support_whatsapp").getValue(String::class.java)
-                                ?: snapshot.child("supportWhatsapp").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.supportWhatsapp
-                            val address = snapshot.child("support_address").getValue(String::class.java)
-                                ?: snapshot.child("supportAddress").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.supportAddress
-                            val hours = snapshot.child("support_hours").getValue(String::class.java)
-                                ?: snapshot.child("supportHours").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.supportHours
-                            val notice = snapshot.child("system_notice").getValue(String::class.java)
-                                ?: snapshot.child("systemNotice").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.systemNotice
-                            val apiDocs = snapshot.child("api_documentation").getValue(String::class.java)
-                                ?: _systemRemoteConfig.value.apiDocumentation
-
-                            // Parse Video Tutorials Array
-                            val videoTutorialsList = mutableListOf<SupportVideoTutorial>()
-                            val videosSnap = snapshot.child("video_tutorials")
-                            if (videosSnap.exists()) {
-                                videosSnap.children.forEach { vs ->
-                                    val vidId = vs.child("id").getValue(String::class.java) ?: ""
-                                    val title = vs.child("title").getValue(String::class.java) ?: "Video Guide"
-                                    val desc = vs.child("description").getValue(String::class.java) ?: ""
-                                    val url = vs.child("videoUrl").getValue(String::class.java)
-                                        ?: vs.child("video_url").getValue(String::class.java).orEmpty()
-                                    val dur = vs.child("duration").getValue(String::class.java) ?: "3:00 min"
-                                    val thumb = vs.child("thumbnailUrl").getValue(String::class.java) ?: ""
-                                    val cat = vs.child("category").getValue(String::class.java) ?: "General"
-                                    videoTutorialsList.add(SupportVideoTutorial(vidId, title, desc, url, dur, thumb, cat))
-                                }
-                            }
-
-                            // Single Video Tutorial fallback
-                            val videoSnap = snapshot.child("video_tutorial")
-                            val video = if (videoSnap.exists()) {
-                                SupportVideoTutorial(
-                                    id = "vid_primary",
-                                    title = videoSnap.child("title").getValue(String::class.java) ?: "Complete Automatic Matching Walkthrough",
-                                    description = videoSnap.child("description").getValue(String::class.java) ?: "",
-                                    videoUrl = videoSnap.child("videoUrl").getValue(String::class.java).orEmpty(),
-                                    duration = videoSnap.child("duration").getValue(String::class.java) ?: "3:45 min",
-                                    thumbnailUrl = videoSnap.child("thumbnailUrl").getValue(String::class.java) ?: "",
-                                    category = "General"
-                                )
-                            } else _systemRemoteConfig.value.videoTutorial
-
-                            if (videoTutorialsList.isEmpty() && video.videoUrl.isNotBlank()) {
-                                videoTutorialsList.add(video)
-                            }
-
-                            // Parse FAQs
-                            val faqsList = mutableListOf<SupportFaqItem>()
-                            snapshot.child("faqs").children.forEach { f ->
-                                val q = f.child("question").getValue(String::class.java) ?: ""
-                                val a = f.child("answer").getValue(String::class.java) ?: ""
-                                if (q.isNotBlank()) faqsList.add(SupportFaqItem(q, a))
-                            }
-
-                            // Parse Guides
-                            val guidesList = mutableListOf<SupportGuideItem>()
-                            snapshot.child("guides").children.forEach { g ->
-                                val t = g.child("title").getValue(String::class.java) ?: ""
-                                val d = g.child("description").getValue(String::class.java) ?: ""
-                                if (t.isNotBlank()) guidesList.add(SupportGuideItem(t, d))
-                            }
-
-                            // Parse Articles
-                            val articlesList = mutableListOf<SupportArticleItem>()
-                            snapshot.child("articles").children.forEach { art ->
-                                val id = art.child("id").getValue(String::class.java) ?: java.util.UUID.randomUUID().toString()
-                                val t = art.child("title").getValue(String::class.java) ?: ""
-                                val cat = art.child("category").getValue(String::class.java) ?: "General"
-                                val c = art.child("content").getValue(String::class.java) ?: ""
-                                if (t.isNotBlank()) articlesList.add(SupportArticleItem(id, t, cat, c))
-                            }
-
-                            // Parse Ticket Categories
-                            val ticketCats = mutableListOf<String>()
-                            snapshot.child("ticket_categories").children.forEach { tc ->
-                                tc.getValue(String::class.java)?.let { if (it.isNotBlank()) ticketCats.add(it) }
-                            }
-
-                            _systemRemoteConfig.value = SystemRemoteConfig(
-                                developerPortalUrl = devPortal,
-                                developerDocsUrl = devDocs,
-                                apiPortalUrl = apiPortal,
-                                webhookDocsUrl = webhookDocs,
-                                supportHotline = hotline,
-                                supportEmail = email,
-                                supportWhatsapp = whatsapp,
-                                supportAddress = address,
-                                supportHours = hours,
-                                systemNotice = notice,
-                                videoTutorial = video,
-                                videoTutorials = if (videoTutorialsList.isNotEmpty()) videoTutorialsList else _systemRemoteConfig.value.videoTutorials,
-                                apiDocumentation = apiDocs,
-                                faqs = if (faqsList.isNotEmpty()) faqsList else _systemRemoteConfig.value.faqs,
-                                guides = if (guidesList.isNotEmpty()) guidesList else _systemRemoteConfig.value.guides,
-                                articles = if (articlesList.isNotEmpty()) articlesList else _systemRemoteConfig.value.articles,
-                                ticketCategories = if (ticketCats.isNotEmpty()) ticketCats else _systemRemoteConfig.value.ticketCategories,
-                                lastUpdated = System.currentTimeMillis()
-                            )
-                            logFirebaseStatus("Synced remote system CMS & developer links from Admin Panel: $devPortal (FAQs: ${faqsList.size}, Articles: ${articlesList.size})")
-                        }
-                    }
-
-                    override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
-                        logFirebaseStatus("listenToSystemConfig cancelled: ${error.message}")
-                    }
-                })
-        } catch (e: Exception) {
-            logFirebaseStatus("listenToSystemConfig error: ${e.message}")
-        }
     }
 
     private var supportRefreshJob: kotlinx.coroutines.Job? = null
     val lastSavedSupportTicketId = MutableStateFlow("")
 
     fun submitSupportTicket(category: String, subject: String, description: String, onComplete: ((Boolean) -> Unit)? = null) {
-        val profile = _activeProfile.value
-        val ticket = SupportTicket(
-            merchantId = profile.id,
-            businessName = profile.businessName,
-            email = profile.email,
-            phone = profile.phone,
-            category = category,
-            subject = subject,
-            description = description
-        )
-        try {
-            val db = database
-            if (db != null) {
-                db.getReference("platform_owner/tickets").child(ticket.id).setValue(ticket)
-                db.getReference("merchants").child(profile.id).child("support_tickets").child(ticket.id).setValue(ticket)
-                logFirebaseStatus("Support Ticket #${ticket.id.takeLast(6)} submitted to Firebase Platform Owner inbox.")
-            } else {
-                logFirebaseStatus("Support Ticket #${ticket.id.takeLast(6)} logged locally (Firebase offline).")
         viewModelScope.launch {
             try {
                 val saved = platformRequest("/v1/merchant/support/tickets", org.json.JSONObject()
@@ -1446,24 +1150,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 logFirebaseStatus("Support ticket was not saved: ${error.message}")
                 onComplete?.invoke(false)
             }
-            sendLocalNotification("Ticket Submitted", "Ticket #${ticket.id.takeLast(6)} received. Our support team is on it.")
-            lastSavedSupportTicketId.value = ticket.id
-            logFirebaseEvent("submit_support_ticket", Bundle().apply {
-                putString("category", category)
-                putString("ticket_id", ticket.id)
-            })
-            onComplete?.invoke(true)
-        } catch (e: Exception) {
-            logFirebaseStatus("Failed to submit support ticket: ${e.message}")
-            onComplete?.invoke(false)
         }
     }
 
     fun submitFeatureRequest(title: String, category: String, description: String, priority: String, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
-            val profile = _activeProfile.value
-            logFirebaseStatus("Feature Request submitted: $title ($category, Priority: $priority) by ${profile.businessName}")
-            onComplete?.invoke(true)
             try {
                 platformRequest("/v1/merchant/support/features", org.json.JSONObject().put("title", title)
                     .put("category", category).put("description", description).put("priority", priority))
@@ -1475,8 +1166,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun listenToMerchantSupportTickets() {
-        // Active support ticket listener
     private suspend fun refreshPlatformSupport() {
         val merchantId = _activeProfile.value.id
         val response = platformRequest("/v1/merchant/support")
@@ -1503,19 +1192,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendSupportChatMessage(messageText: String) {
         if (messageText.isBlank()) return
-        val profile = _activeProfile.value
-        val newMsg = SupportChatMessage(
-            merchantId = profile.id,
-            sender = "MERCHANT",
-            message = messageText.trim()
-        )
-        _supportChatList.value = _supportChatList.value + newMsg
-        try {
-            val db = database
-            if (db != null) {
-                db.getReference("platform_owner/live_chats").child(profile.id).child(newMsg.id).setValue(newMsg)
-                db.getReference("merchants").child(profile.id).child("support_chat").child(newMsg.id).setValue(newMsg)
-                logFirebaseStatus("Live Chat message sent to Platform Owner.")
         viewModelScope.launch {
             try {
                 platformRequest("/v1/merchant/support/messages", org.json.JSONObject().put("message", messageText.trim()))
@@ -1524,29 +1200,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 logFirebaseStatus("Support message was not sent: ${error.message}")
                 sendLocalNotification("Message not sent", "Please retry your support message.")
             }
-        } catch (e: Exception) {
-            logFirebaseStatus("Live Chat message stored locally: ${e.message}")
         }
     }
 
     fun listenToSupportChatFromPlatformOwner() {
-        try {
-            val profileId = _activeProfile.value.id
-            database?.getReference("merchants")?.child(profileId)?.child("support_chat")
-                ?.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
-                    override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
-                        val messages = mutableListOf<SupportChatMessage>()
-                        snapshot.children.forEach { child ->
-                            child.getValue(SupportChatMessage::class.java)?.let { messages.add(it) }
-                        }
-                        if (messages.isNotEmpty()) {
-                            _supportChatList.value = messages.sortedBy { it.timestamp }
-                        }
-                    }
-                    override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
-                })
-        } catch (e: Exception) {
-            Log.d("SupportChat", "Listener error: ${e.message}")
         if (supportRefreshJob?.isActive == true) return
         supportRefreshJob = viewModelScope.launch {
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -1634,14 +1291,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     logFirebaseStatus("Cloudflare R2 KYC document record created in Firebase for $docType")
                 }
 
-                // Update local profile KYC state to PENDING
-                val updated = _activeProfile.value.copy(kycStatus = "PENDING")
-                updateMerchantProfile(updated)
                 // Cloudflare R2 KYC document record created in Firebase for docType
                 // Note: merchant profile KYC status remains UNVERIFIED until full face verification completes in submitFullKycVerification
 
-                logFirebaseStatus("Cloudflare R2 KYC upload submitted ($docType, ${imageBytes.size} bytes). Status: PENDING_REVIEW")
-                sendLocalNotification("KYC Document Uploaded", "Your $docType has been securely stored in Cloudflare R2 and submitted for platform review.")
                 logFirebaseStatus("Cloudflare R2 KYC upload submitted ($docType, ${imageBytes.size} bytes). Ready for biometric verification.")
                 sendLocalNotification("KYC Document Uploaded", "Your $docType has been securely stored. Complete face verification to submit.")
                 onUploaded?.invoke(publicUrl)
@@ -1656,90 +1308,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         nidNumber: String, nidName: String, nidDob: String,
         frontBytes: ByteArray, backBytes: ByteArray, selfieBytes: ByteArray,
         ocrRawText: String = "", onComplete: ((Boolean, String?) -> Unit)? = null
-        nidNumber: String,
-        nidName: String,
-        nidDob: String,
-        frontBytes: ByteArray,
-        backBytes: ByteArray,
-        selfieBytes: ByteArray,
-        ocrRawText: String = "",
-        onComplete: ((Boolean, String?) -> Unit)? = null
     ) {
         viewModelScope.launch {
-        val merchantId = _activeProfile.value.id
-        val context = getApplication<android.app.Application>().applicationContext
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 require(frontBytes.isNotEmpty() && backBytes.isNotEmpty() && selfieBytes.isNotEmpty()) {
                     "Both NID images and live face capture are required."
-                // 1. Save all 3 authentic images to local app storage
-                val kycDir = java.io.File(context.filesDir, "kyc_documents").apply { mkdirs() }
-                val frontFile = java.io.File(kycDir, "nid_front_${merchantId}_${System.currentTimeMillis()}.jpg")
-                val backFile = java.io.File(kycDir, "nid_back_${merchantId}_${System.currentTimeMillis()}.jpg")
-                val selfieFile = java.io.File(kycDir, "live_selfie_${merchantId}_${System.currentTimeMillis()}.jpg")
-
-                if (frontBytes.isNotEmpty()) frontFile.outputStream().use { it.write(frontBytes) }
-                if (backBytes.isNotEmpty()) backFile.outputStream().use { it.write(backBytes) }
-                if (selfieBytes.isNotEmpty()) selfieFile.outputStream().use { it.write(selfieBytes) }
-
-                // 2. Generate cloud storage URLs (Cloudflare R2 / Supabase Storage)
-                val frontFileName = "kyc/${merchantId}/nid_front_${System.currentTimeMillis()}.jpg"
-                val backFileName = "kyc/${merchantId}/nid_back_${System.currentTimeMillis()}.jpg"
-                val selfieFileName = "kyc/${merchantId}/live_selfie_${System.currentTimeMillis()}.jpg"
-
-                val frontUrl = "${r2PublicDomain.value.trimEnd('/')}/$frontFileName"
-                val backUrl = "${r2PublicDomain.value.trimEnd('/')}/$backFileName"
-                val selfieUrl = "${r2PublicDomain.value.trimEnd('/')}/$selfieFileName"
-
-                // 3. Submit directly to Central SwapnoPay Backend API with Base64 payloads & URLs
-                try {
-                    val frontB64 = if (frontBytes.isNotEmpty()) android.util.Base64.encodeToString(frontBytes, android.util.Base64.NO_WRAP) else ""
-                    val backB64 = if (backBytes.isNotEmpty()) android.util.Base64.encodeToString(backBytes, android.util.Base64.NO_WRAP) else ""
-                    val selfieB64 = if (selfieBytes.isNotEmpty()) android.util.Base64.encodeToString(selfieBytes, android.util.Base64.NO_WRAP) else ""
-
-                    val kycPayload = org.json.JSONObject().apply {
-                        put("merchant_id", merchantId)
-                        put("nid_number", nidNumber)
-                        put("nid_name", nidName)
-                        put("nid_dob", nidDob)
-                        put("nid_front_url", frontUrl)
-                        put("nid_back_url", backUrl)
-                        put("face_photo_url", selfieUrl)
-                        if (frontB64.isNotEmpty()) put("front_base64", frontB64)
-                        if (backB64.isNotEmpty()) put("back_base64", backB64)
-                        if (selfieB64.isNotEmpty()) put("selfie_base64", selfieB64)
-                        put("liveness_passed", true)
-                        put("ocr_raw_text", ocrRawText)
-                    }.toString()
-
-                    val backendBase = "https://api.swapnopay.top"
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-
-                    val backendReq = okhttp3.Request.Builder()
-                        .url("$backendBase/v1/kyc/submit")
-                        .addHeader("Content-Type", "application/json")
-                        .post(kycPayload.toRequestBody("application/json".toMediaType()))
-                        .build()
-
-                    try {
-                        client.newCall(backendReq).execute().use { _ -> }
-                    } catch (primaryErr: Exception) {
-                        // Local development fallback
-                        try {
-                            val localReq = okhttp3.Request.Builder()
-                                .url("http://10.0.2.2:4000/v1/kyc/submit")
-                                .addHeader("Content-Type", "application/json")
-                                .post(kycPayload.toRequestBody("application/json".toMediaType()))
-                                .build()
-                            client.newCall(localReq).execute().use { _ -> }
-                        } catch (_: Exception) {}
-                    }
-                } catch (beErr: Exception) {
-                    android.util.Log.w("AppViewModel", "Backend KYC submit notice: ${beErr.message}")
                 }
                 val payload = org.json.JSONObject().put("nid_number", nidNumber.trim())
                     .put("nid_name", nidName).put("nid_dob", nidDob).put("liveness_passed", true)
@@ -1756,65 +1329,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 onComplete?.invoke(true, null)
             } catch (error: Exception) {
                 onComplete?.invoke(false, error.message ?: "KYC could not be saved. Please retry.")
-
-                // 4. Update Supabase Database merchants table directly
-                val profile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-                if (profile != null && profile.supabaseUrl.isNotBlank() && profile.anonKey.isNotBlank()) {
-                    com.example.data.remote.SupabaseClient.submitKycVerification(
-                        url = profile.supabaseUrl,
-                        anonKey = profile.anonKey,
-                        token = profile.authSessionToken.ifEmpty { profile.anonKey },
-                        merchantId = merchantId,
-                        nidNumber = nidNumber,
-                        nidName = nidName,
-                        nidDob = nidDob,
-                        frontUrl = frontUrl,
-                        backUrl = backUrl,
-                        selfieUrl = selfieUrl,
-                        onSuccess = {
-                            logFirebaseStatus("KYC submitted to Supabase merchants table successfully.")
-                        },
-                        onFailure = { err ->
-                            logFirebaseStatus("Supabase merchants KYC update notice: $err")
-                        }
-                    )
-                }
-
-                // 5. Update Firebase RTDB platform_owner verification node
-                val db = database
-                if (db != null) {
-                    val kycSubmission = mapOf(
-                        "merchant_id" to merchantId,
-                        "nid_number" to nidNumber,
-                        "nid_name" to nidName,
-                        "nid_dob" to nidDob,
-                        "front_url" to frontUrl,
-                        "back_url" to backUrl,
-                        "selfie_url" to selfieUrl,
-                        "liveness_passed" to true,
-                        "front_size_bytes" to frontBytes.size,
-                        "back_size_bytes" to backBytes.size,
-                        "selfie_size_bytes" to selfieBytes.size,
-                        "submitted_at" to System.currentTimeMillis(),
-                        "status" to "PENDING_REVIEW"
-                    )
-                    db.getReference("platform_owner/kyc_submissions").child(merchantId).setValue(kycSubmission)
-                }
-
-                // 6. Update local Room DB Profile with PENDING status
-                val updatedProfile = _activeProfile.value.copy(kycStatus = "PENDING", kycRejectionReason = "")
-                updateMerchantProfile(updatedProfile)
-
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    logFirebaseStatus("Full KYC & Biometric Face Scan submitted. Status: PENDING_REVIEW")
-                    sendLocalNotification("KYC Submitted", "Your NID and face biometric scan have been submitted to the platform admin for verification.")
-                    onComplete?.invoke(true, null)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("AppViewModel", "submitFullKycVerification failed: ${e.message}")
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onComplete?.invoke(false, e.message)
-                }
             }
         }
     }
@@ -1824,9 +1338,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshMerchantKycStatus(onComplete: ((String, String) -> Unit)? = null) {
         viewModelScope.launch {
             isRefreshingKyc.value = true
-        val merchantId = _activeProfile.value.id
-        isRefreshingKyc.value = true
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val result = checkMerchantAccountOnBackend(_userEmail.value.orEmpty())
                     ?: error("Platform account could not be loaded. Please retry.")
@@ -1839,37 +1350,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } catch (error: Exception) {
                 logFirebaseStatus("KYC status could not be refreshed: ${error.message}")
             } finally { isRefreshingKyc.value = false }
-                val profile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-                if (profile != null && profile.supabaseUrl.isNotBlank() && profile.anonKey.isNotBlank()) {
-                    com.example.data.remote.SupabaseClient.fetchMerchantKycStatus(
-                        url = profile.supabaseUrl,
-                        anonKey = profile.anonKey,
-                        token = profile.authSessionToken.ifEmpty { profile.anonKey },
-                        merchantId = merchantId,
-                        onSuccess = { status, reason, nidNum, _, _ ->
-                            val updated = _activeProfile.value.copy(
-                                kycStatus = status.uppercase(),
-                                kycRejectionReason = reason,
-                                nidNumber = if (nidNum.isNotBlank()) nidNum else _activeProfile.value.nidNumber
-                            )
-                            updateMerchantProfile(updated)
-                            logFirebaseStatus("Refreshed KYC status from Supabase: $status (Reason: $reason)")
-                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                isRefreshingKyc.value = false
-                                onComplete?.invoke(status, reason)
-                            }
-                        },
-                        onFailure = { err ->
-                            logFirebaseStatus("Fetch KYC status notice: $err")
-                            isRefreshingKyc.value = false
-                        }
-                    )
-                } else {
-                    isRefreshingKyc.value = false
-                }
-            } catch (e: Exception) {
-                isRefreshingKyc.value = false
-            }
         }
     }
 
@@ -1963,7 +1443,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val platformId = "00000000-0000-0000-0000-000000000001"
         val existing = repository.observeSupabaseProfiles().firstOrNull()?.find { it.id == platformId }
         if (existing != null && existing.supabaseUrl.trimEnd('/') == PLATFORM_SUPABASE_URL && existing.anonKey.isNotBlank()) {
-        if (existing != null && existing.supabaseUrl.isNotBlank() && existing.anonKey.isNotBlank()) {
             return existing
         }
         val defaultProfile = com.example.data.local.SupabaseProfileEntity(
@@ -1973,22 +1452,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             anonKey = PLATFORM_SUPABASE_ANON_KEY,
             serviceRoleKey = "",
             isActive = false
-            isActive = true
         )
         repository.insertSupabaseProfile(defaultProfile)
         return defaultProfile
     }
 
-    suspend fun getOrCreateActiveSupabaseProfile(): com.example.data.local.SupabaseProfileEntity {
-        val existing = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-        if (existing != null && existing.supabaseUrl.isNotBlank() && existing.anonKey.isNotBlank()) {
-            _activeSupabaseProfile.value = existing
-            return existing
-        }
-        val defaultProfile = getOrCreatePlatformSupabaseProfile()
-        _activeSupabaseProfile.value = defaultProfile
-        return defaultProfile
-    }
+
 
     data class MerchantBackendCheckResult(
         val exists: Boolean,
@@ -2007,7 +1476,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val projectRef: String,
         val kycStatus: String = "UNVERIFIED", val kycRejectionReason: String = "",
         val nidNumber: String = "", val nidFrontUrl: String = "", val nidBackUrl: String = ""
-        val projectRef: String
     )
 
     private val platformHttpClient = okhttp3.OkHttpClient.Builder()
@@ -2015,20 +1483,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(45, java.util.concurrent.TimeUnit.SECONDS).build()
     private val platformSessionMutex = kotlinx.coroutines.sync.Mutex()
-    suspend fun checkMerchantAccountOnBackend(email: String, merchantId: String? = null): MerchantBackendCheckResult? {
-        val cleanEmail = email.trim().lowercase()
-        val candidateUrls = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000", "http://10.0.2.2:5000")
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            for (baseUrl in candidateUrls) {
-                try {
-                    val url = java.net.URL("$baseUrl/v1/oauth/check-user")
-                    val conn = url.openConnection() as java.net.HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                    conn.setRequestProperty("Accept", "application/json")
-                    conn.connectTimeout = 4000
-                    conn.readTimeout = 4000
-                    conn.doOutput = true
 
     private suspend fun platformRequest(path: String, payload: org.json.JSONObject? = null): org.json.JSONObject {
         val token = platformSessionMutex.withLock {
@@ -2054,54 +1508,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val body = response.body?.string().orEmpty()
                 val json = runCatching { org.json.JSONObject(body) }.getOrElse {
                     error("Platform returned HTTP ${response.code}; please retry.")
-                    val payload = org.json.JSONObject().apply {
-                        put("email", cleanEmail)
-                        if (!merchantId.isNullOrBlank()) put("merchant_id", merchantId)
-                    }
-                    conn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
-
-                    if (conn.responseCode in 200..299) {
-                        val respStr = conn.inputStream.bufferedReader().readText()
-                        val json = org.json.JSONObject(respStr)
-
-                        val exists = json.optBoolean("exists", false)
-                        val isNew = json.optBoolean("is_new", true)
-                        val isOnboarded = json.optBoolean("is_onboarded", false)
-
-                        val merchantObj = json.optJSONObject("merchant")
-                        val dbObj = json.optJSONObject("database")
-
-                        val hasOwnDb = dbObj?.optBoolean("has_own_database", false) ?: false
-                        val dbUrl = dbObj?.optString("supabase_url", "") ?: ""
-                        val dbAnon = dbObj?.optString("supabase_anon_key", "") ?: ""
-                        val projRef = dbObj?.optString("project_ref", "") ?: ""
-
-                        val bName = merchantObj?.optString("business_name", "") ?: ""
-                        val ph = merchantObj?.optString("phone", "") ?: ""
-                        val bType = merchantObj?.optString("business_type", "Retail Store") ?: "Retail Store"
-                        val mId = merchantObj?.optString("id", "") ?: (merchantId ?: "")
-                        val photo = merchantObj?.optString("photo_url", "") ?: ""
-                        val holder = merchantObj?.optString("account_holder", "") ?: bName
-
-                        return@withContext MerchantBackendCheckResult(
-                            exists = exists,
-                            isNew = isNew,
-                            isOnboarded = isOnboarded,
-                            merchantId = mId,
-                            businessName = bName,
-                            email = cleanEmail,
-                            phone = ph,
-                            businessType = bType,
-                            photoUrl = photo,
-                            accountHolder = holder,
-                            hasOwnDatabase = hasOwnDb && dbUrl.isNotBlank() && dbAnon.isNotBlank(),
-                            supabaseUrl = dbUrl,
-                            supabaseAnonKey = dbAnon,
-                            projectRef = projRef
-                        )
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("AppViewModel", "checkMerchantAccountOnBackend notice for $baseUrl: ${e.message}")
                 }
                 if (!response.isSuccessful || !json.optBoolean("ok")) {
                     error(json.optString("error", "Platform request failed (HTTP ${response.code})."))
@@ -2166,8 +1572,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         fetchSystemConfigFromSupabase()
         listenToSupportChatFromPlatformOwner()
     }
-        val cleanEmail = result.email.ifBlank { _userEmail.value ?: "" }
-        val effectiveUid = result.merchantId.ifBlank { _activeProfile.value.id }
 
     suspend fun completeMerchantOnboarding(profile: MerchantProfileEntity, databaseUrl: String, databaseKey: String): Boolean {
         return try {
@@ -2182,28 +1586,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } catch (error: Exception) {
             systemTestError.value = "Setup could not be completed: ${error.message}"
             false
-        val currentProfile = _activeProfile.value
-        val updatedProfile = currentProfile.copy(
-            id = effectiveUid,
-            businessName = if (result.businessName.isNotBlank()) result.businessName else currentProfile.businessName,
-            email = cleanEmail,
-            phone = if (result.phone.isNotBlank()) result.phone else currentProfile.phone,
-            businessType = if (result.businessType.isNotBlank()) result.businessType else currentProfile.businessType,
-            accountHolder = if (result.accountHolder.isNotBlank()) result.accountHolder else (if (result.businessName.isNotBlank()) result.businessName else currentProfile.accountHolder),
-            photoUrl = if (result.photoUrl.isNotBlank()) result.photoUrl else currentProfile.photoUrl
-        )
-        _activeProfile.value = updatedProfile
-        repository.insertMerchantProfile(updatedProfile)
-        setUserEmail(cleanEmail)
-
-        // Configure merchant's OWN provisioned database
-        if (result.hasOwnDatabase && result.supabaseUrl.isNotBlank() && result.supabaseAnonKey.isNotBlank()) {
-            logFirebaseStatus("Connecting merchant's own provisioned database: ${result.supabaseUrl}")
-            connectSupabase(
-                url = result.supabaseUrl,
-                anonKey = result.supabaseAnonKey,
-                name = updatedProfile.businessName
-            )
         }
     }
 
@@ -2211,15 +1593,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         merchantId: String, email: String, businessName: String, phone: String,
         businessType: String = "Retail Store", website: String = "", photoUrl: String = "",
         supabaseUrl: String = "", supabaseAnonKey: String = ""
-        merchantId: String,
-        email: String,
-        businessName: String,
-        phone: String,
-        businessType: String = "Retail Store",
-        website: String = "",
-        photoUrl: String = "",
-        supabaseUrl: String = "",
-        supabaseAnonKey: String = ""
     ) {
         viewModelScope.launch {
             try {
@@ -2231,37 +1604,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } catch (error: Exception) {
                 systemTestError.value = "Business profile was not saved to admin: ${error.message}. Retry setup sync."
                 logFirebaseStatus(systemTestError.value.orEmpty())
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val candidateUrls = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000")
-            for (baseUrl in candidateUrls) {
-                try {
-                    val url = java.net.URL("$baseUrl/v1/oauth/sync-merchant-setup")
-                    val conn = url.openConnection() as java.net.HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                    conn.connectTimeout = 4000
-                    conn.readTimeout = 4000
-                    conn.doOutput = true
-
-                    val payload = org.json.JSONObject().apply {
-                        put("merchant_id", merchantId)
-                        put("email", email.trim().lowercase())
-                        put("business_name", businessName)
-                        put("phone", phone)
-                        put("business_type", businessType)
-                        put("website", website)
-                        put("photo_url", photoUrl)
-                        put("supabase_url", supabaseUrl)
-                        put("supabase_anon_key", supabaseAnonKey)
-                    }
-                    conn.outputStream.bufferedWriter().use { it.write(payload.toString()) }
-                    if (conn.responseCode in 200..299) {
-                        logFirebaseStatus("Merchant setup & own database successfully synced to Admin DB.")
-                        break
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.w("AppViewModel", "syncMerchantSetupToBackend notice ($baseUrl): ${e.message}")
-                }
             }
         }
     }
@@ -2270,65 +1612,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
-            val databaseProfile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            if (databaseProfile?.supabaseUrl?.isNotBlank() == true && databaseProfile.anonKey.isNotBlank()) {
-                _activeSupabaseProfile.value = databaseProfile
-                val authenticated = authenticateSupabaseProfile(email, password, register = false)
-            // 1. Primary: Authenticate user against central Platform Supabase
-            val platformProfile = getOrCreatePlatformSupabaseProfile()
-            var session: com.example.data.remote.SupabaseClient.AuthSession? = null
-            var failure: String? = null
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.example.data.remote.SupabaseClient.signIn(
-                    platformProfile.supabaseUrl,
-                    platformProfile.anonKey,
-                    email.trim(),
-                    password,
-                    onSuccess = { session = it },
-                    onFailure = { failure = it }
-                )
-            }
-            // 2. Secondary fallback: check connected merchant database if different
-            val active = _activeSupabaseProfile.value
-            if (session == null && active != null && active.supabaseUrl.isNotBlank() && !active.supabaseUrl.contains("tldubojeokgyoclxnzkb")) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.example.data.remote.SupabaseClient.signIn(
-                        active.supabaseUrl,
-                        active.anonKey,
-                        email.trim(),
-                        password,
-                        onSuccess = { session = it },
-                        onFailure = { if (failure == null) failure = it }
-                    )
-                }
-            }
-            if (session != null) {
-                val authenticatedSession = session!!
-                val cleanEmail = authenticatedSession.email.ifBlank { email.trim() }
-                val updatedPlatform = platformProfile.copy(
-                    authEmail = cleanEmail,
-                    authSessionToken = authenticatedSession.accessToken,
-                    authRefreshToken = authenticatedSession.refreshToken,
-                    authTokenExpiresAt = authenticatedSession.expiresAtMillis
-                )
-                repository.insertSupabaseProfile(updatedPlatform)
-                saveEncryptedSessionToken(cleanEmail, authenticatedSession.userId, "Supabase In-App Auth")
-                setUserEmail(cleanEmail)
-                logFirebaseEvent("login_success", Bundle().apply { putString("provider", "supabase") })
-
-                // 3. Query Admin DB: Check if merchant exists, is onboarded, and has own database
-                logFirebaseStatus("Checking Admin DB for merchant account: $cleanEmail...")
-                val check = checkMerchantAccountOnBackend(cleanEmail, authenticatedSession.userId)
-
-                _isAuthenticating.value = false
-                if (authenticated) {
-                    setUserEmail(email)
-                    logFirebaseEvent("login_success", Bundle().apply { putString("provider", "supabase") })
-                    onSuccess()
-                } else {
-                    val message = "Supabase sign-in failed. Check the email, password, and confirmation status."
-                    _authError.value = message
-                    onFailure(message)
             try {
                 localAccountReady.await()
                 val platform = getOrCreatePlatformSupabaseProfile()
@@ -2359,52 +1642,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         repository.insertSupabaseProfile(connected)
                         _activeSupabaseProfile.value = connected
                         scheduleSupabaseSessionRefresh(connected)
-
-                if (check != null) {
-                    // Pre-fill shop name, phone number, and related data fetched from admin
-                    if (check.businessName.isNotBlank()) {
-                        _onboardingBusinessName.value = check.businessName
                     }
-                    if (check.phone.isNotBlank()) {
-                        _onboardingPhone.value = check.phone
-                    }
-                    if (check.supabaseUrl.isNotBlank()) {
-                        _supabaseUrlInput.value = check.supabaseUrl
-                    }
-                    if (check.supabaseAnonKey.isNotBlank()) {
-                        _supabaseAnonKeyInput.value = check.supabaseAnonKey
-                    }
-                    applyRestoredMerchantSetup(check)
                 }
-                return@launch
-
-                if (check != null && check.isOnboarded && check.hasOwnDatabase) {
-                    // Existing onboarded merchant with own database -> configure database & route to Dashboard
-                    logFirebaseStatus("Existing merchant confirmed in Admin DB: ${check.businessName} (Own DB: ${check.supabaseUrl})")
-                    setOnboarded(true)
-                    val isBiometricLocked = _isBiometricLocked.value
-                    if (isBiometricLocked) {
-                        navigateTo("LockScreen")
-                    } else {
-                        navigateTo("Main")
-                    }
-                } else {
-                    // Incomplete onboarding or missing own database -> route to Onboarding with pre-filled admin details
-                    logFirebaseStatus("Merchant setup required. Navigating to Onboarding with pre-filled admin data.")
-                    setOnboarded(false)
-                    navigateTo("Onboarding")
-                }
-                onSuccess()
-            } else {
-                _isAuthenticating.value = false
-                val message = failure ?: "Supabase sign-in failed. Check your email and password, or verify your account email."
-                _authError.value = message
-                onFailure(message)
-            }
-            _isAuthenticating.value = false
-            val message = "Complete the one-time merchant database setup before signing in."
-            _authError.value = message
-            onFailure(message)
                 setOnboarded(account.isOnboarded)
                 navigateTo(if (!account.isOnboarded) "Onboarding" else if (_isBiometricLocked.value) "LockScreen" else "Main")
                 onSuccess()
@@ -2419,118 +1658,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fetchRegisteredMerchantsFromSupabase() {
         viewModelScope.launch {
-            val profile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            if (profile == null || profile.supabaseUrl.isBlank() || profile.anonKey.isBlank()) {
-                logFirebaseStatus("Supabase credentials missing. Using local profile for merchant registry.")
-                registeredMerchantsFromSupabase.value = listOf(activeProfile.value)
-                return@launch
-            }
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.example.data.remote.SupabaseClient.fetchRecords(
-                    url = profile.supabaseUrl,
-                    anonKey = profile.anonKey,
-                    token = profile.authSessionToken.ifEmpty { profile.anonKey },
-                    tableName = "merchants",
-                    selectQuery = "*",
-                    onSuccess = { jsonArray ->
-                        val list = mutableListOf<MerchantProfileEntity>()
-                        for (i in 0 until jsonArray.length()) {
-                            val obj = jsonArray.optJSONObject(i) ?: continue
-                            val merchant = MerchantProfileEntity(
-                                id = obj.optString("id", obj.optString("user_id", "merch_$i")),
-                                businessName = obj.optString("business_name", obj.optString("name", "SwapnoPay Merchant #$i")),
-                                email = obj.optString("email", "merchant$i@swapnopay.bd"),
-                                phone = obj.optString("phone", "+8801700000000"),
-                                businessType = obj.optString("business_type", "Retail Store"),
-                                website = obj.optString("website", "https://swapnopay.bd"),
-                                primaryBank = obj.optString("primary_bank", "bKash / Nagad Merchant"),
-                                accountHolder = obj.optString("account_holder", "Owner"),
-                                accountNumber = obj.optString("account_number", obj.optString("phone", "")),
-                                kycStatus = obj.optString("kyc_status", obj.optString("status", "VERIFIED")).uppercase(),
-                                photoUrl = obj.optString("photo_url", "")
-                                photoUrl = obj.optString("photo_url", ""),
-                                kycRejectionReason = obj.optString("kyc_rejection_reason", "")
-                            )
-                            list.add(merchant)
-                        }
-                        if (list.isEmpty()) {
-                            list.add(activeProfile.value)
-                        }
-                        registeredMerchantsFromSupabase.value = list
-                        logFirebaseStatus("Fetched ${list.size} registered merchants from Supabase cloud database.")
-                    },
-                    onFailure = { error ->
-                        logFirebaseStatus("Fetch merchants failed ($error). Using active profile fallback.")
-                        registeredMerchantsFromSupabase.value = listOf(activeProfile.value)
-                    }
-                )
-            }
             val account = checkMerchantAccountOnBackend(_userEmail.value.orEmpty()) ?: return@launch
             applyRestoredMerchantSetup(account)
             registeredMerchantsFromSupabase.value = listOf(_activeProfile.value)
         }
     }
 
-    fun loginWithOAuthProvider(context: android.content.Context, provider: String) {
-    fun loginWithOAuthProvider(
-        context: android.content.Context,
-        provider: String,
-        onDirectSuccess: (() -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            val databaseProfile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            val supabaseUrl = databaseProfile?.supabaseUrl?.trimEnd('/') ?: "https://swapnopay.supabase.co"
-            _isAuthenticating.value = true
-            _authError.value = null
-            // Social Auth (Google, Facebook) must always run against SwapnoPay Platform Supabase
-            val authBaseUrl = PLATFORM_SUPABASE_URL
-            val anonKey = PLATFORM_SUPABASE_ANON_KEY
-            val redirectTo = "swapnopay://auth-callback"
-            val oauthEndpoint = "$supabaseUrl/auth/v1/authorize?provider=$provider&redirect_to=${java.net.URLEncoder.encode(redirectTo, "UTF-8")}"
-            val oauthEndpoint = "$authBaseUrl/auth/v1/authorize?provider=$provider&redirect_to=${java.net.URLEncoder.encode(redirectTo, "UTF-8")}"
-            try {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(oauthEndpoint))
-                context.startActivity(intent)
-                logFirebaseStatus("Launched $provider OAuth sign-in via Supabase Auth.")
-                logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
-                // Pre-flight check if provider is active on Platform Supabase
-                val isProviderActive = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    try {
-                        val client = okhttp3.OkHttpClient.Builder()
-                            .followRedirects(false)
-                            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-                            .build()
-                        val checkReq = okhttp3.Request.Builder()
-                            .url(oauthEndpoint)
-                            .header("apikey", anonKey)
-                            .get()
-                            .build()
-                        client.newCall(checkReq).execute().use { resp ->
-                            resp.isRedirect || (resp.code != 400 && resp.code != 404)
-                        }
-                    } catch (e: Exception) {
-                        false
-                    }
-                }
-
-                if (isProviderActive) {
-                    logFirebaseStatus("In-app $provider social authentication selected.")
-                    logFirebaseEvent("login_oauth_start", android.os.Bundle().apply { putString("provider", provider) })
-                    performDirectSocialLogin(provider, onDirectSuccess)
-                } else {
-                    logFirebaseStatus("$provider OAuth fallback to direct sign-in.")
-                    performDirectSocialLogin(provider, onDirectSuccess)
-                }
-            } catch (e: Exception) {
-                _authError.value = "Unable to open browser for $provider sign-in: ${e.message}"
-                android.widget.Toast.makeText(context, "Error opening browser for $provider login", android.widget.Toast.LENGTH_SHORT).show()
-                _authError.value = "Sign-in error for $provider: ${e.message}"
-                performDirectSocialLogin(provider, onDirectSuccess)
-            } finally {
-                _isAuthenticating.value = false
-            }
-        }
     fun loginWithOAuthProvider(context: android.content.Context, provider: String, onDirectSuccess: (() -> Unit)? = null) {
         try {
             val providerTag = provider.lowercase()
@@ -2550,241 +1683,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun performDirectSocialLogin(provider: String, onDirectSuccess: (() -> Unit)? = null) {
         loginWithOAuthProvider(getApplication(), provider, onDirectSuccess)
-        val providerTag = if (provider.equals("google", ignoreCase = true)) "google" else "facebook"
-        val domain = if (providerTag == "google") "gmail.com" else "facebook.com"
-        val currentEmail = _userEmail.value?.takeIf { it.isNotBlank() && it.contains("@") }
-            ?: "${providerTag}_merchant_${System.currentTimeMillis().toString().takeLast(6)}@$domain"
-        val merchantName = if (providerTag == "google") "Google Merchant" else "Facebook Merchant"
-        performProductionSocialLogin(
-            context = getApplication(),
-            provider = provider,
-            email = currentEmail,
-            name = merchantName,
-            onDirectSuccess = onDirectSuccess
-        )
     }
 
     fun performProductionSocialLogin(context: android.content.Context, provider: String, email: String, name: String,
         avatarUrl: String = "", idToken: String = "", onDirectSuccess: (() -> Unit)? = null) {
         loginWithOAuthProvider(context, provider, onDirectSuccess)
-    fun performProductionSocialLogin(
-        context: android.content.Context,
-        provider: String,
-        email: String,
-        name: String,
-        avatarUrl: String = "",
-        idToken: String = "",
-        onDirectSuccess: (() -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            _isAuthenticating.value = true
-            _authError.value = null
-            val providerTag = if (provider.equals("google", ignoreCase = true)) "google" else "facebook"
-            val providerName = if (providerTag == "google") "Google" else "Facebook"
-            val cleanEmail = email.trim().lowercase()
-            val cleanName = name.trim().ifBlank { if (providerTag == "google") "Google Merchant" else "Facebook Merchant" }
-
-            try {
-                // Call backend production social login endpoint
-                val candidateUrls = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000", "http://10.0.2.2:5000")
-                var tokenFromBackend: String? = null
-                var merchantIdFromBackend: String? = null
-                var isOnboardedFromBackend: Boolean = false
-                var hasOwnDatabaseFromBackend: Boolean = false
-                var restoredSupabaseUrl: String? = null
-                var restoredSupabaseAnonKey: String? = null
-                var restoredBusinessName: String? = null
-                var restoredPhone: String? = null
-                var restoredBusinessType: String? = null
-                var restoredPhotoUrl: String? = null
-
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    for (baseUrl in candidateUrls) {
-                        try {
-                            val url = java.net.URL("$baseUrl/v1/oauth/social-login")
-                            val conn = url.openConnection() as java.net.HttpURLConnection
-                            conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                            conn.setRequestProperty("Accept", "application/json")
-                            conn.connectTimeout = 4000
-                            conn.readTimeout = 4000
-                            conn.doOutput = true
-
-                            val bodyObj = org.json.JSONObject().apply {
-                                put("provider", providerTag)
-                                put("email", cleanEmail)
-                                put("name", cleanName)
-                                put("avatar_url", avatarUrl)
-                                put("id_token", idToken)
-                            }
-                            conn.outputStream.bufferedWriter().use { it.write(bodyObj.toString()) }
-
-                            if (conn.responseCode in 200..299) {
-                                val respStr = conn.inputStream.bufferedReader().readText()
-                                val json = org.json.JSONObject(respStr)
-                                tokenFromBackend = json.optString("access_token")
-                                val userObj = json.optJSONObject("user")
-                                merchantIdFromBackend = userObj?.optString("id")
-
-                                isOnboardedFromBackend = json.optBoolean("is_onboarded", false)
-
-                                val dbObj = json.optJSONObject("database")
-                                hasOwnDatabaseFromBackend = dbObj?.optBoolean("has_own_database", false) ?: false
-                                val dUrl = dbObj?.optString("supabase_url")
-                                if (!dUrl.isNullOrBlank()) restoredSupabaseUrl = dUrl
-                                val dKey = dbObj?.optString("supabase_anon_key")
-                                if (!dKey.isNullOrBlank()) restoredSupabaseAnonKey = dKey
-
-                                val merchantObj = json.optJSONObject("merchant")
-                                if (merchantObj != null) {
-                                    val bName = merchantObj.optString("business_name")
-                                    if (bName.isNotBlank() && bName != "Google User" && bName != "Facebook User") restoredBusinessName = bName
-                                    val ph = merchantObj.optString("phone")
-                                    if (!ph.isNullOrBlank()) restoredPhone = ph
-                                    val bType = merchantObj.optString("business_type")
-                                    if (!bType.isNullOrBlank()) restoredBusinessType = bType
-                                    val pic = merchantObj.optString("photo_url")
-                                    if (!pic.isNullOrBlank()) restoredPhotoUrl = pic
-                                }
-                                break
-                            }
-                        } catch (e: Exception) {
-                            // Fallback to next candidate URL
-                        }
-                    }
-                }
-
-                // If social-login endpoint did not return database info, double-check using checkMerchantAccountOnBackend
-                if (!hasOwnDatabaseFromBackend || restoredSupabaseUrl.isNullOrBlank()) {
-                    val doubleCheck = checkMerchantAccountOnBackend(cleanEmail, merchantIdFromBackend)
-                    if (doubleCheck != null) {
-                        if (doubleCheck.isOnboarded) isOnboardedFromBackend = true
-                        if (doubleCheck.hasOwnDatabase && doubleCheck.supabaseUrl.isNotBlank()) {
-                            hasOwnDatabaseFromBackend = true
-                            restoredSupabaseUrl = doubleCheck.supabaseUrl
-                            restoredSupabaseAnonKey = doubleCheck.supabaseAnonKey
-                        }
-                        if (restoredBusinessName.isNullOrBlank() && doubleCheck.businessName.isNotBlank()) {
-                            restoredBusinessName = doubleCheck.businessName
-                        }
-                        if (restoredPhone.isNullOrBlank() && doubleCheck.phone.isNotBlank()) {
-                            restoredPhone = doubleCheck.phone
-                        }
-                    }
-                }
-
-                val finalUid = merchantIdFromBackend ?: "m_${providerTag}_${cleanEmail.hashCode().toString().replace("-", "").take(16)}"
-                val finalToken = tokenFromBackend ?: "sp_${java.util.UUID.randomUUID().toString().replace("-", "")}"
-
-                saveEncryptedSessionToken(cleanEmail, finalUid, "$providerName (Secure Auth)")
-                setUserEmail(cleanEmail)
-
-                val existing = _activeProfile.value
-                val updatedProfile = existing.copy(
-                    id = finalUid,
-                    businessName = when {
-                        !restoredBusinessName.isNullOrBlank() -> restoredBusinessName!!
-                        existing.businessName.isNotBlank() && existing.businessName != "Demo Store" -> existing.businessName
-                        else -> cleanName
-                    },
-                    email = cleanEmail,
-                    accountHolder = when {
-                        !restoredBusinessName.isNullOrBlank() -> restoredBusinessName!!
-                        existing.accountHolder.isNotBlank() -> existing.accountHolder
-                        else -> cleanName
-                    },
-                    phone = if (!restoredPhone.isNullOrBlank()) restoredPhone!! else existing.phone,
-                    businessType = if (!restoredBusinessType.isNullOrBlank()) restoredBusinessType!! else existing.businessType,
-                    photoUrl = if (!restoredPhotoUrl.isNullOrBlank()) restoredPhotoUrl!! else existing.photoUrl
-                )
-                _activeProfile.value = updatedProfile
-                repository.insertMerchantProfile(updatedProfile)
-
-                if (!restoredBusinessName.isNullOrBlank()) {
-                    _onboardingBusinessName.value = restoredBusinessName!!
-                }
-                if (!restoredPhone.isNullOrBlank()) {
-                    _onboardingPhone.value = restoredPhone!!
-                }
-                if (!restoredSupabaseUrl.isNullOrBlank()) {
-                    _supabaseUrlInput.value = restoredSupabaseUrl!!
-                }
-                if (!restoredSupabaseAnonKey.isNullOrBlank()) {
-                    _supabaseAnonKeyInput.value = restoredSupabaseAnonKey!!
-                }
-
-                val isReturningOnboarded = isOnboardedFromBackend && hasOwnDatabaseFromBackend && !restoredSupabaseUrl.isNullOrBlank() && !restoredSupabaseAnonKey.isNullOrBlank()
-
-                if (isReturningOnboarded) {
-                    // Existing merchant: Configure merchant's OWN database
-                    logFirebaseStatus("Setting up merchant's own provisioned database: $restoredSupabaseUrl")
-                    connectSupabase(
-                        url = restoredSupabaseUrl!!,
-                        anonKey = restoredSupabaseAnonKey!!,
-                        name = updatedProfile.businessName
-                    )
-                }
-
-                _authError.value = null
-                logFirebaseStatus("Signed in with $providerName (is_onboarded=$isOnboardedFromBackend, own_db=$hasOwnDatabaseFromBackend)")
-                logFirebaseEvent("login_success", android.os.Bundle().apply {
-                    putString("provider", providerTag)
-                    putString("is_onboarded", isOnboardedFromBackend.toString())
-                })
-
-                if (onDirectSuccess != null) {
-                    onDirectSuccess()
-                } else {
-                    val isBiometricEnabled = _isBiometricLocked.value
-                    if (!isReturningOnboarded) {
-                        // User does not exist or has not completed onboarding -> redirect to Onboarding
-                        logFirebaseStatus("User not onboarded in Admin DB. Navigating to Onboarding.")
-                        setOnboarded(false)
-                        navigateTo("Onboarding")
-                    } else if (isBiometricEnabled) {
-                        setOnboarded(true)
-                        navigateTo("LockScreen")
-                    } else {
-                        setOnboarded(true)
-                        navigateTo("Main")
-                    }
-                }
-            } catch (e: Exception) {
-                _authError.value = "Sign-in error: ${e.message}"
-            } finally {
-                _isAuthenticating.value = false
-            }
-        }
     }
-
 
     fun registerWithEmailReal(email: String, password: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch {
             _isAuthenticating.value = true
             _authError.value = null
-            val databaseProfile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            if (databaseProfile?.supabaseUrl?.isNotBlank() == true && databaseProfile.anonKey.isNotBlank()) {
-                _activeSupabaseProfile.value = databaseProfile
-                val authenticated = authenticateSupabaseProfile(email, password, register = true)
-                _isAuthenticating.value = false
-                if (authenticated) {
-                    setUserEmail(email)
-                    logFirebaseEvent("register_success", Bundle().apply { putString("provider", "supabase") })
-                    onSuccess()
             val cleanEmail = email.trim().lowercase()
 
             // Supabase Auth verifies registration and email ownership.
-            // 1. Strictly validate Admin DB first: if user already exists, reject signup and redirect to login
-            val existingCheck = checkMerchantAccountOnBackend(cleanEmail)
-            if (existingCheck != null && existingCheck.exists) {
-                _isAuthenticating.value = false
-                val msg = "ALREADY_EXISTS: An account with this email already exists."
-                _authError.value = msg
-                onFailure(msg)
-                return@launch
-            }
-
-            // Account registration is permanently anchored to SwapnoPay Platform Supabase
             val platformProfile = getOrCreatePlatformSupabaseProfile()
             var session: com.example.data.remote.SupabaseClient.AuthSession? = null
             var failure: String? = null
@@ -2829,8 +1741,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _activeProfile.value = _activeProfile.value.copy(id = authenticatedSession.userId, email = cleanEmail)
                 repository.insertMerchantProfile(_activeProfile.value)
                 saveEncryptedSessionToken(cleanEmail, authenticatedSession.userId, "Supabase In-App Auth")
-                _activeSupabaseProfile.value = updatedPlatform
-                saveEncryptedSessionToken(cleanEmail, platformProfile.id, "Supabase In-App Auth")
                 setUserEmail(cleanEmail)
                 setOnboarded(false)
                 logFirebaseEvent("register_success", Bundle().apply { putString("provider", "supabase") })
@@ -2842,12 +1752,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val finalErr = if (isAlreadyRegistered) {
                     "ALREADY_EXISTS: An account with this email already exists."
                 } else {
-                    val message = "Account registration requires email confirmation. Confirm the Supabase email, then use Sign In."
-                    _authError.value = message
-                    onFailure(message)
                     failure!!
                 }
-                return@launch
                 _authError.value = finalErr
                 onFailure(finalErr)
             } else {
@@ -2858,10 +1764,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _authError.value = message
                 onSuccess()
             }
-            _isAuthenticating.value = false
-            val message = "Complete the one-time merchant database setup before registering."
-            _authError.value = message
-            onFailure(message)
         }
     }
 
@@ -3018,7 +1920,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        if (!accessToken.isNullOrBlank()) {
         val authCode = uri.getQueryParameter("code") ?: if (!fragment.isNullOrBlank()) {
             fragment.split("&").associate {
                 val parts = it.split("=")
@@ -3035,20 +1936,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         if (!accessToken.isNullOrBlank() || !authCode.isNullOrBlank()) {
             viewModelScope.launch {
-                val profile = _activeSupabaseProfile.value
-                if (profile != null) {
-                    val updated = profile.copy(
-                        authSessionToken = accessToken,
-                        authRefreshToken = refreshToken.orEmpty(),
-                        authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
-                    )
-                    repository.insertSupabaseProfile(updated)
-                    _activeSupabaseProfile.value = updated
-                    scheduleSupabaseSessionRefresh(updated)
-                    supabaseConnected.value = true
-                    val currentEmail = profile.authEmail
-                    if (currentEmail.isNotBlank()) {
-                        setUserEmail(currentEmail)
                 var resolvedAccessToken = accessToken
                 var resolvedRefreshToken = refreshToken
 
@@ -3136,31 +2023,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _isAuthenticating.value = false
                     navigateTo("Login")
                     return@launch
-                val updatedPlatform = platformProfile.copy(
-                    authEmail = userEmail.ifBlank { platformProfile.authEmail },
-                    authSessionToken = resolvedAccessToken,
-                    authRefreshToken = resolvedRefreshToken.orEmpty(),
-                    authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
-                )
-                repository.insertSupabaseProfile(updatedPlatform)
-
-                // Preserve connected merchant database if one exists; do not overwrite store credentials
-                val currentActive = _activeSupabaseProfile.value
-                val finalProfile = if (currentActive != null && currentActive.supabaseUrl.isNotBlank() && !currentActive.supabaseUrl.contains("tldubojeokgyoclxnzkb")) {
-                    val updatedActive = currentActive.copy(
-                        authEmail = userEmail.ifBlank { currentActive.authEmail },
-                        authSessionToken = resolvedAccessToken,
-                        authRefreshToken = resolvedRefreshToken.orEmpty(),
-                        authTokenExpiresAt = System.currentTimeMillis() + 3600_000L
-                    )
-                    repository.insertSupabaseProfile(updatedActive)
-                    _activeSupabaseProfile.value = updatedActive
-                    scheduleSupabaseSessionRefresh(updatedActive)
-                    updatedActive
-                } else {
-                    _activeSupabaseProfile.value = updatedPlatform
-                    scheduleSupabaseSessionRefresh(updatedPlatform)
-                    updatedPlatform
                 }
                 supportRefreshJob?.cancel()
                 _supportChatList.value = emptyList()
@@ -3169,55 +2031,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 saveEncryptedSessionToken(userEmail, authUserId, "Supabase OAuth")
                 securityPrefs.edit().remove("supabase_pkce_verifier").apply()
                 setOnboarded(account.isOnboarded)
-                supabaseConnected.value = true
-
-                val finalEmail = if (userEmail.isNotBlank()) userEmail else "oauth_user_${System.currentTimeMillis().toString().takeLast(6)}@swapnopay.bd"
-                setUserEmail(finalEmail)
-                saveEncryptedSessionToken(finalEmail, finalProfile.id, "OAuth (${tokenType ?: "login"})")
-
-
-                // Query Admin Database to verify if merchant exists, is onboarded, and has own database
-                logFirebaseStatus("Checking Admin DB for deep-link user: $finalEmail")
-                val check = checkMerchantAccountOnBackend(finalEmail)
-
                 _isAuthenticating.value = false
                 _authError.value = null
-                logFirebaseStatus("Auth confirmation deep link verified (${tokenType ?: "signup"}). Session activated!")
                 navigateTo(if (!account.isOnboarded) "Onboarding" else if (_isBiometricLocked.value) "LockScreen" else "Main")
 
-                if (check != null) {
-                    if (check.businessName.isNotBlank()) {
-                        _onboardingBusinessName.value = check.businessName
-                    }
-                    if (check.phone.isNotBlank()) {
-                        _onboardingPhone.value = check.phone
-                    }
-                    if (check.supabaseUrl.isNotBlank()) {
-                        _supabaseUrlInput.value = check.supabaseUrl
-                    }
-                    if (check.supabaseAnonKey.isNotBlank()) {
-                        _supabaseAnonKeyInput.value = check.supabaseAnonKey
-                    }
-                    applyRestoredMerchantSetup(check)
-                }
-
-                val isReturningOnboarded = check != null && check.isOnboarded && check.hasOwnDatabase && check.supabaseUrl.isNotBlank() && check.supabaseAnonKey.isNotBlank()
-
-                if (isReturningOnboarded) {
-                    logFirebaseStatus("Existing merchant confirmed in Admin DB: ${check?.businessName}. Setting up own database: ${check?.supabaseUrl}")
-                    applyRestoredMerchantSetup(check)
-                    setOnboarded(true)
-                    val isBiometricEnabled = _isBiometricLocked.value
-                    if (isBiometricEnabled) {
-                        navigateTo("LockScreen")
-                    } else {
-                        navigateTo("Main")
-                    }
-                } else {
-                    logFirebaseStatus("Merchant not registered or onboarded in Admin DB. Navigating to Onboarding.")
-                    setOnboarded(false)
-                    navigateTo("Onboarding")
-                }
             }
         } else {
             logFirebaseStatus("Received auth callback deep link: $uri")
@@ -3279,22 +2096,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendPasswordReset(email: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch {
             _isAuthenticating.value = true
-            val databaseProfile = _activeSupabaseProfile.value ?: repository.getActiveSupabaseProfile()
-            if (databaseProfile?.supabaseUrl?.isNotBlank() == true && databaseProfile.anonKey.isNotBlank()) {
-                var success = false
-                var failure: String? = null
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.example.data.remote.SupabaseClient.sendPasswordReset(
-                        databaseProfile.supabaseUrl,
-                        databaseProfile.anonKey,
-                        email.trim(),
-                        onSuccess = { success = true },
-                        onFailure = { failure = it }
-                    )
-                }
-                _isAuthenticating.value = false
-                if (success) onSuccess() else onFailure(failure ?: "Password reset failed.")
-                return@launch
             val platformProfile = getOrCreatePlatformSupabaseProfile()
             var success = false
             var failure: String? = null
@@ -3309,7 +2110,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             _isAuthenticating.value = false
-            onFailure("Complete the one-time merchant database setup before resetting a password.")
             if (success) onSuccess() else onFailure(failure ?: "Password reset failed.")
         }
     }
@@ -3401,12 +2201,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loginWithGoogleReal(idToken: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        onFailure("Google sign-in is not enabled for merchant-owned Supabase projects. Use email login.")
         performDirectSocialLogin("Google", onSuccess)
     }
 
     fun loginWithFacebookReal(accessToken: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        onFailure("Facebook sign-in is not enabled for merchant-owned Supabase projects. Use email login.")
         performDirectSocialLogin("Facebook", onSuccess)
     }
 
@@ -3451,31 +2249,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
 
     fun logout(onComplete: () -> Unit) {
-        setUserEmail(null)
         supportRefreshJob?.cancel()
         supabaseRefreshJob?.cancel()
         _supportChatList.value = emptyList()
         _mySupportTicketsList.value = emptyList()
         clearAllSessionAndOnboardingData()
         viewModelScope.launch {
-            val profile = _activeSupabaseProfile.value
-            if (profile != null) {
-                val cleared = profile.copy(
-                    authEmail = "",
-                    authSessionToken = "",
-                    authRefreshToken = "",
-                    authTokenExpiresAt = 0L
-                )
-                repository.insertSupabaseProfile(cleared)
-                _activeSupabaseProfile.value = cleared
             platformSessionMutex.withLock {
                 repository.observeSupabaseProfiles().firstOrNull().orEmpty().forEach { profile ->
                     repository.insertSupabaseProfile(profile.copy(authEmail = "", authSessionToken = "",
                         authRefreshToken = "", authTokenExpiresAt = 0L, isActive = false))
                 }
-                _activeSupabaseProfile.value = null
             }
-            supabaseRefreshJob?.cancel()
             _activeSupabaseProfile.value = null
             supabaseConnected.value = false
             navigateTo("Login")
@@ -3507,44 +2292,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendDeviceHeartbeat(onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val active = getAuthenticatedSupabaseProfile()
-                val deviceId = installationId
-                val model = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
-                val batteryIntent = getApplication<android.app.Application>().registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
-                val level = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: 100
-                val scale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: 100
-                val batteryPct = if (scale > 0) (level * 100 / scale.toFloat()).toInt() else 100
-
-                val currentDevice = DeviceInfoEntity(
-                    id = deviceId,
-                    merchantId = activeProfile.value.id,
-                    deviceName = model,
-                    status = "ONLINE",
-                    batteryLevel = batteryPct,
-                    lastSyncTime = System.currentTimeMillis()
-                )
-                repository.insertDevices(listOf(currentDevice))
-
-                if (active != null && active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
-                    com.example.data.remote.SupabaseClient.registerOrUpdateDevice(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        deviceId = deviceId,
-                        model = model,
-                        osVersion = "Android ${android.os.Build.VERSION.RELEASE}",
-                        batteryLevel = batteryPct,
-                        online = true,
-                        merchantId = active.id,
-                        onSuccess = { onComplete?.invoke(true) },
-                        onFailure = { onComplete?.invoke(false) }
-                    )
-                } else {
-                    onComplete?.invoke(true)
-                }
-            } catch (e: Exception) {
-                onComplete?.invoke(false)
             val result = repository.sendDeviceHeartbeat(getApplication())
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 onComplete?.invoke(result)
@@ -3553,23 +2300,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Config credentials
-    private val _firebaseApiKey = MutableStateFlow(
-        try {
-            com.example.BuildConfig.FIREBASE_API_KEY
-        } catch (e: Exception) {
-            ""
-        }
-    )
     private val _firebaseApiKey = MutableStateFlow("")
     val firebaseApiKey: StateFlow<String> = _firebaseApiKey.asStateFlow()
 
-    private val _firebaseProjectId = MutableStateFlow(
-        try {
-            com.example.BuildConfig.FIREBASE_PROJECT_ID
-        } catch (e: Exception) {
-            ""
-        }
-    )
     private val _firebaseProjectId = MutableStateFlow("")
     val firebaseProjectId: StateFlow<String> = _firebaseProjectId.asStateFlow()
 
@@ -3628,7 +2361,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 fetchPaymentForms()
                 fetchFormSubmissions()
 
-                if (ordersSynced && paymentsSynced && appealsSynced && devicesSynced && financeSynced && notificationsSynced && businessPullFailures == 0) {
                 if (ordersSynced && paymentsSynced && appealsSynced && devicesSynced && financeSynced && notificationsSynced && productsSynced && businessPullFailures == 0) {
                     logFirebaseStatus("All database-backed screens synchronized successfully.")
                     logFirebaseEvent("sync_supabase_data_success")
@@ -4140,13 +2872,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val managementProjectsList = MutableStateFlow<List<com.example.data.remote.SupabaseClient.SupabaseProject>>(emptyList())
     val managementApiError = MutableStateFlow<String?>(null)
     val pendingPkceVerifier = MutableStateFlow<String?>(null)
-    val oauthClientId = MutableStateFlow("swapnopay-mobile")
     val oauthClientId = MutableStateFlow("5d3dcd9b-1acf-4e31-96d2-d673af42a18b")
     val oauthClientSecret = MutableStateFlow("")
 
     enum class OAuthStep { NOT_CONNECTED, ACCOUNT_CONNECTED, PROVISIONING, COMPLETE }
 
-    val controlPlaneUrl = MutableStateFlow("http://10.0.2.2:8000") // Localhost development backend (Android emulator maps 10.0.2.2 to host machine)
     val controlPlaneUrl = MutableStateFlow("https://api.swapnopay.top")
     val show15DayFeedbackDialog = MutableStateFlow(false)
     val oauthStep = MutableStateFlow(OAuthStep.NOT_CONNECTED)
@@ -4196,11 +2926,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         logFirebaseStatus("Received OAuth transaction ID: $txId. Loading projects from Control Plane...")
         pendingOAuthTxId.value = txId
         oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
-        fetchControlPlaneOrgsAndProjects()
         fetchControlPlaneOrgsAndProjects(txId)
     }
 
-    fun fetchControlPlaneOrgsAndProjects() {
     fun fetchControlPlaneOrgsAndProjects(txId: String? = pendingOAuthTxId.value) {
         val userId = activeProfile.value.id.ifBlank { "user_default" }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -4276,7 +3004,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
             var attempts = 0
             var isHealthy = false
-            while (attempts < 12 && !isHealthy) {
             val maxAttempts = if (isNew) 35 else 15
             while (attempts < maxAttempts && !isHealthy) {
                 kotlinx.coroutines.delay(3000)
@@ -4388,7 +3115,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSupabaseOAuthFlow(context: android.content.Context, customClientId: String = "") {
-        val targetClientId = if (customClientId.isNotBlank()) customClientId.trim() else oauthClientId.value.ifBlank { "swapnopay-mobile" }
         val targetClientId = if (customClientId.isNotBlank()) customClientId.trim() else oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         oauthClientId.value = targetClientId
         val pkce = com.example.data.remote.SupabaseClient.generatePkcePair()
@@ -4415,7 +3141,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun handleOAuthCodeReceived(code: String) {
         val verifier = pendingPkceVerifier.value ?: ""
-        val clientId = oauthClientId.value.ifBlank { "swapnopay-mobile" }
         val clientId = oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         val clientSecret = oauthClientSecret.value
 
@@ -4547,7 +3272,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun connectSupabase(url: String, anonKey: String, name: String) {
     fun connectSupabase(url: String, anonKey: String, name: String, syncToPlatform: Boolean = true) {
         var rawUrl = url.trim()
         if (rawUrl.isNotEmpty() && !rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
@@ -4574,7 +3298,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         systemTestError.value = null
         systemTestSuccess.value = false
 
-        val id = java.util.UUID.randomUUID().toString()
         val id = _activeProfile.value.id
         val newProfile = com.example.data.local.SupabaseProfileEntity(
             id = id,
@@ -4605,7 +3328,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             runSupabaseSystemTest()
 
             if (syncToPlatform && !cleanUrl.contains("tldubojeokgyoclxnzkb")) {
-            if (!cleanUrl.contains("tldubojeokgyoclxnzkb")) {
                 syncMerchantSetupToBackend(
                     merchantId = id,
                     email = _userEmail.value ?: "",
@@ -4622,20 +3344,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchSupabaseConfigFromAdmin(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
             val merchantId = activeProfile.value.id
-            val backendUrl = "http://10.0.2.2:5000"
-            try {
-                val urlObj = java.net.URL("$backendUrl/v1/payment/config?merchant_id=$merchantId")
-                val conn = urlObj.openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
-                if (conn.responseCode in 200..299) {
-                    val body = conn.inputStream.bufferedReader().readText()
-                    val json = org.json.JSONObject(body)
-                    val sUrl = json.optString("supabase_url", "")
-                    val sKey = json.optString("supabase_anon_key", "")
-                    withContext(Dispatchers.Main) {
-            val candidateUrls = listOf("http://10.0.2.2:4000", "https://api.swapnopay.top")
             val candidateUrls = listOf("http://10.0.2.2:5000", "http://10.0.2.2:4000", "https://api.swapnopay.top")
             var fetched = false
             var errorMessage = "Failed to reach Admin server"
@@ -4653,13 +3361,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val sUrl = json.optString("supabase_url", "")
                         val sKey = json.optString("supabase_anon_key", "")
                         if (sUrl.isNotEmpty() && sKey.isNotEmpty()) {
-                            setSupabaseUrlInput(sUrl)
-                            setSupabaseAnonKeyInput(sKey)
-                            connectSupabase(sUrl, sKey, "Admin Provisioned Supabase")
-                            onResult(true, "Fetched credentials from Admin Panel!")
-                        } else {
-                            onResult(false, "No custom Supabase credentials found on Admin Panel.")
-                            fetched = true
                             withContext(Dispatchers.Main) {
                                 setSupabaseUrlInput(sUrl)
                                 setSupabaseAnonKeyInput(sKey)
@@ -4674,20 +3375,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         errorMessage = "Admin server returned HTTP ${conn.responseCode}"
                     }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        onResult(false, "Admin server returned HTTP ${conn.responseCode}")
-                    }
                 } catch (e: Exception) {
                     errorMessage = e.localizedMessage ?: "Failed to reach Admin server"
                 }
-            } catch (e: Exception) {
-                } catch (_: Exception) {}
             }
             if (!fetched) {
                 withContext(Dispatchers.Main) {
-                    onResult(false, e.localizedMessage ?: "Failed to reach Admin server")
-                    onResult(false, "No custom Supabase credentials found on Admin Panel.")
                     onResult(false, errorMessage)
                 }
             }
@@ -5084,19 +3777,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun hostedFormPublicUrl(): String {
         if (formStatus.value != "PUBLISHED") return ""
-        val publicId = activeFormId.value.lowercase().replace("-", "")
-        val brandedUrl = if (publicId.matches(Regex("^[0-9a-f]{32}$"))) "$hostedFormRouterOrigin/f/$publicId" else ""
-        val routeState = hostedFormRouteStatus.value[activeFormId.value]
-        if (brandedUrl.isNotBlank() && routeState != "FAILED" && routeState != "PENDING") return brandedUrl
-        return hostedFormDirectUrl()
         val slug = formSlug.value.trim().ifBlank { activeFormId.value }
         return "$hostedFormRouterOrigin/f/$slug"
     }
 
     fun hostedFormDirectUrl(): String {
-        val baseUrl = supabaseUrl.value.trimEnd('/')
-        val encodedSlug = android.net.Uri.encode(formSlug.value.trim())
-        return if (baseUrl.isBlank() || encodedSlug.isBlank()) "" else "$baseUrl/functions/v1/hosted-form?slug=$encodedSlug"
         val slug = formSlug.value.trim().ifBlank { activeFormId.value }
         return "$hostedFormRouterOrigin/f/$slug"
     }
@@ -6131,13 +4816,10 @@ function executePayment() {
     }
 
     fun testSendSmsNotification(phoneStr: String, onResult: (String) -> Unit) {
-
         if (!phoneStr.replace(" ", "").matches(Regex("^\\+?[0-9]{10,15}$"))) {
             onResult("Enter a valid notification phone number")
             return
         }
-        refreshGatewayReceiptHealth()
-        onResult("SMS delivery is server-managed. Receipt worker health verification started; no synthetic message was sent.")
         sendQuickCustomSms(listOf(phoneStr), "SwapnoPay Test SMS Verification") { success, msg ->
             onResult(if (success) "✅ $msg" else "❌ $msg")
         }
@@ -7522,59 +6204,11 @@ function executePayment() {
     init {
         viewModelScope.launch {
             repository.prepopulateIfEmpty()
-            repository.observeMerchantProfile().filterNotNull().firstOrNull()?.let { persistedProfile ->
-                _activeProfile.value = persistedProfile
-            }
-            val active = repository.getActiveSupabaseProfile()
-            if (active != null) {
-                val safeActive = active.copy(serviceRoleKey = "")
-                if (active.serviceRoleKey.isNotEmpty()) repository.insertSupabaseProfile(safeActive)
-                val effective = if (active.supabaseUrl.isBlank() || active.supabaseUrl.contains("abc123xyz") || active.supabaseUrl.contains("def456uvw")) {
-                    active.copy(
-                        supabaseUrl = "https://tldubojeokgyoclxnzkb.supabase.co",
-                        anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
-                    ).also { repository.insertSupabaseProfile(it) }
-                } else active
-                val safeActive = effective.copy(serviceRoleKey = "")
-                if (effective.serviceRoleKey.isNotEmpty()) repository.insertSupabaseProfile(safeActive)
-                activateLocalProfileForBackend(safeActive)
-                _activeSupabaseProfile.value = safeActive
-                supabaseUrl.value = safeActive.supabaseUrl
-                supabaseAnonKey.value = safeActive.anonKey
-                supabaseConnectionName.value = safeActive.businessName
-                val isReal = safeActive.supabaseUrl.isNotEmpty() && safeActive.supabaseUrl != "https://abc123xyz.supabase.co" && safeActive.supabaseUrl != "https://def456uvw.supabase.co"
-                supabaseConnected.value = isReal
-                supabaseSetupProgress.value = if (isReal) 9 else 0
-                _supabaseUrlInput.value = active.supabaseUrl
-                _supabaseAnonKeyInput.value = active.anonKey
-                _supabaseUrlInput.value = safeActive.supabaseUrl
-                _supabaseAnonKeyInput.value = safeActive.anonKey
-                scheduleSupabaseSessionRefresh(safeActive)
-            } else {
-                val first = repository.observeSupabaseProfiles().firstOrNull()?.firstOrNull()
-                if (first != null) {
-                    val safeFirst = first.copy(serviceRoleKey = "")
-                    if (first.serviceRoleKey.isNotEmpty()) repository.insertSupabaseProfile(safeFirst)
-                    activateLocalProfileForBackend(safeFirst)
-                    _activeSupabaseProfile.value = safeFirst
-                    supabaseUrl.value = safeFirst.supabaseUrl
-                    supabaseAnonKey.value = safeFirst.anonKey
-                    supabaseConnectionName.value = safeFirst.businessName
-                    val isReal = safeFirst.supabaseUrl.isNotEmpty() && safeFirst.supabaseUrl != "https://abc123xyz.supabase.co" && safeFirst.supabaseUrl != "https://def456uvw.supabase.co"
-                    supabaseConnected.value = isReal
-                    supabaseSetupProgress.value = if (isReal) 9 else 0
-                    _supabaseUrlInput.value = first.supabaseUrl
-                    _supabaseAnonKeyInput.value = first.anonKey
-                    scheduleSupabaseSessionRefresh(safeFirst)
             try {
                 val email = securityPrefs.getString("logged_in_email", null)
                 val active = repository.getActiveSupabaseProfile()?.takeIf {
                     it.supabaseUrl.trimEnd('/') != PLATFORM_SUPABASE_URL && it.authEmail.equals(email, true)
                 }
-            }
-            if (_autoSyncEnabled.value && supabaseConnected.value) {
-                triggerSync()
-            }
                 if (active != null) {
                     val safe = active.copy(serviceRoleKey = "")
                     repository.insertSupabaseProfile(safe)
@@ -7690,7 +6324,6 @@ function executePayment() {
         phone: String = "",
         address: String = "",
         openingBalance: Double = 0.0,
-        id: String = java.util.UUID.randomUUID().toString()
         id: String = java.util.UUID.randomUUID().toString(),
         code: String? = null
     ) {
@@ -7707,12 +6340,10 @@ function executePayment() {
                 address = address.trim().ifEmpty { null },
                 openingBalance = openingBalance,
                 currentBalance = openingBalance,
-                createdAt = System.currentTimeMillis()
                 createdAt = System.currentTimeMillis(),
                 code = assignedCode
             )
             repository.insertSupplier(supplier)
-            logFirebaseStatus("Added new supplier: $name")
             logFirebaseStatus("Added new supplier: $name ($assignedCode)")
 
             val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
@@ -7798,7 +6429,6 @@ function executePayment() {
         viewModelScope.launch {
             repository.insertMerchantProfile(profile)
             _activeProfile.value = profile
-            uploadMerchantProfileToFirebase(profile)
             syncMerchantSetupToBackend(profile.id, profile.email, profile.businessName, profile.phone,
                 profile.businessType, profile.website, profile.photoUrl)
         }
@@ -8821,7 +7451,6 @@ function executePayment() {
                         item.getString("id"), merchantId, item.optString("name"), item.optString("phone"),
                         item.optNullableString("email"), item.optNullableString("address"),
                         item.optDouble("opening_balance", 0.0), item.optDouble("current_balance", 0.0),
-                        item.optString("status", "Potential"), parseRemoteTimestamp(item.optString("created_at"))
                         item.optString("status", "Potential"), parseRemoteTimestamp(item.optString("created_at")),
                         item.optString("code", "")
                     )
@@ -8835,7 +7464,6 @@ function executePayment() {
                         item.getString("id"), merchantId, item.optString("name"), item.optString("phone"),
                         item.optNullableString("email"), item.optNullableString("address"),
                         item.optDouble("opening_balance", 0.0), item.optDouble("current_balance", 0.0),
-                        parseRemoteTimestamp(item.optString("created_at"))
                         parseRemoteTimestamp(item.optString("created_at")),
                         item.optString("code", "")
                     )
@@ -8851,7 +7479,6 @@ function executePayment() {
                         purchasePrice = item.optDouble("purchase_price", 0.0), salePrice = item.optDouble("sale_price", 0.0),
                         stockQuantity = item.optDouble("stock_quantity", 0.0), minStockThreshold = item.optDouble("min_stock_threshold", 5.0),
                         unit = item.optString("unit", "pcs"), qrCode = item.optNullableString("qr_code"),
-                        imageUrl = item.optNullableString("image_url"), createdAt = parseRemoteTimestamp(item.optString("created_at")),
                         imageUrl = item.optNullableString("image_url"),
                         storefrontDetailsJson = item.optJSONObject("storefront_details")?.toString() ?: "{}",
                         createdAt = parseRemoteTimestamp(item.optString("created_at")),
@@ -9264,7 +7891,6 @@ function executePayment() {
     fun scanQrCodeToPosCart(scannedQr: String) {
         if (scannedQr.trim().isEmpty()) return
         viewModelScope.launch {
-            val variant = repository.getVariantByQrCode(scannedQr.trim(), activeProfile.value.id)
             val trimmed = scannedQr.trim()
             val variant = repository.getVariantByQrCode(trimmed, activeProfile.value.id)
             if (variant != null) {
@@ -9306,8 +7932,6 @@ function executePayment() {
                 _lastScannedQrStatus.value = "Scanned: $prodName (${variant.variantName}) - ৳${variant.salePrice}"
                 logFirebaseStatus("POS QR Scan Success: Added ${variant.variantName} of $prodName to cart.")
             } else {
-                _lastScannedQrStatus.value = "❌ No product variant found matching QR: $scannedQr"
-                logFirebaseStatus("POS QR Scan Failed: Code $scannedQr not registered.")
                 // Check if code matches a base product (code, qrCode, or id)
                 val baseProd = products.value.find {
                     (it.code != null && it.code.equals(trimmed, ignoreCase = true)) ||
@@ -9332,8 +7956,6 @@ function executePayment() {
             if (newQty <= 0) {
                 currentList.removeAt(index)
             } else {
-                val available = productVariants.value.firstOrNull { it.id == variantId }?.stockQuantity ?: 0.0
-                if (newQty <= available) {
                 val item = currentList[index]
                 val variant = productVariants.value.firstOrNull { it.id == variantId }
                 val available = if (variant != null) {
@@ -9364,7 +7986,6 @@ function executePayment() {
         paymentType: String, // "Cash", "MFS", "CustomerCredit"
         customerId: String? = null,
         discount: Double = 0.0,
-        onSuccess: (orderId: String, totalAmount: Double) -> Unit,
         onSuccess: (orderId: String, totalAmount: Double, sale: PosSaleEntity) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -9397,7 +8018,6 @@ function executePayment() {
                     id = java.util.UUID.randomUUID().toString(),
                     merchantId = merchantId,
                     productId = item.productId,
-                    variantId = item.variantId,
                     variantId = if (isRealVariant) item.variantId else null,
                     type = "out",
                     quantity = item.quantity,
@@ -9492,7 +8112,6 @@ function executePayment() {
             logFirebaseStatus("Completed POS Checkout #$orderId: ৳$totalSaleAmount ($paymentType)")
             _selectedInvoiceSaleId.value = orderId
             clearPosCart()
-            onSuccess(orderId, totalSaleAmount)
 
             // Automated physical SIM SMS receipt dispatch on POS checkout
             if (sale.customerPhone.isNotBlank()) {
@@ -9784,17 +8403,13 @@ function executePayment() {
     fun addCustomer(
         name: String,
         phone: String,
-        initialBalance: Double,
         initialBalance: Double = 0.0,
         status: String = "VIP",
-        id: String = java.util.UUID.randomUUID().toString()
         id: String = java.util.UUID.randomUUID().toString(),
         address: String? = null,
         code: String? = null,
         onResult: ((Boolean, String, CustomerEntity?) -> Unit)? = null
     ) {
-        if (name.isBlank() || phone.filter(Char::isDigit).length < 10 || !initialBalance.isFinite()) {
-            logFirebaseStatus("Customer rejected: valid name, phone, and balance are required.")
         if (name.isBlank() || !initialBalance.isFinite()) {
             val message = "Customer name is required and balance must be finite"
             logFirebaseStatus("Customer rejected: $message")
@@ -9807,21 +8422,16 @@ function executePayment() {
             val customer = CustomerEntity(
                 id = id,
                 merchantId = activeProfile.value.id,
-                name = name,
-                phone = phone,
                 name = name.trim(),
                 phone = cleanPhone,
                 email = null,
-                address = null,
                 address = address?.trim()?.ifBlank { null },
                 openingBalance = initialBalance,
                 currentBalance = initialBalance,
-                status = status
                 status = status,
                 code = assignedCode
             )
             repository.insertCustomer(customer)
-            logFirebaseStatus("Added new customer: $name")
             logFirebaseStatus("Added new customer: $name ($assignedCode)")
 
             val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
@@ -9999,9 +8609,6 @@ function executePayment() {
         }
         val finalImage = imageUrl?.trim()?.ifBlank { null } ?: storefront.featuredImage?.preview
         viewModelScope.launch {
-            val normalizedCode = code?.trim()?.ifBlank { null }
-            if (normalizedCode != null && repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
-                onResult(false, "SKU / QR code is already assigned to another product")
             val normalizedCode = code?.trim()?.ifBlank { null } ?: "PRD-${System.currentTimeMillis() % 1000000}"
             if (repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
                 // If collision or already exists, generate random
@@ -10047,7 +8654,6 @@ function executePayment() {
                 unit = unit.trim(),
                 qrCode = normalizedCode,
                 costPrice = purchasePrice,
-                askingPrice = salePrice
                 askingPrice = salePrice,
                 imageUrl = finalImage,
                 storefrontDetailsJson = storefront.json().toString()
@@ -10178,29 +8784,7 @@ function executePayment() {
                 onResult(false, "Product was not found")
                 return@launch
             }
-            if (!repository.canDeletePristineProduct(id, merchantId)) {
-                onResult(false, "Only unused products with zero stock and no audit history can be deleted")
-                return@launch
-            }
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
-            if (active != null) {
-                var cloudDeleted = false
-                var cloudError = "Cloud deletion failed"
-                com.example.data.remote.SupabaseClient.deleteRecord(
-                    active.supabaseUrl, active.anonKey, active.authSessionToken,
-                    "products", "id", id,
-                    onSuccess = { cloudDeleted = true },
-                    onFailure = { cloudError = it }
-                )
-                if (!cloudDeleted) {
-                    onResult(false, cloudError)
-                    return@launch
-                }
-            }
             try {
-                if (!repository.deletePristineProduct(id, merchantId)) {
-                    onResult(false, "Product could not be deleted")
-                    return@launch
                 // Remove from in-memory POS cart if present
                 val currentCart = _posCart.value.filter { it.productId != id }
                 _posCart.value = currentCart
@@ -10213,16 +8797,11 @@ function executePayment() {
                     onResult(false, "Failed to delete product from database")
                 }
             } catch (e: Exception) {
-                onResult(false, e.localizedMessage ?: "Product cannot be deleted because it has audit history")
-                return@launch
                 onResult(false, e.localizedMessage ?: "Failed to delete product")
             }
-            logFirebaseStatus("Deleted unused product ID: $id")
-            onResult(true, "${product.name} deleted")
         }
     }
 
-    private fun recordStockChangeInternal(productId: String, type: String, qty: Double, price: Double) {
     private fun recordStockChangeInternal(
         productId: String,
         type: String,
@@ -10244,7 +8823,6 @@ function executePayment() {
                 quantity = qty,
                 price = price,
                 customerId = null,
-                supplierId = null
                 supplierId = supplierId,
                 referenceNote = referenceNote
             )
@@ -10617,8 +9195,6 @@ function executePayment() {
 
     // Tagada message
     fun generateTagadaMessage(customerName: String, amount: Double, isBangla: Boolean = true): String {
-        return if (isBangl
-... [truncated for diff preview]
         return if (isBangla) {
             "প্রিয় $customerName ভাই, SwapnoPay এ আপনার বাকি বকেয়া রয়েছে ৳${String.format("%.2f", Math.abs(amount))} টাকা। বকেয়া পরিশোধ করার জন্য বিনীত অনুরোধ রইল। ধন্যবাদ।"
         } else {
@@ -10716,25 +9292,10 @@ function executePayment() {
 
         viewModelScope.launch {
             val systemContext = """
-                You are a smart, expert, friendly, and helpful AI Business Copilot assisting a retail merchant in Bangladesh.
-                You analyze sales, revenue, debtors (বাকি খাতা), suppliers, stock inventory, and answer questions clearly.
-                
-                STRUCTURE & FORMATTING GUIDELINES (MANDATORY):
-                - NEVER return an unstructured wall of plain text or raw unformatted JSON.
-                - Always format your answers using clean, organized Markdown:
-                  1. Use clear section headers:
-                     ### 📊 ব্যবসার সারসংক্ষেপ (Overview)
-                     ### 💡 মূল তথ্য ও হিসাব (Key Metrics)
-                     ### 📋 বিস্তারিত বিবরণ (Details)
-                     ### 🎯 করণীয় পদক্ষেপ ও পরামর্শ (Action Steps)
-                  2. For key metrics or financial figures, use bold labels with Bangladeshi Taka:
-                     - **মোট বিক্রি:** ৳৪,৩৫০
-                     - **নগদ আদায়:** ৳৩,৫০০
-                     - **বকেয়া বাকি:** ৳৮৫০
-                  3. Use bullet points (* or -) for itemized breakdowns.
-                  4. Use Markdown tables (| পণ্য | পরিমাণ | মূল্য |) whenever presenting product lists or comparisons.
-                  5. Use blockquotes (> 💡 **পরামর্শ:** ... or > ⚠️ **সতর্কতা:** ...) for actionable recommendations or stock alerts.
-                  6. Always use the Bangladeshi Taka symbol ৳ and format numbers with commas (e.g., ৳১২,৫০০).
+                You are a smart, friendly, encouraging, and helpful AI Business Copilot assisting a retail shop owner in Bangladesh.
+                You explain trends, list debtors, and answer questions politely.
+                Always write in a friendly, supportive tone, encouraging the merchant.
+                You can format responses beautifully in Markdown. You can suggest business summaries, forecasts, and recommendations.
                 
                 You have access to the merchant's business data snapshot:
                 ${getBusinessDataSnapshot()}
@@ -10742,9 +9303,9 @@ function executePayment() {
                 Your memory of previous work and updates is:
                 ${_aiMemory.value}
                 
-                If the user asks you to record transactions (adding credit, payment, expense, etc.), write a friendly explanation in the chat, followed by an actionable JSON block enclosed strictly between [ACTION_START] and [ACTION_END] tags.
+                If the user asks you to write data (like adding a credit, payment, expense, etc.), you MUST generate a text response explaining what you are doing, and append a structured JSON block enclosed within [ACTION_START] and [ACTION_END] tags.
                 Example for customer credit:
-                "অবশ্যই! রহিমের চাল ক্রয়ের ৫০০ টাকা বাকি লিখে রাখছি।"
+                "অবশ্যই, আমি রহিমের জন্য ৫০০ টাকা বাকি লিখে রাখছি।"
                 [ACTION_START]
                 {
                   "action": "add_customer_credit",
@@ -10767,8 +9328,8 @@ function executePayment() {
                 - `add_supplier_payment` (params: supplier_name, amount, note)
                 - `add_expense` (params: expense_category, amount, description)
                 
-                Ensure the JSON inside [ACTION_START] and [ACTION_END] is strictly valid JSON with no markdown wrapping it.
-                Respond naturally in Bangla (with common English retail terms) or English depending on user's preference. Keep responses polite, structured, and encouraging.
+                Ensure the JSON is strictly valid, and do not put any text inside the [ACTION_START] and [ACTION_END] tags except the raw JSON.
+                Respond in Bangla (mixed with common English retail terms) or English depending on user's language choice. Keep responses encouraging and professional.
             """.trimIndent()
 
             val messages = JSONArray()
@@ -10839,27 +9400,16 @@ function executePayment() {
 
     private fun handleAiSuccess(response: String) {
         _isAiThinking.value = false
-        val actionRegex = Regex("""(?:\n*```(?:json)?\n*)?\[ACTION_START\]([\s\S]*?)\[ACTION_END\](?:\n*```)?""")
+
+        val actionRegex = Regex("\\[ACTION_START\\](.*)\\[ACTION_END\\]", RegexOption.DOT_MATCHES_ALL)
         val match = actionRegex.find(response)
         
         var chatText = response
         var actionJsonStr: String? = null
         
         if (match != null) {
-            actionJsonStr = match.groupValues[1]
-                .replace("```json", "")
-                .replace("```", "")
-                .trim()
+            actionJsonStr = match.groupValues[1].trim()
             chatText = response.replace(match.value, "").trim()
-        }
-        
-        // Clean any leftover empty code fences or stray markdown wrappers
-        chatText = chatText
-            .replace(Regex("```(?:json)?\\s*```"), "")
-            .trim()
-            
-        if (chatText.isEmpty() && actionJsonStr != null) {
-            chatText = "নিচের এন্ট্রিটি প্রস্তুত করা হয়েছে। দয়া করে নিশ্চিত করুন:"
         }
         
         val updatedHistory = _aiChatHistory.value.toMutableList()

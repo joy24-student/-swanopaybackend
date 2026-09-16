@@ -628,7 +628,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <AddMerchantModal
         isOpen={isAddMerchantOpen}
         onClose={() => setIsAddMerchantOpen(false)}
-        onMerchantAdded={() => {
+        onMerchantCreated={() => {
           setIsAddMerchantOpen(false)
           navigate('/merchants')
         }}

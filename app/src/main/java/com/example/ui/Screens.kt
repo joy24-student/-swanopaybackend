@@ -3445,7 +3445,8 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                     viewModel.connectSupabase(
                                                         url = supabaseUrlInput,
                                                         anonKey = supabaseAnonKeyInput,
-                                                        name = businessNameInput
+                                                        name = businessNameInput,
+                                                        syncToPlatform = false
                                                     )
                                                     
                                                     val currentProf = viewModel.activeProfile.value
@@ -3454,24 +3455,18 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                         phone = supportPhoneInput,
                                                         email = userEmailVal ?: ""
                                                     )
-                                                    viewModel.updateMerchantProfile(updatedProf)
-
-                                                    // Explicitly sync newly created merchant profile & own database to Admin DB
-                                                    viewModel.syncMerchantSetupToBackend(
-                                                        merchantId = updatedProf.id,
-                                                        email = userEmailVal ?: "",
-                                                        businessName = businessNameInput,
-                                                        phone = supportPhoneInput,
-                                                        supabaseUrl = supabaseUrlInput,
-                                                        supabaseAnonKey = supabaseAnonKeyInput
-                                                    )
+                                                    val saved = viewModel.completeMerchantOnboarding(updatedProf, supabaseUrlInput, supabaseAnonKeyInput)
+                                                    if (!saved) {
+                                                        diagnosticsRunning = false
+                                                        Toast.makeText(context, "Setup was not saved. Please retry.", Toast.LENGTH_LONG).show()
+                                                        return@launch
+                                                    }
                                                     
                                                     // Apply chosen security credentials & PIN to the AppViewModel (which triggers Supabase syncing)
                                                     if (onboardingPin.matches(Regex("\\d{4}"))) {
                                                         viewModel.updatePin(onboardingPin)
                                                     }
                                                     viewModel.setBiometricLock(onboardingBiometricEnabled)
-                                                    viewModel.setOnboarded(true)
                                                     diagnosticsCompleted = true
                                                     diagnosticsRunning = false
 
@@ -3706,8 +3701,9 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                 if (currentStep < 4) {
                                     currentStep++
                                 } else {
-                                    viewModel.setOnboarded(true)
-                                    viewModel.navigateTo("Main")
+                                    if (diagnosticsCompleted && viewModel.isOnboarded()) {
+                                        viewModel.navigateTo("Main")
+                                    }
                                 }
                             }
                             .background(buttonGradient)

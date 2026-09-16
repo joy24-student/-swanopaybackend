@@ -566,7 +566,7 @@ export default function Merchants() {
           isOpen={Boolean(inspectKycMerchant)}
           merchant={inspectKycMerchant}
           onClose={() => setInspectKycMerchant(null)}
-          onStatusUpdated={() => {
+          onActionComplete={() => {
             loadMerchants()
             setInspectKycMerchant(null)
           }}
@@ -577,7 +577,7 @@ export default function Merchants() {
       <AddMerchantModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        onMerchantAdded={() => {
+        onMerchantCreated={() => {
           setShowAddModal(false)
           loadMerchants()
         }}

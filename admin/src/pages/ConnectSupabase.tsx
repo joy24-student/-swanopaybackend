@@ -368,7 +368,7 @@ export default function ConnectSupabase() {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justify: 'space-between',
+                      justifyContent: 'space-between',
                       padding: 12,
                       borderRadius: 8,
                       border: selectedRef === p.id ? '2px solid #3ECF8E' : '1px solid #e2e8f0',

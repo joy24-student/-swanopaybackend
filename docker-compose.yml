@@ -12,6 +12,8 @@ services:
     restart: always
     ports:
       - "4000:4000"
+    volumes:
+      - backend_uploads:/app/uploads
     environment:
       - PORT=4000
       - NODE_ENV=production
@@ -65,3 +67,5 @@ services:
     expose:
       - "9000"
 
+volumes:
+  backend_uploads:
