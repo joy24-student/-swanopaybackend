@@ -158,7 +158,6 @@ export default function MerchantDetail() {
       // Also call backend review endpoint if available (use helper to include auth)
       try {
         await reviewMerchantIdentity(id, action, rejectionReasonInput.trim());
-      } catch (e) {
       } catch (e: any) {
         console.warn('[MerchantDetail] backend KYC review failed:', e?.message || e)
       }

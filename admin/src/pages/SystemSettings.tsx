@@ -344,7 +344,6 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
 
 export default function SystemSettings() {
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery'>('links');
   const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery' | 'subscription'>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');

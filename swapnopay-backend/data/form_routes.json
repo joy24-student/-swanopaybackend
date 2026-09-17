@@ -36,7 +36,7 @@
         "success_message": "Your registration is complete!"
       }
     },
-    "updated_at": "2026-09-17T17:10:41.925Z"
+    "updated_at": "2026-09-17T18:48:34.557Z"
   },
   {
     "form_id": "free-form-uuid-002",
@@ -66,7 +66,7 @@
         "redirect_delay_seconds": 3
       }
     },
-    "updated_at": "2026-09-17T17:10:42.123Z"
+    "updated_at": "2026-09-17T18:48:34.699Z"
   },
   {
     "form_id": "expired-form-uuid-003",
@@ -83,10 +83,10 @@
       "products": [],
       "theme": {
         "enable_closing_timeline": true,
-        "closing_deadline_epoch": 1789664982193,
+        "closing_deadline_epoch": 1789670854750,
         "closed_message": "Application deadline has passed."
       }
     },
-    "updated_at": "2026-09-17T17:10:42.199Z"
+    "updated_at": "2026-09-17T18:48:34.756Z"
   }
 ]
