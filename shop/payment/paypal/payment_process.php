@@ -233,13 +233,12 @@ if (!isset($_POST["txn_id"]) && !isset($_POST["txn_type"])){
 		fputs($fp, $header . $req);
 		while (!feof($fp)) {
 			$res = fgets ($fp, 1024);
-			if (strcmp($res, "VERIFIED") == 0) {
-				
-				// Used for debugging
-				// mail('user@domain.com', 'PAYPAL POST - VERIFIED RESPONSE', print_r($post, true));
-				
-			
-			} else if (strcmp ($res, "INVALID") == 0) {
+			if (strcmp(trim($res), "VERIFIED") == 0) {
+				if (isset($data['payment_status']) && strtolower($data['payment_status']) === 'completed') {
+					$upd_stmt = $pdo->prepare("UPDATE tbl_payment SET payment_status = 'Completed', txnid = ? WHERE payment_id = ?");
+					$upd_stmt->execute(array($data['txn_id'] ?? '', $data['item_number'] ?? ''));
+				}
+			} else if (strcmp (trim($res), "INVALID") == 0) {
 			
 
 				// PAYMENT INVALID & INVESTIGATE MANUALY!

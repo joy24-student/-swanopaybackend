@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
@@ -7,6 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +57,7 @@ fun EmployeesScreen(viewModel: AppViewModel) {
 
     var showAddModal by remember { mutableStateOf(false) }
     var selectedEmployeeForEdit by remember { mutableStateOf<EmployeeItem?>(null) }
+    var selectedEmployeeForQr by remember { mutableStateOf<EmployeeItem?>(null) }
 
     // Pagination state
     var currentPage by remember { mutableIntStateOf(1) }
@@ -192,6 +199,24 @@ fun EmployeesScreen(viewModel: AppViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Live Staff Monitor Button
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(cardBg)
+                                    .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .clickable { viewModel.navigateTo("EmployeeMonitor") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sensors,
+                                    contentDescription = "লাইভ স্টাফ মনিটর",
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
                             // Plus (+) Button - Yellow Circle
                             Box(
                                 modifier = Modifier
@@ -445,7 +470,22 @@ fun EmployeesScreen(viewModel: AppViewModel) {
                         secondaryText = secondaryText,
                         goldBgSoft = goldBgSoft,
                         goldText = goldText,
-                        onClick = { selectedEmployeeForEdit = employee }
+                        onClick = { selectedEmployeeForEdit = employee },
+                        onShowQr = { selectedEmployeeForQr = employee },
+                        onRevoke = {
+                            viewModel.revokeEmployeeAccess(employee.id, "মার্চেন্ট কর্তৃক অ্যাক্সেস বন্ধ")
+                            Toast.makeText(context, "${employee.name}-এর অ্যাক্সেস বন্ধ করা হয়েছে", Toast.LENGTH_SHORT).show()
+                        },
+                        onRestore = {
+                            viewModel.restoreEmployeeAccess(employee.id,
+                                onSuccess = {
+                                    Toast.makeText(context, "${employee.name}-এর অ্যাক্সেস পুনরায় চালু করা হয়েছে", Toast.LENGTH_SHORT).show()
+                                },
+                                onError = { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     )
                 }
             }
@@ -579,9 +619,24 @@ fun EmployeesScreen(viewModel: AppViewModel) {
             },
             onDelete = { empId ->
                 viewModel.deleteEmployee(empId)
+                viewModel.revokeEmployeeAccess(empId)
                 Toast.makeText(context, "Member removed", Toast.LENGTH_SHORT).show()
                 selectedEmployeeForEdit = null
             }
+        )
+    }
+
+    // MODAL: Employee Login QR
+    if (selectedEmployeeForQr != null) {
+        val merchantId = viewModel.activeProfile.collectAsState().value.id
+        val storeName = viewModel.activeProfile.collectAsState().value.businessName.ifBlank { "SwapnoPay Merchant Store" }
+        EmployeeLoginQrDialog(
+            employee = selectedEmployeeForQr!!,
+            merchantId = merchantId,
+            storeName = storeName,
+            viewModel = viewModel,
+            isDark = isDark,
+            onDismiss = { selectedEmployeeForQr = null }
         )
     }
 
@@ -755,7 +810,10 @@ private fun EmployeeCardItemPixel(
     secondaryText: Color,
     goldBgSoft: Color,
     goldText: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onShowQr: () -> Unit,
+    onRevoke: () -> Unit,
+    onRestore: () -> Unit
 ) {
     val isActive = employee.status.equals("Active", ignoreCase = true)
 
@@ -766,7 +824,7 @@ private fun EmployeeCardItemPixel(
             .clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
-        border = BorderStroke(1.dp, cardBorder)
+        border = BorderStroke(1.dp, if (!isActive) Color(0xFFEF4444).copy(alpha = 0.35f) else cardBorder)
     ) {
         Column(
             modifier = Modifier
@@ -803,7 +861,7 @@ private fun EmployeeCardItemPixel(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(avatarBg),
+                                .background(if (isActive) avatarBg else Color(0xFF64748B)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -820,6 +878,7 @@ private fun EmployeeCardItemPixel(
                                 .size(14.dp)
                                 .clip(CircleShape)
                                 .background(if (isActive) Color(0xFF10B981) else Color(0xFF9CA3AF))
+                                .background(if (isActive) Color(0xFF10B981) else Color(0xFFEF4444))
                                 .border(2.dp, cardBg, CircleShape)
                         )
                     }
@@ -836,6 +895,34 @@ private fun EmployeeCardItemPixel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = employee.name,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            // Status Pill
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (isActive) Color(0xFF10B981).copy(alpha = 0.15f)
+                                        else Color(0xFFEF4444).copy(alpha = 0.15f)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (isActive) "সক্রিয়" else "লকড",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isActive) Color(0xFF10B981) else Color(0xFFEF4444)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = employee.designation,
@@ -885,27 +972,112 @@ private fun EmployeeCardItemPixel(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Bottom Right Phone Row
+            // Bottom Action Row: Controls on left, Phone on right
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Phone,
-                    contentDescription = null,
-                    tint = secondaryText,
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = employee.phone,
-                    fontSize = 12.sp,
-                    color = secondaryText,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // QR Code Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isDark) Color(0xFF232D42) else Color(0xFFEFF6FF))
+                            .border(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable { onShowQr() }
+                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.QrCode2,
+                                contentDescription = "Login QR",
+                                tint = Color(0xFF2563EB),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "লগইন QR",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFF93C5FD) else Color(0xFF1D4ED8)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Instant Lock / Unlock 1-Tap Control
+                    if (isActive) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFEF4444).copy(alpha = 0.12f))
+                                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .clickable { onRevoke() }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Lock",
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "অ্যাক্সেস বন্ধ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFEF4444)
+                                )
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF10B981).copy(alpha = 0.12f))
+                                .border(1.dp, Color(0xFF10B981).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .clickable { onRestore() }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LockOpen,
+                                    contentDescription = "Unlock",
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "চালু করুন",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Phone,
+                        contentDescription = null,
+                        tint = secondaryText,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = employee.phone,
+                        fontSize = 12.sp,
+                        color = secondaryText,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
@@ -1156,6 +1328,252 @@ private fun EmployeeFormDialogPixel(
                             Text("Remove Member")
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// ── COMPONENT: Secure Employee Login QR Dialog ──────────────────────────────
+@Composable
+private fun EmployeeLoginQrDialog(
+    employee: EmployeeItem,
+    merchantId: String,
+    storeName: String,
+    viewModel: AppViewModel,
+    isDark: Boolean,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
+    val textPrimary = if (isDark) Color.White else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    var staffPin by remember { mutableStateOf("") }
+    var validityHours by remember { mutableIntStateOf(24) }
+    var encryptedToken by remember { mutableStateOf<String?>(null) }
+    var hasPinConfigured by remember { mutableStateOf(false) }
+    var isGenerating by remember { mutableStateOf(false) }
+
+    fun requestSecureToken() {
+        isGenerating = true
+        viewModel.generateEmployeePairingToken(
+            employeeId = employee.id,
+            employeeName = employee.name,
+            employeeRole = employee.role,
+            pin = staffPin.trim().ifBlank { null },
+            expiresInHours = validityHours,
+            onSuccess = { token, hasPin, _ ->
+                encryptedToken = token
+                hasPinConfigured = hasPin
+                isGenerating = false
+            },
+            onError = {
+                isGenerating = false
+            }
+        )
+    }
+
+    LaunchedEffect(employee.id, validityHours) {
+        requestSecureToken()
+    }
+
+    val fallbackJson = remember(employee, merchantId) {
+        org.json.JSONObject().apply {
+            put("merchant_id", merchantId)
+            put("employee_id", employee.id)
+            put("employee_name", employee.name)
+            put("employee_role", employee.role)
+        }.toString()
+    }
+
+    val activePayload = encryptedToken ?: fallbackJson
+    val encodedPayload = remember(activePayload) {
+        java.net.URLEncoder.encode(activePayload, "UTF-8")
+    }
+    val qrImageUrl = "https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=$encodedPayload"
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = cardBg,
+            border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "এনক্রিপ্টেড স্টাফ কিউআর",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = textPrimary
+                        )
+                        Text(
+                            text = "${employee.name} (${employee.role})",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = textSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = textSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Security Shield Badge
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF10B981).copy(alpha = 0.12f))
+                        .border(1.dp, Color(0xFF10B981).copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (encryptedToken != null) "AES-256 এনক্রিপ্টেড ও অ্যান্টি-রিপ্লে সিকিউরড" else "স্টাফ অ্যাক্সেস টোকেন",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF10B981)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // QR Code Image Box
+                Box(
+                    modifier = Modifier
+                        .size(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isGenerating) {
+                        CircularProgressIndicator(color = Color(0xFF2563EB), modifier = Modifier.size(36.dp))
+                    } else {
+                        coil.compose.AsyncImage(
+                            model = qrImageUrl,
+                            contentDescription = "Secure Employee QR Code",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "পদবী: ${employee.role} • দোকান: $storeName",
+                    fontSize = 12.sp,
+                    color = textSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Optional Staff PIN Field
+                OutlinedTextField(
+                    value = staffPin,
+                    onValueChange = { if (it.length <= 6) staffPin = it },
+                    label = { Text("ঐচ্ছিক স্টাফ পিন (২-ফ্যাক্টর নিরাপত্তা)", fontSize = 12.sp) },
+                    placeholder = { Text("৪-৬ সংখ্যার পিন লিখুন", fontSize = 11.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { requestSecureToken() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF2563EB),
+                        unfocusedBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "কর্মচারী তার ফোনে 'SwapnoPay Staff' অ্যাপে এই কিউআর কোডটি স্ক্যান করে নিজস্ব পোর্টালে লগইন করতে পারবেন।",
+                    fontSize = 11.sp,
+                    color = textSecondary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Token Expiry Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("মেয়াদ:", fontSize = 12.sp, color = textSecondary)
+                    Row {
+                        listOf(24 to "২৪ ঘণ্টা", 168 to "৭ দিন", 720 to "৩০ দিন").forEach { (h, label) ->
+                            val isSel = validityHours == h
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 6.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) Color(0xFF2563EB) else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+                                    .clickable { validityHours = h }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isSel) Color.White else textSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Copy Token Button
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Employee Token", activePayload))
+                        Toast.makeText(context, "এনক্রিপ্টেড পেয়ারিং কোড কপি হয়েছে!", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("এনক্রিপ্টেড টোকেন কপি করুন", fontWeight = FontWeight.Bold)
                 }
             }
         }

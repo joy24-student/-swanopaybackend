@@ -89,7 +89,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
                 if (tab == "CUSTOMER") {
                     party.currentBalance > 0.01 || scopedTransactions.any { it.customerId == party.id && it.type == "credit" }
                 } else {
-                    party.currentBalance < -0.01 || party.currentBalance > 0.01 || scopedTransactions.any { it.supplierId == party.id && it.type == "credit" }
+                    party.currentBalance < -0.01 || scopedTransactions.any { it.supplierId == party.id && it.type == "credit" }
                 }
             } else {
                 true
@@ -108,12 +108,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
         scopedTransactions.filter { if (tab == "CUSTOMER") it.customerId in visibleIds else it.supplierId in visibleIds }
     }
     val outstanding = visibleParties.sumOf { party ->
-        val partyTx = visibleTransactions.filter { if (tab == "CUSTOMER") it.customerId == party.id else it.supplierId == party.id }
-        if (partyTx.isNotEmpty()) {
-            partyTx.sumOf { if (it.type == "credit") it.amount else -it.amount }.coerceAtLeast(0.0)
-        } else {
-            kotlin.math.abs(party.currentBalance)
-        }
+        if (tab == "CUSTOMER") party.currentBalance.coerceAtLeast(0.0) else (-party.currentBalance).coerceAtLeast(0.0)
     }
     val paidInRange = visibleTransactions.filter { it.type == "payment" }.sumOf { it.amount }
     val chargedInRange = visibleTransactions.filter { it.type == "credit" }.sumOf { it.amount }
@@ -231,7 +226,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val countWithDue = remember(baseParties, tab) {
                         baseParties.count { p ->
-                            if (tab == "CUSTOMER") p.currentBalance > 0.01 else kotlin.math.abs(p.currentBalance) > 0.01
+                            if (tab == "CUSTOMER") p.currentBalance > 0.01 else p.currentBalance < -0.01
                         }
                     }
 
@@ -348,11 +343,7 @@ fun ProductionLedgersScreen(viewModel: AppViewModel, initialTab: String = "CUSTO
             } else LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                 items(visibleParties, key = { it.id }) { party ->
                     val partyTransactions = visibleTransactions.filter { if (tab == "CUSTOMER") it.customerId == party.id else it.supplierId == party.id }
-                    val due = if (partyTransactions.isNotEmpty()) {
-                        partyTransactions.sumOf { if (it.type == "credit") it.amount else -it.amount }.coerceAtLeast(0.0)
-                    } else {
-                        kotlin.math.abs(party.currentBalance)
-                    }
+                    val due = if (tab == "CUSTOMER") party.currentBalance.coerceAtLeast(0.0) else (-party.currentBalance).coerceAtLeast(0.0)
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable { expandedParty = if (expandedParty == party.id) null else party.id },
                         colors = CardDefaults.cardColors(containerColor = card), border = BorderStroke(1.dp, border), shape = RoundedCornerShape(16.dp)

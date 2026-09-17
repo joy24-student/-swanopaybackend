@@ -651,15 +651,63 @@ function connectSwapnoPaySocket(url, orderIdParam) {
     socketClient.on('disconnect', (reason) => {
       console.log('[socket.io] Disconnected:', reason);
       if (socketHeartbeatInterval) clearInterval(socketHeartbeatInterval);
+      startStatusPolling();
     });
 
     socketClient.on('connect_error', (err) => {
       console.warn('[socket.io] Connection error:', err.message);
+      startStatusPolling();
     });
 
   } catch (err) {
     console.warn('[socket.io] Setup failed:', err.message);
+    startStatusPolling();
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// HTTP Status Polling Fallback (ensures completion even behind proxies/firewalls)
+// ──────────────────────────────────────────────────────────────────────────────
+let pollingInterval = null;
+
+function startStatusPolling() {
+  if (pollingInterval || paymentResolved) return;
+  if (!backendUrl || !orderId || orderId === "demo_order_id") return;
+
+  console.log('[polling] Starting HTTP status polling fallback every 4s...');
+  pollingInterval = setInterval(() => {
+    if (paymentResolved) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+      return;
+    }
+
+    const qMid = merchantId ? `&merchant_id=${encodeURIComponent(merchantId)}` : '';
+    fetch(`${backendUrl}/v1/payment/status?order_id=${encodeURIComponent(orderId)}${qMid}`, {
+      signal: AbortSignal.timeout(3500)
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data || !data.ok || paymentResolved) return;
+        if (data.status === 'PAID') {
+          paymentResolved = true;
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          showSuccessScreen(data.order || data);
+          if (data.redirect_url) {
+            setTimeout(() => { window.location.href = data.redirect_url; }, 3000);
+          }
+        } else if (data.status === 'CANCELLED') {
+          paymentResolved = true;
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          goToCancelledScreen();
+        }
+      })
+      .catch(() => {
+        // Polling network glitch, will retry next tick
+      });
+  }, 4000);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1014,6 +1062,7 @@ function handleTransferred() {
   if (timerDisplay) timerDisplay.innerText = "05:00";
 
   // ── Notify backend: customer has paid ──
+  startStatusPolling();
   if (backendUrl && orderId !== "demo_order_id") {
     fetch(`${backendUrl}/v1/payment/notify`, {
       method: "POST",
@@ -1062,6 +1111,7 @@ function skipProcessingAndAppeal() {
 function showSuccessScreen(orderRecord) {
   clearInterval(timerInterval);
   clearInterval(procInterval);
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
   updateFlowStage(4);
 
   document.getElementById("processing-view").classList.add("hidden");
@@ -1118,6 +1168,7 @@ function cancelOrder() {
 }
 
 function goToCancelledScreen() {
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
   ["cancel-view", "success-view", "processing-view", "merchant-offline-view"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add("hidden");
@@ -1156,6 +1207,7 @@ function setLanguage(lang) {
 // Appeal submission
 // ──────────────────────────────────────────────────────────────────────────────
 let uploadedFileName = "";
+let uploadedFileData = null;
 
 function triggerFileInput() { document.getElementById("file-input").click(); }
 
@@ -1169,6 +1221,12 @@ function handleFileSelect(event) {
     return;
   }
   uploadedFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    uploadedFileData = e.target.result;
+  };
+  reader.readAsDataURL(file);
+
   const nameDisplay = document.getElementById("file-name");
   nameDisplay.innerText = `📎 Selected: ${file.name}`;
   nameDisplay.classList.remove("hidden");
@@ -1196,11 +1254,19 @@ function submitAppeal() {
 
   if (!isValid) return;
 
+  const btnAppeal = document.getElementById("btn-appeal");
+  if (btnAppeal) {
+    btnAppeal.disabled = true;
+    btnAppeal.innerText = currentLang === "en" ? "Submitting Appeal..." : "আপিল জমা দেওয়া হচ্ছে...";
+  }
+
   const appealBody = {
     trx_id:    trxId,
     cus_phone: document.getElementById("customer-phone").value.trim() || "017xxxxxxxx",
     order_id:  orderId !== "demo_order_id" ? orderId : null,
     note:      note || "Customer Dispute Appeal",
+    screenshot_url: uploadedFileData,
+    screenshot_filename: uploadedFileName,
     status:    "PENDING_REVIEW"
   };
 
@@ -1215,14 +1281,30 @@ function submitAppeal() {
     body: JSON.stringify(appealBody)
   })
     .then(res => {
-      alert(res.ok
-        ? "Dispute appeal submitted successfully! Merchants will review and approve your order."
-        : "Dispute appeal submitted! (local backup)");
-      goToStep(1);
+      if (btnAppeal) {
+        btnAppeal.disabled = false;
+        btnAppeal.innerText = translations[currentLang]?.appealSubmit || "Submit Appeal";
+      }
+      if (res.ok) {
+        alert(currentLang === "en"
+          ? "Dispute appeal submitted successfully! Merchants will review and approve your order."
+          : "আপিল সফলভাবে জমা দেওয়া হয়েছে! মার্চেন্ট পর্যালোচনা করে আপনার অর্ডারটি অনুমোদন করবেন।");
+        goToStep(1);
+      } else {
+        alert(currentLang === "en"
+          ? "Failed to submit appeal. Please verify the transaction details and try again."
+          : "আপিল জমা দেওয়া ব্যর্থ হয়েছে। অনুগ্রহ করে লেনদেনের বিবরণ যাচাই করে আবার চেষ্টা করুন।");
+      }
     })
-    .catch(() => {
-      alert("Dispute appeal submitted! (offline cache)");
-      goToStep(1);
+    .catch(err => {
+      if (btnAppeal) {
+        btnAppeal.disabled = false;
+        btnAppeal.innerText = translations[currentLang]?.appealSubmit || "Submit Appeal";
+      }
+      console.error("[appeal] Submission failed:", err);
+      alert(currentLang === "en"
+        ? "Network error while submitting appeal. Please check your connection and try again."
+        : "আপিল জমা দেওয়ার সময় নেটওয়ার্ক ত্রুটি দেখা দিয়েছে। অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।");
     });
 }
 

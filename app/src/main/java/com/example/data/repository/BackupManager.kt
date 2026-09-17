@@ -102,6 +102,7 @@ object BackupManager {
             val orders = repository.observeOrders(merchantId).firstOrNull().orEmpty()
             val payments = repository.observePayments(merchantId).firstOrNull().orEmpty()
             val appeals = repository.observeAppeals(merchantId).firstOrNull().orEmpty()
+            val outboxSms = repository.observeOutboxSms(merchantId).firstOrNull().orEmpty()
             val profile: com.example.data.local.MerchantProfileEntity? = repository.observeMerchantProfile().firstOrNull()
 
             val totalRecords = customers.size + suppliers.size + products.size +
@@ -109,7 +110,7 @@ object BackupManager {
                     posSales.size + expenses.size + loans.size + dpsAccounts.size +
                     financeInstallments.size + notifications.size + employees.size +
                     merchantNumbers.size + paymentForms.size + formSubmissions.size +
-                    orders.size + payments.size + appeals.size +
+                    orders.size + payments.size + appeals.size + outboxSms.size +
                     (if (businessAnalytics == null) 0 else 1) + (if (profile == null) 0 else 1)
 
             val rootJson = JSONObject().apply {
@@ -134,6 +135,7 @@ object BackupManager {
                         put("currentBalance", c.currentBalance)
                         put("status", c.status)
                         put("createdAt", c.createdAt)
+                        put("code", c.code)
                     })
                 }
                 put("customers", customersArr)
@@ -150,6 +152,7 @@ object BackupManager {
                         put("openingBalance", s.openingBalance)
                         put("currentBalance", s.currentBalance)
                         put("createdAt", s.createdAt)
+                        put("code", s.code)
                     })
                 }
                 put("suppliers", suppliersArr)
@@ -171,6 +174,7 @@ object BackupManager {
                         put("unit", p.unit)
                         put("qrCode", p.qrCode ?: JSONObject.NULL)
                         put("imageUrl", p.imageUrl ?: JSONObject.NULL)
+                        put("storefrontDetailsJson", p.storefrontDetailsJson)
                         put("createdAt", p.createdAt)
                     })
                 }
@@ -466,6 +470,25 @@ object BackupManager {
                 }
                 put("appeals", appealsArr)
 
+                val outboxArr = JSONArray()
+                outboxSms.forEach { sms ->
+                    outboxArr.put(JSONObject().apply {
+                        put("id", sms.id)
+                        put("recipientPhone", sms.recipientPhone)
+                        put("messageText", sms.messageText)
+                        put("smsType", sms.smsType)
+                        put("simSlot", sms.simSlot)
+                        put("status", sms.status)
+                        put("externalJobId", sms.externalJobId ?: JSONObject.NULL)
+                        put("customerId", sms.customerId ?: JSONObject.NULL)
+                        put("errorMessage", sms.errorMessage ?: JSONObject.NULL)
+                        put("partsCount", sms.partsCount)
+                        put("createdAt", sms.createdAt)
+                        put("sentAt", sms.sentAt ?: JSONObject.NULL)
+                    })
+                }
+                put("outbox_sms", outboxArr)
+
                 // Profile
                 profile?.let { p ->
                     put("merchant_profile", JSONObject().apply {
@@ -579,7 +602,8 @@ object BackupManager {
                             openingBalance = obj.optDouble("openingBalance", 0.0),
                             currentBalance = obj.optDouble("currentBalance", 0.0),
                             status = obj.optString("status", "VIP"),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                            code = obj.optString("code", "")
                         )
                     )
                 }
@@ -605,7 +629,8 @@ object BackupManager {
                             address = if (obj.isNull("address")) null else obj.optString("address"),
                             openingBalance = obj.optDouble("openingBalance", 0.0),
                             currentBalance = obj.optDouble("currentBalance", 0.0),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                            code = obj.optString("code", "")
                         )
                     )
                 }
@@ -637,7 +662,8 @@ object BackupManager {
                             unit = obj.optString("unit", "pcs"),
                             qrCode = if (obj.isNull("qrCode")) null else obj.optString("qrCode"),
                             imageUrl = if (obj.isNull("imageUrl")) null else obj.optString("imageUrl"),
-                            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                            storefrontDetailsJson = obj.optString("storefrontDetailsJson", "{}")
                         )
                     )
                 }
@@ -1052,6 +1078,35 @@ object BackupManager {
                 if (list.isNotEmpty()) {
                     repository.insertAppeals(list)
                     restoredCounts["Appeals"] = list.size
+                }
+            }
+
+            if (root.has("outbox_sms")) {
+                val arr = root.getJSONArray("outbox_sms")
+                val list = mutableListOf<OutboxSmsEntity>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    list.add(
+                        OutboxSmsEntity(
+                            id = obj.getString("id"),
+                            merchantId = merchantId,
+                            recipientPhone = obj.getString("recipientPhone"),
+                            messageText = obj.getString("messageText"),
+                            smsType = obj.optString("smsType", "DUE_REMINDER"),
+                            simSlot = obj.optInt("simSlot", 0),
+                            status = obj.optString("status", "QUEUED"),
+                            externalJobId = if (obj.isNull("externalJobId")) null else obj.optString("externalJobId"),
+                            customerId = if (obj.isNull("customerId")) null else obj.optString("customerId"),
+                            errorMessage = if (obj.isNull("errorMessage")) null else obj.optString("errorMessage"),
+                            partsCount = obj.optInt("partsCount", 1),
+                            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                            sentAt = if (obj.isNull("sentAt")) null else obj.optLong("sentAt")
+                        )
+                    )
+                }
+                if (list.isNotEmpty()) {
+                    repository.insertOutboxSmsList(list)
+                    restoredCounts["Outbox SMS"] = list.size
                 }
             }
 

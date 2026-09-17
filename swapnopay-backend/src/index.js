@@ -10,6 +10,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { rateLimit } from 'express-rate-limit'
 
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,6 +26,10 @@ import { requirePlatformUser } from './services/merchantAccount.js'
 import oauthRouter from './routes/oauth.js'
 import { smsGatewayRouter } from './routes/smsGateway.js'
 import { startShopWorker } from './services/shopService.js'
+import { formRouter } from './routes/form.js'
+import { aiVoiceRouter } from './routes/aiVoice.js'
+import { subscriptionRouter } from './routes/subscription.js'
+import employeeRouter from './routes/employee.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -257,6 +262,19 @@ app.use((req, _res, next) => {
 // Static file hosting for uploads (KYC docs, receipts, shop assets)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
+// Serve web root (checkout widget, hosted forms runner, docs)
+const webDir = path.resolve(__dirname, '../../web')
+app.use(express.static(webDir))
+
+// Hosted Checkout Form Dynamic Slugs (/f/:slug, /forms/:slug, /form/:slug)
+app.get(['/f/:slug', '/forms/:slug', '/form/:slug'], (req, res) => {
+  const formHtml = path.join(webDir, 'form.html')
+  if (fs.existsSync(formHtml)) {
+    return res.sendFile(formHtml)
+  }
+  res.redirect(`/form.html?slug=${encodeURIComponent(req.params.slug)}`)
+})
+
 // Public health check
 app.get('/healthz', (_req, res) => {
   res.json({
@@ -298,25 +316,22 @@ app.use('/v1/merchant', merchantRouter)
 app.use('/v1/oauth', oauthRouter)
 app.use('/functions/v1', oauthRouter)
 
-// Branded Hosted Forms Route Registration
-app.post('/v1/routes', (req, res) => {
-  const formId = (req.body?.form_id || '').toLowerCase().replace(/-/g, '')
-  const slug = (req.body?.slug || formId || '').trim()
-  const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
-  return res.json({
-    ok: true,
-    public_id: formId,
-    public_url: `${publicOrigin}/f/${slug || formId}`,
-    slug_url: `${publicOrigin}/f/${slug || formId}`
-  })
-})
-
-app.delete('/v1/routes/:id', (_req, res) => {
-  return res.status(200).json({ ok: true })
-})
+// Branded Hosted Forms Route Registration & Form Processing API
+const hostedFormRoutes = formRouter(io)
+app.use('/v1', hostedFormRoutes)
+app.use('/', hostedFormRoutes)
 
 // Enterprise SMS Gateway & OTP Verification API
 app.use('/v1/sms-gateway', smsGatewayRouter(io, merchantHeartbeatMap))
+
+// AI Voice Calling & Automated Receptionist API
+app.use('/v1/voice', aiVoiceRouter(io))
+
+// Platform Subscription & Anti-Piracy Billing API
+app.use('/v1/subscription', subscriptionRouter)
+
+// Employee App, Staff Portal & Live Monitor API
+app.use('/v1/employee', employeeRouter)
 
 // 404
 app.use((_req, res) => {

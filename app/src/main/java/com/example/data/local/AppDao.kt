@@ -43,6 +43,19 @@ interface AppDao {
     @Query("SELECT EXISTS(SELECT 1 FROM cached_payments WHERE id = :trxId)")
     suspend fun hasPaymentWithId(trxId: String): Boolean
 
+    @Transaction
+    suspend fun processAndInsertSmsAtomically(
+        sms: SmsQueueEntity,
+        payment: CachedPaymentEntity
+    ): Long? {
+        if (hasSmsWithTrxId(sms.trxId) || hasPaymentWithId(sms.trxId)) {
+            return null
+        }
+        val id = insertSms(sms)
+        insertPayment(payment)
+        return id
+    }
+
     // Orders
     @Query("SELECT * FROM cached_orders WHERE merchantId = :merchantId ORDER BY createdAt DESC")
     fun observeOrders(merchantId: String): Flow<List<CachedOrderEntity>>

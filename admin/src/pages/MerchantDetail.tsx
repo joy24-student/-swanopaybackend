@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase } from '../adminSupabaseClient';
+import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient';
 import { useParams, Link } from 'react-router-dom';
 import {
   User,
@@ -155,15 +155,13 @@ export default function MerchantDetail() {
 
       if (error) throw error;
 
-      // Also call backend review endpoint if available
+      // Also call backend review endpoint if available (use helper to include auth)
       try {
-        const backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top';
-        await fetch(`${backendUrl}/v1/admin/kyc/${id}/review`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, reason: rejectionReasonInput.trim() }),
-        });
-      } catch (_e) {}
+        await reviewMerchantIdentity(id, action, rejectionReasonInput.trim());
+      } catch (e) {
+      } catch (e: any) {
+        console.warn('[MerchantDetail] backend KYC review failed:', e?.message || e)
+      }
 
       setMerchant((prev: any) => ({ ...prev, ...updateData }));
       setKycFeedback(`KYC verification successfully ${action === 'APPROVE' ? 'approved and verified' : 'rejected'}.`);

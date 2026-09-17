@@ -345,6 +345,7 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
 export default function SystemSettings() {
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery'>('links');
+  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery' | 'subscription'>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -353,6 +354,15 @@ export default function SystemSettings() {
   const [galleryTitle, setGalleryTitle] = useState('Radymate E-commerce launch');
   const [galleryCaption, setGalleryCaption] = useState('One-click launch storefront');
   const [gallerySaving, setGallerySaving] = useState(false);
+  const [subConfig, setSubConfig] = useState({
+    monthly_fee: 100,
+    quarterly_fee: 250,
+    yearly_fee: 650,
+    trial_days: 90,
+    is_trial_enabled: true,
+    enforce_nid_verification: true,
+  });
+  const [subSaving, setSubSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -386,6 +396,26 @@ export default function SystemSettings() {
       } catch (e) {
         console.warn('Radymate gallery fetch warning:', e);
         setRadymateGallery(DEFAULT_RADYMATE_GALLERY);
+      }
+
+      try {
+        const { data: subData } = await adminSupabase
+          .from('platform_subscription_config')
+          .select('*')
+          .eq('id', 'default_config')
+          .maybeSingle();
+        if (subData) {
+          setSubConfig({
+            monthly_fee: Number(subData.monthly_fee) || 100,
+            quarterly_fee: Number(subData.quarterly_fee) || 250,
+            yearly_fee: Number(subData.yearly_fee) || 650,
+            trial_days: Number(subData.trial_days) || 90,
+            is_trial_enabled: subData.is_trial_enabled ?? true,
+            enforce_nid_verification: subData.enforce_nid_verification ?? true,
+          });
+        }
+      } catch (e) {
+        console.warn('Subscription config read notice:', e);
       } finally {
         setLoading(false);
       }
@@ -404,6 +434,32 @@ export default function SystemSettings() {
 
     return () => { adminSupabase.removeChannel(channel); };
   }, []);
+
+  const handleSaveSubscriptionConfig = async () => {
+    setSubSaving(true);
+    setStatusMsg('Saving subscription & pricing settings...');
+    try {
+      const { error } = await adminSupabase
+        .from('platform_subscription_config')
+        .upsert({
+          id: 'default_config',
+          monthly_fee: Number(subConfig.monthly_fee),
+          quarterly_fee: Number(subConfig.quarterly_fee),
+          yearly_fee: Number(subConfig.yearly_fee),
+          trial_days: Number(subConfig.trial_days),
+          is_trial_enabled: subConfig.is_trial_enabled,
+          enforce_nid_verification: subConfig.enforce_nid_verification,
+          updated_at: new Date().toISOString(),
+        });
+      if (error) throw error;
+      setStatusMsg('✅ Subscription pricing and trial period updated successfully!');
+      setTimeout(() => setStatusMsg(''), 5000);
+    } catch (err: any) {
+      setStatusMsg('❌ Failed to save subscription config: ' + err.message);
+    } finally {
+      setSubSaving(false);
+    }
+  };
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -583,6 +639,7 @@ export default function SystemSettings() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { key: 'links', label: '💻 Developer Portal Links' },
+          { key: 'subscription', label: '💳 Subscription & Pricing' },
           { key: 'api_docs', label: '📚 API Documentation CMS' },
           { key: 'gallery', label: '🖼️ Radymate Gallery (' + radymateGallery.length + ')' },
           { key: 'video', label: '🎥 Video Tutorials (' + ((config.video_tutorials || []).length) + ')' },
@@ -610,6 +667,140 @@ export default function SystemSettings() {
       </div>
 
       <form onSubmit={handleSave}>
+        {activeTab === 'subscription' && (
+          <div className="card" style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  💳 Subscription Pricing, Free Trial & Anti-Piracy Billing Gates
+                </h3>
+                <p style={{ fontSize: 13, color: '#64748B', margin: '4px 0 0 0' }}>
+                  Dynamically adjust monthly, quarterly, and yearly subscription fees, free trial duration, and enforce 1-NID = 1-Account anti-abuse verification.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="button"
+                onClick={handleSaveSubscriptionConfig}
+                disabled={subSaving}
+                style={{ background: '#10B981', fontWeight: 'bold' }}
+              >
+                {subSaving ? 'Saving...' : '💾 Save Pricing & Trial Settings'}
+              </button>
+            </div>
+
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 14, marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 6px 0', color: '#0F172A', fontSize: 14 }}>🛡️ Anti-Piracy & Anti-Abuse Rules Enforcement</h4>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#475569', lineHeight: '1.6' }}>
+                <li><strong>Strict 1 NID = 1 Account:</strong> The backend prevents any National ID (NID) number from being registered to more than one merchant account.</li>
+                <li><strong>Mandatory NID Verification:</strong> If enabled, accounts without submitted/verified NID are gated from accessing core billing & transaction services.</li>
+                <li><strong>Dynamic Paywall:</strong> When the free trial and active subscriptions expire, the mobile app automatically locks access with an un-bypassable billing paywall.</li>
+                <li><strong>Native Gateway Flow:</strong> All subscription payments are processed directly through SwapnoPay's own receiving gateway (bKash, Nagad, Rocket).</li>
+              </ul>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 20 }}>
+              <div style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#4338CA', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Monthly Subscription Plan
+                </div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                  Monthly Fee (BDT ৳) *
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  value={subConfig.monthly_fee}
+                  onChange={(e) => setSubConfig({ ...subConfig, monthly_fee: Number(e.target.value) })}
+                  min={1}
+                  required
+                />
+                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳100 / 30 Days</span>
+              </div>
+
+              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#15803D', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Quarterly Subscription Plan
+                </div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                  Quarterly Fee (BDT ৳) *
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  value={subConfig.quarterly_fee}
+                  onChange={(e) => setSubConfig({ ...subConfig, quarterly_fee: Number(e.target.value) })}
+                  min={1}
+                  required
+                />
+                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳250 / 90 Days</span>
+              </div>
+
+              <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Yearly Subscription Plan (Best Value)
+                </div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                  Yearly Fee (BDT ৳) *
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  value={subConfig.yearly_fee}
+                  onChange={(e) => setSubConfig({ ...subConfig, yearly_fee: Number(e.target.value) })}
+                  min={1}
+                  required
+                />
+                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳650 / 365 Days</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 10, padding: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 4 }}>
+                  🎁 Free Trial Period for New Accounts (Days)
+                </label>
+                <input
+                  type="number"
+                  className="input"
+                  value={subConfig.trial_days}
+                  onChange={(e) => setSubConfig({ ...subConfig, trial_days: Number(e.target.value) })}
+                  min={0}
+                  required
+                />
+                <span style={{ fontSize: 12, color: '#64748B', display: 'block', marginTop: 4 }}>
+                  Default is 90 days (3 Months Free Trial) granted on KYC registration.
+                </span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={subConfig.is_trial_enabled}
+                    onChange={(e) => setSubConfig({ ...subConfig, is_trial_enabled: e.target.checked })}
+                  />
+                  Enable 3-Month Free Trial for newly registered accounts
+                </label>
+              </div>
+
+              <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#9F1239', marginBottom: 4 }}>
+                  🔒 Strict Identity & NID Verification Gate
+                </label>
+                <p style={{ fontSize: 12, color: '#475569', margin: '0 0 12px 0' }}>
+                  When enabled, merchants MUST complete NID document submission and face liveness verification before using any features or buying subscriptions.
+                </p>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#BE123C' }}>
+                  <input
+                    type="checkbox"
+                    checked={subConfig.enforce_nid_verification}
+                    onChange={(e) => setSubConfig({ ...subConfig, enforce_nid_verification: e.target.checked })}
+                  />
+                  Enforce Mandatory NID Verification (1 NID = 1 Account strictly)
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'links' && (
           <div className="card" style={{ marginBottom: 18 }}>
             <h3 style={{ marginTop: 0 }}>💻 Developer Portal & API Links Customization</h3>

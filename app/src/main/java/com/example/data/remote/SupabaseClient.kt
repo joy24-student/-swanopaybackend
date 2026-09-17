@@ -1347,6 +1347,7 @@ object SupabaseClient {
         token: String,
         formId: String,
         formSlug: String,
+        payloadJson: JSONObject? = null,
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -1356,6 +1357,9 @@ object SupabaseClient {
             put("publishable_key", publishableKey)
             put("form_id", formId)
             put("slug", formSlug)
+            if (payloadJson != null) {
+                put("payload", payloadJson)
+            }
         }.toString()
         val request = runCatching {
             Request.Builder()

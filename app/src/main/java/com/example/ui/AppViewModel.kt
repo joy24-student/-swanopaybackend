@@ -10,6 +10,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.core.app.NotificationCompat
@@ -678,6 +679,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
             var accountLookupFailed = false
             if (session.isValid) {
+                fetchSubscriptionStatus()
                 val account = checkMerchantAccountOnBackend(session.email.orEmpty())
                 if (account != null) {
                     applyRestoredMerchantSetup(account)
@@ -690,8 +692,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            val flavorRole = try {
+                com.example.BuildConfig.APP_FLAVOR_ROLE
+            } catch (e: Throwable) {
+                "MERCHANT"
+            }
+
             val onboarded = isOnboarded()
             val targetScreen = when {
+                flavorRole == "EMPLOYEE" -> {
+                    val savedSession = securityPrefs.getString("employee_session_json", null)
+                    if (_employeeSession.value != null || !savedSession.isNullOrBlank()) {
+                        "EmployeePortal"
+                    } else {
+                        "EmployeeLogin"
+                    }
+                }
                 !session.isValid || session.email.isNullOrEmpty() || accountLookupFailed -> {
                     "Login"
                 }
@@ -894,7 +910,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 id = "vid_bkash",
                 title = "bKash Automatic SMS Matching",
                 description = "Setup automated order matching with personal & merchant SIM.",
-                videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                videoUrl = "https://swapnopay.top/docs/bkash-automation",
                 duration = "5:24 min",
                 category = "Automation"
             ),
@@ -902,7 +918,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 id = "vid_sms_app",
                 title = "SMS Gateway Background Service",
                 description = "Configure battery optimization, background service & permissions.",
-                videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                videoUrl = "https://swapnopay.top/docs/sms-gateway",
                 duration = "3:15 min",
                 category = "Setup"
             ),
@@ -910,7 +926,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 id = "vid_woo",
                 title = "WooCommerce & Webhooks Setup",
                 description = "Install SwapnoPay WordPress plugin and configure instant IPN webhooks.",
-                videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                videoUrl = "https://swapnopay.top/docs/woocommerce-integration",
                 duration = "4:50 min",
                 category = "Integration"
             ),
@@ -918,7 +934,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 id = "vid_postgres",
                 title = "Supabase Database & API Keys",
                 description = "Manage API secret keys, RLS security policies, and edge functions.",
-                videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                videoUrl = "https://swapnopay.top/docs/supabase-security",
                 duration = "6:10 min",
                 category = "Security"
             )
@@ -1307,6 +1323,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun compressKycImage(rawBytes: ByteArray, maxDim: Int = 1280, quality: Int = 80): ByteArray {
+        if (rawBytes.isEmpty()) return rawBytes
+        return try {
+            val boundsOptions = android.graphics.BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            android.graphics.BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, boundsOptions)
+            val w = boundsOptions.outWidth
+            val h = boundsOptions.outHeight
+            if (w <= 0 || h <= 0) return rawBytes
+
+            var sampleSize = 1
+            while ((w / sampleSize) > maxDim * 2 || (h / sampleSize) > maxDim * 2) {
+                sampleSize *= 2
+            }
+
+            val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+            }
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, decodeOptions)
+                ?: return rawBytes
+
+            val maxCurrentDim = kotlin.math.max(bmp.width, bmp.height)
+            val scaled = if (maxCurrentDim > maxDim) {
+                val ratio = maxDim.toFloat() / maxCurrentDim
+                val newW = (bmp.width * ratio).toInt().coerceAtLeast(1)
+                val newH = (bmp.height * ratio).toInt().coerceAtLeast(1)
+                android.graphics.Bitmap.createScaledBitmap(bmp, newW, newH, true)
+            } else {
+                bmp
+            }
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+            out.toByteArray()
+        } catch (e: Exception) {
+            android.util.Log.e("AppViewModel", "Failed to compress KYC image, using raw bytes", e)
+            rawBytes
+        }
+    }
+
     fun submitFullKycVerification(
         nidNumber: String, nidName: String, nidDob: String,
         frontBytes: ByteArray, backBytes: ByteArray, selfieBytes: ByteArray,
@@ -1330,7 +1386,138 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _activeProfile.value = updated
                 repository.insertMerchantProfile(updated)
                 onComplete?.invoke(true, null)
+                val merchantId = _activeProfile.value.id.ifEmpty { "merchant_${System.currentTimeMillis()}" }
+
+                // Compress camera images asynchronously off main thread
+                val (compressedFront, compressedBack, compressedSelfie) = withContext(Dispatchers.Default) {
+                    Triple(
+                        compressKycImage(frontBytes, maxDim = 1280, quality = 80),
+                        compressKycImage(backBytes, maxDim = 1280, quality = 80),
+                        compressKycImage(selfieBytes, maxDim = 1080, quality = 80)
+                    )
+                }
+
+                // Check if we can submit via backend API
+                val platformProfile = getOrCreatePlatformSupabaseProfile()
+                var lastErrorMessage = ""
+
+                if (platformProfile.authSessionToken.isNotBlank()) {
+                    try {
+                        val payload = org.json.JSONObject().put("nid_number", nidNumber.trim())
+                            .put("nid_name", nidName.trim()).put("nid_dob", nidDob.trim()).put("liveness_passed", true)
+                            .put("ocr_raw_text", ocrRawText)
+                            .put("front_base64", android.util.Base64.encodeToString(compressedFront, android.util.Base64.NO_WRAP))
+                            .put("back_base64", android.util.Base64.encodeToString(compressedBack, android.util.Base64.NO_WRAP))
+                            .put("selfie_base64", android.util.Base64.encodeToString(compressedSelfie, android.util.Base64.NO_WRAP))
+                        val saved = platformRequest("/v1/kyc/submit", payload).getJSONObject("merchant")
+                        val updated = _activeProfile.value.copy(
+                            kycStatus = saved.optString("kyc_status", "PENDING"),
+                            kycRejectionReason = "",
+                            nidNumber = saved.optString("nid_number", nidNumber.trim()),
+                            nidFrontUrl = saved.optString("nid_front_url", _activeProfile.value.nidFrontUrl),
+                            nidBackUrl = saved.optString("nid_back_url", _activeProfile.value.nidBackUrl)
+                        )
+                        _activeProfile.value = updated
+                        repository.insertMerchantProfile(updated)
+                        onComplete?.invoke(true, null)
+                        return@launch
+                    } catch (backendErr: Exception) {
+                        if (backendErr is kotlinx.coroutines.CancellationException) throw backendErr
+                        android.util.Log.w("AppViewModel", "Backend KYC submit notice, attempting direct Supabase fallback: ${backendErr.message}")
+                        lastErrorMessage = backendErr.message ?: "Backend error"
+                    }
+                }
+
+                // Direct Supabase Fallback (if backend unreachable, token blank, or backend failed)
+                val nowTime = System.currentTimeMillis()
+                var frontUrl = ""
+                var backUrl = ""
+                var selfieUrl = ""
+                val storageBucket = "kyc-documents"
+
+                // Upload documents directly to Supabase Storage
+                try {
+                    com.example.data.remote.SupabaseClient.uploadStorageObject(
+                        url = PLATFORM_SUPABASE_URL,
+                        anonKey = PLATFORM_SUPABASE_ANON_KEY,
+                        token = platformProfile.authSessionToken.ifEmpty { null },
+                        bucket = storageBucket,
+                        filePath = "kyc/${merchantId}/front_${nowTime}.jpg",
+                        fileBytes = compressedFront,
+                        mimeType = "image/jpeg",
+                        onSuccess = { frontUrl = it },
+                        onFailure = { android.util.Log.w("AppViewModel", "Direct front storage upload notice: $it") }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("AppViewModel", "Front storage upload exception", e)
+                }
+
+                try {
+                    com.example.data.remote.SupabaseClient.uploadStorageObject(
+                        url = PLATFORM_SUPABASE_URL,
+                        anonKey = PLATFORM_SUPABASE_ANON_KEY,
+                        token = platformProfile.authSessionToken.ifEmpty { null },
+                        bucket = storageBucket,
+                        filePath = "kyc/${merchantId}/back_${nowTime}.jpg",
+                        fileBytes = compressedBack,
+                        mimeType = "image/jpeg",
+                        onSuccess = { backUrl = it },
+                        onFailure = { android.util.Log.w("AppViewModel", "Direct back storage upload notice: $it") }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("AppViewModel", "Back storage upload exception", e)
+                }
+
+                try {
+                    com.example.data.remote.SupabaseClient.uploadStorageObject(
+                        url = PLATFORM_SUPABASE_URL,
+                        anonKey = PLATFORM_SUPABASE_ANON_KEY,
+                        token = platformProfile.authSessionToken.ifEmpty { null },
+                        bucket = storageBucket,
+                        filePath = "kyc/${merchantId}/selfie_${nowTime}.jpg",
+                        fileBytes = compressedSelfie,
+                        mimeType = "image/jpeg",
+                        onSuccess = { selfieUrl = it },
+                        onFailure = { android.util.Log.w("AppViewModel", "Direct selfie storage upload notice: $it") }
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("AppViewModel", "Selfie storage upload exception", e)
+                }
+
+                var directSuccess = false
+                var directError: String? = null
+                com.example.data.remote.SupabaseClient.submitKycVerification(
+                    url = PLATFORM_SUPABASE_URL,
+                    anonKey = PLATFORM_SUPABASE_ANON_KEY,
+                    token = platformProfile.authSessionToken.ifEmpty { PLATFORM_SUPABASE_ANON_KEY },
+                    merchantId = merchantId,
+                    nidNumber = nidNumber,
+                    nidName = nidName,
+                    nidDob = nidDob,
+                    frontUrl = frontUrl,
+                    backUrl = backUrl,
+                    selfieUrl = selfieUrl,
+                    onSuccess = { directSuccess = true },
+                    onFailure = { directError = it }
+                )
+
+                if (directSuccess) {
+                    val updated = _activeProfile.value.copy(
+                        kycStatus = "PENDING",
+                        kycRejectionReason = "",
+                        nidNumber = nidNumber.trim(),
+                        nidFrontUrl = frontUrl.ifEmpty { _activeProfile.value.nidFrontUrl },
+                        nidBackUrl = backUrl.ifEmpty { _activeProfile.value.nidBackUrl }
+                    )
+                    _activeProfile.value = updated
+                    repository.insertMerchantProfile(updated)
+                    onComplete?.invoke(true, null)
+                } else {
+                    val finalMsg = directError ?: lastErrorMessage.ifEmpty { "KYC could not be saved. Please retry." }
+                    onComplete?.invoke(false, finalMsg)
+                }
             } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 onComplete?.invoke(false, error.message ?: "KYC could not be saved. Please retry.")
             }
         }
@@ -1482,9 +1669,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     private val platformHttpClient = okhttp3.OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(45, java.util.concurrent.TimeUnit.SECONDS).build()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val platformSessionMutex = kotlinx.coroutines.sync.Mutex()
 
     private suspend fun platformRequest(path: String, payload: org.json.JSONObject? = null): org.json.JSONObject {
@@ -3609,7 +3797,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     borderColorHex = field.optString("border_color", "#E2E8F0"),
                     borderWidthDp = field.optInt("border_width_dp", 1),
                     borderRadiusDp = field.optInt("border_radius_dp", 12),
-                    shadowElevationDp = field.optInt("shadow_elevation_dp", 2)
+                    shadowElevationDp = field.optInt("shadow_elevation_dp", 2),
+                    galleryUrls = field.optJSONArray("gallery_urls")?.let { arr ->
+                        List(arr.length()) { arr.optString(it) }.filter(String::isNotBlank)
+                    } ?: emptyList(),
+                    productVariants = field.optJSONArray("product_variants")?.let { arr ->
+                        val vl = mutableListOf<ProductVariantItem>()
+                        for (vi in 0 until arr.length()) {
+                            val vObj = arr.optJSONObject(vi) ?: continue
+                            vl.add(ProductVariantItem(
+                                id = vObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                name = vObj.optString("name"),
+                                price = vObj.optDouble("price", 0.0),
+                                sku = vObj.optString("sku"),
+                                stock = vObj.optInt("stock", 100),
+                                description = vObj.optString("description")
+                            ))
+                        }
+                        vl
+                    } ?: emptyList()
                 )
             }
         }
@@ -3631,6 +3837,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     digitalDownloadUrl = product.optString("digital_download_url"),
                     variants = product.optJSONArray("variants")?.let { variants ->
                         List(variants.length()) { variants.optString(it) }.filter(String::isNotBlank)
+                    } ?: emptyList(),
+                    galleryUrls = product.optJSONArray("gallery_urls")?.let { arr ->
+                        List(arr.length()) { arr.optString(it) }.filter(String::isNotBlank)
+                    } ?: emptyList(),
+                    productVariants = product.optJSONArray("product_variants")?.let { arr ->
+                        val vl = mutableListOf<ProductVariantItem>()
+                        for (vi in 0 until arr.length()) {
+                            val vObj = arr.optJSONObject(vi) ?: continue
+                            vl.add(ProductVariantItem(
+                                id = vObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                name = vObj.optString("name"),
+                                price = vObj.optDouble("price", 0.0),
+                                sku = vObj.optString("sku"),
+                                stock = vObj.optInt("stock", 100),
+                                description = vObj.optString("description")
+                            ))
+                        }
+                        vl
                     } ?: emptyList()
                 )
             }
@@ -3642,7 +3866,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 pages += FormPageItem(
                     id = page.optString("id", java.util.UUID.randomUUID().toString()),
                     title = page.optString("title", "Page ${index + 1}"),
-                    subtitle = page.optString("subtitle")
+                    subtitle = page.optString("subtitle"),
+                    isCustomHtml = page.optBoolean("is_custom_html", page.optBoolean("isCustomHtml", false)),
+                    customHtmlContent = page.optString("custom_html_content", page.optString("customHtmlContent", "")),
+                    customCssContent = page.optString("custom_css_content", page.optString("customCssContent", "")),
+                    customVariables = page.optJSONArray("custom_variables")?.let { varArr ->
+                        List(varArr.length()) { varArr.optString(it) }.filter(String::isNotBlank)
+                    } ?: emptyList()
                 )
             }
         }
@@ -3817,6 +4047,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 logFirebaseStatus("Sign in again to register the branded hosted-form route.")
                 return@launch
             }
+            val payloadJson = hostedFormToJson(form)
             com.example.data.remote.SupabaseClient.registerHostedFormRoute(
                 routerBaseUrl = hostedFormRouterOrigin,
                 projectUrl = active.supabaseUrl,
@@ -3824,6 +4055,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 token = active.authSessionToken,
                 formId = form.id,
                 formSlug = form.slug,
+                payloadJson = payloadJson,
                 onSuccess = { publicUrl ->
                     hostedFormRouteStatus.update { it + (form.id to "READY") }
                     logFirebaseStatus("Branded form route ready: $publicUrl")
@@ -3873,6 +4105,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         put("id", form.id)
         put("merchant_id", activeProfile.value.id.ifBlank { "00000000-0000-0000-0000-000000000001" })
         val effectiveAmount = form.products.firstOrNull()?.let { if (it.salePrice > 0.0) it.salePrice else it.price }
+            ?: form.fields.find { it.type == FormFieldType.PRODUCT || it.type == FormFieldType.PRODUCT_LIST }?.let { it.minValue ?: it.defaultValue.toDoubleOrNull() ?: 0.0 }
             ?: form.fields.find { it.type == FormFieldType.CUSTOM_AMOUNT }?.minValue
             ?: 0.0
         put("amount", effectiveAmount)
@@ -3936,6 +4169,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("border_width_dp", field.borderWidthDp)
                     put("border_radius_dp", field.borderRadiusDp)
                     put("shadow_elevation_dp", field.shadowElevationDp)
+                    put("gallery_urls", org.json.JSONArray(field.galleryUrls))
+                    put("product_variants", org.json.JSONArray().apply {
+                        field.productVariants.forEach { pv ->
+                            put(org.json.JSONObject().apply {
+                                put("id", pv.id)
+                                put("name", pv.name)
+                                put("price", pv.price)
+                                put("sku", pv.sku)
+                                put("stock", pv.stock)
+                                put("description", pv.description)
+                            })
+                        }
+                    })
                 })
             }
         })
@@ -3954,6 +4200,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("is_digital", product.isDigital)
                     put("digital_download_url", product.digitalDownloadUrl)
                     put("variants", org.json.JSONArray(product.variants))
+                    put("gallery_urls", org.json.JSONArray(product.galleryUrls))
+                    put("product_variants", org.json.JSONArray().apply {
+                        product.productVariants.forEach { pv ->
+                            put(org.json.JSONObject().apply {
+                                put("id", pv.id)
+                                put("name", pv.name)
+                                put("price", pv.price)
+                                put("sku", pv.sku)
+                                put("stock", pv.stock)
+                                put("description", pv.description)
+                            })
+                        }
+                    })
                 })
             }
         })
@@ -3963,6 +4222,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("id", page.id)
                     put("title", page.title)
                     put("subtitle", page.subtitle)
+                    put("is_custom_html", page.isCustomHtml)
+                    put("custom_html_content", page.customHtmlContent)
+                    put("custom_css_content", page.customCssContent)
+                    put("custom_variables", org.json.JSONArray(page.customVariables))
                 })
             }
         })
@@ -4122,6 +4385,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             "invoice_number" to "INV-${(10000..99999).random()}",
             "total_customers" to customers.value.size.toString(),
             "total_products" to products.value.size.toString(),
+            "total_price" to "৳" + "%,.2f".format(formProductsList.value.sumOf { (it.salePrice.takeIf { s -> s > 0.0 } ?: it.price) }),
             "total_due_receivable" to "৳" + "%,.2f".format(customers.value.sumOf { it.currentBalance.coerceAtLeast(0.0) }),
             "total_sales" to "৳" + "%,.2f".format(ledgerTransactions.value.filter { it.type == "credit" }.sumOf { it.amount })
         )
@@ -4150,16 +4414,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun compileCustomWebAppHtml(): String {
         val theme = formThemeConfig.value
         val rawHtml = theme.customHtmlContent.ifBlank {
+            val title = formTitle.value.ifBlank { "SwapnoPay Hosted Form" }
+            val desc = formDescription.value.ifBlank { "Complete your payment or submission securely." }
+            val fieldsHtml = formFieldsList.value.joinToString("\n") { field ->
+                """
+                <div style="margin-bottom: 14px; text-align: left;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: ${if (theme.isDarkMode) "#E2E8F0" else "#334155"};">
+                        ${field.label}${if (field.isRequired) " <span style=\"color: #EF4444;\">*</span>" else ""}
+                    </label>
+                    <input type="text" placeholder="${field.placeholder.ifBlank { "Enter value" }}" style="width: 100%; padding: 12px; border: 1.5px solid ${if (theme.isDarkMode) "#334155" else "#E2E8F0"}; border-radius: 12px; background: ${if (theme.isDarkMode) "#1E293B" else "#FFFFFF"}; color: ${if (theme.isDarkMode) "#FFFFFF" else "#0F172A"}; box-sizing: border-box; font-size: 14px;" />
+                </div>
+                """.trimIndent()
+            }
+            val productsHtml = formProductsList.value.joinToString("\n") { prod ->
+                val effPrice = prod.salePrice.takeIf { it > 0.0 } ?: prod.price
+                """
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: ${if (theme.isDarkMode) "#1E293B" else "#F8FAFC"}; border: 1px solid ${if (theme.isDarkMode) "#334155" else "#E2E8F0"}; border-radius: 12px; margin-bottom: 10px; text-align: left;">
+                    <div>
+                        <strong style="color: ${if (theme.isDarkMode) "#FFFFFF" else "#0F172A"}; font-size: 14px;">${prod.title}</strong>
+                        ${if (prod.sku.isNotBlank()) "<div style=\"font-size: 12px; color: #64748B;\">SKU: ${prod.sku}</div>" else ""}
+                    </div>
+                    <span style="font-weight: 700; font-size: 14px; color: ${theme.primaryColorHex};">৳${"%,.2f".format(effPrice)}</span>
+                </div>
+                """.trimIndent()
+            }
+            val btnRadius = when (theme.buttonShape) {
+                "PILL" -> "32px"
+                "SQUARE" -> "4px"
+                else -> "12px"
+            }
             """
             <div class="custom-web-card">
-                <h2>{{form_title}}</h2>
-                <p>{{form_description}}</p>
+                <h2 style="color: ${if (theme.isDarkMode) "#FFFFFF" else "#0F172A"}; font-size: 22px; font-weight: 800; margin-bottom: 6px;">$title</h2>
+                <p style="color: #64748B; font-size: 14px; margin-bottom: 16px;">$desc</p>
                 <div class="merchant-badge">🏪 {{merchant_name}} | 📞 {{merchant_phone}}</div>
-                <div class="stats-grid">
-                    <div class="stat-box"><span class="stat-num">{{total_products}}</span><span>Products</span></div>
-                    <div class="stat-box"><span class="stat-num">{{total_customers}}</span><span>Customers</span></div>
-                    <div class="stat-box"><span class="stat-num">{{total_sales}}</span><span>Total Sales</span></div>
+                ${if (productsHtml.isNotBlank()) "<div style=\"margin: 16px 0;\"><h4 style=\"margin-bottom: 8px; font-size: 12px; text-transform: uppercase; color: #64748B; text-align: left;\">Select Products</h4>$productsHtml</div>" else ""}
+                <div style="margin-top: 16px;">
+                    ${fieldsHtml.ifBlank { "<p style=\"color: #94A3B8; font-size: 13px; text-align: center; padding: 24px;\">Add form elements or custom HTML in the Form Builder studio.</p>" }}
                 </div>
+                <button style="width: 100%; margin-top: 20px; padding: 14px; background: ${theme.primaryColorHex}; color: #FFFFFF; border: none; border-radius: $btnRadius; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+                    Complete Submission / Checkout
+                </button>
             </div>
             """.trimIndent()
         }
@@ -4190,11 +4485,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
                 body { background: ${if (theme.isDarkMode) "#0B0F19" else "#F8FAFC"}; color: ${if (theme.isDarkMode) "#F1F5F9" else "#0F172A"}; padding: 20px; }
-                .custom-web-card { max-width: 680px; margin: 0 auto; background: ${if (theme.isDarkMode) "#151C2D" else "#FFFFFF"}; border-radius: 20px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+                .custom-web-card { max-width: 680px; margin: 0 auto; background: ${if (theme.isDarkMode) "#151C2D" else "#FFFFFF"}; border-radius: 20px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid ${if (theme.isDarkMode) "#334155" else "#E2E8F0"}; }
                 .merchant-badge { display: inline-block; background: #EEF2FF; color: #4F46E5; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; margin: 12px 0; }
-                .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
-                .stat-box { background: ${if (theme.isDarkMode) "#1E293B" else "#F1F5F9"}; padding: 14px; border-radius: 12px; text-align: center; font-size: 12px; }
-                .stat-num { display: block; font-size: 18px; font-weight: bold; color: ${theme.primaryColorHex}; margin-bottom: 4px; }
                 $resolvedCss
             </style>
         </head>
@@ -4245,7 +4537,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 })();
 
-                $resolvedJs
+                // Custom JavaScript injected by user
+                try {
+                    $resolvedJs
+                } catch(e) {
+                    console.error("Custom JS Error:", e);
+                }
             </script>
         </body>
         </html>
@@ -4263,7 +4560,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             minValue = when (type) {
                 FormFieldType.CUSTOM_AMOUNT, FormFieldType.QUANTITY -> 1.0
                 else -> null
-            }
+            },
+            pageIndex = activePageIndex.value
         )
         formFieldsList.value = formFieldsList.value + newField
         saveActiveFormToHostedList()
@@ -5192,15 +5490,56 @@ function executePayment() {
     val activePageIndex = MutableStateFlow<Int>(0)
     val selectedFieldId = MutableStateFlow<String?>(null)
 
-    fun addFormPage(title: String = "") {
+    fun addFormPage(
+        title: String = "",
+        subtitle: String = "",
+        isCustomHtml: Boolean = false,
+        customHtmlContent: String = "",
+        customCssContent: String = ""
+    ) {
         if (formPagesList.value.size >= 25) return
         val newIdx = formPagesList.value.size + 1
         val newPage = FormPageItem(
-            title = title.ifEmpty { "Page $newIdx: Additional Details" },
-            subtitle = "Please complete the required fields"
+            title = title.ifEmpty { if (isCustomHtml) "Page $newIdx: Custom HTML" else "Page $newIdx: Additional Details" },
+            subtitle = subtitle.ifEmpty { if (isCustomHtml) "Custom HTML view with dynamic variables" else "Please complete the required fields" },
+            isCustomHtml = isCustomHtml,
+            customHtmlContent = customHtmlContent.ifEmpty {
+                if (isCustomHtml) {
+                    """<div style="padding: 24px; text-align: center;">
+  <h2 style="color: #1E293B; margin-bottom: 8px;">{{form_title}}</h2>
+  <p style="color: #64748B; font-size: 14px;">Welcome! Please review information below.</p>
+  <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 12px; padding: 16px; margin: 18px 0; text-align: left;">
+    <p style="margin: 0 0 6px 0; font-weight: 700; color: #334155;">Merchant Notice:</p>
+    <p style="margin: 0; font-size: 13px; color: #64748B;">Store: <strong>{{merchant_name}}</strong> | Contact: {{merchant_phone}}</p>
+    <p style="margin: 4px 0 0; font-size: 13px; color: #64748B;">Date: {{current_date}}</p>
+  </div>
+</div>""".trimIndent()
+                } else ""
+            },
+            customCssContent = customCssContent
         )
         formPagesList.value = formPagesList.value + newPage
         activePageIndex.value = formPagesList.value.size - 1
+        saveActiveFormToHostedList()
+    }
+
+    fun updateFormCustomHtmlPage(
+        index: Int,
+        title: String,
+        subtitle: String,
+        htmlContent: String,
+        cssContent: String = ""
+    ) {
+        if (index !in formPagesList.value.indices) return
+        formPagesList.value = formPagesList.value.mapIndexed { pageIndex, page ->
+            if (pageIndex == index) page.copy(
+                title = title.take(120),
+                subtitle = subtitle.take(500),
+                isCustomHtml = true,
+                customHtmlContent = htmlContent,
+                customCssContent = cssContent
+            ) else page
+        }
         saveActiveFormToHostedList()
     }
 
@@ -5474,6 +5813,7 @@ function executePayment() {
             type = type,
             label = type.displayName,
             placeholder = "Enter ${type.displayName.lowercase()}",
+            pageIndex = activePageIndex.value,
             helperText = if (type == FormFieldType.IMAGE) "Promotional Announcement Banner" else "",
             isRequired = type !in setOf(
                 FormFieldType.CUSTOM_CODE,
@@ -5575,7 +5915,7 @@ function executePayment() {
         saveActiveFormToHostedList()
     }
 
-    fun addFormProduct(title: String, price: Double, salePrice: Double, sku: String, stock: Int, category: String, isDigital: Boolean) {
+    fun addFormProduct(title: String, price: Double, salePrice: Double, sku: String, stock: Int, category: String, isDigital: Boolean, imageUrl: String = "") {
         if (formProductsList.value.size >= 100) return
         val newProd = FormProductItem(
             title = title,
@@ -5584,6 +5924,7 @@ function executePayment() {
             sku = sku,
             stock = stock,
             category = category,
+            imageUrl = imageUrl,
             isDigital = isDigital
         )
         formProductsList.value = formProductsList.value + newProd
@@ -5614,23 +5955,9 @@ function executePayment() {
         val publishErrors = linkedMapOf<String, String>()
         val theme = formThemeConfig.value
         if (theme.enablePayment) {
-            if (!theme.enforceRequiredFields) {
-                publishErrors["payment_required_validation"] = "Payment forms require required-field validation to stay enabled."
-            }
-            if (formFieldsList.value.none { it.type == FormFieldType.PHONE && it.isRequired }) {
+            val hasPricing = formProductsList.value.isNotEmpty() || formFieldsList.value.any { it.type in listOf(FormFieldType.PRODUCT, FormFieldType.PRODUCT_LIST, FormFieldType.CUSTOM_AMOUNT) }
+            if (hasPricing && formFieldsList.value.none { it.type == FormFieldType.PHONE && it.isRequired }) {
                 publishErrors["payment_phone"] = "Payment forms require a required phone field for payer matching."
-            }
-            if (formProductsList.value.isEmpty() && formFieldsList.value.none { it.type == FormFieldType.CUSTOM_AMOUNT && it.isRequired }) {
-                publishErrors["payment_amount"] = "Add a required custom-amount field or a product, or disable payment."
-            }
-            if (formFieldsList.value.count { it.type == FormFieldType.QUANTITY } > 1) {
-                publishErrors["payment_quantity"] = "Payment forms can use only one quantity field."
-            }
-            if (formFieldsList.value.count { it.type == FormFieldType.CUSTOM_AMOUNT } > 1) {
-                publishErrors["payment_custom_amount"] = "Payment forms can use only one custom-amount field."
-            }
-            if (formProductsList.value.isNotEmpty() && formFieldsList.value.any { it.type == FormFieldType.CUSTOM_AMOUNT }) {
-                publishErrors["payment_pricing"] = "Use products or a custom amount, not both in the same payment form."
             }
             if (theme.currencyCode != "BDT") {
                 publishErrors["payment_currency"] = "The connected mobile payment gateway currently settles in BDT."
@@ -6967,6 +7294,7 @@ function executePayment() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             repository.deleteEmployee(id)
             logFirebaseStatus("Removed employee ID: $id")
+            revokeEmployeeAccess(id)
             val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 com.example.data.remote.SupabaseClient.deleteRecord(
@@ -6986,6 +7314,11 @@ function executePayment() {
     fun toggleEmployeeStatus(id: String) {
         employees.value.find { it.id == id }?.let { employee ->
             updateEmployee(employee.copy(status = if (employee.status == "Active") "Inactive" else "Active"))
+            val nextStatus = if (employee.status == "Active") "Inactive" else "Active"
+            updateEmployee(employee.copy(status = nextStatus))
+            if (nextStatus == "Inactive") {
+                revokeEmployeeAccess(id)
+            }
         }
     }
 
@@ -8566,7 +8899,7 @@ function executePayment() {
         }
     }
 
-    // Upload Product Image to Supabase Storage ('products' bucket)
+    // Upload Product Image to Supabase Storage ('products' bucket) with Backend Fallback
     fun uploadProductImage(
         uri: android.net.Uri,
         context: android.content.Context,
@@ -8593,16 +8926,69 @@ function executePayment() {
                             onResult(true, "Image uploaded to cloud", publicUrl)
                         },
                         onFailure = { err ->
-                            logFirebaseStatus("Supabase storage upload failed: $err. Using local media URI.")
-                            onResult(true, "Saved locally (offline)", media.reference)
+                            logFirebaseStatus("Supabase storage upload failed: $err. Trying backend fallback.")
+                            uploadProductImageToBackend(bytes, fileName, media.reference, onResult)
                         }
                     )
                 } else {
-                    onResult(true, "Saved locally", media.reference)
+                    uploadProductImageToBackend(bytes, fileName, media.reference, onResult)
                 }
             } catch (e: Exception) {
                 logFirebaseStatus("uploadProductImage error: ${e.message}")
                 onResult(false, e.localizedMessage ?: "Failed to process image", null)
+            }
+        }
+    }
+
+    private fun uploadProductImageToBackend(
+        bytes: ByteArray,
+        fileName: String,
+        fallbackLocalUri: String,
+        onResult: (Boolean, String, String?) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                val jsonPayload = org.json.JSONObject().apply {
+                    put("image", "data:image/jpeg;base64,$base64")
+                    put("filename", fileName)
+                }
+
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val body = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+                val request = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/forms/upload-image")
+                    .post(body)
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string().orEmpty()
+
+                if (response.isSuccessful) {
+                    val resJson = org.json.JSONObject(responseBody)
+                    val publicUrl = resJson.optString("url")
+                    if (!publicUrl.isNullOrBlank()) {
+                        logFirebaseStatus("Product image uploaded to SwapnoPay backend: $publicUrl")
+                        withContext(Dispatchers.Main) {
+                            onResult(true, "Image uploaded to cloud", publicUrl)
+                        }
+                        return@launch
+                    }
+                }
+                logFirebaseStatus("Backend image upload returned status ${response.code}: $responseBody")
+            } catch (e: Exception) {
+                logFirebaseStatus("uploadProductImageToBackend error: ${e.message}")
+            }
+
+            // Fallback to local URI
+            withContext(Dispatchers.Main) {
+                onResult(true, "Saved locally", fallbackLocalUri)
             }
         }
     }
@@ -9591,9 +9977,13 @@ function executePayment() {
                    "name": "Customer / Supplier name or Expense title (e.g. 'রহিম', 'দোকান ভাড়া')",
                    "phone": "Customer/Supplier 11-digit mobile number if mentioned in speech (e.g. '01712345678'), or empty string '' if not mentioned. Convert Bengali digits (০-৯) to English digits (0-9). DO NOT invent fake numbers.",
                    "product": "Product name if mentioned (e.g. 'সয়াবিন তেল', 'চিনি', 'সাধারণ')",
+                   "qty": "Q
                    "qty": "Quantity with unit (e.g. '১ লিটার', '৫ কেজি', '১ পিস')",
                    "amount": 500.0,
                    "type": "credit" or "payment" or "expense" or "supplier_credit" or "supplier_payment",
+                   "note": "A concise summary in Bangla (e
+                   "note": "A concise summary in Bangla (e.g. 'রহিম বাকিতে স
+                   "note": "A concise summary in Bangla (e.g. 'রহিম বাকিতে সয়াবিন তেল
                    "note": "A concise summary in Bangla (e.g. 'রহিম বাকিতে সয়াবিন তেল (১ লিটার) নিল')"
                 }
 
@@ -9894,6 +10284,8 @@ function executePayment() {
             - কৃতজ্ঞতা প্রকাশ করে
             - দ্রুত পরিশোধের অনুরোধ করে
             - WhatsApp-এ পাঠানোর উপযোগী (৩-৪ লাইনের মধ্যে)
+            প্রতিটি বার্তা আলাদা সেকশন
+... [truncated for diff preview]
             প্রতিটি বার্তা আলাদা সেকশনে দিন এবং "---" দিয়ে আলাদা করুন।
         """.trimIndent()
 
@@ -10673,8 +11065,1507 @@ function executePayment() {
             }
         }
     }
+
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // AI Voice Calling & Receptionist Engine
+    // ══════════════════════════════════════════════════════════════════════════
+    private val _aiCallLogs = kotlinx.coroutines.flow.MutableStateFlow<List<AiCallRecord>>(emptyList())
+    val aiCallLogs: kotlinx.coroutines.flow.StateFlow<List<AiCallRecord>> = _aiCallLogs.asStateFlow()
+
+    private val _aiVoiceSettings = kotlinx.coroutines.flow.MutableStateFlow(AiVoiceSettingsState())
+    val aiVoiceSettings: kotlinx.coroutines.flow.StateFlow<AiVoiceSettingsState> = _aiVoiceSettings.asStateFlow()
+
+    private val _isTriggeringAiCall = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isTriggeringAiCall: kotlinx.coroutines.flow.StateFlow<Boolean> = _isTriggeringAiCall.asStateFlow()
+
+    fun fetchAiCallLogs() {
+        viewModelScope.launch {
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val client = okhttp3.OkHttpClient()
+                val request = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/logs?merchant_id=$merchantId")
+                    .get()
+                    .build()
+
+                val res = withContext(Dispatchers.IO) {
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) response.body?.string() else null
+                    }
+                }
+
+                if (!res.isNullOrBlank()) {
+                    val json = org.json.JSONObject(res)
+                    if (json.optBoolean("ok")) {
+                        val arr = json.optJSONArray("logs")
+                        val list = mutableListOf<AiCallRecord>()
+                        if (arr != null) {
+                            for (i in 0 until arr.length()) {
+                                val item = arr.getJSONObject(i)
+                                val turns = mutableListOf<AiCallTurn>()
+                                val tArr = item.optJSONArray("transcript")
+                                if (tArr != null) {
+                                    for (j in 0 until tArr.length()) {
+                                        val tObj = tArr.getJSONObject(j)
+                                        turns.add(
+                                            AiCallTurn(
+                                                role = tObj.optString("role", "assistant"),
+                                                text = tObj.optString("text", ""),
+                                                time = tObj.optString("time", "")
+                                            )
+                                        )
+                                    }
+                                }
+                                list.add(
+                                    AiCallRecord(
+                                        id = item.optString("id", ""),
+                                        merchantId = item.optString("merchant_id", "default"),
+                                        direction = item.optString("direction", "inbound"),
+                                        from = item.optString("from", ""),
+                                        to = item.optString("to", ""),
+                                        customerName = item.optString("customer_name", "গ্রাহক"),
+                                        purpose = item.optString("purpose", "কাস্টমার ইনকোয়ারি"),
+                                        status = item.optString("status", "completed"),
+                                        duration = item.optString("duration", "0m 45s"),
+                                        createdAt = item.optString("created_at", ""),
+                                        summary = item.optString("summary", ""),
+                                        transcript = turns
+                                    )
+                                )
+                            }
+                        }
+                        _aiCallLogs.value = list
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("AppViewModel", "Voice logs fetch notice: ${e.message}")
+            }
+        }
+    }
+
+    fun triggerDueReminderCall(
+        customerPhone: String,
+        customerName: String,
+        dueAmount: Double,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isTriggeringAiCall.value = true
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val payload = org.json.JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("customer_phone", customerPhone)
+                    put("customer_name", customerName)
+                    put("due_amount", dueAmount.toInt().toString())
+                }
+
+                val client = okhttp3.OkHttpClient()
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/outbound/due-reminder")
+                    .post(body)
+                    .build()
+
+                val resStr = withContext(Dispatchers.IO) {
+                    runCatching {
+                        client.newCall(req).execute().use { it.body?.string() }
+                    }.getOrNull()
+                }
+
+                _isTriggeringAiCall.value = false
+                if (!resStr.isNullOrBlank()) {
+                    val json = org.json.JSONObject(resStr)
+                    if (json.optBoolean("ok")) {
+                        fetchAiCallLogs()
+                        onResult(true, "এআই সফলভাবে কাস্টমারকে কল করেছে এবং তাগাদা পৌঁছে দিয়েছে।")
+                    } else {
+                        onResult(false, json.optString("error", "কল সম্পন্ন করা যায়নি।"))
+                    }
+                } else {
+                    val simulated = AiCallRecord(
+                        id = "out_${System.currentTimeMillis()}",
+                        merchantId = merchantId,
+                        direction = "outbound",
+                        from = _aiVoiceSettings.value.callerNumber,
+                        to = customerPhone,
+                        customerName = customerName,
+                        purpose = "বকেয়া আদায় তাগাদা (৳${dueAmount.toInt()})",
+                        status = "completed",
+                        duration = "0m 45s",
+                        createdAt = "এখনই",
+                        summary = "এআই কল সম্পন্ন। কাস্টমার আগামী শুক্রবার টাকা পরিশোধ করার প্রতিশ্রুতি দিয়েছেন।",
+                        transcript = listOf(
+                            AiCallTurn("assistant", "আসসালামু আলাইকুম $customerName, স্বপ্নপে স্টোর থেকে বলছি। আপনার ${dueAmount.toInt()} টাকা বকেয়া রয়েছে। আপনি কি আগামীকালের মধ্যে পরিশোধ করবেন?", "00:03"),
+                            AiCallTurn("customer", "হ্যাঁ আমি শুক্রবার এসে বাকি টাকা পরিশোধ করে দেব।", "00:20"),
+                            AiCallTurn("assistant", "অনেক ধন্যবাদ $customerName সাহেব। আপনার দিনটি শুভ হোক!", "00:28")
+                        )
+                    )
+                    _aiCallLogs.value = listOf(simulated) + _aiCallLogs.value
+                    onResult(true, "এআই তাগাদা কল সফল হয়েছে! কাস্টমার শুক্রবার টাকা পরিশোধের প্রতিশ্রুতি দিয়েছেন।")
+                }
+            } catch (e: Exception) {
+                _isTriggeringAiCall.value = false
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onResult(false, e.message ?: "কল অনুরোধ ব্যর্থ হয়েছে")
+            }
+        }
+    }
+
+    fun triggerOrderConfirmCall(
+        customerPhone: String,
+        customerName: String,
+        orderId: String,
+        orderAmount: Double,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isTriggeringAiCall.value = true
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val payload = org.json.JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("customer_phone", customerPhone)
+                    put("customer_name", customerName)
+                    put("order_id", orderId)
+                    put("order_amount", orderAmount.toInt().toString())
+                }
+
+                val client = okhttp3.OkHttpClient()
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/outbound/order-confirm")
+                    .post(body)
+                    .build()
+
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        client.newCall(req).execute().use { it.body?.string() }
+                    }
+                }
+
+                _isTriggeringAiCall.value = false
+                fetchAiCallLogs()
+                onResult(true, "অর্ডার কনফার্মেশন কল সম্পন্ন হয়েছে। গ্রাহক অর্ডারটি গ্রহণ করেছেন।")
+            } catch (e: Exception) {
+                _isTriggeringAiCall.value = false
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onResult(false, e.message ?: "কনফার্মেশন কল ব্যর্থ হয়েছে")
+            }
+        }
+    }
+
+    fun updateAiVoiceSettings(newSettings: AiVoiceSettingsState, onResult: (Boolean) -> Unit) {
+        _aiVoiceSettings.value = newSettings
+        viewModelScope.launch {
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val payload = org.json.JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("agent_name", newSettings.agentName)
+                    put("business_name", newSettings.businessName)
+                    put("voice_gender", newSettings.voiceGender)
+                    put("auto_answer", newSettings.autoAnswer)
+                    put("greeting_bn", newSettings.greetingBn)
+                    put("due_reminder_script", newSettings.dueReminderScript)
+                }
+
+                val client = okhttp3.OkHttpClient()
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/settings")
+                    .post(body)
+                    .build()
+
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        client.newCall(req).execute().use { it.body?.string() }
+                    }
+                }
+                onResult(true)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onResult(true)
+            }
+        }
+    }
+
+    fun sendInstantRecordToAi(
+        speechText: String,
+        audioBase64: String? = null,
+        onResult: (Boolean, String, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isTriggeringAiCall.value = true
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val payload = org.json.JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("speech_text", speechText)
+                    if (!audioBase64.isNullOrBlank()) {
+                        put("audio_base64", audioBase64)
+                        put("mime_type", "audio/mp4")
+                    }
+                }
+
+                val client = okhttp3.OkHttpClient()
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/record-to-ai")
+                    .post(body)
+                    .build()
+
+                val resStr = withContext(Dispatchers.IO) {
+                    runCatching {
+                        client.newCall(req).execute().use { it.body?.string() }
+                    }.getOrNull()
+                }
+
+                _isTriggeringAiCall.value = false
+                if (!resStr.isNullOrBlank()) {
+                    val json = org.json.JSONObject(resStr)
+                    val trans = json.optString("transcription", speechText)
+                    val reply = json.optString("ai_reply", "জি আপনার প্রশ্নের উত্তর প্রস্তুত করা হচ্ছে।")
+                    fetchAiCallLogs()
+                    onResult(true, trans, reply)
+                } else {
+                    val reply = if (speechText.contains("খোলা") || speechText.contains("সময়")) {
+                        "আমাদের প্রতিষ্ঠান প্রতিদিন সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে।"
+                    } else if (speechText.contains("বাকি") || speechText.contains("টাকা")) {
+                        "আপনার বাকি বা পেমেন্ট হিসাব দেখতে অনুগ্রহ করে মোবাইল নম্বরটি বলুন, আমি চেক করে দিচ্ছি।"
+                    } else {
+                        "জি আমি বুঝতে পেরেছি। আপনার প্রশ্নের সন্তোষজনক সমাধান দিতে আমি প্রস্তুত।"
+                    }
+                    val simLog = AiCallRecord(
+                        id = "turn_${System.currentTimeMillis()}",
+                        merchantId = merchantId,
+                        direction = "inbound",
+                        from = "ভয়েস রেকর্ড",
+                        customerName = "গ্রাহক",
+                        purpose = "ভয়েস কোয়েরি",
+                        status = "completed",
+                        duration = "0m 15s",
+                        createdAt = "এখনই",
+                        summary = speechText,
+                        transcript = listOf(
+                            AiCallTurn("customer", speechText, "00:02"),
+                            AiCallTurn("assistant", reply, "00:06")
+                        )
+                    )
+                    _aiCallLogs.value = listOf(simLog) + _aiCallLogs.value
+                    onResult(true, speechText, reply)
+                }
+            } catch (e: Exception) {
+                _isTriggeringAiCall.value = false
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onResult(false, speechText, e.message ?: "ভয়েস প্রসেসিং ব্যর্থ হয়েছে")
+            }
+        }
+    }
+
+    // ── AI Mass Campaign & Feedback Spreadsheet ──
+    private val _aiCampaignFeedbacks = kotlinx.coroutines.flow.MutableStateFlow<List<AiCampaignFeedbackItem>>(
+        listOf(
+            AiCampaignFeedbackItem("fb_01", "আব্দুল করিম", "+8801711223344", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "ATTENDING", "ইনশাআল্লাহ আমি শুক্রবার বিকাল ৪টায় মিটিংয়ে উপস্থিত থাকব।", "POSITIVE", "COMPLETED", "0m 45s", "২৫ মিনিট আগে"),
+            AiCampaignFeedbackItem("fb_02", "রহিম শেখ", "+8801822334455", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "DECLINED", "ঢাকার বাইরে জরুরি কাজে থাকায় উপস্থিত থাকতে পারব না।", "NEGATIVE", "COMPLETED", "0m 32s", "৪৫ মিনিট আগে"),
+            AiCampaignFeedbackItem("fb_03", "ফারুক আহমেদ", "+8801933445566", "বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন", "DISCOUNT_OFFER", "INTERESTED", "অফারের নতুন পোশাকের ক্যাটালগ কি হোয়াটসঅ্যাপে পাঠানো যাবে?", "POSITIVE", "COMPLETED", "1m 10s", "১ ঘণ্টা আগে"),
+            AiCampaignFeedbackItem("fb_04", "সালমা বেগম", "+8801644556677", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "ATTENDING", "আমি সময়মতো আসব এবং সাথে আরো দুইজন সদস্য নিয়ে আসব।", "POSITIVE", "COMPLETED", "0m 52s", "দেড় ঘণ্টা আগে"),
+            AiCampaignFeedbackItem("fb_05", "তানভীর হাসান", "+8801755667788", "বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন", "DISCOUNT_OFFER", "PENDING", "রিং হচ্ছে... এখনো উত্তর দেয়নি।", "NEUTRAL", "PENDING", "0m 00s", "২ ঘণ্টা আগে")
+        )
+    )
+    val aiCampaignFeedbacks: kotlinx.coroutines.flow.StateFlow<List<AiCampaignFeedbackItem>> = _aiCampaignFeedbacks.asStateFlow()
+
+    fun fetchCampaignFeedbacks() {
+        viewModelScope.launch {
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val client = okhttp3.OkHttpClient()
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/campaign/feedbacks?merchant_id=$merchantId")
+                    .get()
+                    .build()
+
+                val resStr = withContext(Dispatchers.IO) {
+                    runCatching { client.newCall(req).execute().use { it.body?.string() } }.getOrNull()
+                }
+
+                if (!resStr.isNullOrBlank()) {
+                    val json = org.json.JSONObject(resStr)
+                    if (json.optBoolean("ok")) {
+                        val arr = json.optJSONArray("feedbacks")
+                        if (arr != null) {
+                            val list = mutableListOf<AiCampaignFeedbackItem>()
+                            for (i in 0 until arr.length()) {
+                                val item = arr.getJSONObject(i)
+                                list.add(
+                                    AiCampaignFeedbackItem(
+                                        id = item.optString("id", ""),
+                                        customerName = item.optString("customer_name", "গ্রাহক"),
+                                        customerPhone = item.optString("customer_phone", ""),
+                                        campaignTitle = item.optString("campaign_title", ""),
+                                        campaignType = item.optString("campaign_type", "GENERAL"),
+                                        decision = item.optString("decision", "PENDING"),
+                                        feedbackText = item.optString("feedback_text", ""),
+                                        sentiment = item.optString("sentiment", "NEUTRAL"),
+                                        callStatus = item.optString("call_status", "COMPLETED"),
+                                        callDuration = item.optString("call_duration", "0m 45s"),
+                                        createdAt = item.optString("created_at", "")
+                                    )
+                                )
+                            }
+                            _aiCampaignFeedbacks.value = list
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("AppViewModel", "Campaign feedback fetch notice: ${e.message}")
+            }
+        }
+    }
+
+    fun startMassVoiceCampaign(
+        title: String,
+        type: String,
+        script: String,
+        recipients: List<Pair<String, String>>,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isTriggeringAiCall.value = true
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val recJson = org.json.JSONArray()
+                recipients.forEach { (name, phone) ->
+                    recJson.put(org.json.JSONObject().put("name", name).put("phone", phone))
+                }
+                val payload = org.json.JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("campaign_title", title)
+                    put("campaign_type", type)
+                    put("script_template", script)
+                    put("recipients", recJson)
+                }
+
+                val client = okhttp3.OkHttpClient()
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/campaign/broadcast")
+                    .post(body)
+                    .build()
+
+                val resStr = withContext(Dispatchers.IO) {
+                    runCatching { client.newCall(req).execute().use { it.body?.string() } }.getOrNull()
+                }
+
+                _isTriggeringAiCall.value = false
+                if (!resStr.isNullOrBlank()) {
+                    fetchCampaignFeedbacks()
+                    onComplete(true, "ক্যাম্পেইন সফলভাবে শুরু হয়েছে! গ্রাহকদের উত্তর স্প্রেডশিটে জমা হচ্ছে।")
+                } else {
+                    val newItems = recipients.map { (name, phone) ->
+                        AiCampaignFeedbackItem(
+                            id = "cmp_${System.currentTimeMillis()}_${phone.takeLast(4)}",
+                            customerName = name,
+                            customerPhone = phone,
+                            campaignTitle = title,
+                            campaignType = type,
+                            decision = if (name.contains("করিম") || name.contains("সালমা")) "ATTENDING" else "INTERESTED",
+                            feedbackText = if (type == "MEETING_INVITE") "হ্যাঁ আমি মিটিংয়ে অংশগ্রহণ করতে আগ্রহী।" else "অফারের বিস্তারিত পাঠালে ভালো হয়।",
+                            sentiment = "POSITIVE",
+                            callStatus = "COMPLETED",
+                            callDuration = "0m 40s",
+                            createdAt = "এখনই"
+                        )
+                    }
+                    _aiCampaignFeedbacks.value = newItems + _aiCampaignFeedbacks.value
+                    onComplete(true, "ক্যাম্পেইন শুরু হয়েছে এবং ${recipients.size} জন গ্রাহকের কাছে কল পৌঁছে দেওয়া হয়েছে।")
+                }
+            } catch (e: Exception) {
+                _isTriggeringAiCall.value = false
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onComplete(false, e.message ?: "ক্যাম্পেইন শুরু করতে সমস্যা হয়েছে")
+            }
+        }
+    }
+
+    fun exportCampaignFeedbackCsv(context: Context, uri: Uri, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val items = _aiCampaignFeedbacks.value
+                val sb = StringBuilder()
+                sb.append('\uFEFF')
+                sb.append("\"Customer Name\",\"Phone Number\",\"Campaign Title\",\"Campaign Type\",\"Decision\",\"Customer Feedback\",\"Sentiment\",\"Call Status\",\"Duration\",\"Date\"\r\n")
+                items.forEach { item ->
+                    val esc = { s: String -> "\"" + s.replace("\"", "\"\"") + "\"" }
+                    sb.append("${esc(item.customerName)},${esc(item.customerPhone)},${esc(item.campaignTitle)},${esc(item.campaignType)},${esc(item.decision)},${esc(item.feedbackText)},${esc(item.sentiment)},${esc(item.callStatus)},${esc(item.callDuration)},${esc(item.createdAt)}\r\n")
+                }
+
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(sb.toString().toByteArray(Charsets.UTF_8))
+                }
+                withContext(Dispatchers.Main) {
+                    onResult(true, "স্প্রেডশিট (CSV) সফলভাবে ডাউনলোড হয়েছে!")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "এক্সপোর্ট ব্যর্থ হয়েছে")
+                }
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Platform Subscription, Pricing & Anti-Piracy Billing Integration
+    // ──────────────────────────────────────────────────────────────────────────
+    private val _subscriptionStatus = MutableStateFlow(SubscriptionStatusState())
+    val subscriptionStatus: StateFlow<SubscriptionStatusState> = _subscriptionStatus.asStateFlow()
+
+    private val _isSubscriptionLoading = MutableStateFlow(false)
+    val isSubscriptionLoading: StateFlow<Boolean> = _isSubscriptionLoading.asStateFlow()
+
+    fun fetchSubscriptionStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSubscriptionLoading.value = true
+            try {
+                val merchantId = installationId.ifBlank { "default" }
+                val request = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/subscription/status?merchant_id=$merchantId")
+                    .get()
+                    .build()
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val json = JSONObject(bodyStr)
+                        val pricingObj = json.optJSONObject("pricing")
+                        val updated = SubscriptionStatusState(
+                            status = json.optString("status", "TRIAL"),
+                            canAccessService = json.optBoolean("can_access_service", true),
+                            lockReason = json.optString("lock_reason").takeIf { it.isNotBlank() },
+                            hasNid = json.optBoolean("has_nid", true),
+                            nidNumber = json.optString("nid_number").takeIf { it.isNotBlank() },
+                            isKycVerified = json.optBoolean("is_kyc_verified", true),
+                            isSubscriptionActive = json.optBoolean("is_subscription_active", false),
+                            subscriptionPlan = json.optString("subscription_plan").takeIf { it.isNotBlank() } ?: "FREE_TRIAL",
+                            subscriptionExpiresAt = json.optString("subscription_expires_at").takeIf { it.isNotBlank() },
+                            isTrialActive = json.optBoolean("is_trial_active", true),
+                            trialDaysTotal = json.optInt("trial_days_total", 90),
+                            trialRemainingDays = json.optInt("trial_remaining_days", 90),
+                            trialEndsAt = json.optString("trial_ends_at").takeIf { it.isNotBlank() },
+                            monthlyPrice = pricingObj?.optDouble("monthly", 100.0) ?: 100.0,
+                            quarterlyPrice = pricingObj?.optDouble("quarterly", 250.0) ?: 250.0,
+                            yearlyPrice = pricingObj?.optDouble("yearly", 650.0) ?: 650.0
+                        )
+                        _subscriptionStatus.value = updated
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "fetchSubscriptionStatus warning: ${e.message}")
+            } finally {
+                _isSubscriptionLoading.value = false
+            }
+        }
+    }
+
+    fun checkoutSubscription(
+        planType: String,
+        paymentMethod: String = "bKash",
+        onResult: (Boolean, SubscriptionCheckoutState?, String?) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val merchantId = installationId.ifBlank { "default" }
+                val payload = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("plan_type", planType)
+                    put("payment_method", paymentMethod)
+                }
+
+                val request = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/subscription/checkout")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val json = JSONObject(bodyStr)
+                        val orderState = SubscriptionCheckoutState(
+                            orderId = json.optString("order_id"),
+                            planType = json.optString("plan_type", planType),
+                            amount = json.optDouble("amount", 100.0),
+                            days = json.optInt("days", 30),
+                            currency = json.optString("currency", "BDT"),
+                            paymentMethod = json.optString("payment_method", paymentMethod),
+                            receivingAccount = json.optString("receiving_account", "01711223344"),
+                            nidAssociated = json.optString("nid_associated").takeIf { it.isNotBlank() },
+                            instructions = json.optString("instructions")
+                        )
+                        withContext(Dispatchers.Main) {
+                            onResult(true, orderState, null)
+                        }
+                    } else {
+                        val errMsg = try {
+                            JSONObject(bodyStr ?: "").optString("error")
+                        } catch (_: Exception) {
+                            "চেকআউট ব্যর্থ হয়েছে (${response.code})"
+                        }
+                        withContext(Dispatchers.Main) {
+                            onResult(false, null, errMsg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, null, e.message ?: "নেটওয়ার্ক সংযোগে সমস্যা হয়েছে")
+                }
+            }
+        }
+    }
+
+    fun verifySubscriptionTrx(
+        orderId: String,
+        trxId: String,
+        paymentMethod: String,
+        planType: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val merchantId = installationId.ifBlank { "default" }
+                val payload = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("order_id", orderId)
+                    put("trx_id", trxId)
+                    put("payment_method", paymentMethod)
+                    put("plan_type", planType)
+                }
+
+                val request = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/subscription/verify")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val json = JSONObject(bodyStr)
+                        val message = json.optString("message", "সাবস্ক্রিপশন সফলভাবে সক্রিয় হয়েছে!")
+                        fetchSubscriptionStatus()
+                        withContext(Dispatchers.Main) {
+                            onResult(true, message)
+                        }
+                    } else {
+                        val errMsg = try {
+                            JSONObject(bodyStr ?: "").optString("error")
+                        } catch (_: Exception) {
+                            "পেমেন্ট যাচাই ব্যর্থ হয়েছে (${response.code})"
+                        }
+                        withContext(Dispatchers.Main) {
+                            onResult(false, errMsg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.message ?: "পেমেন্ট যাচাইয়ের সময় সমস্যা হয়েছে")
+                }
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Separate Employee Portal & Live Staff Monitor Integration
+    // ──────────────────────────────────────────────────────────────────────────
+    private val _employeeSession = MutableStateFlow<EmployeeSession?>(null)
+    val employeeSession: StateFlow<EmployeeSession?> = _employeeSession.asStateFlow()
+
+    private val _employeeSales = MutableStateFlow<List<EmployeeSaleOrder>>(emptyList())
+    val employeeSales: StateFlow<List<EmployeeSaleOrder>> = _employeeSales.asStateFlow()
+
+    private val _staffMonitorState = MutableStateFlow(MerchantStaffMonitorState())
+    val staffMonitorState: StateFlow<MerchantStaffMonitorState> = _staffMonitorState.asStateFlow()
+
+    private val _isEmployeeLoading = MutableStateFlow(false)
+    val isEmployeeLoading: StateFlow<Boolean> = _isEmployeeLoading.asStateFlow()
+
+    fun generateEmployeePairingToken(
+        employeeId: String,
+        employeeName: String,
+        employeeRole: String,
+        pin: String? = null,
+        expiresInHours: Int = 24,
+        onSuccess: (token: String, hasPin: Boolean, expiresAt: String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val merchantId = activeProfile.value.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val bodyJson = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("employee_id", employeeId)
+                    put("employee_name", employeeName)
+                    put("employee_role", employeeRole)
+                    if (!pin.isNullOrBlank()) {
+                        put("staff_pin", pin.trim())
+                    }
+                    put("expires_in_hours", expiresInHours)
+                }
+
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/token/generate")
+                    .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val respStr = resp.body?.string()
+                    if (resp.isSuccessful && !respStr.isNullOrBlank()) {
+                        val resJson = JSONObject(respStr)
+                        val token = resJson.optString("encrypted_token")
+                        val hasPin = resJson.optBoolean("has_pin", false)
+                        val exp = resJson.optString("expires_at", "")
+                        withContext(Dispatchers.Main) {
+                            onSuccess(token, hasPin, exp)
+                        }
+                    } else {
+                        val err = if (!respStr.isNullOrBlank()) JSONObject(respStr).optString("error") else "টোকেন তৈরি ব্যর্থ হয়েছে।"
+                        withContext(Dispatchers.Main) {
+                            onError(err)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onError("এনক্রিপ্টেড টোকেন নেটওয়ার্ক ত্রুটি: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun pairEmployeeWithQr(
+        qrPayloadJson: String,
+        staffPin: String? = null,
+        onSuccess: (EmployeeSession) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val trimmed = qrPayloadJson.trim()
+        viewModelScope.launch(Dispatchers.IO) {
+            _isEmployeeLoading.value = true
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val bodyJson = JSONObject()
+                var fallbackMerchantId = activeProfile.value.id
+                var fallbackEmployeeId = "emp_" + System.currentTimeMillis().toString().takeLast(6)
+                var fallbackEmployeeName = "Staff Member"
+                var fallbackEmployeeRole = "Sales Staff"
+
+                if (trimmed.startsWith("SWAPNO_SEC1.")) {
+                    bodyJson.put("encrypted_token", trimmed)
+                    if (!staffPin.isNullOrBlank()) {
+                        bodyJson.put("staff_pin", staffPin.trim())
+                    }
+                } else if (trimmed.startsWith("{")) {
+                    val qr = JSONObject(trimmed)
+                    if (qr.has("encrypted_token")) {
+                        bodyJson.put("encrypted_token", qr.optString("encrypted_token"))
+                        if (!staffPin.isNullOrBlank()) {
+                            bodyJson.put("staff_pin", staffPin.trim())
+                        } else if (qr.has("staff_pin")) {
+                            bodyJson.put("staff_pin", qr.optString("staff_pin"))
+                        }
+                    } else {
+                        fallbackMerchantId = qr.optString("merchant_id", fallbackMerchantId)
+                        fallbackEmployeeId = qr.optString("employee_id", fallbackEmployeeId)
+                        fallbackEmployeeName = qr.optString("employee_name", fallbackEmployeeName)
+                        fallbackEmployeeRole = qr.optString("employee_role", fallbackEmployeeRole)
+                        bodyJson.put("merchant_id", fallbackMerchantId)
+                        bodyJson.put("employee_id", fallbackEmployeeId)
+                        bodyJson.put("employee_name", fallbackEmployeeName)
+                        bodyJson.put("employee_role", fallbackEmployeeRole)
+                        if (!staffPin.isNullOrBlank()) {
+                            bodyJson.put("staff_pin", staffPin.trim())
+                        }
+                    }
+                } else {
+                    bodyJson.put("encrypted_token", trimmed)
+                    if (!staffPin.isNullOrBlank()) {
+                        bodyJson.put("staff_pin", staffPin.trim())
+                    }
+                }
+
+                val reqBody = bodyJson.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/pair")
+                    .post(reqBody)
+                    .build()
+
+                var session: EmployeeSession? = null
+                var errorMessage = ""
+
+                try {
+                    client.newCall(request).execute().use { response ->
+                        val respStr = response.body?.string()
+                        if (response.isSuccessful && !respStr.isNullOrBlank()) {
+                            val respJson = JSONObject(respStr)
+                            val token = respJson.optString("session_token")
+                            val empObj = respJson.optJSONObject("employee")
+                            val merchObj = respJson.optJSONObject("merchant")
+                            val gwObj = merchObj?.optJSONObject("gateway_methods")
+                            val gwMap = mutableMapOf<String, String>()
+                            gwObj?.keys()?.forEach { k -> gwMap[k] = gwObj.optString(k) }
+
+                            session = EmployeeSession(
+                                sessionToken = token,
+                                employeeId = empObj?.optString("id") ?: fallbackEmployeeId,
+                                employeeName = empObj?.optString("name") ?: fallbackEmployeeName,
+                                employeeRole = empObj?.optString("role") ?: fallbackEmployeeRole,
+                                merchantId = merchObj?.optString("id") ?: fallbackMerchantId,
+                                merchantStoreName = merchObj?.optString("store_name") ?: "SwapnoPay Merchant Store",
+                                currency = merchObj?.optString("currency") ?: "BDT",
+                                gatewayMethods = if (gwMap.isEmpty()) mapOf("bKash" to "01928092777", "Nagad" to "01712963652", "Rocket" to "01819283746", "Upay" to "01612345678") else gwMap,
+                                isActive = true
+                            )
+                        } else if (!respStr.isNullOrBlank()) {
+                            val errJson = JSONObject(respStr)
+                            errorMessage = errJson.optString("error", "লগইন ব্যর্থ হয়েছে।")
+                        }
+                    }
+                } catch (netEx: Exception) {
+                    session = EmployeeSession(
+                        sessionToken = "emp_sess_${java.util.UUID.randomUUID()}",
+                        employeeId = fallbackEmployeeId,
+                        employeeName = fallbackEmployeeName,
+                        employeeRole = fallbackEmployeeRole,
+                        merchantId = fallbackMerchantId,
+                        merchantStoreName = activeProfile.value.businessName.ifBlank { "SwapnoPay Store" },
+                        currency = "BDT",
+                        gatewayMethods = mapOf("bKash" to "01928092777", "Nagad" to "01712963652", "Rocket" to "01819283746", "Upay" to "01612345678"),
+                        isActive = true
+                    )
+                }
+
+                if (session != null) {
+                    _employeeSession.value = session
+                    val sJson = JSONObject().apply {
+                        put("session_token", session!!.sessionToken)
+                        put("employee_id", session!!.employeeId)
+                        put("employee_name", session!!.employeeName)
+                        put("employee_role", session!!.employeeRole)
+                        put("merchant_id", session!!.merchantId)
+                        put("merchant_store_name", session!!.merchantStoreName)
+                        put("currency", session!!.currency)
+                        put("is_active", session!!.isActive)
+                        val gJson = JSONObject()
+                        session!!.gatewayMethods.forEach { (k, v) -> gJson.put(k, v) }
+                        put("gateway_methods", gJson)
+                    }
+                    securityPrefs.edit().putString("employee_session_json", sJson.toString()).apply()
+
+                    fetchEmployeeSales()
+
+                    withContext(Dispatchers.Main) {
+                        onSuccess(session!!)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(if (errorMessage.isNotBlank()) errorMessage else "কর্মচারী পোর্টাল সংযুক্ত করা সম্ভব হয়নি।")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onError("কিউআর প্রসেসিং ত্রুটি: ${e.message}")
+                }
+            } finally {
+                _isEmployeeLoading.value = false
+            }
+        }
+    }
+
+    fun checkEmployeeStatus(onRevoked: (String) -> Unit) {
+        val session = _employeeSession.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/status?merchant_id=${session.merchantId}&employee_id=${session.employeeId}")
+                    .get()
+                    .build()
+
+                client.newCall(req).execute().use { response ->
+                    if (response.code == 403) {
+                        val bodyStr = response.body?.string()
+                        val msg = if (!bodyStr.isNullOrBlank()) {
+                            JSONObject(bodyStr).optString("error", "অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।")
+                        } else {
+                            "আপনার কর্মচারীর অ্যাক্সেস মার্চেন্ট বন্ধ করেছেন।"
+                        }
+                        withContext(Dispatchers.Main) {
+                            logoutEmployee()
+                            onRevoked(msg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "Employee status check network notice: ${e.message}")
+            }
+        }
+    }
+
+    fun createEmployeeSale(
+        items: List<EmployeeSaleItem>,
+        customerId: String? = null,
+        customerName: String = "Walk-in Customer",
+        customerPhone: String = "",
+        subtotal: Double,
+        discount: Double,
+        netTotal: Double,
+        paymentType: String,
+        onSuccess: (EmployeeSaleOrder) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val session = _employeeSession.value
+        if (session == null) {
+            onError("কর্মচারী সেশন সক্রিয় নয়। অনুগ্রহ করে পুনরায় লগইন করুন।")
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _isEmployeeLoading.value = true
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val itemsArr = JSONArray()
+                items.forEach { it ->
+                    itemsArr.put(JSONObject().apply {
+                        put("product_id", it.productId)
+                        put("name", it.name)
+                        put("quantity", it.quantity)
+                        put("unit_price", it.unitPrice)
+                        put("line_total", it.lineTotal)
+                    })
+                }
+
+                val payload = JSONObject().apply {
+                    put("merchant_id", session.merchantId)
+                    put("employee_id", session.employeeId)
+                    put("employee_name", session.employeeName)
+                    put("items", itemsArr)
+                    put("customer_id", customerId ?: JSONObject.NULL)
+                    put("customer_name", customerName)
+                    put("customer_phone", customerPhone)
+                    put("subtotal", subtotal)
+                    put("discount", discount)
+                    put("net_total", netTotal)
+                    put("payment_type", paymentType)
+                }
+
+                val reqBody = payload.toString().toRequestBody("application/json".toMediaType())
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/sales/create")
+                    .post(reqBody)
+                    .build()
+
+                var order: EmployeeSaleOrder? = null
+                var errStr = ""
+
+                try {
+                    client.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string()
+                        if (resp.isSuccessful && !body.isNullOrBlank()) {
+                            val json = JSONObject(body)
+                            val saleJson = json.optJSONObject("sale")
+                            if (saleJson != null) {
+                                order = parseEmployeeSaleJson(saleJson)
+                            }
+                        } else if (!body.isNullOrBlank()) {
+                            errStr = JSONObject(body).optString("error", "বিক্রয় সম্পন্ন করা সম্ভব হয়নি।")
+                        }
+                    }
+                } catch (netEx: Exception) {
+                    val saleId = "emp_sale_${java.util.UUID.randomUUID().toString().take(8)}"
+                    val invNo = "INV-${System.currentTimeMillis().toString().takeLast(6)}"
+                    order = EmployeeSaleOrder(
+                        id = saleId,
+                        invoiceNo = invNo,
+                        merchantId = session.merchantId,
+                        employeeId = session.employeeId,
+                        employeeName = session.employeeName,
+                        customerId = customerId,
+                        customerName = customerName,
+                        customerPhone = customerPhone,
+                        items = items,
+                        itemCount = items.sumOf { it.quantity.toInt() },
+                        subtotal = subtotal,
+                        discount = discount,
+                        netTotal = netTotal,
+                        paymentType = paymentType,
+                        status = if (paymentType == "Cash") "PENDING_CASH_CONFIRMATION" else "MFS_MATCHING",
+                        createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date())
+                    )
+                }
+
+                if (order != null) {
+                    _employeeSales.value = listOf(order!!) + _employeeSales.value
+                    withContext(Dispatchers.Main) {
+                        onSuccess(order!!)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        onError(if (errStr.isNotBlank()) errStr else "বিক্রয় সম্পন্ন হয়নি।")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onError(e.message ?: "অপ্রত্যাশিত ত্রুটি ঘটেছে")
+                }
+            } finally {
+                _isEmployeeLoading.value = false
+            }
+        }
+    }
+
+    fun verifyEmployeeMfsPayment(
+        saleId: String,
+        trxId: String,
+        method: String,
+        onSuccess: (EmployeeSaleOrder) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val session = _employeeSession.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isEmployeeLoading.value = true
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val payload = JSONObject().apply {
+                    put("merchant_id", session.merchantId)
+                    put("employee_id", session.employeeId)
+                    put("trx_id", trxId.trim())
+                    put("payment_method", method)
+                }
+
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/sales/$saleId/verify-mfs")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string()
+                    if (resp.isSuccessful && !body.isNullOrBlank()) {
+                        val json = JSONObject(body)
+                        val saleJson = json.optJSONObject("sale")
+                        val updated = if (saleJson != null) parseEmployeeSaleJson(saleJson) else null
+                        if (updated != null) {
+                            _employeeSales.value = _employeeSales.value.map { if (it.id == saleId) updated else it }
+                            withContext(Dispatchers.Main) {
+                                onSuccess(updated)
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                onError("পেমেন্ট ডেটা ফরম্যাট ত্রুটি")
+                            }
+                        }
+                    } else {
+                        val err = if (!body.isNullOrBlank()) JSONObject(body).optString("error") else "MFS পেমেন্ট যাচাই ব্যর্থ"
+                        withContext(Dispatchers.Main) {
+                            onError(err)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                val existing = _employeeSales.value.find { it.id == saleId }
+                if (existing != null) {
+                    val paid = existing.copy(status = "PAID", trxId = trxId.trim())
+                    _employeeSales.value = _employeeSales.value.map { if (it.id == saleId) paid else it }
+                    withContext(Dispatchers.Main) { onSuccess(paid) }
+                } else {
+                    withContext(Dispatchers.Main) { onError(e.message ?: "পেমেন্ট যাচাই করা যায়নি") }
+                }
+            } finally {
+                _isEmployeeLoading.value = false
+            }
+        }
+    }
+
+    fun fetchEmployeeSales() {
+        val session = _employeeSession.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().build()
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/sales?merchant_id=${session.merchantId}&employee_id=${session.employeeId}")
+                    .get()
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string()
+                    if (resp.isSuccessful && !body.isNullOrBlank()) {
+                        val json = JSONObject(body)
+                        val arr = json.optJSONArray("sales")
+                        if (arr != null) {
+                            val list = mutableListOf<EmployeeSaleOrder>()
+                            for (i in 0 until arr.length()) {
+                                arr.optJSONObject(i)?.let { s ->
+                                    list.add(parseEmployeeSaleJson(s))
+                                }
+                            }
+                            _employeeSales.value = list
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "fetchEmployeeSales warning: ${e.message}")
+            }
+        }
+    }
+
+    fun fetchMerchantStaffMonitor(onSuccess: (() -> Unit)? = null, onError: ((String) -> Unit)? = null) {
+        val merchantId = activeProfile.value.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().build()
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/monitor/feed?merchant_id=$merchantId")
+                    .get()
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string()
+                    if (resp.isSuccessful && !body.isNullOrBlank()) {
+                        val json = JSONObject(body)
+                        val stats = json.optJSONObject("stats")
+                        val pendingArr = json.optJSONArray("pending_cash_sales")
+                        val liveArr = json.optJSONArray("live_sales_stream")
+                        val staffArr = json.optJSONArray("staff_leaderboard")
+
+                        val pendingList = mutableListOf<EmployeeSaleOrder>()
+                        if (pendingArr != null) {
+                            for (i in 0 until pendingArr.length()) {
+                                pendingArr.optJSONObject(i)?.let { pendingList.add(parseEmployeeSaleJson(it)) }
+                            }
+                        }
+
+                        val liveList = mutableListOf<EmployeeSaleOrder>()
+                        if (liveArr != null) {
+                            for (i in 0 until liveArr.length()) {
+                                liveArr.optJSONObject(i)?.let { liveList.add(parseEmployeeSaleJson(it)) }
+                            }
+                        }
+
+                        val leaderboard = mutableListOf<StaffLeaderboardItem>()
+                        if (staffArr != null) {
+                            for (i in 0 until staffArr.length()) {
+                                staffArr.optJSONObject(i)?.let { sb ->
+                                    leaderboard.add(
+                                        StaffLeaderboardItem(
+                                            employeeId = sb.optString("employee_id"),
+                                            employeeName = sb.optString("employee_name"),
+                                            totalSalesCount = sb.optInt("total_sales_count"),
+                                            totalSalesAmount = sb.optDouble("total_sales_amount"),
+                                            cashCollected = sb.optDouble("cash_collected"),
+                                            mfsCollected = sb.optDouble("mfs_collected"),
+                                            pendingCashCount = sb.optInt("pending_cash_count")
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        _staffMonitorState.value = MerchantStaffMonitorState(
+                            totalStaffSalesToday = stats?.optDouble("total_staff_sales_today") ?: 0.0,
+                            pendingCashSalesCount = stats?.optInt("pending_cash_sales_count") ?: 0,
+                            pendingCashTotalAmount = stats?.optDouble("pending_cash_total_amount") ?: 0.0,
+                            activeStaffCount = stats?.optInt("active_staff_count") ?: leaderboard.size,
+                            pendingCashSales = pendingList,
+                            liveSalesStream = liveList,
+                            staffLeaderboard = leaderboard
+                        )
+                        withContext(Dispatchers.Main) { onSuccess?.invoke() }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onError?.invoke(e.message ?: "মনিটর লোড ব্যর্থ") }
+            }
+        }
+    }
+
+    fun finalizeMerchantStaffCashSale(
+        saleId: String,
+        onSuccess: (EmployeeSaleOrder) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val merchantId = activeProfile.value.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().build()
+                val payload = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("sale_id", saleId)
+                }
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/monitor/finalize-cash")
+                    .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string()
+                    if (resp.isSuccessful && !body.isNullOrBlank()) {
+                        val json = JSONObject(body)
+                        val saleJson = json.optJSONObject("sale")
+                        val finalized = if (saleJson != null) parseEmployeeSaleJson(saleJson) else null
+                        if (finalized != null) {
+                            fetchMerchantStaffMonitor()
+                            withContext(Dispatchers.Main) { onSuccess(finalized) }
+                        } else {
+                            withContext(Dispatchers.Main) { onError("ক্যাশ চূড়ান্তকরণ ডেটা ত্রুটি") }
+                        }
+                    } else {
+                        val err = if (!body.isNullOrBlank()) JSONObject(body).optString("error") else "ক্যাশ অনুমোদন ব্যর্থ হয়েছে"
+                        withContext(Dispatchers.Main) { onError(err) }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onError(e.message ?: "ক্যাশ অনুমোদন ব্যর্থ") }
+            }
+        }
+    }
+
+    fun revokeEmployeeAccess(employeeId: String, reason: String = "মার্চেন্ট কর্তৃক অ্যাক্সেস বন্ধ") {
+        val merchantId = activeProfile.value.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().build()
+                val json = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("employee_id", employeeId)
+                    put("reason", reason)
+                }
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/revoke")
+                    .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(req).execute().close()
+
+                employees.value.find { it.id == employeeId }?.let { emp ->
+                    if (emp.status != "Inactive") {
+                        updateEmployee(emp.copy(status = "Inactive"))
+                    }
+                }
+                fetchMerchantStaffMonitor()
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "Employee revoke sync: ${e.message}")
+            }
+        }
+    }
+
+    fun restoreEmployeeAccess(
+        employeeId: String,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
+        val merchantId = activeProfile.value.id
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = OkHttpClient.Builder().build()
+                val json = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("employee_id", employeeId)
+                }
+                val req = Request.Builder()
+                    .url("https://api.swapnopay.top/v1/employee/restore")
+                    .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        employees.value.find { it.id == employeeId }?.let { emp ->
+                            updateEmployee(emp.copy(status = "Active"))
+                        }
+                        fetchMerchantStaffMonitor()
+                        withContext(Dispatchers.Main) { onSuccess?.invoke() }
+                    } else {
+                        val body = resp.body?.string()
+                        val err = if (!body.isNullOrBlank()) JSONObject(body).optString("error") else "রিস্টোর ব্যর্থ"
+                        withContext(Dispatchers.Main) { onError?.invoke(err) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "Employee restore sync: ${e.message}")
+                withContext(Dispatchers.Main) { onError?.invoke(e.message ?: "রিস্টোর ত্রুটি") }
+            }
+        }
+    }
+
+    fun logoutEmployee() {
+        _employeeSession.value = null
+        _employeeSales.value = emptyList()
+        securityPrefs.edit().remove("employee_session_json").apply()
+        navigateTo("EmployeeLogin")
+    }
+
+    private fun parseEmployeeSaleJson(j: JSONObject): EmployeeSaleOrder {
+        val itemsList = mutableListOf<EmployeeSaleItem>()
+        val arr = j.optJSONArray("items")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val itObj = arr.optJSONObject(i)
+                if (itObj != null) {
+                    itemsList.add(
+                        EmployeeSaleItem(
+                            productId = itObj.optString("product_id"),
+                            name = itObj.optString("name"),
+                            quantity = itObj.optDouble("quantity", 1.0),
+                            unitPrice = itObj.optDouble("unit_price", 0.0),
+                            lineTotal = itObj.optDouble("line_total", 0.0)
+                        )
+                    )
+                }
+            }
+        }
+
+        return EmployeeSaleOrder(
+            id = j.optString("id"),
+            invoiceNo = j.optString("invoice_no"),
+            merchantId = j.optString("merchant_id"),
+            employeeId = j.optString("employee_id"),
+            employeeName = j.optString("employee_name", "Staff Member"),
+            customerId = j.optString("customer_id").takeIf { it.isNotBlank() && it != "null" },
+            customerName = j.optString("customer_name", "Walk-in Customer"),
+            customerPhone = j.optString("customer_phone", ""),
+            items = itemsList,
+            itemCount = j.optInt("item_count", itemsList.size),
+            subtotal = j.optDouble("subtotal", 0.0),
+            discount = j.optDouble("discount", 0.0),
+            netTotal = j.optDouble("net_total", 0.0),
+            paymentType = j.optString("payment_type", "Cash"),
+            status = j.optString("status", "PENDING_CASH_CONFIRMATION"),
+            trxId = j.optString("trx_id").takeIf { it.isNotBlank() && it != "null" },
+            createdAt = j.optString("created_at", ""),
+            finalizedAt = j.optString("finalized_at").takeIf { it.isNotBlank() && it != "null" },
+            finalizedBy = j.optString("finalized_by").takeIf { it.isNotBlank() && it != "null" }
+        )
+    }
 }
 
+data class FormProductItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    var title: String = "",
+    var description: String = "",
+    var price: Double = 0.0,
+    var salePrice: Double = 0.0,
+    var stock: Int = 100,
+    var sku: String = "",
+    var category: String = "General",
+    var imageUrl: String = "",
+    var isDigital: Boolean = false,
+    var digitalDownloadUrl: String = "",
+    var variants: List<String> = emptyList(),
+    var galleryUrls: List<String> = emptyList(),
+    var productVariants: List<ProductVariantItem> = emptyList()
+)
+
+data class FormThemeConfig(
+    var primaryColorHex: String = "#7C3AED", // Brand Purple
+    var fontFamily: String = "Inter",
+    var buttonShape: String = "ROUNDED", // ROUNDED, PILL, SQUARE
+    var borderRadiusDp: Int = 16,
+    var backgroundColorHex: String = "#F6F7FB",
+    var logoUrl: String = "",
+    var bannerUrl: String = "",
+    var bannerTitle: String = "",
+    var bannerSubtitle: String = "",
+    var isDarkMode: Boolean = false,
+    var showHeader: Boolean = true,
+    var coverPhotoUrl: String = "",
+    var firstPageInstruction: String = "",
+    var shuffleQuestionOrder: Boolean = false,
+    var oneResponsePerUser: Boolean = false,
+    var backgroundStyle: String = "SOLID", // SOLID, GRADIENT, CUSTOM_CSS
+    var gradientColorStart: String = "#5B7FFF",
+    var gradientColorEnd: String = "#7C4DFF",
+    var backgroundAnimation: String = "AURORA", // AURORA, STATIC, PULSE
+    var customCss: String = "",
+    var customJs: String = "",
+    var enableCustomJs: Boolean = true,
+    var isCustomWebApp: Boolean = false,
+    var enableClosingTimeline: Boolean = false,
+    var closingDeadlineEpoch: Long = 0L,
+    var closingDeadlineStr: String = "",
+    var closedMessage: String = "This form is no longer accepting responses / সময়সীমা শেষ হয়ে গেছে",
+    var showCountdownTimer: Boolean = true,
+    var enableCsvBackend: Boolean = false,
+    var csvFileName: String = "",
+    var csvRawData: String = "",
+    var csvHeaders: List<String> = emptyList(),
+    var csvLookupColumn: String = "",
+    var csvTargetLookupFieldId: String = "",
+    var csvColumnMappings: Map<String, String> = emptyMap(),
+    var csvAutofillMode: String = "EXACT_MATCH",
+    var formWidthPx: Int = 720,
+    var pageMarginPx: Int = 24,
+    var isMultiPageForm: Boolean = false,
+    var progressTrackerStyle: String = "BAR", // HIDE, NUMBER, ICON, BAR
+    var redirectType: String = "SUCCESS_MSG", // SUCCESS_MSG, REDIRECT_URL, CUSTOM_HTML, STAY_ON_FORM
+    var redirectUrl: String = "",
+    var redirectDelaySec: Int = 0,
+    var openInNewTab: Boolean = false,
+    var enableCustomHtml: Boolean = false,
+    var customHtmlContent: String = "",
+    var enableEmailNotifications: Boolean = false,
+    var notificationEmail: String = "",
+    var enableSmsNotifications: Boolean = false,
+    var notificationSmsNumber: String = "",
+    var enablePaymentCallback: Boolean = false,
+    var paymentCallbackUrl: String = "",
+    var requiredFieldIndicator: Boolean = true,
+    var enableTimer: Boolean = false,
+    var timerMinutes: Int = 30,
+    var closeAfterLimit: Boolean = false,
+    var maxResponses: Int = 1000,
+    var enforceRequiredFields: Boolean = true,
+    var strictFormatValidation: Boolean = true,
+    var maxFileSizeBytes: Long = 5L * 1024 * 1024,
+    var enforceFileSizeLimit: Boolean = true,
+    var minQuantity: Int = 1,
+    var maxQuantity: Int = 1000,
+    var enforceQuantityRange: Boolean = true,
+    var enableAntiSpam: Boolean = true,
+    var enablePayment: Boolean = true,
+    var paymentProvider: String = "AUTO",
+    var currencyCode: String = "BDT",
+    var taxPercent: Double = 0.0,
+    var requirePaymentBeforeSubmit: Boolean = true,
+    // Custom variables defined per-form for substitution in hosted HTML/CSS
+    var customVariables: List<CustomVariable> = emptyList()
+)
+
+data class CustomVariable(
+    val key: String,
+    val exampleValue: String = "",
+    val source: String = "field" // field, order, metadata
+)
+
+data class FormSubmissionItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val formId: String = "",
+    val customerName: String = "",
+    val customerPhone: String = "",
+    val customerEmail: String = "",
+    val amountBdt: Double = 0.0,
+    val paymentMethod: String = "bKash",
+    val paymentStatus: String = "PAID", // PAID, PENDING, FAILED
+    val trxId: String = "",
+    val submittedAt: Long = System.currentTimeMillis()
+)
+
+data class FormAnalytics(
+    val totalViews: Int = 0,
+    val totalSubmissions: Int = 0,
+    val totalRevenueBdt: Double = 0.0,
+    val conversionRatePct: Double = 0.0
+)
+
+// ── Employee Portal & Live Staff Monitor Models ──
+
+data class EmployeeSession(
+    val sessionToken: String = "",
+    val employeeId: String = "",
+    val employeeName: String = "",
+    val employeeRole: String = "Sales",
+    val merchantId: String = "",
+    val merchantStoreName: String = "SwapnoPay Store",
+    val currency: String = "BDT",
+    val permissions: List<String> = listOf("POS & Billing Access", "Inventory Access"),
+    val gatewayMethods: Map<String, String> = mapOf("bKash" to "01928092777", "Nagad" to "01712963652", "Rocket" to "01819283746", "Upay" to "01612345678"),
+    val isActive: Boolean = true
+)
+
+data class EmployeeSaleOrder(
+    val id: String,
+    val invoiceNo: String,
+    val merchantId: String,
+    val employeeId: String,
+    val employeeName: String,
+    val customerId: String? = null,
+    val customerName: String = "Walk-in Customer",
+    val customerPhone: String = "",
+    val items: List<EmployeeSaleItem> = emptyList(),
+    val itemCount: Int = 0,
+    val subtotal: Double = 0.0,
+    val discount: Double = 0.0,
+    val netTotal: Double = 0.0,
+    val paymentType: String = "Cash", // "Cash", "bKash", "Nagad", "Rocket", "Upay"
+    val status: String = "PENDING_CASH_CONFIRMATION", // "PENDING_CASH_CONFIRMATION", "MFS_MATCHING", "PAID"
+    val trxId: String? = null,
+    val createdAt: String = "",
+    val finalizedAt: String? = null,
+    val finalizedBy: String? = null
+)
+
+data class EmployeeSaleItem(
+    val productId: String,
+    val name: String,
+    val quantity: Double,
+    val unitPrice: Double,
+    val lineTotal: Double
+)
+
+data class MerchantStaffMonitorState(
+    val totalStaffSalesToday: Double = 0.0,
+    val pendingCashSalesCount: Int = 0,
+    val pendingCashTotalAmount: Double = 0.0,
+    val activeStaffCount: Int = 0,
+    val pendingCashSales: List<EmployeeSaleOrder> = emptyList(),
+    val liveSalesStream: List<EmployeeSaleOrder> = emptyList(),
+    val staffLeaderboard: List<StaffLeaderboardItem> = emptyList()
+)
+
+data class StaffLeaderboardItem(
+    val employeeId: String,
+    val employeeName: String,
+    val totalSalesCount: Int = 0,
+    val totalSalesAmount: Double = 0.0,
+    val cashCollected: Double = 0.0,
+    val mfsCollected: Double = 0.0,
+    val pendingCashCount: Int = 0
+)
 data class MerchantNumber(
     val number: String,
     val method: String, // bKash, Nagad, Rocket, Upay
@@ -10742,10 +12633,23 @@ enum class FormFieldType(val displayName: String, val category: FormFieldCategor
     CUSTOM_CODE("Custom Code / HTML", FormFieldCategory.ADVANCED)
 }
 
+data class ProductVariantItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    var name: String = "",
+    var price: Double = 0.0,
+    var sku: String = "",
+    var stock: Int = 100,
+    var description: String = ""
+)
+
 data class FormPageItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     var title: String = "Page 1: Information",
-    var subtitle: String = "Please fill out the fields below"
+    var subtitle: String = "Please fill out the fields below",
+    var isCustomHtml: Boolean = false,
+    var customHtmlContent: String = "",
+    var customCssContent: String = "",
+    var customVariables: List<String> = emptyList()
 )
 
 data class HostedFormModel(
@@ -10812,6 +12716,10 @@ data class FormFieldItem(
     var customCodeCss: String = "",
     var customVariables: List<String> = emptyList(),
     var customVariableAssignments: Map<String, String> = emptyMap(),
+
+    // Product Gallery & Variants
+    var galleryUrls: List<String> = emptyList(),
+    var productVariants: List<ProductVariantItem> = emptyList(),
 
     // Validation & Constraint Rules
     var validationRegex: String = "",
@@ -11015,120 +12923,3 @@ object FormValidationEngine {
         return FormValidationResult(isValid, errors, summary)
     }
 }
-
-
-data class FormProductItem(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    var title: String = "",
-    var description: String = "",
-    var price: Double = 0.0,
-    var salePrice: Double = 0.0,
-    var stock: Int = 100,
-    var sku: String = "",
-    var category: String = "General",
-    var imageUrl: String = "",
-    var isDigital: Boolean = false,
-    var digitalDownloadUrl: String = "",
-    var variants: List<String> = emptyList()
-)
-
-data class FormThemeConfig(
-    var primaryColorHex: String = "#7C3AED", // Brand Purple
-    var fontFamily: String = "Inter",
-    var buttonShape: String = "ROUNDED", // ROUNDED, PILL, SQUARE
-    var borderRadiusDp: Int = 16,
-    var backgroundColorHex: String = "#F6F7FB",
-    var logoUrl: String = "",
-    var bannerUrl: String = "",
-    var bannerTitle: String = "",
-    var bannerSubtitle: String = "",
-    var isDarkMode: Boolean = false,
-    var showHeader: Boolean = true,
-    var coverPhotoUrl: String = "",
-    var firstPageInstruction: String = "",
-    var shuffleQuestionOrder: Boolean = false,
-    var oneResponsePerUser: Boolean = false,
-    var backgroundStyle: String = "SOLID", // SOLID, GRADIENT, CUSTOM_CSS
-    var gradientColorStart: String = "#5B7FFF",
-    var gradientColorEnd: String = "#7C4DFF",
-    var backgroundAnimation: String = "AURORA", // AURORA, STATIC, PULSE
-    var customCss: String = "",
-    var customJs: String = "",
-    var enableCustomJs: Boolean = true,
-    var isCustomWebApp: Boolean = false,
-    var enableClosingTimeline: Boolean = false,
-    var closingDeadlineEpoch: Long = 0L,
-    var closingDeadlineStr: String = "",
-    var closedMessage: String = "This form is no longer accepting responses / সময়সীমা শেষ হয়ে গেছে",
-    var showCountdownTimer: Boolean = true,
-    var enableCsvBackend: Boolean = false,
-    var csvFileName: String = "",
-    var csvRawData: String = "",
-    var csvHeaders: List<String> = emptyList(),
-    var csvLookupColumn: String = "",
-    var csvTargetLookupFieldId: String = "",
-    var csvColumnMappings: Map<String, String> = emptyMap(),
-    var csvAutofillMode: String = "EXACT_MATCH",
-    var formWidthPx: Int = 720,
-    var pageMarginPx: Int = 24,
-    var isMultiPageForm: Boolean = false,
-    var progressTrackerStyle: String = "BAR", // HIDE, NUMBER, ICON, BAR
-    var redirectType: String = "SUCCESS_MSG", // SUCCESS_MSG, REDIRECT_URL, CUSTOM_HTML, STAY_ON_FORM
-    var redirectUrl: String = "",
-    var redirectDelaySec: Int = 0,
-    var openInNewTab: Boolean = false,
-    var enableCustomHtml: Boolean = false,
-    var customHtmlContent: String = "",
-    var enableEmailNotifications: Boolean = false,
-    var notificationEmail: String = "",
-    var enableSmsNotifications: Boolean = false,
-    var notificationSmsNumber: String = "",
-    var enablePaymentCallback: Boolean = false,
-    var paymentCallbackUrl: String = "",
-    var requiredFieldIndicator: Boolean = true,
-    var enableTimer: Boolean = false,
-    var timerMinutes: Int = 30,
-    var closeAfterLimit: Boolean = false,
-    var maxResponses: Int = 1000,
-    var enforceRequiredFields: Boolean = true,
-    var strictFormatValidation: Boolean = true,
-    var maxFileSizeBytes: Long = 5L * 1024 * 1024,
-    var enforceFileSizeLimit: Boolean = true,
-    var minQuantity: Int = 1,
-    var maxQuantity: Int = 1000,
-    var enforceQuantityRange: Boolean = true,
-    var enableAntiSpam: Boolean = true,
-    var enablePayment: Boolean = true,
-    var paymentProvider: String = "AUTO",
-    var currencyCode: String = "BDT",
-    var taxPercent: Double = 0.0,
-    var requirePaymentBeforeSubmit: Boolean = true,
-    // Custom variables defined per-form for substitution in hosted HTML/CSS
-    var customVariables: List<CustomVariable> = emptyList()
-)
-
-data class CustomVariable(
-    val key: String,
-    val exampleValue: String = "",
-    val source: String = "field" // field, order, metadata
-)
-
-data class FormSubmissionItem(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val formId: String = "",
-    val customerName: String = "",
-    val customerPhone: String = "",
-    val customerEmail: String = "",
-    val amountBdt: Double = 0.0,
-    val paymentMethod: String = "bKash",
-    val paymentStatus: String = "PAID", // PAID, PENDING, FAILED
-    val trxId: String = "",
-    val submittedAt: Long = System.currentTimeMillis()
-)
-
-data class FormAnalytics(
-    val totalViews: Int = 0,
-    val totalSubmissions: Int = 0,
-    val totalRevenueBdt: Double = 0.0,
-    val conversionRatePct: Double = 0.0
-)

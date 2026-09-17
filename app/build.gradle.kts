@@ -41,6 +41,23 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    manifestPlaceholders["appName"] = "SwapnoPay"
+  }
+
+  flavorDimensions += "role"
+  productFlavors {
+    create("merchant") {
+      dimension = "role"
+      applicationId = "com.swapnopay"
+      manifestPlaceholders["appName"] = "SwapnoPay Merchant"
+      buildConfigField("String", "APP_FLAVOR_ROLE", "\"MERCHANT\"")
+    }
+    create("employee") {
+      dimension = "role"
+      applicationId = "com.swapnopay.staff"
+      manifestPlaceholders["appName"] = "SwapnoPay Staff"
+      buildConfigField("String", "APP_FLAVOR_ROLE", "\"EMPLOYEE\"")
+    }
   }
 
   signingConfigs {

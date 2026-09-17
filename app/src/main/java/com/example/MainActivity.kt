@@ -17,6 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.core.content.ContextCompat
+import android.content.Context
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.example.ui.AppNavigation
 import com.example.ui.AppViewModel
 import com.example.ui.theme.MyApplicationTheme
@@ -27,6 +31,7 @@ class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels()
 
     private var isRequestingPermission = false
+    private var showPermissionConsent by mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -40,6 +45,20 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun getMissingPermissions(): List<String> {
+        val permissionsNeeded = mutableListOf(
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_PHONE_STATE
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        return permissionsNeeded.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -50,14 +69,50 @@ class MainActivity : FragmentActivity() {
         // Handle deep link callback from Supabase email confirmation or reset links
         handleDeepLinkIntent(intent)
 
-        // Check and request dynamic permissions
-        checkAndRequestPermissions()
+        val isEmployeeFlavor = try {
+            com.example.BuildConfig.APP_FLAVOR_ROLE == "EMPLOYEE"
+        } catch (e: Throwable) {
+            false
+        }
+
+        val prefs = getSharedPreferences("swapnopay_policy_prefs", Context.MODE_PRIVATE)
+
+        if (!isEmployeeFlavor) {
+            // Check and request dynamic permissions (SMS gateway - merchant only)
+            checkAndRequestPermissions()
+        }
 
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsState()
+            val language by viewModel.language.collectAsState()
+            val isBangla = language == "Bangla"
+
             MyApplicationTheme(darkTheme = isDarkMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavigation(viewModel = viewModel)
+
+                    // Render Prominent Disclosure Consent Dialog before requesting permissions
+                    if (showPermissionConsent) {
+                        com.example.ui.PermissionProminentDisclosureDialog(
+                            isDarkMode = isDarkMode,
+                            isBangla = isBangla,
+                            onAccept = {
+                                showPermissionConsent = false
+                                prefs.edit().putBoolean("has_seen_permission_disclosure", true).apply()
+                                val toRequest = getMissingPermissions()
+                                if (toRequest.isNotEmpty()) {
+                                    isRequestingPermission = true
+                                    requestPermissionLauncher.launch(toRequest.toTypedArray())
+                                } else {
+                                    startSmsService()
+                                }
+                            },
+                            onDismiss = {
+                                showPermissionConsent = false
+                                prefs.edit().putBoolean("has_seen_permission_disclosure", true).apply()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -92,25 +147,18 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun checkAndRequestPermissions() {
-        val permissionsNeeded = mutableListOf(
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_PHONE_STATE
-        )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        val missingPermissions = permissionsNeeded.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
+        val missingPermissions = getMissingPermissions()
         if (missingPermissions.isEmpty()) {
             startSmsService()
         } else {
-            isRequestingPermission = true
-            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+            val prefs = getSharedPreferences("swapnopay_policy_prefs", Context.MODE_PRIVATE)
+            val hasSeenConsent = prefs.getBoolean("has_seen_permission_disclosure", false)
+            if (!hasSeenConsent) {
+                showPermissionConsent = true
+            } else {
+                isRequestingPermission = true
+                requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+            }
         }
     }
 

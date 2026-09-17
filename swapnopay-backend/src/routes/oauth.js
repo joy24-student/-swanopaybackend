@@ -40,6 +40,15 @@ function hashState(rawState) {
   return crypto.createHash('sha256').update(rawState).digest('hex')
 }
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 // Fetch or refresh access token with robust fallback lookup (user_id -> tx_id -> latest active connection)
 async function getValidAccessToken(userId, txId) {
   const admin = getAdminClient()
@@ -71,17 +80,6 @@ async function getValidAccessToken(userId, txId) {
         .maybeSingle()
       if (data) conn = data
     }
-  }
-
-  // 3. Fallback: most recent active connection
-  if (!conn) {
-    const { data } = await admin
-      .from('supabase_connections')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (data) conn = data
   }
 
   if (!conn) {
@@ -202,7 +200,7 @@ async function handleOAuthCallback(req, res) {
       <!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
         <div style="background:#1e293b;max-width:440px;margin:0 auto;padding:32px;border-radius:16px;border:1px solid #ef4444;">
           <h2 style="color:#ef4444;">Connection Cancelled</h2>
-          <p style="color:#94a3b8;">${errorDesc || errorParam}</p>
+          <p style="color:#94a3b8;">${escapeHtml(errorDesc || errorParam)}</p>
         </div>
       </body></html>
     `)
@@ -309,9 +307,11 @@ async function handleOAuthCallback(req, res) {
 
     // 5. Determine Redirect Target
     const deepLink = `swapnopay://supabase-connected?tx_id=${tx.id}`
-    const redirectTarget = tx.redirect_back
+    const rawTarget = tx.redirect_back
       ? `${tx.redirect_back}${tx.redirect_back.includes('?') ? '&' : '?'}tx_id=${tx.id}&status=connected`
       : deepLink
+    const isSafeTarget = /^(https?:\/\/|swapnopay:\/\/)/i.test(rawTarget)
+    const redirectTarget = isSafeTarget ? encodeURI(rawTarget) : deepLink
 
     // 6. Return Clean Branded HTML
     return res.send(`

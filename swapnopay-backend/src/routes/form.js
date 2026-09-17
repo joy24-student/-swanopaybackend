@@ -1,0 +1,724 @@
+// SwapnoPay Backend — Form Handling & Routing Router
+// Provides:
+// POST   /v1/routes                  — Register/persist branded form route & cached definition
+// DELETE /v1/routes/:id              — Unregister route
+// GET    /v1/forms/:slugOrId         — Resolve form by slug or ID (returns fields, products, theme, status)
+// POST   /v1/forms/:slugOrId/submit  — Secure submission handler (service_role bypass, order creation, notifications)
+// GET    /v1/forms/:slugOrId/submissions — Fetch form responses
+
+import { Router } from 'express'
+import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
+import { fileURLToPath } from 'url'
+import { getAdminClient, getMerchantCredentials } from '../services/adminSupabase.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Persistent route storage file path
+const DATA_DIR = path.resolve(__dirname, '../../data')
+const ROUTES_FILE = path.join(DATA_DIR, 'form_routes.json')
+
+// In-memory route and form cache
+const routeBySlug = new Map()
+const routeById = new Map()
+const formSubmissionsMemory = new Map() // formId -> array of submissions
+
+// Ensure data directory and persistent file exist
+function initPersistence() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true })
+    }
+    if (fs.existsSync(ROUTES_FILE)) {
+      const raw = fs.readFileSync(ROUTES_FILE, 'utf8')
+      const items = JSON.parse(raw || '[]')
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          if (item.slug) routeBySlug.set(item.slug.toLowerCase(), item)
+          if (item.form_id) {
+            const cleanId = item.form_id.toLowerCase().replace(/-/g, '')
+            routeById.set(cleanId, item)
+            routeById.set(item.form_id.toLowerCase(), item)
+          }
+        }
+        console.log(`[form-router] Loaded ${items.length} persistent form routes from disk.`)
+      }
+    } else {
+      fs.writeFileSync(ROUTES_FILE, JSON.stringify([], null, 2), 'utf8')
+    }
+  } catch (err) {
+    console.warn('[form-router] Failed to initialize persistent storage:', err.message)
+  }
+}
+
+initPersistence()
+
+function saveRoutesToDisk() {
+  try {
+    const all = []
+    const seen = new Set()
+    for (const item of routeBySlug.values()) {
+      const key = item.form_id || item.slug
+      if (!seen.has(key)) {
+        seen.add(key)
+        all.push(item)
+      }
+    }
+    for (const item of routeById.values()) {
+      const key = item.form_id || item.slug
+      if (!seen.has(key)) {
+        seen.add(key)
+        all.push(item)
+      }
+    }
+    const tempFile = `${ROUTES_FILE}.tmp.${Date.now()}`
+    fs.writeFileSync(tempFile, JSON.stringify(all, null, 2), 'utf8')
+    try {
+      if (fs.existsSync(ROUTES_FILE)) fs.unlinkSync(ROUTES_FILE)
+    } catch (_) {}
+    fs.renameSync(tempFile, ROUTES_FILE)
+  } catch (err) {
+    console.error('[form-router] Error saving routes to disk:', err.message)
+  }
+}
+
+function normalizeUuid(val) {
+  if (!val) return null
+  const str = String(val).trim().toLowerCase()
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
+    return str
+  }
+  const clean = str.replace(/[^0-9a-f]/g, '')
+  if (clean.length === 32) {
+    return `${clean.slice(0, 8)}-${clean.slice(8, 12)}-${clean.slice(12, 16)}-${clean.slice(16, 20)}-${clean.slice(20, 32)}`
+  }
+  return null
+}
+
+export function formRouter(io = null) {
+  const router = Router()
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /v1/routes (also mounted on /v1/routes directly)
+  // Branded Form Route Registration
+  // ──────────────────────────────────────────────────────────────────────────
+  router.post('/routes', async (req, res) => {
+    try {
+      const {
+        form_id,
+        slug,
+        project_url,
+        publishable_key,
+        merchant_id,
+        payload,
+        form_data
+      } = req.body || {}
+
+      const cleanFormId = String(form_id || '').trim()
+      const rawSlug = String(slug || cleanFormId || '').trim()
+      const normalizedSlug = rawSlug.toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+
+      if (!cleanFormId && !normalizedSlug) {
+        return res.status(400).json({ ok: false, error: 'form_id or slug is required' })
+      }
+
+      const formSnapshot = payload || form_data || null
+
+      const routeRecord = {
+        form_id: cleanFormId,
+        slug: normalizedSlug,
+        project_url: project_url || null,
+        publishable_key: publishable_key || null,
+        merchant_id: merchant_id || null,
+        payload: formSnapshot,
+        updated_at: new Date().toISOString()
+      }
+
+      // Store in memory
+      if (normalizedSlug) routeBySlug.set(normalizedSlug, routeRecord)
+      if (cleanFormId) {
+        const compactId = cleanFormId.toLowerCase().replace(/-/g, '')
+        routeById.set(compactId, routeRecord)
+        routeById.set(cleanFormId.toLowerCase(), routeRecord)
+      }
+
+      // Persist to disk
+      saveRoutesToDisk()
+
+      // Also persist to admin database payment_forms if full payload exists
+      try {
+        if (formSnapshot && typeof formSnapshot === 'object') {
+          const admin = getAdminClient()
+          const dbRow = {
+            id: normalizeUuid(cleanFormId) || cleanFormId,
+            merchant_id: formSnapshot.merchant_id || merchant_id || '00000000-0000-0000-0000-000000000001',
+            title: formSnapshot.title || 'Hosted Payment Form',
+            description: formSnapshot.description || '',
+            slug: normalizedSlug,
+            amount: Number(formSnapshot.amount || 0),
+            status: formSnapshot.status || 'PUBLISHED',
+            fields: typeof formSnapshot.fields === 'string' ? formSnapshot.fields : JSON.stringify(formSnapshot.fields || []),
+            products: typeof formSnapshot.products === 'string' ? formSnapshot.products : JSON.stringify(formSnapshot.products || []),
+            pages: typeof formSnapshot.pages === 'string' ? formSnapshot.pages : JSON.stringify(formSnapshot.pages || []),
+            theme: typeof formSnapshot.theme === 'string' ? formSnapshot.theme : (formSnapshot.theme || {}),
+            logo_url: formSnapshot.logo_url || (formSnapshot.theme && formSnapshot.theme.logo_url) || null,
+            banner_url: formSnapshot.banner_url || (formSnapshot.theme && formSnapshot.theme.banner_url) || null,
+            updated_at: new Date().toISOString()
+          }
+
+          admin.from('payment_forms').upsert(dbRow, { onConflict: 'id' }).then(({ error }) => {
+            if (error) console.warn('[form-router] Admin DB upsert warning:', error.message)
+            else console.log('[form-router] Form synced to Admin DB payment_forms:', normalizedSlug)
+          }).catch(e => console.warn('[form-router] DB sync caught:', e.message))
+        }
+      } catch (dbErr) {
+        console.warn('[form-router] Admin DB sync error:', dbErr.message)
+      }
+
+      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
+      const publicUrl = `${publicOrigin}/f/${normalizedSlug || cleanFormId}`
+
+      console.log(`[form-router] Route registered: ${publicUrl}`)
+      return res.json({
+        ok: true,
+        public_id: cleanFormId,
+        public_url: publicUrl,
+        slug_url: publicUrl
+      })
+    } catch (err) {
+      console.error('[form-router] Error registering route:', err.message)
+      return res.status(500).json({ ok: false, error: err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // DELETE /v1/routes/:id
+  // ──────────────────────────────────────────────────────────────────────────
+  router.delete('/routes/:id', (req, res) => {
+    const id = (req.params.id || '').toLowerCase().trim()
+    const compactId = id.replace(/-/g, '')
+    const existing = routeById.get(compactId) || routeBySlug.get(id)
+    if (existing) {
+      if (existing.slug) routeBySlug.delete(existing.slug.toLowerCase())
+      if (existing.form_id) {
+        routeById.delete(existing.form_id.toLowerCase())
+        routeById.delete(existing.form_id.toLowerCase().replace(/-/g, ''))
+      }
+      saveRoutesToDisk()
+    }
+    return res.status(200).json({ ok: true })
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /v1/forms/:slugOrId
+  // Resolves form config, fields, products, theme, and closing status
+  // ──────────────────────────────────────────────────────────────────────────
+  router.get('/forms/:slugOrId', async (req, res) => {
+    const identifier = String(req.params.slugOrId || '').trim()
+    const normalizedIdentifier = identifier.toLowerCase()
+    const compactId = normalizedIdentifier.replace(/-/g, '')
+
+    console.log(`[form-router] Resolving form: ${identifier}`)
+
+    let form = null
+
+    // 1. Check in-memory route cache
+    const route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+    if (route && route.payload) {
+      form = { ...route.payload }
+    }
+
+    // 2. Query Admin DB payment_forms if not found in cache or payload missing
+    if (!form) {
+      try {
+        const admin = getAdminClient()
+        const parsedUuid = normalizeUuid(identifier)
+        let query = admin.from('payment_forms').select('*')
+        if (parsedUuid) {
+          query = query.or(`id.eq.${parsedUuid},slug.eq.${identifier}`)
+        } else {
+          query = query.eq('slug', identifier)
+        }
+
+        const { data, error } = await query.maybeSingle()
+        if (!error && data) {
+          form = data
+          // Update cache
+          if (form.slug) routeBySlug.set(form.slug.toLowerCase(), { form_id: form.id, slug: form.slug, payload: form })
+          if (form.id) routeById.set(form.id.toLowerCase().replace(/-/g, ''), { form_id: form.id, slug: form.slug, payload: form })
+        }
+      } catch (err) {
+        console.warn(`[form-router] Admin DB lookup error for ${identifier}:`, err.message)
+      }
+    }
+
+    // 3. Fallback: check merchant DB if credentials exist
+    if (!form && route && route.project_url && route.publishable_key) {
+      try {
+        const headers = {
+          apikey: route.publishable_key,
+          Authorization: `Bearer ${route.publishable_key}`
+        }
+        const resp = await fetch(`${route.project_url}/rest/v1/payment_forms?slug=eq.${encodeURIComponent(identifier)}&select=*`, { headers })
+        if (resp.ok) {
+          const list = await resp.json()
+          if (list && list.length > 0) form = list[0]
+        }
+      } catch (e) {
+        console.warn('[form-router] Merchant DB direct lookup warning:', e.message)
+      }
+    }
+
+    if (!form) {
+      return res.status(404).json({ ok: false, error: 'Payment form not found or inactive.' })
+    }
+
+    // Parse fields, products, theme if stringified
+    try {
+      if (typeof form.fields === 'string') form.fields = JSON.parse(form.fields)
+    } catch { form.fields = [] }
+
+    try {
+      if (typeof form.products === 'string') form.products = JSON.parse(form.products)
+    } catch { form.products = [] }
+
+    try {
+      if (typeof form.pages === 'string') form.pages = JSON.parse(form.pages)
+    } catch { form.pages = [] }
+
+    const theme = (form.theme && typeof form.theme === 'object')
+      ? form.theme
+      : (typeof form.theme === 'string' ? JSON.parse(form.theme || '{}') : {})
+
+    form.theme = theme
+
+    // Check closing status
+    const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0)
+    const isTimelineClosed = (theme.enable_closing_timeline === true || theme.enableClosingTimeline === true) && deadlineEpoch > 0 && Date.now() > deadlineEpoch
+    const maxResponses = Number(theme.max_responses || theme.maxResponses || 1000)
+    const isLimitClosed = (theme.close_after_limit === true || theme.closeAfterLimit === true) && Number(form.submissions_count || 0) >= Math.max(1, maxResponses)
+
+    const isClosed = isTimelineClosed || isLimitClosed
+    const closedMessage = theme.closed_message || theme.closedMessage || 'This form is no longer accepting responses.'
+
+    // Increment view count asynchronously
+    try {
+      form.views_count = (form.views_count || 0) + 1
+      const admin = getAdminClient()
+      admin.from('payment_forms')
+        .update({ views_count: form.views_count })
+        .eq('id', form.id)
+        .then(() => {})
+        .catch(() => {})
+    } catch {}
+
+    return res.json({
+      ok: true,
+      form: {
+        id: form.id,
+        title: form.title || 'Hosted Payment Form',
+        description: form.description || '',
+        slug: form.slug,
+        amount: Number(form.amount || 0),
+        status: form.status || 'PUBLISHED',
+        fields: form.fields || [],
+        products: form.products || [],
+        pages: form.pages || [],
+        theme: form.theme || {},
+        logo_url: form.logo_url || theme.logo_url || null,
+        banner_url: form.banner_url || theme.banner_url || null,
+        submissions_count: form.submissions_count || 0,
+        views_count: form.views_count || 0,
+        closing_status: {
+          closed: isClosed,
+          message: closedMessage,
+          is_timeline_closed: isTimelineClosed,
+          is_limit_closed: isLimitClosed,
+          deadline_epoch: deadlineEpoch
+        }
+      }
+    })
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /v1/forms/:slugOrId/submit
+  // Secure Form Submission Handler
+  // ──────────────────────────────────────────────────────────────────────────
+  router.post('/forms/:slugOrId/submit', async (req, res) => {
+    try {
+      const identifier = String(req.params.slugOrId || '').trim()
+      const normalizedIdentifier = identifier.toLowerCase()
+      const compactId = normalizedIdentifier.replace(/-/g, '')
+
+      const {
+        answers = {},
+        customer_phone = '',
+        customer_email = '',
+        customer_name = '',
+        selected_product_id = null,
+        quantity = 1,
+        payment_method = 'bKash',
+        _hp_check = '',
+        request_id = null
+      } = req.body || {}
+
+      // 1. Anti-spam honeypot
+      if (_hp_check) {
+        return res.status(400).json({ ok: false, error: 'Spam submission detected.' })
+      }
+
+      // 2. Resolve form
+      let form = null
+      const route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+      if (route && route.payload) form = { ...route.payload }
+
+      if (!form) {
+        const admin = getAdminClient()
+        const parsedUuid = normalizeUuid(identifier)
+        let query = admin.from('payment_forms').select('*')
+        if (parsedUuid) query = query.or(`id.eq.${parsedUuid},slug.eq.${identifier}`)
+        else query = query.eq('slug', identifier)
+        const { data } = await query.maybeSingle()
+        if (data) form = data
+      }
+
+      if (!form) {
+        return res.status(404).json({ ok: false, error: 'Form not found or has been removed.' })
+      }
+
+      // Parse theme
+      const theme = (form.theme && typeof form.theme === 'object')
+        ? form.theme
+        : (typeof form.theme === 'string' ? JSON.parse(form.theme || '{}') : {})
+
+      // 3. Check closing status
+      const deadlineEpoch = Number(theme.closing_deadline_epoch || theme.closingDeadlineEpoch || 0)
+      if ((theme.enable_closing_timeline === true || theme.enableClosingTimeline === true) && deadlineEpoch > 0 && Date.now() > deadlineEpoch) {
+        return res.status(409).json({ ok: false, error: theme.closed_message || 'This form is no longer accepting responses (Deadline expired).' })
+      }
+      const maxResponses = Number(theme.max_responses || theme.maxResponses || 1000)
+      if ((theme.close_after_limit === true || theme.closeAfterLimit === true) && Number(form.submissions_count || 0) >= Math.max(1, maxResponses)) {
+        return res.status(409).json({ ok: false, error: theme.closed_message || 'This form has reached its maximum allowed responses.' })
+      }
+
+      // 4. Calculate amount
+      const isPaymentEnabled = theme.enable_payment !== false && theme.enablePayment !== false
+      let calculatedAmount = 0
+      let productName = form.title || 'Form Order'
+
+      if (isPaymentEnabled) {
+        let products = []
+        try {
+          products = typeof form.products === 'string' ? JSON.parse(form.products) : (form.products || [])
+        } catch {}
+
+        // Check if selected products array or single product exists
+        const selectedProductsList = Array.isArray(req.body.selected_products) ? req.body.selected_products : []
+        if (selectedProductsList.length > 0 && products.length > 0) {
+          for (const sp of selectedProductsList) {
+            const prod = products.find(p => String(p.id) === String(sp.id))
+            const uPrice = Number(sp.price || sp.unit_price || (prod ? (prod.sale_price > 0 ? prod.sale_price : prod.price) : 0))
+            const uQty = Math.max(1, Number(sp.quantity || sp.qty || 1))
+            calculatedAmount += (uPrice * uQty)
+          }
+          if (selectedProductsList[0]?.title) {
+            productName = selectedProductsList.map(p => p.title || p.name).filter(Boolean).join(', ')
+          }
+        } else if (selected_product_id && products.length > 0) {
+          const prod = products.find(p => String(p.id) === String(selected_product_id))
+          if (prod) {
+            const unitPrice = prod.sale_price > 0 ? prod.sale_price : (prod.salePrice > 0 ? prod.salePrice : prod.price)
+            calculatedAmount = Number(unitPrice || 0) * Math.max(1, Number(quantity || 1))
+            productName = prod.title || productName
+          }
+        }
+
+        // Check product component in fields
+        if (form.fields) {
+          const fields = Array.isArray(form.fields) ? form.fields : []
+          for (const f of fields) {
+            const fType = String(f.type || '').toUpperCase()
+            if (fType === 'PRODUCT' || fType === 'PRODUCT_LIST') {
+              const ansVal = answers[f.id]
+              if (ansVal && typeof ansVal === 'object') {
+                const pPrice = Number(ansVal.price || ansVal.unit_price || f.minValue || f.defaultValue || 0)
+                const pQty = Number(ansVal.quantity || ansVal.qty || 1)
+                calculatedAmount += (pPrice * pQty)
+              } else if (f.minValue && Number(f.minValue) > 0 && calculatedAmount === 0) {
+                calculatedAmount += Number(f.minValue)
+              }
+            } else if (fType === 'CUSTOM_AMOUNT' && answers[f.id]) {
+              const custVal = parseFloat(answers[f.id])
+              if (!isNaN(custVal) && custVal > 0) calculatedAmount += custVal
+            }
+          }
+        }
+
+        // Fallback to form-level amount
+        if (calculatedAmount === 0 && Number(form.amount) > 0) {
+          calculatedAmount = Number(form.amount)
+        }
+
+        // Tax calculation
+        const taxPercent = Number(theme.tax_percent || theme.taxPercent || 0)
+        if (taxPercent > 0 && calculatedAmount > 0) {
+          calculatedAmount += (calculatedAmount * taxPercent / 100)
+        }
+      }
+
+      calculatedAmount = Math.round(calculatedAmount * 100) / 100
+      const paymentRequired = isPaymentEnabled && calculatedAmount > 0
+
+      // 5. Build submission payload
+      const submissionId = 'sub_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
+      const clientName = customer_name || answers['name'] || answers['customer_name'] || 'Customer'
+      const clientPhone = customer_phone || answers['phone'] || answers['mobile'] || 'N/A'
+      const clientEmail = customer_email || answers['email'] || ''
+
+      const submissionRecord = {
+        id: submissionId,
+        form_id: form.id,
+        form_slug: form.slug,
+        merchant_id: form.merchant_id,
+        customer_name: clientName,
+        customer_phone: clientPhone,
+        customer_email: clientEmail,
+        answers: answers,
+        amount: calculatedAmount,
+        payment_required: paymentRequired,
+        payment_method: payment_method,
+        created_at: new Date().toISOString()
+      }
+
+      // Store submission in memory and try DB
+      if (!formSubmissionsMemory.has(form.id)) formSubmissionsMemory.set(form.id, [])
+      formSubmissionsMemory.get(form.id).unshift(submissionRecord)
+
+      // Increment form submission count
+      form.submissions_count = (form.submissions_count || 0) + 1
+      try {
+        const admin = getAdminClient()
+        admin.from('payment_forms')
+          .update({ submissions_count: form.submissions_count })
+          .eq('id', form.id)
+          .then(() => {})
+          .catch(() => {})
+
+        admin.from('form_submissions')
+          .insert({
+            id: normalizeUuid(submissionId) || undefined,
+            form_id: form.id,
+            request_id: request_id || normalizeUuid(submissionId) || undefined,
+            customer_name: clientName,
+            customer_phone: clientPhone,
+            customer_email: clientEmail,
+            amount: calculatedAmount,
+            answers: answers,
+            payment_method: payment_method,
+            payment_status: paymentRequired ? 'PENDING' : 'FREE'
+          })
+          .then(() => {})
+          .catch(() => {})
+      } catch {}
+
+      // Emit realtime WebSocket event to merchant dashboard
+      if (io && form.merchant_id) {
+        io.to(`merchant:${form.merchant_id}`).emit('form_submission_received', {
+          submission_id: submissionId,
+          form_id: form.id,
+          form_title: form.title,
+          customer_name: clientName,
+          customer_phone: clientPhone,
+          amount: calculatedAmount,
+          answers,
+          payment_required: paymentRequired,
+          timestamp: new Date().toISOString()
+        })
+        console.log(`[form-router] Realtime submission broadcasted to merchant:${form.merchant_id}`)
+      }
+
+      // Send SMS Notification if configured
+      if (theme.sms_notifications && theme.notification_sms_number && io) {
+        try {
+          io.emit('form_sms_alert', {
+            recipient: theme.notification_sms_number,
+            message: `SwapnoPay: New form submission on '${form.title}' from ${clientName} (${clientPhone}). Amount: BDT ${calculatedAmount}.`
+          })
+          console.log(`[form-router] Dispatched SMS notification to ${theme.notification_sms_number}`)
+        } catch (smsErr) {
+          console.warn('[form-router] SMS notification warning:', smsErr.message)
+        }
+      }
+
+      // Webhook Callback if configured
+      if (theme.payment_callback_enabled && theme.payment_callback_url) {
+        fetch(theme.payment_callback_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'form_submission',
+            form_id: form.id,
+            form_slug: form.slug,
+            submission_id: submissionId,
+            customer_name: clientName,
+            customer_phone: clientPhone,
+            customer_email: clientEmail,
+            amount: calculatedAmount,
+            answers: answers,
+            payment_required: paymentRequired,
+            timestamp: new Date().toISOString()
+          })
+        }).catch(cbErr => console.warn('[form-router] Webhook callback failed:', cbErr.message))
+      }
+
+      // 6. Handle Payment Order Creation if required
+      if (paymentRequired) {
+        const orderId = 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()
+        const tranId = 'TRX-' + Date.now()
+
+        // Create order in admin or merchant DB
+        try {
+          const admin = getAdminClient()
+          await admin.from('orders').insert({
+            id: normalizeUuid(orderId) || undefined,
+            tran_id: tranId,
+            merchant_id: form.merchant_id,
+            amount: calculatedAmount,
+            status: 'PENDING',
+            cus_name: clientName,
+            cus_phone: clientPhone,
+            cus_email: clientEmail,
+            product_name: productName,
+            payment_method: payment_method,
+            created_at: new Date().toISOString()
+          })
+        } catch (ordErr) {
+          console.warn('[form-router] Order insert warning (continuing with widget redirect):', ordErr.message)
+        }
+
+        const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
+        const redirectUrl = `/widget.html?order_id=${encodeURIComponent(orderId)}&amount=${calculatedAmount}&merchant_name=${encodeURIComponent(form.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(clientName)}&cus_phone=${encodeURIComponent(clientPhone)}`
+
+        return res.json({
+          ok: true,
+          payment_required: true,
+          order_id: orderId,
+          transaction_id: tranId,
+          amount: calculatedAmount,
+          merchant_name: form.title,
+          redirect_url: redirectUrl
+        })
+      }
+
+      // 7. Non-Payment Form: handle post-submission settings
+      const redirectType = String(theme.redirect_type || theme.redirectType || 'SUCCESS_MSG').toUpperCase()
+      const redirectUrl = theme.redirect_url || theme.redirectUrl || ''
+      const redirectDelay = Number(theme.redirect_delay_seconds || theme.redirectDelaySec || 0)
+      const successMessage = theme.success_message || theme.successMessage || 'Thank you! Your response has been submitted successfully.'
+      const customHtml = theme.custom_html || theme.customHtmlContent || ''
+
+      return res.json({
+        ok: true,
+        payment_required: false,
+        submission_id: submissionId,
+        redirect_type: redirectType,
+        redirect_url: (redirectType === 'REDIRECT_URL' && redirectUrl) ? redirectUrl : null,
+        redirect_delay: redirectDelay,
+        success_message: successMessage,
+        custom_html: (redirectType === 'CUSTOM_HTML' && customHtml) ? customHtml : null
+      })
+    } catch (err) {
+      console.error('[form-router] Submission processing error:', err.message)
+      return res.status(500).json({ ok: false, error: 'Failed to process form submission: ' + err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /v1/forms/:slugOrId/submissions
+  // Fetch responses for a form
+  // ──────────────────────────────────────────────────────────────────────────
+  router.get('/forms/:slugOrId/submissions', async (req, res) => {
+    const identifier = String(req.params.slugOrId || '').trim()
+    const memoryList = formSubmissionsMemory.get(identifier) || []
+
+    try {
+      const admin = getAdminClient()
+      const parsedUuid = normalizeUuid(identifier)
+      let q = admin.from('form_submissions').select('*').order('created_at', { ascending: false }).limit(100)
+      if (parsedUuid) q = q.eq('form_id', parsedUuid)
+
+      const { data, error } = await q
+      if (!error && data && data.length > 0) {
+        return res.json({ ok: true, submissions: data })
+      }
+    } catch {}
+
+    return res.json({ ok: true, submissions: memoryList })
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /v1/forms/upload-image
+  // Upload product image or media image for form builder
+  // Accepts: { image: base64String, filename?: string }
+  // Returns: { ok: true, url: string, filename: string }
+  // ──────────────────────────────────────────────────────────────────────────
+  router.post('/forms/upload-image', async (req, res) => {
+    try {
+      const { image, filename } = req.body || {}
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ ok: false, error: 'Missing image base64 data' })
+      }
+
+      const cleanBase64 = image.replace(/^data:image\/\w+;base64,/, '')
+      const buffer = Buffer.from(cleanBase64, 'base64')
+      if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+        return res.status(400).json({ ok: false, error: 'Image size must be between 1 byte and 10 MB' })
+      }
+
+      const ext = (filename && path.extname(filename)) || '.jpg'
+      const safeExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext.toLowerCase()) ? ext.toLowerCase() : '.jpg'
+      const generatedName = `prod_${Date.now()}_${crypto.randomUUID().substring(0, 8)}${safeExt}`
+
+      // 1. Try Supabase Storage bucket 'products' if admin client is available
+      try {
+        const admin = getAdminClient()
+        if (admin && admin.storage) {
+          const mimeType = safeExt === '.png' ? 'image/png' : (safeExt === '.webp' ? 'image/webp' : 'image/jpeg')
+          const { data: uploadData, error: uploadErr } = await admin.storage
+            .from('products')
+            .upload(generatedName, buffer, {
+              contentType: mimeType,
+              upsert: true
+            })
+          if (!uploadErr && uploadData?.path) {
+            const { data: publicUrlData } = admin.storage.from('products').getPublicUrl(uploadData.path)
+            if (publicUrlData?.publicUrl) {
+              return res.status(201).json({ ok: true, url: publicUrlData.publicUrl, filename: generatedName })
+            }
+          }
+        }
+      } catch (storageErr) {
+        console.warn('[form-upload] Supabase storage notice:', storageErr.message)
+      }
+
+      // 2. Fallback to local uploads/products directory
+      const uploadsProductsDir = path.resolve(__dirname, '../../uploads/products')
+      if (!fs.existsSync(uploadsProductsDir)) {
+        fs.mkdirSync(uploadsProductsDir, { recursive: true })
+      }
+      const localFilePath = path.join(uploadsProductsDir, generatedName)
+      fs.writeFileSync(localFilePath, buffer)
+
+      const backendUrl = process.env.BACKEND_PUBLIC_URL || process.env.API_BASE_URL || 'https://api.swapnopay.top'
+      const publicUrl = `${backendUrl.replace(/\/$/, '')}/uploads/products/${generatedName}`
+      return res.status(201).json({ ok: true, url: publicUrl, filename: generatedName })
+    } catch (err) {
+      console.error('[form-upload] Error uploading image:', err.message)
+      return res.status(500).json({ ok: false, error: 'Failed to upload image: ' + err.message })
+    }
+  })
+
+  return router
+}

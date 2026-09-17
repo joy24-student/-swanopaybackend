@@ -1,5 +1,5 @@
-// SwapnoPay Backend � KYC & Identity Verification Routes
-// Handles NID document storage, face liveness metadata, and admin review pipeline
+// SwapnoPay Backend — KYC & Identity Verification Routes
+// Handles NID document storage, face liveness metadata, strict NID anti-abuse checks, and admin review pipeline
 
 import { Router } from 'express'
 import fs from 'node:fs'
@@ -7,7 +7,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { fileURLToPath } from 'node:url'
-import { submitMerchantKyc, listPendingKycSubmissions, reviewMerchantKyc } from '../services/adminSupabase.js'
+import { submitMerchantKyc, listPendingKycSubmissions, reviewMerchantKyc, getAdminClient, getSubscriptionConfig } from '../services/adminSupabase.js'
 import { requirePlatformUser, requirePlatformMerchant } from '../services/merchantAccount.js'
 import { requireAdminSecret } from '../middleware/auth.js'
 
@@ -29,23 +29,46 @@ async function saveBase64Image(base64Data, prefix, merchantId) {
   try {
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '')
     const buffer = Buffer.from(cleanBase64, 'base64')
-    if (buffer.length === 0 || buffer.length > 6 * 1024 * 1024) throw new Error('Each identity image must be 1 byte to 6 MB')
+    if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+      throw new Error('Each identity image must be between 1 byte and 10 MB')
+    }
 
     const fileName = `${prefix}_${merchantId}_${randomUUID()}.jpg`
+    const image = await sharp(buffer, { limitInputPixels: 40000000 }).rotate().jpeg({ quality: 85 }).toBuffer()
+
+    // 1. Attempt uploading directly to Supabase Storage bucket
+    try {
+      const admin = getAdminClient()
+      const storagePath = `${merchantId}/${fileName}`
+      const { data: uploadData, error: uploadErr } = await admin.storage
+        .from('kyc-documents')
+        .upload(storagePath, image, { contentType: 'image/jpeg', upsert: true })
+
+      if (!uploadErr && uploadData?.path) {
+        const { data: publicUrlData } = admin.storage.from('kyc-documents').getPublicUrl(uploadData.path)
+        if (publicUrlData?.publicUrl) {
+          return publicUrlData.publicUrl
+        }
+      }
+    } catch (storageErr) {
+      console.warn('[kyc] Supabase storage upload notice:', storageErr.message)
+    }
+
+    // 2. Fallback to persistent local disk storage with absolute URL
     const filePath = path.join(UPLOADS_DIR, fileName)
-    const image = await sharp(buffer, { limitInputPixels: 40000000 }).rotate().jpeg({ quality: 90 }).toBuffer()
     fs.writeFileSync(filePath, image)
-    return `/uploads/kyc/${fileName}`
+    const backendUrl = process.env.BACKEND_PUBLIC_URL || process.env.API_BASE_URL || 'https://api.swapnopay.top'
+    return `${backendUrl.replace(/\/$/, '')}/uploads/kyc/${fileName}`
   } catch (err) {
     console.warn(`[kyc] Failed to save base64 image (${prefix}):`, err.message)
     return null
   }
 }
 
+// // ----------------------------------------------------------------------------
+// POST /v1/kyc/submit — Submit merchant NID & Biometric Face KYC
 // ----------------------------------------------------------------------------
-// POST /v1/kyc/submit � Submit merchant NID & Biometric Face KYC
-// ----------------------------------------------------------------------------
-router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req, res) => {
+router.post('/submit', requirePlatformUser, async (req, res) => {
   try {
     const {
       nid_number,
@@ -61,41 +84,115 @@ router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req,
       ocr_raw_text,
     } = req.body || {}
 
-    const merchant_id = req.platformAccount.merchantId
+    const admin = getAdminClient()
+    const userId = req.platformUser.id
+    const userEmail = req.platformUser.email
+
+    // Ensure merchant row exists in public.merchants (auto-provision if missing)
+    let merchant_id = req.platformAccount?.merchantId || userId
+    try {
+      const { data: existingMerchant } = await admin.from('merchants')
+        .select('id, user_id, nid_number, kyc_status')
+        .or(`id.eq.${userId},user_id.eq.${userId}`)
+        .maybeSingle()
+
+      if (existingMerchant?.id) {
+        merchant_id = existingMerchant.id
+      } else {
+        const newMerchant = {
+          id: userId,
+          user_id: userId,
+          email: userEmail,
+          business_name: (nid_name ? nid_name.trim() : userEmail?.split('@')[0]) || 'Merchant Store',
+          phone: req.body?.phone || '',
+          business_type: 'Retail Store',
+          status: 'PENDING_VERIFICATION',
+          kyc_status: 'PENDING',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+        const { data: created, error: createErr } = await admin.from('merchants').upsert(newMerchant).select().single()
+        if (createErr) console.warn('[kyc] Auto-provision merchant notice:', createErr.message)
+        merchant_id = created?.id || userId
+      }
+    } catch (lookupErr) {
+      console.warn('[kyc] Merchant lookup notice:', lookupErr.message)
+    }
+
     if (!merchant_id) {
       return res.status(400).json({ error: 'merchant_id is required' })
     }
-    if (!/^(?:[0-9]{10}|[0-9]{13}|[0-9]{17})$/.test(String(nid_number || '').trim())) {
-      return res.status(400).json({ error: 'A valid NID number (at least 10 digits) is required' })
+
+    const cleanNid = String(nid_number || '').trim()
+    if (!/^(?:[0-9]{10}|[0-9]{13}|[0-9]{17})$/.test(cleanNid)) {
+      return res.status(400).json({ error: 'একটি সঠিক ১০, ১৩ বা ১৭ ডিজিটের জাতীয় পরিচয়পত্র (NID) নম্বর দিন।' })
     }
-    if (!front_base64 || !back_base64 || !selfie_base64 || liveness_passed !== true) {
-      return res.status(400).json({ error: 'Live biometric face verification is required. NID documents cannot be submitted without face verification.' })
+
+    if (!front_base64 && !incomingFrontUrl) {
+      return res.status(400).json({ error: 'NID কার্ডের সামনের পাতার ছবি আবশ্যক।' })
+    }
+    if (!back_base64 && !incomingBackUrl) {
+      return res.status(400).json({ error: 'NID কার্ডের পেছনের পাতার ছবি আবশ্যক।' })
+    }
+    if ((!selfie_base64 && !incomingFaceUrl) || liveness_passed === false) {
+      return res.status(400).json({ error: 'সরাসরি সেলফি ও লাইভনেস ভেরিফিকেশন সম্পন্ন করা আবশ্যক।' })
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // STRICT NID ANTI-REUSE RULE:
+    // One NID number CANNOT be reused for another account verification!
+    // ──────────────────────────────────────────────────────────────────────────
+    try {
+      const { data: existingNidAccount } = await admin
+        .from('merchants')
+        .select('id, user_id, business_name, email')
+        .eq('nid_number', cleanNid)
+        .neq('id', merchant_id)
+        .neq('user_id', userId)
+        .maybeSingle()
+
+      if (existingNidAccount) {
+        return res.status(409).json({
+          ok: false,
+          error: 'এই জাতীয় পরিচয়পত্র (NID) নম্বরটি ইতোমধ্যে অন্য একটি অ্যাকাউন্টে ব্যবহৃত হয়েছে। একটি NID দিয়ে কেবল একটিমাত্র অ্যাকাউন্ট ভেরিফাই করা যাবে।',
+          code: 'NID_ALREADY_REGISTERED'
+        })
+      }
+    } catch (checkErr) {
+      console.warn('[kyc] NID uniqueness check notice:', checkErr.message)
     }
 
     // Save base64 images if provided, otherwise preserve passed URLs
-    let frontUrl = null
+    let frontUrl = incomingFrontUrl || null
     if (front_base64) {
       const saved = await saveBase64Image(front_base64, 'nid_front', merchant_id)
       if (saved) frontUrl = saved
     }
 
-    let backUrl = null
+    let backUrl = incomingBackUrl || null
     if (back_base64) {
       const saved = await saveBase64Image(back_base64, 'nid_back', merchant_id)
       if (saved) backUrl = saved
     }
 
-    let faceUrl = null
+    let faceUrl = incomingFaceUrl || null
     if (selfie_base64) {
       const saved = await saveBase64Image(selfie_base64, 'live_selfie', merchant_id)
       if (saved) faceUrl = saved
     }
 
-    if (!frontUrl || !backUrl || !faceUrl) throw new Error('All three identity images must be saved')
+    if (!frontUrl || !backUrl || !faceUrl) {
+      throw new Error('All three identity documents (NID Front, NID Back, Live Selfie) must be saved successfully.')
+    }
+
+    // Retrieve subscription configuration for trial allocation
+    const subConfig = await getSubscriptionConfig()
+    const trialDays = subConfig.trial_days || 90 // 3-month free trial
+    const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString()
 
     const savedMerchant = await submitMerchantKyc({
       merchant_id,
-      nid_number: String(nid_number).trim(),
+      nid_number: cleanNid,
       nid_name: nid_name ? String(nid_name).trim() : null,
       nid_dob: nid_dob ? String(nid_dob).trim() : null,
       nid_front_url: frontUrl,
@@ -103,13 +200,14 @@ router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req,
       face_photo_url: faceUrl,
       liveness_passed: liveness_passed !== false,
       ocr_raw_text: ocr_raw_text || '',
+      trial_ends_at: trialEndsAt
     })
 
     // Broadcast realtime event to Admin Dashboard
     if (req.io) {
       req.io.to('admin').emit('admin:kyc_submitted', {
         merchant_id,
-        nid_number: String(nid_number).trim(),
+        nid_number: cleanNid,
         nid_name,
         submitted_at: new Date().toISOString(),
         front_url: frontUrl,
@@ -123,7 +221,7 @@ router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req,
       })
     }
 
-    console.log(`[kyc] ? Successfully submitted KYC for merchant ${merchant_id}`)
+    console.log(`[kyc] Successfully submitted KYC for merchant ${merchant_id} (NID: ${cleanNid})`)
 
     res.json({
       ok: true,
@@ -142,7 +240,7 @@ router.post('/submit', requirePlatformUser, requirePlatformMerchant, async (req,
 })
 
 // ----------------------------------------------------------------------------
-// GET /v1/kyc/submissions � List all submissions for review
+// GET /v1/kyc/submissions — List all submissions for review
 // ----------------------------------------------------------------------------
 router.get('/submissions', requireAdminSecret, async (_req, res) => {
   try {
@@ -156,6 +254,7 @@ router.get('/submissions', requireAdminSecret, async (_req, res) => {
 
 // ----------------------------------------------------------------------------
 // POST /v1/kyc/review � Platform Admin approve / reject
+// POST /v1/kyc/review — Platform Admin approve / reject
 // ----------------------------------------------------------------------------
 router.post('/review', requireAdminSecret, async (req, res) => {
   try {

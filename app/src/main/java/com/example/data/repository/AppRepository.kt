@@ -153,70 +153,66 @@ class AppRepository(private val context: Context) {
     fun observeDevices(merchantId: String): Flow<List<DeviceInfoEntity>> = dao.observeDevices(merchantId)
     fun observeMerchantProfile(): Flow<MerchantProfileEntity?> = dao.observeMerchantProfile()
     fun observeMfsPatterns(): Flow<List<MfsPatternEntity>> = dao.observeMfsPatterns()
+    fun observeOutboxSms(merchantId: String): Flow<List<OutboxSmsEntity>> = dao.observeOutboxSms(merchantId)
+    suspend fun insertOutboxSmsList(smsList: List<OutboxSmsEntity>) = dao.insertOutboxSmsList(smsList)
 
-    suspend fun testSupabaseConnection(url: String, anonKey: String): Boolean {
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.testConnection(
-                        url = url,
-                        anonKey = anonKey,
-                        onSuccess = {
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = { err ->
-                            android.util.Log.e("AppRepository", "Test connection failed: $err")
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
+    suspend fun testSupabaseConnection(url: String, anonKey: String): Boolean = withContext(Dispatchers.IO) {
+        var success = false
+        try {
+            com.example.data.remote.SupabaseClient.testConnection(
+                url = url,
+                anonKey = anonKey,
+                onSuccess = { success = true },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Test connection failed: $err")
+                    success = false
                 }
-            }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
-    suspend fun syncMfsPatterns(): Boolean {
-        val active = getActiveSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return false
+    suspend fun syncMfsPatterns(): Boolean = withContext(Dispatchers.IO) {
+        val active = getActiveSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchMfsPatterns(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken.ifBlank { active.anonKey },
-                        onSuccess = { jsonArray ->
-                            launch {
-                                val patterns = mutableListOf<MfsPatternEntity>()
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    patterns.add(
-                                        MfsPatternEntity(
-                                            id = obj.getString("id"),
-                                            mfsName = obj.getString("mfs_name"),
-                                            patternName = obj.getString("pattern_name"),
-                                            regexPattern = obj.getString("regex_pattern"),
-                                            active = obj.optBoolean("active", true)
-                                        )
-                                    )
-                                }
-                                dao.clearMfsPatterns()
-                                dao.insertMfsPatterns(patterns)
-                                android.util.Log.d("AppRepository", "Successfully synced ${patterns.size} dynamic regex patterns from Supabase.")
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = { err ->
-                            android.util.Log.e("AppRepository", "Failed to sync dynamic regex patterns: $err")
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchMfsPatterns(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken.ifBlank { active.anonKey },
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to sync dynamic regex patterns: $err")
                 }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception syncing dynamic regex patterns", e)
+        }
+
+        if (resultData != null) {
+            val patterns = mutableListOf<MfsPatternEntity>()
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                patterns.add(
+                    MfsPatternEntity(
+                        id = obj.getString("id"),
+                        mfsName = obj.getString("mfs_name"),
+                        patternName = obj.getString("pattern_name"),
+                        regexPattern = obj.getString("regex_pattern"),
+                        active = obj.optBoolean("active", true)
+                    )
+                )
             }
+            dao.clearMfsPatterns()
+            dao.insertMfsPatterns(patterns)
+            android.util.Log.d("AppRepository", "Successfully synced ${patterns.size} dynamic regex patterns from Supabase.")
+            true
+        } else {
+            false
         }
     }
 
@@ -243,181 +239,177 @@ class AppRepository(private val context: Context) {
         }
     }
 
-    suspend fun syncOrdersFromSupabase(): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
+    suspend fun syncOrdersFromSupabase(): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchOrders(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchOrders(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                merchantId = active.id,
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to fetch orders: $err")
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception fetching orders", e)
+        }
+
+        if (resultData != null) {
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                val order = CachedOrderEntity(
+                    id = obj.getString("id"),
+                    merchantId = active.id,
+                    customerName = obj.optString("cus_name", "Anonymous"),
+                    customerPhone = obj.getString("cus_phone"),
+                    amount = obj.getDouble("amount"),
+                    status = obj.getString("status"),
+                    method = obj.optString("payment_method", "bKash"),
+                    createdAt = parseIsoDateToMillis(obj.optString("created_at")),
+                    expiresAt = parseIsoDateToMillis(obj.optString("expires_at")),
+                    notes = obj.optJSONObject("metadata")?.optString("notes", "").orEmpty()
+                )
+                dao.insertOrder(order)
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    suspend fun syncPaymentsFromSupabase(): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
+
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchPayments(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                merchantId = active.id,
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to fetch payments: $err")
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception fetching payments", e)
+        }
+
+        if (resultData != null) {
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                val payment = CachedPaymentEntity(
+                    id = obj.optString("trx_id", obj.getString("id")),
+                    merchantId = active.id,
+                    amount = obj.getDouble("amount"),
+                    sender = obj.optString("sender_number", "Unknown"),
+                    timestamp = parseIsoDateToMillis(obj.optString("sms_timestamp", obj.optString("created_at"))),
+                    status = obj.getString("status"),
+                    method = obj.optString("method", "bKash"),
+                    orderId = if (obj.isNull("matched_order_id")) null else obj.getString("matched_order_id")
+                )
+                dao.insertPayment(payment)
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    suspend fun syncAppealsFromSupabase(): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
+
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchAppeals(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to fetch appeals: $err")
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception fetching appeals", e)
+        }
+
+        if (resultData != null) {
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                val order = obj.optJSONObject("orders")
+                val appeal = AppealEntity(
+                    id = obj.getString("id"),
+                    merchantId = active.id,
+                    orderId = obj.optString("order_id", ""),
+                    amount = order?.optDouble("amount", 0.0) ?: 0.0,
+                    customerName = order?.optString("cus_name", "Payer") ?: "Payer",
+                    customerPhone = obj.optString("cus_phone").ifBlank { order?.optString("cus_phone").orEmpty() },
+                    trxId = obj.getString("trx_id"),
+                    timestamp = parseIsoDateToMillis(obj.optString("created_at")),
+                    status = obj.getString("status")
+                )
+                dao.insertAppeal(appeal)
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    suspend fun syncDevicesFromSupabase(): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
+
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchDevices(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to fetch devices: $err")
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception fetching devices", e)
+        }
+
+        if (resultData != null) {
+            val devices = mutableListOf<DeviceInfoEntity>()
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                devices.add(
+                    DeviceInfoEntity(
+                        id = obj.getString("id"),
                         merchantId = active.id,
-                        onSuccess = { jsonArray ->
-                            launch {
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val order = CachedOrderEntity(
-                                        id = obj.getString("id"),
-                                        merchantId = active.id,
-                                        customerName = obj.optString("cus_name", "Anonymous"),
-                                        customerPhone = obj.getString("cus_phone"),
-                                        amount = obj.getDouble("amount"),
-                                        status = obj.getString("status"),
-                                        method = obj.optString("payment_method", "bKash"),
-                                        createdAt = parseIsoDateToMillis(obj.optString("created_at")),
-                                        expiresAt = parseIsoDateToMillis(obj.optString("expires_at")),
-                                        notes = obj.optJSONObject("metadata")?.optString("notes", "").orEmpty()
-                                    )
-                                    dao.insertOrder(order)
-                                }
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = { err ->
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
+                        deviceName = obj.optString("device_model", "Unknown Device"),
+                        status = if (obj.optBoolean("online", true)) "ONLINE" else "OFFLINE",
+                        batteryLevel = obj.optInt("battery_level", 100),
+                        lastSyncTime = parseIsoDateToMillis(obj.optString("last_sync", obj.optString("created_at")))
                     )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
+                )
             }
+            dao.clearDevices(active.id)
+            dao.insertDevices(devices)
+            true
+        } else {
+            false
         }
     }
 
-    suspend fun syncPaymentsFromSupabase(): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
-
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchPayments(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        merchantId = active.id,
-                        onSuccess = { jsonArray ->
-                            launch {
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val payment = CachedPaymentEntity(
-                                        id = obj.optString("trx_id", obj.getString("id")),
-                                        merchantId = active.id,
-                                        amount = obj.getDouble("amount"),
-                                        sender = obj.optString("sender_number", "Unknown"),
-                                        timestamp = parseIsoDateToMillis(obj.optString("sms_timestamp", obj.optString("created_at"))),
-                                        status = obj.getString("status"),
-                                        method = obj.optString("method", "bKash"),
-                                        orderId = if (obj.isNull("matched_order_id")) null else obj.getString("matched_order_id")
-                                    )
-                                    dao.insertPayment(payment)
-                                }
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = { err ->
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
-            }
-        }
-    }
-
-    suspend fun syncAppealsFromSupabase(): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
-
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchAppeals(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        onSuccess = { jsonArray ->
-                            launch {
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val order = obj.optJSONObject("orders")
-                                    val appeal = AppealEntity(
-                                        id = obj.getString("id"),
-                                        merchantId = active.id,
-                                        orderId = obj.optString("order_id", ""),
-                                        amount = order?.optDouble("amount", 0.0) ?: 0.0,
-                                        customerName = order?.optString("cus_name", "Payer") ?: "Payer",
-                                        customerPhone = obj.optString("cus_phone").ifBlank { order?.optString("cus_phone").orEmpty() },
-                                        trxId = obj.getString("trx_id"),
-                                        timestamp = parseIsoDateToMillis(obj.optString("created_at")),
-                                        status = obj.getString("status")
-                                    )
-                                    dao.insertAppeal(appeal)
-                                }
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = { err ->
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
-            }
-        }
-    }
-
-    suspend fun syncDevicesFromSupabase(): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
-
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchDevices(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        onSuccess = { jsonArray ->
-                            launch {
-                                val devices = mutableListOf<DeviceInfoEntity>()
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    devices.add(
-                                        DeviceInfoEntity(
-                                            id = obj.getString("id"),
-                                            merchantId = active.id,
-                                            deviceName = obj.optString("device_model", "Unknown Device"),
-                                            status = if (obj.optBoolean("online", true)) "ONLINE" else "OFFLINE",
-                                            batteryLevel = obj.optInt("battery_level", 100),
-                                            lastSyncTime = parseIsoDateToMillis(obj.optString("last_sync", obj.optString("created_at")))
-                                        )
-                                    )
-                                }
-                                dao.clearDevices(active.id)
-                                dao.insertDevices(devices)
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = { err ->
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
-            }
-        }
-    }
-
-    suspend fun sendDeviceHeartbeat(context: android.content.Context, batteryLevel: Int = 100): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
+    suspend fun sendDeviceHeartbeat(context: android.content.Context, batteryLevel: Int = 100): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
 
         val deviceId = installationId.ifBlank {
             android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "device_unknown"
@@ -425,81 +417,71 @@ class AppRepository(private val context: Context) {
         val model = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
         val osVer = "Android ${android.os.Build.VERSION.RELEASE}"
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.registerOrUpdateDevice(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        deviceId = deviceId,
-                        model = model,
-                        osVersion = osVer,
-                        batteryLevel = batteryLevel,
-                        online = true,
-                        merchantId = active.id,
-                        onSuccess = {
-                            // Also send heartbeat to SwapnoPay backend if available
-                            try {
-                                val backendPayload = org.json.JSONObject().apply {
-                                    put("merchant_id", active.id)
-                                    put("device_id", deviceId)
-                                    put("battery_level", batteryLevel)
-                                    put("status", "ONLINE")
-                                }
-                                val conn = (java.net.URL("https://api.swapnopay.top/v1/payment/heartbeat").openConnection() as java.net.HttpURLConnection).apply {
-                                    requestMethod = "POST"
-                                    setRequestProperty("Content-Type", "application/json")
-                                    doOutput = true
-                                    connectTimeout = 3000
-                                    readTimeout = 3000
-                                }
-                                conn.outputStream.use { os ->
-                                    os.write(backendPayload.toString().toByteArray(Charsets.UTF_8))
-                                }
-                                conn.responseCode
-                            } catch (_: Exception) {}
-
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = {
-                            if (continuation.isActive) continuation.resume(false) {}
+        var success = false
+        try {
+            com.example.data.remote.SupabaseClient.registerOrUpdateDevice(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                deviceId = deviceId,
+                model = model,
+                osVersion = osVer,
+                batteryLevel = batteryLevel,
+                online = true,
+                merchantId = active.id,
+                onSuccess = {
+                    try {
+                        val backendPayload = org.json.JSONObject().apply {
+                            put("merchant_id", active.id)
+                            put("device_id", deviceId)
+                            put("battery_level", batteryLevel)
+                            put("status", "ONLINE")
                         }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
+                        val conn = (java.net.URL("https://api.swapnopay.top/v1/payment/heartbeat").openConnection() as java.net.HttpURLConnection).apply {
+                            requestMethod = "POST"
+                            setRequestProperty("Content-Type", "application/json")
+                            doOutput = true
+                            connectTimeout = 3000
+                            readTimeout = 3000
+                        }
+                        conn.outputStream.use { os ->
+                            os.write(backendPayload.toString().toByteArray(Charsets.UTF_8))
+                        }
+                        conn.responseCode
+                    } catch (_: Exception) {}
+                    success = true
+                },
+                onFailure = {
+                    success = false
                 }
-            }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
-    suspend fun syncMerchantNumbersToSupabase(number: String, type: String, isDefault: Boolean = true): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
+    suspend fun syncMerchantNumbersToSupabase(number: String, type: String, isDefault: Boolean = true): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.upsertMerchantNumber(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        merchantId = active.id,
-                        number = number,
-                        type = type,
-                        isDefault = isDefault,
-                        onSuccess = {
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = {
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
-            }
+        var success = false
+        try {
+            com.example.data.remote.SupabaseClient.upsertMerchantNumber(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                merchantId = active.id,
+                number = number,
+                type = type,
+                isDefault = isDefault,
+                onSuccess = { success = true },
+                onFailure = { success = false }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
     // CRUD operations
@@ -557,12 +539,6 @@ class AppRepository(private val context: Context) {
             return false
         }
 
-        // 4. Deduplication – The Final Guard
-        if (dao.hasSmsWithTrxId(parsed.trxId) || dao.hasPaymentWithId(parsed.trxId)) {
-            android.util.Log.d("AppRepository", "SMS rejected: duplicate transaction detected (TrxID ${parsed.trxId}).")
-            return false
-        }
-
         val merchantId = getActiveSupabaseProfile()?.id ?: activeProfileId
         val smsEntity = SmsQueueEntity(
             merchantId = merchantId,
@@ -574,23 +550,24 @@ class AppRepository(private val context: Context) {
             status = "PENDING",
             rawBody = body
         )
-        
-        val insertedId = dao.insertSms(smsEntity)
-        // Local parsing is never payment proof. Keep the item unverified until
-        // the authenticated server processor returns the authoritative result.
-        dao.insertPayment(
-            CachedPaymentEntity(
-                id = parsed.trxId,
-                merchantId = merchantId,
-                amount = parsed.amount,
-                sender = parsed.senderPhone,
-                timestamp = parsed.timestamp,
-                status = "UNMATCHED",
-                method = parsed.method,
-                orderId = null
-            )
+        val paymentEntity = CachedPaymentEntity(
+            id = parsed.trxId,
+            merchantId = merchantId,
+            amount = parsed.amount,
+            sender = parsed.senderPhone,
+            timestamp = parsed.timestamp,
+            status = "UNMATCHED",
+            method = parsed.method,
+            orderId = null
         )
-        
+
+        // Atomic deduplication & insertion in a single Room transaction
+        val insertedId = dao.processAndInsertSmsAtomically(smsEntity, paymentEntity)
+        if (insertedId == null) {
+            android.util.Log.d("AppRepository", "SMS rejected: duplicate transaction detected (TrxID ${parsed.trxId}).")
+            return false
+        }
+
         // Attempt upload to Supabase, fallback to Room if fails
         val success = uploadSmsToSupabase(smsEntity.copy(id = insertedId.toInt()))
         if (success) {
@@ -600,36 +577,33 @@ class AppRepository(private val context: Context) {
         return true
     }
 
-    suspend fun uploadSmsToSupabase(sms: SmsQueueEntity): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return false
+    suspend fun uploadSmsToSupabase(sms: SmsQueueEntity): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty() || active.authSessionToken.isEmpty()) return@withContext false
         
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.insertSmsLog(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        merchantId = sms.merchantId,
-                        deviceId = installationId,
-                        rawSms = sms.rawBody,
-                        amount = sms.amount,
-                        sender = sms.sender,
-                        trxId = sms.trxId,
-                        timestamp = sms.timestamp,
-                        onSuccess = {
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = { err ->
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
+        var success = false
+        try {
+            com.example.data.remote.SupabaseClient.insertSmsLog(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                merchantId = sms.merchantId,
+                deviceId = installationId,
+                rawSms = sms.rawBody,
+                amount = sms.amount,
+                sender = sms.sender,
+                trxId = sms.trxId,
+                timestamp = sms.timestamp,
+                onSuccess = { success = true },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to upload SMS log: $err")
+                    success = false
                 }
-            }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
     fun startSmsQueueAutoRetry(scope: kotlinx.coroutines.CoroutineScope) {
@@ -879,134 +853,121 @@ class AppRepository(private val context: Context) {
         uploadProductToSupabase(product)
     }
 
-    suspend fun syncProductsFromSupabase(): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return false
+    suspend fun syncProductsFromSupabase(): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.fetchRecords(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        tableName = "products",
-                        selectQuery = "*",
-                        onSuccess = { jsonArray ->
-                            launch {
-                                val products = mutableListOf<ProductItemEntity>()
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val merchantId = obj.optString("merchant_id", active.id)
-                                    if (merchantId == active.id) {
-                                        products.add(
-                                            ProductItemEntity(
-                                                id = obj.getString("id"),
-                                                merchantId = active.id,
-                                                name = obj.getString("name"),
-                                                code = obj.optString("code", null),
-                                                category = obj.optString("category", "General"),
-                                                purchasePrice = obj.optDouble("purchase_price", 0.0),
-                                                salePrice = obj.optDouble("sale_price", 0.0),
-                                                stockQuantity = obj.optDouble("stock_quantity", 0.0),
-                                                minStockThreshold = obj.optDouble("min_stock_threshold", 5.0),
-                                                unit = obj.optString("unit", "pcs"),
-                                                imageUrl = obj.optString("image_url", null),
-                                                storefrontDetailsJson = obj.optJSONObject("storefront_details")?.toString() ?: "{}",
-                                                createdAt = parseIsoDateToMillis(obj.optString("created_at")),
-                                                costPrice = obj.optDouble("purchase_price", 0.0),
-                                                askingPrice = obj.optDouble("sale_price", 0.0)
-                                            )
-                                        )
-                                    }
-                                }
-                                if (products.isNotEmpty()) {
-                                    dao.insertProducts(products)
-                                }
-                                if (continuation.isActive) continuation.resume(true) {}
-                            }
-                        },
-                        onFailure = {
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
+        var resultData: org.json.JSONArray? = null
+        try {
+            com.example.data.remote.SupabaseClient.fetchRecords(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                tableName = "products",
+                selectQuery = "*",
+                onSuccess = { jsonArray -> resultData = jsonArray },
+                onFailure = { err ->
+                    android.util.Log.e("AppRepository", "Failed to fetch products: $err")
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Exception fetching products", e)
+        }
+
+        if (resultData != null) {
+            val products = mutableListOf<ProductItemEntity>()
+            for (i in 0 until resultData!!.length()) {
+                val obj = resultData!!.getJSONObject(i)
+                val merchantId = obj.optString("merchant_id", active.id)
+                if (merchantId == active.id) {
+                    products.add(
+                        ProductItemEntity(
+                            id = obj.getString("id"),
+                            merchantId = active.id,
+                            name = obj.getString("name"),
+                            code = obj.optString("code", null),
+                            category = obj.optString("category", "General"),
+                            purchasePrice = obj.optDouble("purchase_price", 0.0),
+                            salePrice = obj.optDouble("sale_price", 0.0),
+                            stockQuantity = obj.optDouble("stock_quantity", 0.0),
+                            minStockThreshold = obj.optDouble("min_stock_threshold", 5.0),
+                            unit = obj.optString("unit", "pcs"),
+                            imageUrl = obj.optString("image_url", null),
+                            storefrontDetailsJson = obj.optJSONObject("storefront_details")?.toString() ?: "{}",
+                            createdAt = parseIsoDateToMillis(obj.optString("created_at")),
+                            costPrice = obj.optDouble("purchase_price", 0.0),
+                            askingPrice = obj.optDouble("sale_price", 0.0)
+                        )
                     )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
                 }
             }
+            if (products.isNotEmpty()) {
+                dao.insertProducts(products)
+            }
+            true
+        } else {
+            false
         }
     }
 
-    suspend fun uploadProductToSupabase(product: ProductItemEntity): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return false
+    suspend fun uploadProductToSupabase(product: ProductItemEntity): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    val payload = org.json.JSONObject().apply {
-                        put("id", product.id)
-                        put("merchant_id", active.id)
-                        put("name", product.name)
-                        put("code", product.code ?: "")
-                        put("category", product.category ?: "General")
-                        put("purchase_price", product.purchasePrice)
-                        put("sale_price", product.salePrice)
-                        put("stock_quantity", product.stockQuantity)
-                        put("min_stock_threshold", product.minStockThreshold)
-                        put("unit", product.unit)
-                        put("storefront_details", org.json.JSONObject(product.storefrontDetailsJson))
-                        if (!product.imageUrl.isNullOrBlank()) {
-                            put("image_url", product.imageUrl)
-                        }
-                    }
-
-                    com.example.data.remote.SupabaseClient.upsertRecord(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        tableName = "products",
-                        payload = payload,
-                        onSuccess = {
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = {
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
+        var success = false
+        try {
+            val payload = org.json.JSONObject().apply {
+                put("id", product.id)
+                put("merchant_id", active.id)
+                put("name", product.name)
+                put("code", product.code ?: "")
+                put("category", product.category ?: "General")
+                put("purchase_price", product.purchasePrice)
+                put("sale_price", product.salePrice)
+                put("stock_quantity", product.stockQuantity)
+                put("min_stock_threshold", product.minStockThreshold)
+                put("unit", product.unit)
+                put("storefront_details", org.json.JSONObject(product.storefrontDetailsJson))
+                if (!product.imageUrl.isNullOrBlank()) {
+                    put("image_url", product.imageUrl)
                 }
             }
+
+            com.example.data.remote.SupabaseClient.upsertRecord(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                tableName = "products",
+                payload = payload,
+                onSuccess = { success = true },
+                onFailure = { success = false }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
-    suspend fun deleteProductFromSupabase(productId: String): Boolean {
-        val active = getAuthenticatedSupabaseProfile() ?: return false
-        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return false
+    suspend fun deleteProductFromSupabase(productId: String): Boolean = withContext(Dispatchers.IO) {
+        val active = getAuthenticatedSupabaseProfile() ?: return@withContext false
+        if (active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) return@withContext false
 
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    com.example.data.remote.SupabaseClient.deleteRecord(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        tableName = "products",
-                        primaryKeyCol = "id",
-                        primaryKeyVal = productId,
-                        onSuccess = {
-                            if (continuation.isActive) continuation.resume(true) {}
-                        },
-                        onFailure = {
-                            if (continuation.isActive) continuation.resume(false) {}
-                        }
-                    )
-                } catch (e: Exception) {
-                    if (continuation.isActive) continuation.resume(false) {}
-                }
-            }
+        var success = false
+        try {
+            com.example.data.remote.SupabaseClient.deleteRecord(
+                url = active.supabaseUrl,
+                anonKey = active.anonKey,
+                token = active.authSessionToken,
+                tableName = "products",
+                primaryKeyCol = "id",
+                primaryKeyVal = productId,
+                onSuccess = { success = true },
+                onFailure = { success = false }
+            )
+        } catch (e: Exception) {
+            success = false
         }
+        success
     }
 
     // Product Variants & QR Code Operations
@@ -1129,7 +1090,6 @@ class AppRepository(private val context: Context) {
         dao.upsertFormSubmissionCaches(submissions)
 
     // Outbox SMS & Automated Due Campaigns
-    fun observeOutboxSms(merchantId: String): Flow<List<OutboxSmsEntity>> = dao.observeOutboxSms(merchantId)
     fun observeCustomersWithDue(merchantId: String): Flow<List<CustomerEntity>> = dao.observeCustomersWithDue(merchantId)
     suspend fun getCustomersWithDue(merchantId: String): List<CustomerEntity> = dao.getCustomersWithDue(merchantId)
     suspend fun getAllCustomersList(merchantId: String): List<CustomerEntity> = dao.getAllCustomersList(merchantId)

@@ -17,17 +17,22 @@ if (!$payload) {
 
 $signature = $_SERVER['HTTP_X_SIGNATURE'] ?? ($_SERVER['HTTP_X_SWAPNOPAY_SIGNATURE'] ?? '');
 $header_secret = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
-$configured_secret = getenv('SWAPNOPAY_WEBHOOK_SECRET') ?: (defined('SWAPNOPAY_WEBHOOK_SECRET') ? SWAPNOPAY_WEBHOOK_SECRET : '');
+$configured_secret = getenv('SWAPNOPAY_WEBHOOK_SECRET') ?: (defined('SWAPNOPAY_WEBHOOK_SECRET') ? SWAPNOPAY_WEBHOOK_SECRET : ($runtime['webhook_secret'] ?? ''));
 
-// If a webhook secret is configured on the shop server, require valid authentication
-if (!empty($configured_secret)) {
-    $hmac_valid = !empty($signature) && hash_equals(hash_hmac('sha256', $raw_input, $configured_secret), $signature);
-    $secret_valid = !empty($header_secret) && hash_equals($configured_secret, $header_secret);
-    if (!$hmac_valid && !$secret_valid) {
-        http_response_code(401);
-        echo json_encode(['ok' => false, 'error' => 'Unauthorized: Invalid or missing webhook signature']);
-        exit;
-    }
+// Webhook secret MUST be configured and request MUST provide valid authentication
+if (empty($configured_secret)) {
+    error_log("[swapnopay-webhook] Rejecting webhook: SWAPNOPAY_WEBHOOK_SECRET is not configured.");
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'Unauthorized: Webhook secret not configured on server']);
+    exit;
+}
+
+$hmac_valid = !empty($signature) && hash_equals(hash_hmac('sha256', $raw_input, $configured_secret), $signature);
+$secret_valid = !empty($header_secret) && hash_equals($configured_secret, $header_secret);
+if (!$hmac_valid && !$secret_valid) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'Unauthorized: Invalid or missing webhook signature']);
+    exit;
 }
 
 $tran_id = strip_tags($payload['tran_id'] ?? ($payload['order_id'] ?? ''));

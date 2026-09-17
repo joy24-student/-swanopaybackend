@@ -18,17 +18,18 @@ $receiving_number = '01700000000';
 $account_type = 'Personal';
 
 $supabase_url = defined('SUPABASE_URL') ? SUPABASE_URL : getenv('SUPABASE_URL');
-$supabase_key = defined('SUPABASE_SERVICE_KEY') && !empty(SUPABASE_SERVICE_KEY) 
+$supabase_service_key = defined('SUPABASE_SERVICE_KEY') && !empty(SUPABASE_SERVICE_KEY) 
     ? SUPABASE_SERVICE_KEY 
     : (defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : getenv('SUPABASE_ANON_KEY'));
+$supabase_anon_key = defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : (getenv('SUPABASE_ANON_KEY') ?: '');
 
-if (!empty($supabase_url) && !empty($supabase_key)) {
+if (!empty($supabase_url) && !empty($supabase_service_key)) {
     $clean_supabase_url = rtrim($supabase_url, '/');
     $ch = curl_init("{$clean_supabase_url}/rest/v1/merchant_numbers?type=eq.{$method}&active=eq.true&select=number,is_default&limit=1");
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "apikey: {$supabase_key}",
-        "Authorization: Bearer {$supabase_key}"
+        "apikey: {$supabase_service_key}",
+        "Authorization: Bearer {$supabase_service_key}"
     ]);
     $res = curl_exec($ch);
     curl_close($ch);
@@ -266,8 +267,8 @@ if (isset($_POST['submit_trx'])) {
 <script>
 const tranId = "<?php echo $tran_id; ?>";
 const amount = "<?php echo $amount; ?>";
-const supabaseUrl = "<?php echo $supabase_url; ?>";
-const supabaseAnonKey = "<?php echo $supabase_key; ?>";
+const supabaseUrl = "<?php echo htmlspecialchars($supabase_url, ENT_QUOTES, 'UTF-8'); ?>";
+const supabaseAnonKey = "<?php echo htmlspecialchars($supabase_anon_key, ENT_QUOTES, 'UTF-8'); ?>";
 
 function copyNumber() {
     const num = document.getElementById('recNumber').innerText;

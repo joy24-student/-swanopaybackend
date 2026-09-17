@@ -11,7 +11,7 @@ services:
     container_name: swapnopay-backend
     restart: always
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     volumes:
       - backend_uploads:/app/uploads
     environment:
@@ -40,9 +40,11 @@ services:
       - "80:80"
     volumes:
       - ./web:/usr/share/nginx/html:ro
+      - ./shop:/var/www/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - swapnopay-backend
+      - shop-php
 
   # ─────────────────────────────────────────────────────────────────────────────
   # SwapnoPay E-Commerce Web Storefront (PHP 8.2-FPM + PostgreSQL Driver)

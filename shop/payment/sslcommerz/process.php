@@ -74,7 +74,7 @@ $statement->execute([
     $coupon_code,
     $coupon_discount,
     'SSLCommerz',    // Payment Method
-    'Completed',       // Initial payment status (will be updated by SSLCommerz callback)
+    'Pending',       // Initial payment status (will be updated to Completed by SSLCommerz callback/IPN)
     'Pending',       // Initial shipping status
     $tran_id,       // payment_id (using the generated transaction ID)
     
@@ -201,9 +201,9 @@ curl_setopt($handle, CURLOPT_CONNECTTIMEOUT, 30);
 curl_setopt($handle, CURLOPT_POST, 1);
 curl_setopt($handle, CURLOPT_POSTFIELDS, $post_data);
 curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
-// IMPORTANT: For production, set CURLOPT_SSL_VERIFYPEER to TRUE and ensure proper CA certs are configured
-// For local development with self-signed certs, FALSE might be necessary but is INSECURE for production.
-curl_setopt($handle, CURLOPT_SSL_VERIFYPEER, FALSE); 
+// Enable SSL certificate verification for secure production communication
+curl_setopt($handle, CURLOPT_SSL_VERIFYPEER, TRUE); 
+curl_setopt($handle, CURLOPT_SSL_VERIFYHOST, 2); 
 
 $content = curl_exec($handle);
 $code = curl_getinfo($handle, CURLINFO_HTTP_CODE);

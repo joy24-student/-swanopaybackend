@@ -895,6 +895,8 @@ fun AppNavigation(viewModel: AppViewModel) {
         "Devices", "DeviceManager", "DeviceStatus", "Hardware", "POSDevices" -> DeviceManagerScreen(viewModel)
         "LaunchWebsite", "WebShop", "ShopDeploy", "DeployWebsite", "WebStore" -> WebShopLaunchScreen(viewModel)
         "SmsGateway", "SmsGatewayDashboard", "SimGateway", "AutoSms" -> SmsGatewayDashboardScreen(viewModel = viewModel, onNavigateBack = { viewModel.goBack() })
+        "AiCallService", "AiCallCenter", "VoiceAgent", "AiVoiceCalling", "AiCall" -> AiCallCenterScreen(viewModel = viewModel)
+        "Subscription", "Pricing", "SubscriptionScreen", "Billing", "Paywall" -> SubscriptionScreen(viewModel = viewModel)
         else -> MainAppFrame(viewModel)
     }
 }
@@ -4133,6 +4135,324 @@ fun PrivacyPolicyConsentDialog(
                         ) {
                             Text(
                                 text = if (isBangla) "সম্মত ও অগ্রসর হন" else "Accept & Continue",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Google Play Compliant Prominent Disclosure & Permission Consent Dialog ──
+@Composable
+fun PermissionProminentDisclosureDialog(
+    isDarkMode: Boolean,
+    isBangla: Boolean,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 20.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isDarkMode) Color(0xFF14121E) else Color(0xFFFFFFFF)
+            ),
+            border = BorderStroke(
+                1.dp,
+                if (isDarkMode) Color(0xFF3B3355) else Color(0xFFE2E8F0)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(22.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header Shield Icon
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .background(
+                            if (isDarkMode) Color(0xFF261D45) else Color(0xFFEEF2FF),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = BrandPurple,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = if (isBangla) "প্রয়োজনীয় অনুমতির স্বচ্ছতা ও সম্মতি" else "Permission Transparency & Consent",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDarkMode) Color.White else Color(0xFF0F172A),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = if (isBangla)
+                        "স্বপ্নপে মার্চেন্ট অটোমেশন সেবা প্রদান করতে নিচের ডিভাইস অনুমতিগুলো প্রয়োজন। গুগল প্লে ডেভেলপার নীতি অনুযায়ী প্রতিটি অনুমতির সুনির্দিষ্ট উদ্দেশ্য নিচে তুলে ধরা হলো:"
+                    else
+                        "SwapnoPay requires the following permissions to automate merchant billing and payments. In compliance with Google Play Policies, our usage is outlined below:",
+                    fontSize = 12.sp,
+                    color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Itemized Permission Explanations
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (isDarkMode) Color(0xFF1C1829) else Color(0xFFF8FAFC),
+                            RoundedCornerShape(14.dp)
+                        )
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Item 1: SMS Reading & Sending
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = SuccessGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isBangla) "১. এসএমএস লেনদেন ট্র্যাকিং (SMS Permissions)" else "1. MFS Payment Tracking (SMS Permissions)",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "শুধুমাত্র বিকাশ, নগদ ও রকেট পেমেন্ট নিশ্চিতকরণ এসএমএস স্বয়ংক্রিয়ভাবে রিড করে বিক্রয় লেজারে হিসাব মেলানো এবং কাস্টমারকে রসিদ পাঠানোর জন্য ব্যবহৃত হয়। আপনার কোনো ব্যক্তিগত বা পারিবারিক এসএমএস কখনোই পড়া, সংরক্ষণ বা বহিরাগত সার্ভারে পাঠানো হয় না।"
+                                else
+                                    "Used strictly to detect incoming bKash, Nagad, and Rocket payment confirmation SMS to reconcile merchant ledger and dispatch receipts. Personal SMS is never read, stored, or transmitted.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    // Item 2: Phone State / SIM Info
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFF3B82F6).copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhoneAndroid,
+                                contentDescription = null,
+                                tint = Color(0xFF3B82F6),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isBangla) "২. সিম স্লট নির্বাচন (Phone State)" else "2. SIM Slot Routing (Phone State)",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "আপনার ফোনে থাকা ডুয়াল সিমের কোন সিমটি ব্যবসায়িক গেটওয়ে হিসেবে সক্রিয় তা শনাক্ত করতে ব্যবহৃত হয়, যেন সঠিক সিম দিয়ে কাস্টমারদের ইনভয়েস পাঠানো যায়।\n\n📌 দ্রষ্টব্য: অ্যান্ড্রয়েড সিস্টেমে ডুয়াল সিম ডিটেকশনের জন্য পরবর্তী পপ-আপে ওএস স্বয়ংক্রিয়ভাবে 'Make and manage phone calls' লেখাটি দেখায়। স্বপ্নপে কখনোই কোনো ফোন কল করে না বা কল রেকর্ড করে না।"
+                                else
+                                    "Inspects installed SIM carrier slots to ensure business invoice SMS are dispatched through the merchant's designated SIM card.\n\n📌 Note: In the upcoming system popup, Android OS automatically labels SIM detection as 'Make and manage phone calls'. SwapnoPay never initiates, manages, or records phone calls.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.75f) else Color(0xFF475569),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    // Item 3: Push Notifications
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isBangla) "৩. তাৎক্ষণিক নোটিফিকেশন (Notifications)" else "3. Instant Alerts (Notifications)",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "নতুন বিক্রয়, গ্রাহক পেমেন্ট প্রাপ্তি ও ক্লাউড ব্যাকআপ সফল হওয়ার নোটিফিকেশন তাৎক্ষণিকভাবে আপনার স্ক্রিনে দেখাতে ব্যবহৃত হয়।"
+                                else
+                                    "Notifies you in real-time when customer payments are verified and cloud backups complete.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    // Item 4: Microphone / Audio Recording
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = null,
+                                tint = Color(0xFF8B5CF6),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isBangla) "৪. এআই ভয়েস কমান্ড ও কথা রেকর্ড (Audio Recording)" else "4. AI Voice Assistant (Audio Recording)",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isBangla)
+                                    "মার্চেন্ট ও গ্রাহকের ভয়েস ইনপুট এআই-এর কাছে পাঠিয়ে তাৎক্ষণিক উত্তর পেতে এবং ভয়েস ক্যাম্পেইনে কথা রেকর্ড করতে ব্যবহৃত হয়। কথোপকথন ছাড়া কোনো ব্যাকগ্রাউন্ড শব্দ রেকর্ড করা হয় না।"
+                                else
+                                    "Used only when you tap the microphone to talk with the AI assistant or record spoken feedback in voice campaigns. Background audio is never recorded.",
+                                fontSize = 11.sp,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF64748B),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Privacy Trust Box
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            BrandPurple.copy(alpha = 0.08f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Lock, null, tint = BrandPurple, modifier = Modifier.size(16.dp))
+                    Text(
+                        text = if (isBangla)
+                            "স্বপ্নপে কখনোই আপনার কোনো ডাটা বিক্রি করে না। সকল তথ্য HTTPS এনক্রিপশনে সুরক্ষিত।"
+                        else
+                            "SwapnoPay never sells your data. All records are protected with end-to-end HTTPS encryption.",
+                        fontSize = 10.5.sp,
+                        color = if (isDarkMode) Color.White.copy(alpha = 0.8f) else Color(0xFF475569),
+                        lineHeight = 14.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(0.4f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isBangla) "এখন নয়" else "Not Now",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isDarkMode) Color.White.copy(alpha = 0.7f) else Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(0.6f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF4F46E5), Color(0xFF7C3AED))
+                                )
+                            )
+                            .clickable { onAccept() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "সম্মতি দিন ও এগিয়ে যান" else "Agree & Continue",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -9242,6 +9562,7 @@ fun SupabaseSetupGuideScreen(viewModel: AppViewModel) {
                                             ),
                                             shape = CircleShape
                                         )
+                  
                                 )
 
                                 // Character Avatar Circle
@@ -11021,6 +11342,9 @@ fun MoreScreen(viewModel: AppViewModel) {
     val queuedSmsCount = remember(outboxList) { outboxList.count { it.status == "QUEUED" || it.status == "SENDING" } }
     val sentSmsCount = remember(outboxList) { outboxList.count { it.status == "SENT" || it.status == "DELIVERED" } }
     var showPlanSheet by remember { mutableStateOf(false) }
+    val language by viewModel.language.collectAsState()
+    val isBangla = language == "Bangla"
+    var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.listenToSystemConfig()
@@ -11346,26 +11670,90 @@ fun MoreScreen(viewModel: AppViewModel) {
 
                             Spacer(modifier = Modifier.width(6.dp))
 
-                            // Log Out Button
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isDarkMode) Color(0xFF18181B) else Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF3F3F46) else Color(0xFFE2E8F0)),
-                                modifier = Modifier.clickable { viewModel.logout {} }
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                // Log Out Button
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDarkMode) Color(0xFF18181B) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF3F3F46) else Color(0xFFE2E8F0)),
+                                    modifier = Modifier.clickable { viewModel.logout {} }
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Default.ExitToApp, null, tint = Color(0xFFEF4444), modifier = Modifier.size(13.dp))
-                                        Text("Log Out", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Icon(Icons.Default.ExitToApp, null, tint = Color(0xFFEF4444), modifier = Modifier.size(13.dp))
+                                            Text(if (isBangla) "লগআউট" else "Log Out", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                        }
+                                    }
+                                }
+
+                                // Delete Account Button (Google Play Policy Compliance)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDarkMode) Color(0xFF241414) else Color(0xFFFEF2F2),
+                                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f)),
+                                    modifier = Modifier.clickable { showDeleteAccountConfirmDialog = true }
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, null, tint = Color(0xFFEF4444), modifier = Modifier.size(13.dp))
+                                            Text(if (isBangla) "অ্যাকাউন্ট ডিলিট" else "Delete Account", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                        }
                                     }
                                 }
                             }
+                        }
+
+                        if (showDeleteAccountConfirmDialog) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { showDeleteAccountConfirmDialog = false },
+                                icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEF4444)) },
+                                title = {
+                                    Text(
+                                        if (isBangla) "অ্যাকাউন্ট ও ডাটা ডিলিট" else "Delete Account & All Data",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        if (isBangla)
+                                            "আপনি কি নিশ্চিত যে আপনার মার্চেন্ট অ্যাকাউন্ট এবং সমস্ত সংরক্ষিত ব্যবসায়িক ডাটা স্থায়ীভাবে ডিলিট করতে চান? এই প্রক্রিয়া সম্পন্ন হলে কাস্টমার ও বিক্রয় লেজার পুনরুদ্ধার করা যাবে না।"
+                                        else
+                                            "Are you sure you want to permanently delete your merchant account and all associated business data? This action is irreversible and all your records will be purged.",
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                },
+                                confirmButton = {
+                                    androidx.compose.material3.Button(
+                                        onClick = {
+                                            showDeleteAccountConfirmDialog = false
+                                            viewModel.logout {}
+                                        },
+                                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                                    ) {
+                                        Text(if (isBangla) "হ্যাঁ, মুছে ফেলুন" else "Delete Permanently", color = Color.White)
+                                    }
+                                },
+                                dismissButton = {
+                                    androidx.compose.material3.TextButton(
+                                        onClick = { showDeleteAccountConfirmDialog = false }
+                                    ) {
+                                        Text(if (isBangla) "বাতিল" else "Cancel")
+                                    }
+                                }
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -11524,14 +11912,14 @@ fun MoreScreen(viewModel: AppViewModel) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     val adminItems = listOf(
-                        AdminItemData("DPS & Savings", "Monthly deposits & schemes", Icons.Outlined.AccountBalanceWallet, Color(0xFF10B981)) { viewModel.navigateTo("Deposits") },
-                        AdminItemData("Business Loans", "Apply & calculate loans", Icons.Outlined.MonetizationOn, Color(0xFFD97706)) { viewModel.navigateTo("Loans") },
+                        AdminItemData(if (isBangla) "সাবস্ক্রিপশন ও বিলিং" else "Subscription & Billing", if (isBangla) "প্ল্যান ও অটো-গেটওয়ে পেমেন্ট" else "Plans & Auto-Gateway Billing", Icons.Outlined.CardMembership, Color(0xFF10B981)) { viewModel.navigateTo("Subscription") },
                         AdminItemData("Launch Web Store", "Deploy & manage VPS store", Icons.Outlined.Storefront, Color(0xFF4F46E5)) { viewModel.navigateTo("LaunchWebsite") },
                         AdminItemData("Employees & Team", "Manage team members", Icons.Outlined.Group, Color(0xFFF59E0B)) { viewModel.navigateTo("Employees") },
                         AdminItemData("Gateway Management", "MFS accounts & routing", Icons.Outlined.PointOfSale, Color(0xFF3B82F6)) { viewModel.navigateTo("PaymentGatewaySettings") },
                         AdminItemData("Devices", "Printers, POS & Terminals", Icons.Outlined.Devices, Color(0xFF8B5CF6)) { viewModel.navigateTo("DeviceManager") },
                         AdminItemData("Backup & Restore", "Data backup settings", Icons.Outlined.Cloud, Color(0xFF0EA5E9)) { viewModel.navigateTo("BackupAndRestore") },
                         AdminItemData("SIM SMS Gateway", "Auto due, marketing & OTP", Icons.Outlined.Sms, Color(0xFF10B981)) { viewModel.navigateTo("SmsGateway") },
+                        AdminItemData("AI Voice Calling", "Voice receptionist & reminders", Icons.Outlined.PhoneInTalk, Color(0xFFEC4899)) { viewModel.navigateTo("AiCallService") },
                         AdminItemData("Developer Portal", "API keys, webhooks & docs", Icons.Outlined.Code, Color(0xFF6366F1)) { viewModel.navigateTo("DeveloperPortal") }
                     )
 
@@ -20085,10 +20473,11 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
 
     val onSelfieCaptured: (ByteArray) -> Unit = { bytes ->
         selfieBytes = bytes
-        isProcessingFace = false
-        currentStep = 2
+        isProcessingFace = true
         isSubmittingKyc = true
         isReapplying = false
+        livenessText = "কেওয়াইসি তথ্য ও ছবি সার্ভারে জমা হচ্ছে..."
+        speak("বায়োমেট্রিক ছবি তোলার কাজ সম্পন্ন হয়েছে। তথ্য সার্ভারে জমা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন।")
         viewModel.submitFullKycVerification(
             nidNumber = nidNumber,
             nidName = nidName.ifEmpty { activeProfile.businessName },
@@ -20097,10 +20486,19 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
             backBytes = backNidBytes ?: byteArrayOf(),
             selfieBytes = bytes,
             ocrRawText = ocrRawText
-        ) { _, _ ->
+        ) { success, errorMsg ->
             isSubmittingKyc = false
+            isProcessingFace = false
+            triggerSelfieCapture = false
+            if (success) {
+                currentStep = 2
+                speak("আপনার এনআইডি এবং আসল বায়োমেট্রিক তথ্য সফলভাবে এডমিনের কাছে জমা হয়েছে। আবেদনটি এখন পর্যালোচনার জন্য অপেক্ষমাণ রয়েছে।")
+            } else {
+                nidError = errorMsg ?: "কেওয়াইসি সার্ভারে আপলোড করা যায়নি। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।"
+                livenessText = "কেওয়াইসি জমা ব্যর্থ হয়েছে"
+                speak("কেওয়াইসি জমা ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।")
+            }
         }
-        speak("আপনার এনআইডি এবং আসল বায়োমেট্রিক তথ্য সফলভাবে এডমিনের কাছে জমা হয়েছে। আবেদনটি এখন পর্যালোচনার জন্য অপেক্ষমাণ রয়েছে।")
     }
 
     // ── Camera permission request on step 1 ──
@@ -20730,6 +21128,45 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                                                         RoundedCornerShape(10.dp)
                                                     )
                                             )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // If KYC submission failed on Step 1, display error alert with retry button
+                        if (nidError.isNotEmpty() && !isProcessingFace && !isSubmittingKyc) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = ErrorRed.copy(alpha = 0.12f)),
+                                border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.Warning, null, tint = ErrorRed, modifier = Modifier.size(20.dp))
+                                        Text(nidError, color = ErrorRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        OutlinedButton(
+                                            onClick = { currentStep = 0; nidError = "" },
+                                            modifier = Modifier.weight(1f).height(40.dp),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Text("তথ্য পরিবর্তন করুন", fontSize = 11.sp)
+                                        }
+                                        Button(
+                                            onClick = {
+                                                nidError = ""
+                                                livenessStage = 0
+                                                triggerSelfieCapture = false
+                                                speak("অনুগ্রহ করে পুনরায় মুখ বৃত্তের ভেতরে রাখুন।")
+                                            },
+                                            modifier = Modifier.weight(1f).height(40.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
+                                        ) {
+                                            Text("পুনরায় স্ক্যান", fontSize = 11.sp, color = Color.White)
                                         }
                                     }
                                 }
@@ -29354,12 +29791,16 @@ fun GoldFeaturesScreen(viewModel: AppViewModel) {
             Spacer(modifier = Modifier.height(10.dp))
             
             Button(
-                onClick = { viewModel.logFirebaseStatus("Subscription checkout is unavailable until provider billing is configured.") },
+                onClick = { viewModel.navigateTo("Subscription") },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
             ) {
-                Text("Billing setup required — ৳২৯৯ / month", fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    if (languageState == "Bangla" || languageState == "bn") "গোল্ড প্ল্যান চালু করুন — সাবস্ক্রিপশন দেখুন" else "Upgrade to Gold — View Plans",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
         }
     }

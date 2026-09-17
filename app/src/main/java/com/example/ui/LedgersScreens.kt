@@ -1238,6 +1238,35 @@ fun LedgersDashboardScreen(viewModel: AppViewModel) {
                                             Text("Reminder", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDark) goldPrimary else Color(0xFF000000))
                                         }
                                     }
+
+                                    // ── 1-Tap AI Due Call ──
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1.1f)
+                                            .height(38.dp)
+                                            .clickable {
+                                                viewModel.triggerDueReminderCall(
+                                                    customerPhone = customer.phone,
+                                                    customerName = customer.name,
+                                                    dueAmount = dueAmt
+                                                ) { success: Boolean, msg: String ->
+                                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                                }
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFEF4444).copy(alpha = 0.15f),
+                                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.PhoneCallback, null, tint = Color(0xFFEF4444), modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text("AI কল", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                                        }
+                                    }
                                 }
                             }
                         }

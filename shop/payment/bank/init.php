@@ -21,6 +21,25 @@ if( !isset($_REQUEST['msg']) ) {
 		$payment_date = date('Y-m-d H:i:s');
 	    $payment_id = time();
 
+		// Recalculate authoritative total from session cart and database product prices
+		$calculated_total = 0;
+		if (!empty($_SESSION['cart_p_id']) && is_array($_SESSION['cart_p_id'])) {
+			foreach ($_SESSION['cart_p_id'] as $key => $p_id) {
+				$p_qty = (int)($_SESSION['cart_p_qty'][$key] ?? 1);
+				$p_stmt = $pdo->prepare("SELECT p_current_price FROM tbl_product WHERE p_id = ?");
+				$p_stmt->execute([(int)$p_id]);
+				$prod = $p_stmt->fetch(PDO::FETCH_ASSOC);
+				$unit_price = $prod ? (float)$prod['p_current_price'] : (float)($_SESSION['cart_p_current_price'][$key] ?? 0);
+				$calculated_total += ($unit_price * $p_qty);
+			}
+		}
+		$shipping_cost = (float)($_SESSION['shipping_cost'] ?? 0);
+		$coupon_discount = (float)($_SESSION['coupon_discount'] ?? ($_SESSION['coupon']['discount'] ?? 0));
+		$final_paid_amount = max(0, ($calculated_total + $shipping_cost) - $coupon_discount);
+		if ($final_paid_amount <= 0 && !empty($_SESSION['final_total'])) {
+			$final_paid_amount = (float)$_SESSION['final_total'];
+		}
+
 	    $statement = $pdo->prepare("INSERT INTO tbl_payment (   
 	                            customer_id,
 	                            customer_name,
@@ -44,7 +63,7 @@ if( !isset($_REQUEST['msg']) ) {
 	                            $_SESSION['customer']['cust_email'],
 	                            $payment_date,
 	                            '',
-	                            $_POST['amount'],
+	                            $final_paid_amount,
 	                            '', 
 	                            '',
 	                            '', 

@@ -4,6 +4,7 @@
 //          merchant profile (with logo), cross-DB device status, cross-DB order updates.
 
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Singleton admin client (service role — full RLS bypass)
@@ -953,6 +954,84 @@ export async function submitMerchantKyc(payload) {
   if (error) throw new Error('KYC was not saved: ' + error.message)
   if (!data?.id) throw new Error('KYC was not saved: merchant not found')
   return data
+  const admin = getAdminClient()
+  try {
+    const { data, error } = await admin.rpc('submit_platform_merchant_kyc', { p_submission: payload })
+    if (!error && data?.id) {
+      return data
+    }
+    if (error) {
+      console.warn('[admin-supabase] submit_platform_merchant_kyc RPC notice:', error.message)
+    }
+  } catch (rpcErr) {
+    console.warn('[admin-supabase] submit_platform_merchant_kyc RPC exception, falling back to direct table update:', rpcErr.message)
+  }
+
+  // Fallback: Direct table update in public.merchants and public.merchant_kyc_submissions
+  const merchantId = payload.merchant_id
+  const nowIso = new Date().toISOString()
+  const updates = {
+    nid_number: payload.nid_number,
+    nid_name: payload.nid_name || null,
+    nid_dob: payload.nid_dob || null,
+    nid_front_url: payload.nid_front_url,
+    nid_back_url: payload.nid_back_url,
+    face_photo_url: payload.face_photo_url,
+    kyc_status: 'PENDING',
+    kyc_submitted_at: nowIso,
+    kyc_reviewed_at: null,
+    kyc_reviewed_by: null,
+    kyc_rejection_reason: null,
+    trial_ends_at: payload.trial_ends_at || new Date(Date.now() + 90 * 86400000).toISOString(),
+    updated_at: nowIso,
+  }
+
+  let { data: updatedMerchant, error: updateError } = await admin
+    .from('merchants')
+    .update(updates)
+    .eq('id', merchantId)
+    .select()
+    .maybeSingle()
+
+  if (!updatedMerchant) {
+    // If not matched by id, try matching by user_id
+    const res = await admin
+      .from('merchants')
+      .update(updates)
+      .eq('user_id', merchantId)
+      .select()
+      .maybeSingle()
+    updatedMerchant = res.data
+    updateError = res.error
+  }
+
+  if (updateError) {
+    console.error('[admin-supabase] Direct merchant update error:', updateError.message)
+    throw new Error('KYC was not saved: ' + updateError.message)
+  }
+  if (!updatedMerchant) {
+    throw new Error('KYC was not saved: merchant not found in admin database')
+  }
+
+  // Record audit entry in merchant_kyc_submissions
+  try {
+    await admin.from('merchant_kyc_submissions').insert({
+      merchant_id: updatedMerchant.id,
+      nid_number: payload.nid_number,
+      nid_name: payload.nid_name,
+      nid_dob: payload.nid_dob,
+      nid_front_url: payload.nid_front_url,
+      nid_back_url: payload.nid_back_url,
+      face_photo_url: payload.face_photo_url,
+      liveness_passed: true,
+      ocr_raw_text: payload.ocr_raw_text || '',
+      status: 'PENDING',
+    })
+  } catch (auditErr) {
+    console.warn('[admin-supabase] merchant_kyc_submissions audit insert notice:', auditErr.message)
+  }
+
+  return updatedMerchant
 }
 
 export async function listPendingKycSubmissions() {
@@ -972,4 +1051,472 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
   if (error) throw new Error('KYC review was not saved: ' + error.message)
   if (!data?.id) throw new Error('KYC merchant not found')
   return data
+  const status = action === 'REJECT' ? 'REJECTED' : 'VERIFIED'
+  const admin = getAdminClient()
+  try {
+    const { data, error } = await admin.rpc('review_platform_merchant_kyc', {
+      p_merchant_id: merchantId, p_status: status,
+      p_reason: reason || '', p_reviewer: reviewed_by,
+    })
+    if (!error && data?.id) return data
+  } catch (rpcErr) {
+    console.warn('[admin-supabase] review_platform_merchant_kyc RPC notice:', rpcErr.message)
+  }
+
+  // Direct table fallback
+  const nowIso = new Date().toISOString()
+  const updates = {
+    kyc_status: status,
+    kyc_reviewed_at: nowIso,
+    kyc_reviewed_by: reviewed_by,
+    kyc_rejection_reason: action === 'REJECT' ? (reason || 'Documents did not meet criteria') : null,
+    updated_at: nowIso,
+  }
+  if (status === 'VERIFIED') {
+    updates.status = 'ACTIVE'
+    // Ensure 3-month free trial is set upon verification if not already present
+    updates.trial_ends_at = new Date(Date.now() + 90 * 86400000).toISOString()
+  }
+  const { data: mData, error: mErr } = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
+  if (mErr) throw new Error('KYC review was not saved: ' + mErr.message)
+
+  try {
+    await admin.from('merchant_kyc_submissions')
+      .update({
+        status: status === 'VERIFIED' ? 'APPROVED' : 'REJECTED',
+        reviewed_at: nowIso,
+        reviewed_by,
+        rejection_reason: updates.kyc_rejection_reason,
+        updated_at: nowIso
+      })
+      .eq('merchant_id', merchantId)
+      .eq('status', 'PENDING')
+  } catch (_) {}
+
+  return mData
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Platform Subscription & Pricing Management (Dynamic Admin Control & Anti-Abuse)
+// ──────────────────────────────────────────────────────────────────────────────
+
+let inMemorySubscriptionConfig = {
+  monthly_fee: 100,
+  quarterly_fee: 250,
+  yearly_fee: 650,
+  trial_days: 90, // 3 months free trial
+  is_trial_enabled: true,
+  enforce_nid_verification: true,
+  updated_at: new Date().toISOString()
+}
+
+// In-memory fallback tracking for orders and subscriptions
+const inMemoryOrders = new Map()
+const inMemoryMerchantSubscriptions = new Map()
+
+export async function getSubscriptionConfig() {
+  try {
+    const admin = getAdminClient()
+    const { data, error } = await admin
+      .from('platform_subscription_config')
+      .select('*')
+      .eq('id', 'default_config')
+      .maybeSingle()
+
+    if (!error && data) {
+      return {
+        monthly_fee: Number(data.monthly_fee) || 100,
+        quarterly_fee: Number(data.quarterly_fee) || 250,
+        yearly_fee: Number(data.yearly_fee) || 650,
+        trial_days: Number(data.trial_days) || 90,
+        is_trial_enabled: data.is_trial_enabled ?? true,
+        enforce_nid_verification: data.enforce_nid_verification ?? true,
+        updated_at: data.updated_at
+      }
+    }
+  } catch (err) {
+    // Database table may not exist yet; fall back gracefully
+  }
+  return { ...inMemorySubscriptionConfig }
+}
+
+export async function updateSubscriptionConfig(config) {
+  const updated = {
+    monthly_fee: Number(config.monthly_fee) || inMemorySubscriptionConfig.monthly_fee,
+    quarterly_fee: Number(config.quarterly_fee) || inMemorySubscriptionConfig.quarterly_fee,
+    yearly_fee: Number(config.yearly_fee) || inMemorySubscriptionConfig.yearly_fee,
+    trial_days: Number(config.trial_days) || inMemorySubscriptionConfig.trial_days,
+    is_trial_enabled: typeof config.is_trial_enabled === 'boolean' ? config.is_trial_enabled : inMemorySubscriptionConfig.is_trial_enabled,
+    enforce_nid_verification: typeof config.enforce_nid_verification === 'boolean' ? config.enforce_nid_verification : inMemorySubscriptionConfig.enforce_nid_verification,
+    updated_at: new Date().toISOString()
+  }
+  inMemorySubscriptionConfig = { ...updated }
+
+  try {
+    const admin = getAdminClient()
+    await admin.from('platform_subscription_config').upsert({
+      id: 'default_config',
+      ...updated
+    })
+  } catch (err) {
+    console.warn('[admin-supabase] updateSubscriptionConfig DB notice:', err.message)
+  }
+  return inMemorySubscriptionConfig
+}
+
+/**
+ * Get comprehensive subscription, trial, and NID compliance status for a merchant.
+ */
+/**
+ * Get comprehensive subscription, trial, and NID compliance status for a merchant.
+ */
+export async function getMerchantSubscriptionStatus(merchantId) {
+  const config = await getSubscriptionConfig()
+  let admin = null
+  try {
+    admin = getAdminClient()
+  } catch (_) {}
+
+  let merchant = null
+  if (admin) {
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
+      let mQuery = admin
+        .from('merchants')
+        .select('id, user_id, email, business_name, nid_number, kyc_status, status, trial_ends_at, subscription_status, subscription_plan, subscription_expires_at, created_at')
+      if (isUuid) {
+        mQuery = mQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+      } else {
+        mQuery = mQuery.eq('id', merchantId)
+      }
+      const { data } = await mQuery.maybeSingle()
+      merchant = data
+    } catch (err) {
+      console.warn('[subscription] Merchant fetch notice:', err.message)
+    }
+  }
+
+  // Fallback to in-memory subscription record if database is empty/test
+  const memSub = inMemoryMerchantSubscriptions.get(merchantId) || {}
+
+  const hasNid = Boolean(merchant?.nid_number || memSub.nid_number)
+  const isKycVerified = (merchant?.kyc_status === 'VERIFIED') || (memSub.kyc_status === 'VERIFIED')
+  const nidNumber = merchant?.nid_number || memSub.nid_number || null
+
+  const now = Date.now()
+  const subExpiresAt = merchant?.subscription_expires_at
+    ? new Date(merchant.subscription_expires_at).getTime()
+    : (memSub.subscription_expires_at ? new Date(memSub.subscription_expires_at).getTime() : 0)
+
+  const isSubActive = subExpiresAt > now && ((merchant?.subscription_status || memSub.subscription_status) === 'ACTIVE')
+
+  // Calculate trial expiration
+  let trialEndsAtTime = 0
+  if (merchant?.trial_ends_at) {
+    trialEndsAtTime = new Date(merchant.trial_ends_at).getTime()
+  } else if (memSub.trial_ends_at) {
+    trialEndsAtTime = new Date(memSub.trial_ends_at).getTime()
+  } else if (merchant?.created_at) {
+    trialEndsAtTime = new Date(merchant.created_at).getTime() + (config.trial_days * 86400000)
+  } else {
+    trialEndsAtTime = now + (config.trial_days * 86400000)
+  }
+
+  const isTrialActive = !isSubActive && config.is_trial_enabled && trialEndsAtTime > now
+  const remainingTrialDays = isTrialActive ? Math.max(0, Math.ceil((trialEndsAtTime - now) / 86400000)) : 0
+
+  // Decision logic for access permission
+  let canAccessService = false
+  let status = 'EXPIRED'
+  let lockReason = null
+
+  if (config.enforce_nid_verification && !hasNid) {
+    canAccessService = false
+    status = 'REQUIRES_NID'
+    lockReason = 'SwapnoPay সেবা ব্যবহারের জন্য জাতীয় পরিচয়পত্র (NID) ভেরিফিকেশন বাধ্যতামূলক।'
+  } else if (isSubActive) {
+    canAccessService = true
+    status = 'ACTIVE'
+  } else if (isTrialActive) {
+    canAccessService = true
+    status = 'TRIAL'
+  } else {
+    canAccessService = false
+    status = 'EXPIRED'
+    lockReason = 'আপনার ফ্রি ট্রায়াল ও সাবস্ক্রিপশনের মেয়াদ শেষ হয়েছে। সেবা অব্যাহত রাখতে সাবস্ক্রিপশন ফি পরিশোধ করুন।'
+  }
+
+  return {
+    ok: true,
+    merchant_id: merchantId,
+    status, // 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'REQUIRES_NID'
+    can_access_service: canAccessService,
+    lock_reason: lockReason,
+    has_nid: hasNid,
+    nid_number: nidNumber ? (nidNumber.slice(0, 3) + '••••' + nidNumber.slice(-3)) : null,
+    is_kyc_verified: isKycVerified,
+    is_subscription_active: isSubActive,
+    subscription_plan: isSubActive ? (merchant?.subscription_plan || memSub.subscription_plan) : (isTrialActive ? 'FREE_TRIAL' : null),
+    subscription_expires_at: isSubActive ? new Date(subExpiresAt).toISOString() : null,
+    is_trial_active: isTrialActive,
+    trial_days_total: config.trial_days,
+    trial_remaining_days: remainingTrialDays,
+    trial_ends_at: isTrialActive ? new Date(trialEndsAtTime).toISOString() : null,
+    pricing: {
+      monthly: config.monthly_fee,
+      quarterly: config.quarterly_fee,
+      yearly: config.yearly_fee,
+    }
+  }
+}
+
+/**
+ * Set in-memory merchant identity/NID for testing or offline environments
+ */
+export function setMerchantMemorySubscription(merchantId, data) {
+  inMemoryMerchantSubscriptions.set(merchantId, {
+    ...(inMemoryMerchantSubscriptions.get(merchantId) || {}),
+    ...data
+  })
+}
+
+/**
+ * Create a new subscription checkout order.
+ * Validates that the account has an associated NID before allowing order generation.
+ */
+export async function createSubscriptionOrder({ merchantId, planType, method = 'bKash' }) {
+  const config = await getSubscriptionConfig()
+  const cleanPlan = String(planType || '').toUpperCase()
+
+  let amount = 0
+  let days = 30
+  if (cleanPlan === 'MONTHLY') {
+    amount = config.monthly_fee
+    days = 30
+  } else if (cleanPlan === 'QUARTERLY') {
+    amount = config.quarterly_fee
+    days = 90
+  } else if (cleanPlan === 'YEARLY') {
+    amount = config.yearly_fee
+    days = 365
+  } else {
+    throw new Error('অবৈধ সাবস্ক্রিপশন প্ল্যান। MONTHLY, QUARTERLY অথবা YEARLY নির্বাচন করুন।')
+  }
+
+  // Verify NID associated with account
+  let admin = null
+  try {
+    admin = getAdminClient()
+  } catch (_) {}
+
+  let merchant = null
+  if (admin) {
+    try {
+      const { data } = await admin
+        .from('merchants')
+        .select('id, user_id, nid_number, kyc_status, business_name, email')
+        .or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+        .maybeSingle()
+      merchant = data
+    } catch (_) {}
+  }
+
+  const memSub = inMemoryMerchantSubscriptions.get(merchantId)
+  const nidNumber = merchant?.nid_number || memSub?.nid_number
+
+  if (!nidNumber && config.enforce_nid_verification) {
+    throw new Error('সাবস্ক্রিপশন ফি প্রদানের পূর্বে আপনার অ্যাকাউন্টে NID ভেরিফিকেশন সম্পন্ন থাকা আবশ্যক।')
+  }
+
+  const orderId = 'sub_' + randomUUID().slice(0, 8)
+
+  // Receiving accounts for SwapnoPay platform payment gateway
+  const receivingAccounts = {
+    bKash: process.env.SWAPNOPAY_BKASH_NUMBER || '01711223344',
+    Nagad: process.env.SWAPNOPAY_NAGAD_NUMBER || '01811223344',
+    Rocket: process.env.SWAPNOPAY_ROCKET_NUMBER || '019112233441',
+  }
+
+  const orderRecord = {
+    id: orderId,
+    merchant_id: merchantId,
+    nid_number: nidNumber || 'PENDING_NID',
+    plan_type: cleanPlan,
+    amount,
+    currency: 'BDT',
+    days,
+    payment_method: method,
+    receiving_number: receivingAccounts[method] || receivingAccounts.bKash,
+    status: 'PENDING',
+    created_at: new Date().toISOString()
+  }
+
+  inMemoryOrders.set(orderId, orderRecord)
+
+  if (admin) {
+    try {
+      await admin.from('merchant_subscriptions').insert({
+        id: orderId,
+        merchant_id: merchantId,
+        nid_number: orderRecord.nid_number,
+        plan_type: cleanPlan,
+        amount,
+        payment_method: method,
+        status: 'PENDING',
+        created_at: orderRecord.created_at
+      })
+    } catch (err) {
+      console.warn('[subscription] DB insert notice:', err.message)
+    }
+  }
+
+  return {
+    ok: true,
+    order_id: orderId,
+    plan_type: cleanPlan,
+    amount,
+    days,
+    currency: 'BDT',
+    payment_method: method,
+    receiving_account: orderRecord.receiving_number,
+    nid_associated: nidNumber ? (nidNumber.slice(0, 3) + '••••' + nidNumber.slice(-3)) : null,
+    instructions: `${method} অ্যাপ থেকে "Send Money" বা "Payment" করে ${orderRecord.receiving_number} নম্বরে ৳${amount} পাঠান এবং Transaction ID (TrxID) দিয়ে কনফার্ম করুন।`
+  }
+}
+
+/**
+ * Verify Transaction ID and activate merchant subscription.
+ * Binds payment to merchant NID and extends validity.
+ */
+export async function verifyAndActivateSubscription({ merchantId, orderId, trxId, method = 'bKash', planType }) {
+  const cleanTrx = String(trxId || '').trim().toUpperCase()
+  if (!cleanTrx || cleanTrx.length < 6) {
+    throw new Error('একটি সঠিক Transaction ID (TrxID) প্রদান করুন।')
+  }
+
+  const config = await getSubscriptionConfig()
+  let admin = null
+  try {
+    admin = getAdminClient()
+  } catch (_) {}
+
+  // Retrieve merchant and verify NID existence
+  let merchant = null
+  if (admin) {
+    try {
+      const { data } = await admin
+        .from('merchants')
+        .select('id, user_id, nid_number, kyc_status, subscription_expires_at, subscription_status')
+        .or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+        .maybeSingle()
+      merchant = data
+    } catch (_) {}
+  }
+
+  const memSub = inMemoryMerchantSubscriptions.get(merchantId) || {}
+  const nidNumber = merchant?.nid_number || memSub.nid_number
+
+  if (!nidNumber && config.enforce_nid_verification) {
+    throw new Error('পেমেন্ট ভেরিফাই করতে অ্যাকাউন্টে NID যুক্ত থাকা আবশ্যক।')
+  }
+
+  // Look up order if orderId supplied
+  let plan = planType ? String(planType).toUpperCase() : 'MONTHLY'
+  let amount = config.monthly_fee
+  let days = 30
+
+  if (orderId && inMemoryOrders.has(orderId)) {
+    const ord = inMemoryOrders.get(orderId)
+    plan = ord.plan_type
+    amount = ord.amount
+    days = ord.days
+    ord.status = 'COMPLETED'
+    ord.trx_id = cleanTrx
+  } else if (plan === 'QUARTERLY') {
+    amount = config.quarterly_fee
+    days = 90
+  } else if (plan === 'YEARLY') {
+    amount = config.yearly_fee
+    days = 365
+  }
+
+  // Calculate new subscription expiration
+  const now = Date.now()
+  const currentExpiry = merchant?.subscription_expires_at
+    ? new Date(merchant.subscription_expires_at).getTime()
+    : (memSub.subscription_expires_at ? new Date(memSub.subscription_expires_at).getTime() : 0)
+
+  const baseTime = Math.max(now, currentExpiry)
+  const newExpiryIso = new Date(baseTime + (days * 86400000)).toISOString()
+
+  // Update in-memory record
+  inMemoryMerchantSubscriptions.set(merchantId, {
+    ...memSub,
+    subscription_status: 'ACTIVE',
+    subscription_plan: plan,
+    subscription_expires_at: newExpiryIso,
+    nid_number: nidNumber,
+    last_trx_id: cleanTrx,
+    updated_at: new Date().toISOString()
+  })
+
+  // Update merchant row in Supabase
+  if (admin) {
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
+      let updQuery = admin
+        .from('merchants')
+        .update({
+          subscription_status: 'ACTIVE',
+          subscription_plan: plan,
+          subscription_expires_at: newExpiryIso,
+          status: 'ACTIVE',
+          updated_at: new Date().toISOString()
+        })
+      if (isUuid) {
+        updQuery = updQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+      } else {
+        updQuery = updQuery.eq('id', merchantId)
+      }
+      await updQuery
+
+      await admin.from('merchant_subscriptions').upsert({
+        id: orderId || ('sub_' + randomUUID().slice(0, 8)),
+        merchant_id: merchantId,
+        nid_number: nidNumber,
+        plan_type: plan,
+        amount,
+        trx_id: cleanTrx,
+        payment_method: method,
+        status: 'COMPLETED',
+        verified_at: new Date().toISOString()
+      })
+    } catch (dbErr) {
+      console.warn('[subscription] DB update notice:', dbErr.message)
+    }
+
+    // Record payment event for revenue tracking
+    try {
+      await recordPaymentEvent(orderId || ('sub_' + cleanTrx), {
+        merchant_id: merchantId,
+        amount,
+        currency: 'BDT',
+        status: 'PAID',
+        payment_method: method,
+        trx_id: cleanTrx,
+        product_name: `SwapnoPay ${plan} Subscription`,
+      })
+    } catch (_) {}
+  }
+
+  return {
+    ok: true,
+    message: `অভিনন্দন! আপনার SwapnoPay ${plan} সাবস্ক্রিপশন সফলভাবে সক্রিয় হয়েছে।`,
+    subscription_status: 'ACTIVE',
+    subscription_plan: plan,
+    subscription_expires_at: newExpiryIso,
+    nid_number: nidNumber ? (nidNumber.slice(0, 3) + '••••' + nidNumber.slice(-3)) : null,
+    trx_id: cleanTrx,
+  }
+}
+

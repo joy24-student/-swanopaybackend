@@ -96,6 +96,24 @@ function clearCartSessions() {
                 $payment = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if ($payment) {
+                    if (strtolower($payment['payment_status'] ?? '') !== 'completed') {
+                        ?>
+                        <div class="page">
+                            <div class="container text-center py-5">
+                                <div class="alert alert-warning" style="padding: 30px; border-radius: 12px; margin-top: 30px;">
+                                    <i class="fa fa-clock-o fa-3x mb-3 text-warning" style="font-size: 50px;"></i>
+                                    <h3>Payment Pending Confirmation</h3>
+                                    <p>Your order (Transaction ID: <b><?= htmlspecialchars($tran_id) ?></b>) has not been confirmed as completed yet (Current status: <b><?= htmlspecialchars($payment['payment_status']) ?></b>).</p>
+                                    <p>Once your payment is verified by the gateway or merchant, your order will be finalized.</p>
+                                    <a href="index.php" class="btn btn-primary mt-3"><i class="fa fa-home"></i> Return to Shop</a>
+                                </div>
+                            </div>
+                        </div>
+                        <?php
+                        require_once('footer.php');
+                        exit;
+                    }
+
                     $payment_id = $payment['id']; // Get the primary ID
                     $cust_id = $payment['customer_id'];
                     $paid_amount = $payment['paid_amount'];
