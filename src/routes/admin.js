@@ -30,6 +30,8 @@ import {
   getAdminSystemOverview,
   listPendingKycSubmissions,
   reviewMerchantKyc,
+  getSubscriptionConfig,
+  updateSubscriptionConfig,
 } from '../services/adminSupabase.js'
 
 const router = Router()
@@ -361,6 +363,33 @@ router.post('/kyc/:id/review', async (req, res) => {
   } catch (err) {
     console.error('[admin/kyc/:id/review POST]', err.message)
     res.status(500).json({ error: 'Failed to review KYC: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /v1/admin/subscription-config
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/subscription-config', async (_req, res) => {
+  try {
+    const config = await getSubscriptionConfig()
+    res.json({ ok: true, config })
+  } catch (err) {
+    console.error('[admin/subscription-config GET]', err.message)
+    res.status(500).json({ error: 'Failed to read subscription configuration' })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /v1/admin/subscription-config
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/subscription-config', async (req, res) => {
+  try {
+    const incoming = req.body || {}
+    const updated = await updateSubscriptionConfig(incoming)
+    res.json({ ok: true, config: updated, message: 'Subscription configuration updated successfully' })
+  } catch (err) {
+    console.error('[admin/subscription-config POST]', err.message)
+    res.status(500).json({ error: 'Failed to update subscription configuration: ' + err.message })
   }
 })
 
