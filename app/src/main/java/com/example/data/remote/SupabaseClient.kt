@@ -268,6 +268,173 @@ object SupabaseClient {
         }
     }
 
+    suspend fun fetchMerchantAccountFromSupabase(
+        url: String,
+        anonKey: String,
+        accessToken: String?,
+        email: String,
+        userId: String?
+    ): JSONObject? {
+        val cleanUrl = url.trimEnd('/')
+        val cleanEmail = email.trim().lowercase()
+        val authHeader = if (!accessToken.isNullOrBlank()) "Bearer $accessToken" else "Bearer $anonKey"
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val queryParams = when {
+                    !userId.isNullOrBlank() && cleanEmail.isNotBlank() ->
+                        "or=(user_id.eq.$userId,id.eq.$userId,email.ilike.$cleanEmail)&limit=1"
+                    !userId.isNullOrBlank() ->
+                        "or=(user_id.eq.$userId,id.eq.$userId)&limit=1"
+                    cleanEmail.isNotBlank() ->
+                        "email=ilike.$cleanEmail&limit=1"
+                    else -> return@withContext null
+                }
+
+                val req = Request.Builder()
+                    .url("$cleanUrl/rest/v1/merchants?$queryParams")
+                    .addHeader("apikey", anonKey)
+                    .addHeader("Authorization", authHeader)
+                    .addHeader("Accept", "application/json")
+                    .get()
+                    .build()
+
+                val resp = client.newCall(req).execute()
+                val bodyStr = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful || bodyStr.isBlank()) {
+                    resp.close()
+                    return@withContext null
+                }
+                resp.close()
+
+                val array = runCatching { JSONArray(bodyStr) }.getOrNull() ?: return@withContext null
+                if (array.length() == 0) {
+                    return@withContext null
+                }
+
+                val m = array.getJSONObject(0)
+                val merchantId = m.optString("id")
+
+                // If user_id is missing on merchant row and we have a valid userId, patch it
+                val existingUserId = m.optString("user_id")
+                if (existingUserId.isBlank() && !userId.isNullOrBlank()) {
+                    try {
+                        val patchBody = JSONObject().put("user_id", userId).toString()
+                        val patchReq = Request.Builder()
+                            .url("$cleanUrl/rest/v1/merchants?id=eq.$merchantId")
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", authHeader)
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Prefer", "return=minimal")
+                            .patch(patchBody.toRequestBody(JSON_MEDIA_TYPE))
+                            .build()
+                        client.newCall(patchReq).execute().close()
+                    } catch (patchErr: Exception) {
+                        Log.w("SupabaseClient", "Link user_id notice: ${patchErr.message}")
+                    }
+                }
+
+                // Query merchant_gateway_settings for own database credentials
+                var hasOwnDb = false
+                var ownUrl = ""
+                var ownKey = ""
+                try {
+                    val gwReq = Request.Builder()
+                        .url("$cleanUrl/rest/v1/merchant_gateway_settings?merchant_id=eq.$merchantId&limit=1")
+                        .addHeader("apikey", anonKey)
+                        .addHeader("Authorization", authHeader)
+                        .addHeader("Accept", "application/json")
+                        .get()
+                        .build()
+                    val gwResp = client.newCall(gwReq).execute()
+                    val gwBody = gwResp.body?.string().orEmpty()
+                    if (gwResp.isSuccessful && gwBody.isNotBlank()) {
+                        val gwArr = runCatching { JSONArray(gwBody) }.getOrNull()
+                        if (gwArr != null && gwArr.length() > 0) {
+                            val gw = gwArr.getJSONObject(0)
+                            val candUrl = gw.optString("supabase_url")
+                            val candKey = gw.optString("supabase_anon_key")
+                            if (candUrl.isNotBlank() && candKey.isNotBlank() && !candUrl.contains("tldubojeokgyoclxnzkb")) {
+                                hasOwnDb = true
+                                ownUrl = candUrl
+                                ownKey = candKey
+                            }
+                        }
+                    }
+                    gwResp.close()
+                } catch (gwErr: Exception) {
+                    Log.w("SupabaseClient", "Gateway settings lookup notice: ${gwErr.message}")
+                }
+
+                val dbObj = JSONObject().apply {
+                    put("has_own_database", hasOwnDb)
+                    put("supabase_url", ownUrl)
+                    put("supabase_anon_key", ownKey)
+                    put("project_ref", "")
+                }
+
+                JSONObject().apply {
+                    put("exists", true)
+                    put("is_new", false)
+                    put("merchant", m)
+                    put("database", dbObj)
+                }
+            } catch (e: Exception) {
+                Log.e("SupabaseClient", "fetchMerchantAccountFromSupabase error: ${e.message}")
+                null
+            }
+        }
+    }
+
+    suspend fun upsertMerchantProfileDirectly(
+        url: String,
+        anonKey: String,
+        accessToken: String?,
+        profile: JSONObject,
+        gatewaySettings: JSONObject? = null
+    ): Boolean {
+        val cleanUrl = url.trimEnd('/')
+        val authHeader = if (!accessToken.isNullOrBlank()) "Bearer $accessToken" else "Bearer $anonKey"
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder()
+                    .url("$cleanUrl/rest/v1/merchants")
+                    .addHeader("apikey", anonKey)
+                    .addHeader("Authorization", authHeader)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(profile.toString().toRequestBody(JSON_MEDIA_TYPE))
+                    .build()
+
+                val resp = client.newCall(req).execute()
+                val success = resp.isSuccessful
+                resp.close()
+
+                if (gatewaySettings != null && profile.has("id")) {
+                    try {
+                        val gwReq = Request.Builder()
+                            .url("$cleanUrl/rest/v1/merchant_gateway_settings")
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", authHeader)
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                            .post(gatewaySettings.toString().toRequestBody(JSON_MEDIA_TYPE))
+                            .build()
+                        client.newCall(gwReq).execute().close()
+                    } catch (gwErr: Exception) {
+                        Log.w("SupabaseClient", "Direct gatewaySettings upsert notice: ${gwErr.message}")
+                    }
+                }
+
+                success
+            } catch (e: Exception) {
+                Log.e("SupabaseClient", "upsertMerchantProfileDirectly error: ${e.message}")
+                false
+            }
+        }
+    }
+
     suspend fun submitKycVerification(
         url: String,
         anonKey: String,

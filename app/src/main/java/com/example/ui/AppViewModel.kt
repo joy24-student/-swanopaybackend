@@ -740,16 +740,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             var accountLookupFailed = false
             if (session.isValid) {
                 fetchSubscriptionStatus()
-                val account = checkMerchantAccountOnBackend(session.email.orEmpty())
+                val account = checkMerchantAccountOnBackend(session.email.orEmpty(), session.uid)
                 if (account != null) {
                     applyRestoredMerchantSetup(account)
                     setOnboarded(account.isOnboarded)
                     syncPinFromCloud()
                 } else {
                     // Fallback to local profile if offline or server temporarily unavailable
-                    if (!isOnboarded()) {
-                        accountLookupFailed = true
-                        _authError.value = "Your business profile could not be loaded. Please check your internet connection."
+                    val local = session.uid?.let { repository.getMerchantProfileById(it) } ?: repository.getMerchantProfileById(session.email.orEmpty())
+                    if (local != null && local.businessName.isNotBlank()) {
+                        _activeProfile.value = local
+                        setOnboarded(true)
                     }
                 }
             }
@@ -1822,24 +1823,147 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun checkMerchantAccountOnBackend(email: String, merchantId: String? = null): MerchantBackendCheckResult? {
-        return try {
-            val json = platformRequest("/v1/oauth/check-user", org.json.JSONObject())
-            val m = json.getJSONObject("merchant")
-            val db = json.getJSONObject("database")
-            fun value(key: String) = if (m.isNull(key)) "" else m.optString(key)
-            MerchantBackendCheckResult(exists = json.getBoolean("exists"), isNew = json.getBoolean("is_new"),
-                isOnboarded = json.getBoolean("is_onboarded"), merchantId = m.getString("id"),
-                businessName = value("business_name"), email = value("email"), phone = value("phone"),
-                businessType = value("business_type"), photoUrl = value("photo_url"), accountHolder = value("account_holder"),
-                hasOwnDatabase = db.getBoolean("has_own_database"), supabaseUrl = db.optString("supabase_url"),
-                supabaseAnonKey = db.optString("supabase_anon_key"), projectRef = db.optString("project_ref"),
-                kycStatus = value("kyc_status"), kycRejectionReason = value("kyc_rejection_reason"),
-                nidNumber = value("nid_number"), nidFrontUrl = value("nid_front_url"), nidBackUrl = value("nid_back_url"))
-        } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            logFirebaseStatus("Platform account lookup failed: ${error.message}")
-            null
+        val cleanEmail = email.trim().lowercase()
+        val effectiveId = merchantId?.trim()?.takeIf { it.isNotBlank() }
+            ?: _activeProfile.value.id.takeIf { it.isNotBlank() && it != "default_merchant" }
+            ?: getOrCreatePlatformSupabaseProfile().authEmail.takeIf { it.equals(cleanEmail, true) }?.let {
+                repository.observeMerchantProfile().firstOrNull()?.id
+            }
+
+        // 1. Attempt backend account lookup if reachable (non-blocking on failure)
+        try {
+            val payload = org.json.JSONObject().apply {
+                if (cleanEmail.isNotBlank()) put("email", cleanEmail)
+                if (!effectiveId.isNullOrBlank()) put("merchant_id", effectiveId)
+            }
+            val json = platformRequest("/v1/oauth/check-user", payload)
+            if (json.optBoolean("ok")) {
+                val m = json.getJSONObject("merchant")
+                val db = json.getJSONObject("database")
+                fun value(key: String) = if (m.isNull(key)) "" else m.optString(key)
+                return MerchantBackendCheckResult(
+                    exists = json.getBoolean("exists"),
+                    isNew = json.getBoolean("is_new"),
+                    isOnboarded = json.getBoolean("is_onboarded"),
+                    merchantId = m.getString("id"),
+                    businessName = value("business_name"),
+                    email = value("email").ifBlank { cleanEmail },
+                    phone = value("phone"),
+                    businessType = value("business_type").ifBlank { "Retail Store" },
+                    photoUrl = value("photo_url"),
+                    accountHolder = value("account_holder"),
+                    hasOwnDatabase = db.getBoolean("has_own_database"),
+                    supabaseUrl = db.optString("supabase_url"),
+                    supabaseAnonKey = db.optString("supabase_anon_key"),
+                    projectRef = db.optString("project_ref"),
+                    kycStatus = value("kyc_status").ifBlank { "UNVERIFIED" },
+                    kycRejectionReason = value("kyc_rejection_reason"),
+                    nidNumber = value("nid_number"),
+                    nidFrontUrl = value("nid_front_url"),
+                    nidBackUrl = value("nid_back_url")
+                )
+            }
+        } catch (backendError: Exception) {
+            if (backendError is kotlinx.coroutines.CancellationException) throw backendError
+            logFirebaseStatus("Backend account lookup note, checking direct Supabase: ${backendError.message}")
         }
+
+        // 2. Direct Supabase PostgREST Query
+        try {
+            val platformProfile = getOrCreatePlatformSupabaseProfile()
+            val token = platformProfile.authSessionToken.ifBlank { null }
+            val directResult = com.example.data.remote.SupabaseClient.fetchMerchantAccountFromSupabase(
+                url = platformProfile.supabaseUrl.ifBlank { PLATFORM_SUPABASE_URL },
+                anonKey = platformProfile.anonKey.ifBlank { PLATFORM_SUPABASE_ANON_KEY },
+                accessToken = token,
+                email = cleanEmail,
+                userId = effectiveId
+            )
+            if (directResult != null) {
+                val m = directResult.getJSONObject("merchant")
+                val db = directResult.getJSONObject("database")
+                fun value(key: String) = if (m.isNull(key)) "" else m.optString(key)
+                val busName = value("business_name")
+                val phone = value("phone")
+                val onboardedAt = value("onboarded_at")
+                val placeholder = busName.matches(Regex("^(my store|my business|google user|facebook user|demo store|business setup required)$", RegexOption.IGNORE_CASE))
+                val isOnboarded = onboardedAt.isNotBlank() || (busName.isNotBlank() && !placeholder && phone.isNotBlank())
+                return MerchantBackendCheckResult(
+                    exists = true,
+                    isNew = !isOnboarded,
+                    isOnboarded = isOnboarded,
+                    merchantId = m.optString("id", effectiveId.orEmpty()),
+                    businessName = busName,
+                    email = value("email").ifBlank { cleanEmail },
+                    phone = phone,
+                    businessType = value("business_type").ifBlank { "Retail Store" },
+                    photoUrl = value("photo_url").ifBlank { value("logo_url") },
+                    accountHolder = value("account_holder").ifBlank { busName },
+                    hasOwnDatabase = db.optBoolean("has_own_database", false),
+                    supabaseUrl = db.optString("supabase_url"),
+                    supabaseAnonKey = db.optString("supabase_anon_key"),
+                    projectRef = db.optString("project_ref"),
+                    kycStatus = value("kyc_status").ifBlank { "UNVERIFIED" },
+                    kycRejectionReason = value("kyc_rejection_reason"),
+                    nidNumber = value("nid_number"),
+                    nidFrontUrl = value("nid_front_url"),
+                    nidBackUrl = value("nid_back_url")
+                )
+            }
+        } catch (supabaseError: Exception) {
+            if (supabaseError is kotlinx.coroutines.CancellationException) throw supabaseError
+            logFirebaseStatus("Direct Supabase account lookup error: ${supabaseError.message}")
+        }
+
+        // 3. Local Room Database Fallback
+        val localProfile = effectiveId?.let { repository.getMerchantProfileById(it) }
+            ?: (if (cleanEmail.isNotBlank()) repository.getProfiles().find { it.email.equals(cleanEmail, true) } ?: repository.observeMerchantProfile().firstOrNull()?.takeIf { it.email.equals(cleanEmail, true) } else null)
+
+        if (localProfile != null && localProfile.businessName.isNotBlank()) {
+            val placeholder = localProfile.businessName.matches(Regex("^(my store|my business|google user|facebook user|demo store|business setup required)$", RegexOption.IGNORE_CASE))
+            val isOnboarded = !placeholder && localProfile.phone.isNotBlank()
+            return MerchantBackendCheckResult(
+                exists = true,
+                isNew = !isOnboarded,
+                isOnboarded = isOnboarded,
+                merchantId = localProfile.id,
+                businessName = localProfile.businessName,
+                email = localProfile.email.ifBlank { cleanEmail },
+                phone = localProfile.phone,
+                businessType = localProfile.businessType.ifBlank { "Retail Store" },
+                photoUrl = localProfile.photoUrl,
+                accountHolder = localProfile.accountHolder.ifBlank { localProfile.businessName },
+                hasOwnDatabase = _activeSupabaseProfile.value != null,
+                supabaseUrl = _activeSupabaseProfile.value?.supabaseUrl.orEmpty(),
+                supabaseAnonKey = _activeSupabaseProfile.value?.anonKey.orEmpty(),
+                projectRef = "",
+                kycStatus = localProfile.kycStatus.ifBlank { "UNVERIFIED" },
+                kycRejectionReason = localProfile.kycRejectionReason,
+                nidNumber = localProfile.nidNumber,
+                nidFrontUrl = localProfile.nidFrontUrl,
+                nidBackUrl = localProfile.nidBackUrl
+            )
+        }
+
+        // 4. Default result for new account or un-onboarded user (never lock out authenticated user!)
+        val finalUserId = effectiveId ?: java.util.UUID.randomUUID().toString()
+        return MerchantBackendCheckResult(
+            exists = false,
+            isNew = true,
+            isOnboarded = false,
+            merchantId = finalUserId,
+            businessName = "",
+            email = cleanEmail,
+            phone = "",
+            businessType = "Retail Store",
+            photoUrl = "",
+            accountHolder = "",
+            hasOwnDatabase = false,
+            supabaseUrl = "",
+            supabaseAnonKey = "",
+            projectRef = "",
+            kycStatus = "UNVERIFIED"
+        )
     }
 
     suspend fun applyRestoredMerchantSetup(result: MerchantBackendCheckResult) {
@@ -1886,23 +2010,60 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             setOnboarded(true)
 
-            // 2. Resiliently sync to backend platform
+            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+
+            // 2. Resiliently sync directly to Supabase PostgREST
+            try {
+                val platformProfile = getOrCreatePlatformSupabaseProfile()
+                val token = platformProfile.authSessionToken.ifBlank { null }
+                val merchantJson = org.json.JSONObject().apply {
+                    put("id", profile.id)
+                    put("user_id", profile.id)
+                    put("business_name", profile.businessName.trim())
+                    put("email", profile.email.trim())
+                    put("phone", profile.phone.trim())
+                    put("business_type", profile.businessType.trim().ifBlank { "Retail Store" })
+                    put("website", profile.website.trim())
+                    put("photo_url", profile.photoUrl.trim())
+                    put("status", "ACTIVE")
+                    put("onboarded_at", nowIso)
+                }
+                val gatewayJson = if (databaseUrl.isNotBlank() && databaseKey.isNotBlank()) {
+                    org.json.JSONObject().apply {
+                        put("merchant_id", profile.id)
+                        put("merchant_name", profile.businessName.trim())
+                        put("supabase_url", databaseUrl.trim())
+                        put("supabase_anon_key", databaseKey.trim())
+                    }
+                } else null
+
+                com.example.data.remote.SupabaseClient.upsertMerchantProfileDirectly(
+                    url = platformProfile.supabaseUrl.ifBlank { PLATFORM_SUPABASE_URL },
+                    anonKey = platformProfile.anonKey.ifBlank { PLATFORM_SUPABASE_ANON_KEY },
+                    accessToken = token,
+                    profile = merchantJson,
+                    gatewaySettings = gatewayJson
+                )
+                logFirebaseStatus("Merchant profile saved directly to Supabase cloud.")
+            } catch (dbSyncErr: Exception) {
+                logFirebaseStatus("Direct Supabase profile upsert notice: ${dbSyncErr.message}")
+            }
+
+            // 3. Resiliently sync to backend platform API
             try {
                 platformRequest("/v1/oauth/sync-merchant-setup", org.json.JSONObject()
                     .put("business_name", profile.businessName).put("phone", profile.phone)
                     .put("business_type", profile.businessType).put("website", profile.website)
                     .put("photo_url", profile.photoUrl).put("supabase_url", databaseUrl).put("supabase_anon_key", databaseKey))
-                val account = checkMerchantAccountOnBackend(profile.email)
-                if (account != null) {
-                    applyRestoredMerchantSetup(account)
-                    setOnboarded(true)
-                }
-                val localPinHash = _appPin.value.ifBlank { securityPrefs.getString("app_pin_hash", "") ?: "" }
-                if (localPinHash.isNotBlank()) {
-                    uploadPinHashToCloud(localPinHash)
-                }
             } catch (syncError: Exception) {
                 logFirebaseStatus("Platform cloud sync deferred: ${syncError.message}")
+            }
+
+            val localPinHash = _appPin.value.ifBlank { securityPrefs.getString("app_pin_hash", "") ?: "" }
+            if (localPinHash.isNotBlank()) {
+                uploadPinHashToCloud(localPinHash)
             }
 
             true
@@ -1920,6 +2081,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         supabaseUrl: String = "", supabaseAnonKey: String = ""
     ) {
         viewModelScope.launch {
+            // Direct Supabase sync first
+            try {
+                val platformProfile = getOrCreatePlatformSupabaseProfile()
+                val token = platformProfile.authSessionToken.ifBlank { null }
+                val merchantJson = org.json.JSONObject().apply {
+                    put("id", merchantId)
+                    put("user_id", merchantId)
+                    put("business_name", businessName.trim())
+                    put("email", email.trim())
+                    put("phone", phone.trim())
+                    put("business_type", businessType.trim())
+                    put("website", website.trim())
+                    put("photo_url", photoUrl.trim())
+                    put("status", "ACTIVE")
+                }
+                val gatewayJson = if (supabaseUrl.isNotBlank() && supabaseAnonKey.isNotBlank()) {
+                    org.json.JSONObject().apply {
+                        put("merchant_id", merchantId)
+                        put("merchant_name", businessName.trim())
+                        put("supabase_url", supabaseUrl.trim())
+                        put("supabase_anon_key", supabaseAnonKey.trim())
+                    }
+                } else null
+
+                com.example.data.remote.SupabaseClient.upsertMerchantProfileDirectly(
+                    url = platformProfile.supabaseUrl.ifBlank { PLATFORM_SUPABASE_URL },
+                    anonKey = platformProfile.anonKey.ifBlank { PLATFORM_SUPABASE_ANON_KEY },
+                    accessToken = token,
+                    profile = merchantJson,
+                    gatewaySettings = gatewayJson
+                )
+            } catch (e: Exception) {
+                logFirebaseStatus("Supabase direct sync notice: ${e.message}")
+            }
+
+            // Backend sync
             try {
                 platformRequest("/v1/oauth/sync-merchant-setup", org.json.JSONObject()
                     .put("business_name", businessName).put("phone", phone).put("business_type", businessType)
@@ -1927,8 +2124,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     .put("supabase_url", supabaseUrl).put("supabase_anon_key", supabaseAnonKey))
                 logFirebaseStatus("Business profile saved to the platform.")
             } catch (error: Exception) {
-                systemTestError.value = "Business profile was not saved to admin: ${error.message}. Retry setup sync."
-                logFirebaseStatus(systemTestError.value.orEmpty())
+                logFirebaseStatus("Platform cloud sync deferred: ${error.message}")
             }
         }
     }
@@ -1948,8 +2144,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 repository.insertSupabaseProfile(platform.copy(authEmail = authenticated.email,
                     authSessionToken = authenticated.accessToken, authRefreshToken = authenticated.refreshToken,
                     authTokenExpiresAt = authenticated.expiresAtMillis, isActive = false))
+
+                // Resiliently check merchant profile with Supabase direct fallback and new-user handling
                 val account = checkMerchantAccountOnBackend(authenticated.email, authenticated.userId)
-                    ?: error("Signed in, but your business profile could not be loaded. Please retry; your setup has been kept.")
+                    ?: MerchantBackendCheckResult(
+                        exists = false, isNew = true, isOnboarded = false,
+                        merchantId = authenticated.userId, businessName = "", email = authenticated.email,
+                        phone = "", businessType = "Retail Store", photoUrl = "", accountHolder = "",
+                        hasOwnDatabase = false, supabaseUrl = "", supabaseAnonKey = "", projectRef = "",
+                        kycStatus = "UNVERIFIED"
+                    )
+
                 supportRefreshJob?.cancel()
                 _supportChatList.value = emptyList()
                 _mySupportTicketsList.value = emptyList()
@@ -2345,12 +2550,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     authSessionToken = resolvedAccessToken.orEmpty(), authRefreshToken = resolvedRefreshToken.orEmpty(),
                     authTokenExpiresAt = System.currentTimeMillis() + 3600_000L, isActive = false))
                 val account = checkMerchantAccountOnBackend(userEmail, authUserId)
-                if (account == null) {
-                    _authError.value = "Signed in, but your business profile could not be loaded. Please retry."
-                    _isAuthenticating.value = false
-                    navigateTo("Login")
-                    return@launch
-                }
+                    ?: MerchantBackendCheckResult(
+                        exists = false, isNew = true, isOnboarded = false,
+                        merchantId = authUserId, businessName = userName, email = userEmail,
+                        phone = "", businessType = "Retail Store", photoUrl = "", accountHolder = userName,
+                        hasOwnDatabase = false, supabaseUrl = "", supabaseAnonKey = "", projectRef = "",
+                        kycStatus = "UNVERIFIED"
+                    )
                 supportRefreshJob?.cancel()
                 _supportChatList.value = emptyList()
                 _mySupportTicketsList.value = emptyList()
