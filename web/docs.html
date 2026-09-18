@@ -165,6 +165,9 @@
       </div>
 
       <div class="pt-4 border-t border-slate-800 space-y-2">
+        <a href="sms-docs.html" class="block p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition text-center font-bold">
+          <span class="material-symbols-outlined align-middle text-sm mr-1">sms</span> SMS Gateway Docs
+        </a>
         <a href="portal.html" class="block p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-center hover:bg-amber-500/20 transition">
           <span class="material-symbols-outlined">computer</span> Developer Console ↗
         </a>
@@ -178,7 +181,7 @@
     <header class="workspace-header">
       <button type="button" class="workspace-toggle" aria-label="Open documentation navigation" aria-expanded="false" aria-controls="workspace-sidebar"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
       <div class="docs-header-label"><span class="material-symbols-outlined" aria-hidden="true">menu_book</span><span>Documentation</span><span class="version-label">v2.0</span></div>
-      <div class="docs-header-actions"><button type="button" onclick="copyFullApiDocumentation()" class="btn btn-secondary">Copy API docs</button><a class="btn" href="portal.html">Open console <span aria-hidden="true">↗</span></a></div>
+      <div class="docs-header-actions"><button type="button" onclick="copyFullApiDocumentation()" class="btn btn-secondary">Copy API docs</button><a class="btn" href="sms-docs.html">SMS docs <span aria-hidden="true">→</span></a><a class="btn" href="portal.html">Open console <span aria-hidden="true">↗</span></a></div>
     </header>
 
     <!-- Broadcast Banner (dynamically synced from Admin CMS) -->
@@ -201,6 +204,7 @@
         <div class="docs-quicklinks">
           <a href="#endpoints"><span class="material-symbols-outlined" aria-hidden="true">terminal</span><strong>API reference</strong><small>Requests, responses & error codes</small></a>
           <a href="#webhooks"><span class="material-symbols-outlined" aria-hidden="true">webhook</span><strong>Webhook security</strong><small>Understand signature verification</small></a>
+          <a href="sms-docs.html"><span class="material-symbols-outlined" aria-hidden="true">sms</span><strong>SMS Gateway</strong><small>SIM-powered OTP & alerts</small></a>
           <a href="#sdks"><span class="material-symbols-outlined" aria-hidden="true">code_blocks</span><strong>Code examples</strong><small>Find your preferred language</small></a>
         </div>
       </section>
@@ -593,7 +597,7 @@ client.newCall(request).execute().use { response ->
       </section>
 
     </div>
-    <footer class="workspace-footer"><span>© 2026 SwapnoPay. Built for your next integration.</span><div><a href="/">Home</a><a href="docs.html">Documentation</a><a href="privacy-policy.html">Privacy</a><a href="terms-and-conditions.html">Terms</a></div></footer>
+    <footer class="workspace-footer"><span>© 2026 SwapnoPay. Built for your next integration.</span><div><a href="/">Home</a><a href="docs.html">Documentation</a><a href="sms-docs.html">SMS Gateway</a><a href="privacy-policy.html">Privacy</a><a href="terms-and-conditions.html">Terms</a></div></footer>
   </main>
 
   <script>

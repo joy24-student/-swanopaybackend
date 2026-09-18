@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 
 // Keep public page aliases consistent with their canonical SEO URLs.
-app.get(['/index.html', '/docs', '/portal'], (req, res) => {
+app.get(['/index.html', '/docs', '/sms-docs', '/portal'], (req, res) => {
   const target = req.path === '/index.html' ? '/' : `${req.path}.html`;
   const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
   res.redirect(301, target + query);
@@ -42,8 +42,9 @@ app.get('/shop', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 SwapnoPay Web Frontend Server running on port ${PORT}`);
-  console.log(`   - Checkout Widget: http://localhost:${PORT}/widget.html`);
-  console.log(`   - Developer Docs:  http://localhost:${PORT}/docs.html`);
-  console.log(`   - Merchant Portal: http://localhost:${PORT}/portal.html`);
+  console.log(`   - Checkout Widget:    http://localhost:${PORT}/widget.html`);
+  console.log(`   - Payment Docs:       http://localhost:${PORT}/docs.html`);
+  console.log(`   - SMS Gateway Docs:   http://localhost:${PORT}/sms-docs.html`);
+  console.log(`   - Merchant Portal:    http://localhost:${PORT}/portal.html`);
   console.log(`====================================================`);
 });
