@@ -3520,39 +3520,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val provisioningProgress = MutableStateFlow(0.0f)
     val provisioningStatusText = MutableStateFlow("Initializing Provisioning...")
 
+    val currentManagementToken = MutableStateFlow<String?>(null)
+
     fun setLocalBackendUrl(url: String) {
         controlPlaneUrl.value = url.trim()
     }
 
     fun startControlPlaneOAuth(context: android.content.Context) {
-        val userId = activeProfile.value.id.ifBlank { "user_default" }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            isFetchingManagementProjects.value = true
-            managementApiError.value = null
-            com.example.data.repository.SupabaseConnectionRepository.startOAuthFlow(
-                controlPlaneUrl = controlPlaneUrl.value,
-                userId = userId,
-                onSuccess = { authorizeUrl ->
-                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                        isFetchingManagementProjects.value = false
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(authorizeUrl)).apply {
-                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            managementApiError.value = "Could not open browser: ${e.message}"
-                        }
-                    }
-                },
-                onFailure = { err ->
-                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                        isFetchingManagementProjects.value = false
-                        managementApiError.value = err
-                    }
-                }
-            )
-        }
+        managementApiError.value = null
+        isExternalActivityExpected = true
+        // Directly initiate on-device Supabase OAuth 2.0 PKCE flow
+        startSupabaseOAuthFlow(context)
     }
 
     fun handleControlPlaneOAuthConnected(txId: String) {
@@ -3601,10 +3579,113 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val txId = pendingOAuthTxId.value
         oauthStep.value = OAuthStep.PROVISIONING
         provisioningProgress.value = 0.15f
-        provisioningStatusText.value = if (isNew) "Creating new Supabase project..." else "Verifying project..."
+        provisioningStatusText.value = if (isNew) "Creating new Supabase project..." else "Connecting project..."
 
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             var targetRef = projectRef
+            val mToken = currentManagementToken.value?.ifBlank { null }
+                ?: (try { securityPrefs.getString("saved_management_token", "") } catch (e: Exception) { null })?.ifBlank { null }
+
+            // 1. Direct Supabase Management API path for connecting existing project
+            if (!isNew && !mToken.isNullOrBlank() && targetRef.isNotBlank()) {
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                    provisioningProgress.value = 0.50f
+                    provisioningStatusText.value = "Fetching project API keys..."
+                }
+                val targetProj = managementProjectsList.value.find { it.id == targetRef }
+                    ?: com.example.data.remote.SupabaseClient.SupabaseProject(
+                        id = targetRef,
+                        name = "Supabase Project ($targetRef)",
+                        organizationId = "",
+                        region = "",
+                        status = "ACTIVE_HEALTHY"
+                    )
+                connectViaManagementApi(
+                    token = mToken,
+                    targetProject = targetProj,
+                    onSuccess = { projUrl, anonKey ->
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            provisioningProgress.value = 1.0f
+                            provisioningStatusText.value = "SwapnoPay Cloud Ready!"
+                            oauthStep.value = OAuthStep.COMPLETE
+                            logFirebaseStatus("Project $targetRef connected successfully via Supabase Management API!")
+                            runSupabaseSystemTest()
+                        }
+                    },
+                    onFailure = { err ->
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            managementApiError.value = err
+                            oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
+                        }
+                    }
+                )
+                return@launch
+            }
+
+            // 2. Direct Supabase Management API path for creating new project
+            if (isNew && !mToken.isNullOrBlank()) {
+                val orgId = controlPlaneOrgs.value.firstOrNull()?.id ?: orgSlug
+                val name = projectName.ifBlank { "SwapnoPay Merchant ${System.currentTimeMillis() % 10000}" }
+                val dbPass = java.util.UUID.randomUUID().toString().replace("-", "").take(16) + "Aa1!"
+
+                if (orgId.isNotBlank()) {
+                    var createError: String? = null
+                    com.example.data.remote.SupabaseClient.createSupabaseProject(
+                        managementToken = mToken,
+                        organizationId = orgId,
+                        projectName = name,
+                        dbPass = dbPass,
+                        onSuccess = { ref -> targetRef = ref },
+                        onFailure = { err -> createError = err }
+                    )
+
+                    if (createError != null) {
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            managementApiError.value = createError
+                            oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
+                        }
+                        return@launch
+                    }
+
+                    var attempts = 0
+                    var keysFound = false
+                    val maxAttempts = 25
+                    while (attempts < maxAttempts && !keysFound) {
+                        kotlinx.coroutines.delay(3000)
+                        attempts++
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                            provisioningProgress.value = (0.25f + (attempts.toFloat() / maxAttempts.toFloat()) * 0.5f).coerceAtMost(0.85f)
+                            provisioningStatusText.value = "Initializing new project (${attempts * 3}s)..."
+                        }
+                        com.example.data.remote.SupabaseClient.fetchSupabaseProjectKeys(
+                            managementToken = mToken,
+                            projectRef = targetRef,
+                            onSuccess = { keys ->
+                                val anonKey = keys.find { it.name.equals("anon", ignoreCase = true) || it.name.equals("publishable", ignoreCase = true) }?.apiKey
+                                if (!anonKey.isNullOrBlank()) {
+                                    keysFound = true
+                                    val projectUrl = "https://$targetRef.supabase.co"
+                                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                        connectSupabase(
+                                            url = projectUrl,
+                                            anonKey = anonKey,
+                                            name = name
+                                        )
+                                        provisioningProgress.value = 1.0f
+                                        provisioningStatusText.value = "SwapnoPay Cloud Ready!"
+                                        oauthStep.value = OAuthStep.COMPLETE
+                                        runSupabaseSystemTest()
+                                    }
+                                }
+                            },
+                            onFailure = { /* retry next interval */ }
+                        )
+                    }
+
+                    if (keysFound) return@launch
+                }
+            }
+
             if (isNew) {
                 val effectiveOrg = orgSlug.ifBlank { controlPlaneOrgs.value.firstOrNull()?.slug ?: "personal" }
                 val name = projectName.ifBlank { "SwapnoPay Merchant ${System.currentTimeMillis() % 10000}" }
@@ -3752,6 +3833,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         oauthClientId.value = targetClientId
         val pkce = com.example.data.remote.SupabaseClient.generatePkcePair()
         pendingPkceVerifier.value = pkce.codeVerifier
+        try {
+            securityPrefs.edit().putString("pending_pkce_verifier", pkce.codeVerifier).apply()
+        } catch (e: Exception) {
+            Log.w("AppViewModel", "Failed to cache pkce verifier", e)
+        }
 
         val authUrl = android.net.Uri.parse("https://api.supabase.com/v1/oauth/authorize").buildUpon()
             .appendQueryParameter("client_id", targetClientId)
@@ -3766,6 +3852,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
+            isExternalActivityExpected = true
             context.startActivity(intent)
         } catch (e: Exception) {
             managementApiError.value = "Unable to launch browser: ${e.message}"
@@ -3773,7 +3860,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun handleOAuthCodeReceived(code: String) {
-        val verifier = pendingPkceVerifier.value ?: ""
+        val verifier = pendingPkceVerifier.value?.ifBlank { null }
+            ?: (try { securityPrefs.getString("pending_pkce_verifier", "") } catch (e: Exception) { "" }) ?: ""
         val clientId = oauthClientId.value.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }
         val clientSecret = oauthClientSecret.value
 
@@ -3788,24 +3876,69 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 codeVerifier = verifier,
                 redirectUri = "swapnopay://supabase-oauth-callback",
                 onSuccess = { accessToken, _ ->
+                    currentManagementToken.value = accessToken
+                    try {
+                        securityPrefs.edit().putString("saved_management_token", accessToken).apply()
+                    } catch (e: Exception) {
+                        Log.w("AppViewModel", "Failed to cache management token", e)
+                    }
+
+                    // Background fetch organizations
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        com.example.data.remote.SupabaseClient.fetchSupabaseOrganizations(
+                            managementToken = accessToken,
+                            onSuccess = { orgs ->
+                                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    controlPlaneOrgs.value = orgs.map {
+                                        com.example.data.repository.SupabaseConnectionRepository.OrganizationItem(
+                                            id = it.id,
+                                            name = it.name,
+                                            slug = it.slug
+                                        )
+                                    }
+                                }
+                            },
+                            onFailure = { /* non-fatal */ }
+                        )
+                    }
+
                     fetchSupabaseProjectsList(
                         managementToken = accessToken,
                         onSuccess = { projects ->
-                            if (projects.isNotEmpty()) {
-                                val firstProj = projects.first()
-                                connectViaManagementApi(
-                                    token = accessToken,
-                                    targetProject = firstProj,
-                                    onSuccess = { url, anon ->
-                                        logFirebaseStatus("Authorized via Supabase OAuth 2.0 & connected to project: ${firstProj.name}")
-                                    },
-                                    onFailure = { err ->
-                                        managementApiError.value = err
+                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                isFetchingManagementProjects.value = false
+                                managementProjectsList.value = projects
+                                controlPlaneProjects.value = projects.map {
+                                    com.example.data.repository.SupabaseConnectionRepository.ProjectItem(
+                                        id = it.id,
+                                        name = it.name,
+                                        organizationId = it.organizationId,
+                                        region = it.region,
+                                        status = it.status
+                                    )
+                                }
+                                if (projects.isNotEmpty()) {
+                                    selectedControlPlaneProjectRef.value = projects.first().id
+                                    if (projects.size == 1) {
+                                        val onlyProj = projects.first()
+                                        connectViaManagementApi(
+                                            token = accessToken,
+                                            targetProject = onlyProj,
+                                            onSuccess = { url, anon ->
+                                                oauthStep.value = OAuthStep.COMPLETE
+                                                logFirebaseStatus("Authorized via Supabase OAuth 2.0 & connected to project: ${onlyProj.name}")
+                                                runSupabaseSystemTest()
+                                            },
+                                            onFailure = { err ->
+                                                managementApiError.value = err
+                                                oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
+                                            }
+                                        )
+                                    } else {
+                                        oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
                                     }
-                                )
-                            } else {
-                                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                                    isFetchingManagementProjects.value = false
+                                } else {
+                                    oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
                                     managementApiError.value = "No projects found under authorized Supabase account."
                                 }
                             }
@@ -3930,6 +4063,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         supabaseSetupProgress.value = 8
         systemTestError.value = null
         systemTestSuccess.value = false
+        oauthStep.value = OAuthStep.COMPLETE
 
         val id = _activeProfile.value.id
         val newProfile = com.example.data.local.SupabaseProfileEntity(
@@ -7190,6 +7324,9 @@ function executePayment() {
                 val isReal = supabaseSel.supabaseUrl.isNotEmpty() && supabaseSel.supabaseUrl != "https://abc123xyz.supabase.co" && supabaseSel.supabaseUrl != "https://def456uvw.supabase.co"
                 supabaseConnected.value = isReal
                 supabaseSetupProgress.value = if (isReal) 9 else 0
+                if (isReal) {
+                    oauthStep.value = OAuthStep.COMPLETE
+                }
                 _supabaseUrlInput.value = supabaseSel.supabaseUrl
                 _supabaseAnonKeyInput.value = supabaseSel.anonKey
                 syncAllScreensToSupabase()

@@ -36,6 +36,12 @@ object SupabaseClient {
         val apiKey: String
     )
 
+    data class SupabaseOrganization(
+        val id: String,
+        val name: String,
+        val slug: String
+    )
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -1911,6 +1917,105 @@ object SupabaseClient {
         } catch (e: Exception) {
             Log.e("SupabaseClient", "fetchSupabaseProjectKeys Error", e)
             onFailure(e.localizedMessage ?: "Failed to fetch project keys from Supabase.")
+        }
+    }
+
+    // 22b. SUPABASE MANAGEMENT API: FETCH USER ORGANIZATIONS
+    suspend fun fetchSupabaseOrganizations(
+        managementToken: String,
+        onSuccess: (List<SupabaseOrganization>) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val cleanToken = managementToken.trim()
+        if (cleanToken.isEmpty()) {
+            onFailure("Management API Access Token cannot be empty.")
+            return
+        }
+        val endpoint = "https://api.supabase.com/v1/organizations"
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("Authorization", "Bearer $cleanToken")
+            .addHeader("Content-Type", "application/json")
+            .get()
+            .build()
+
+        try {
+            withContext(Dispatchers.IO) {
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && bodyStr != null) {
+                        val jsonArray = JSONArray(bodyStr)
+                        val orgList = mutableListOf<SupabaseOrganization>()
+                        for (i in 0 until jsonArray.length()) {
+                            val obj = jsonArray.getJSONObject(i)
+                            orgList.add(
+                                SupabaseOrganization(
+                                    id = obj.optString("id", ""),
+                                    name = obj.optString("name", "Organization"),
+                                    slug = obj.optString("slug", obj.optString("id", ""))
+                                )
+                            )
+                        }
+                        onSuccess(orgList)
+                    } else {
+                        val errorDesc = response.parseError(bodyStr)
+                        onFailure("Organizations Error (${response.code}): $errorDesc")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseClient", "fetchSupabaseOrganizations Error", e)
+            onFailure(e.localizedMessage ?: "Failed to fetch organizations from Supabase.")
+        }
+    }
+
+    // 22c. SUPABASE MANAGEMENT API: CREATE PROJECT DIRECTLY
+    suspend fun createSupabaseProject(
+        managementToken: String,
+        organizationId: String,
+        projectName: String,
+        dbPass: String,
+        region: String = "ap-southeast-1",
+        onSuccess: (projectRef: String) -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val cleanToken = managementToken.trim()
+        val endpoint = "https://api.supabase.com/v1/projects"
+        val bodyJson = JSONObject().apply {
+            put("name", projectName)
+            put("organization_id", organizationId)
+            put("db_pass", dbPass)
+            put("region", region)
+            put("plan", "free")
+        }.toString()
+
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("Authorization", "Bearer $cleanToken")
+            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        try {
+            withContext(Dispatchers.IO) {
+                client.newCall(request).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && bodyStr != null) {
+                        val json = JSONObject(bodyStr)
+                        val ref = json.optString("id", "")
+                        if (ref.isNotBlank()) {
+                            onSuccess(ref)
+                        } else {
+                            onFailure("Project creation returned empty reference ID.")
+                        }
+                    } else {
+                        val errorDesc = response.parseError(bodyStr)
+                        onFailure("Project Creation Error (${response.code}): $errorDesc")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseClient", "createSupabaseProject Error", e)
+            onFailure(e.localizedMessage ?: "Failed to create project via Supabase Management API.")
         }
     }
 
