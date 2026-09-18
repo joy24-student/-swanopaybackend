@@ -216,7 +216,8 @@ export async function notifyWaitingCustomersMerchantOnline(merchantId, merchantN
   if (!resolvedMerchantName) {
     try {
       const admin = getAdminClient()
-      if (admin) {
+      const isMerchantUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
+      if (admin && isMerchantUuid) {
         const { data: mData } = await admin
           .from('merchants')
           .select('business_name')

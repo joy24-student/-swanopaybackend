@@ -276,6 +276,32 @@ export async function updateOrderStatusOnMerchantDB(merchantId, orderId, status,
       return false
     }
 
+    if (dbStatus === 'CANCELLED') {
+      try {
+        const { data: orderData } = await merchantClient
+          .from('orders')
+          .select('id')
+          .eq(isUuid ? 'id' : 'tran_id', orderId)
+          .maybeSingle()
+        if (orderData?.id) {
+          const { data: items } = await merchantClient
+            .from('order_items')
+            .select('product_id, quantity')
+            .eq('order_id', orderData.id)
+          if (items && items.length > 0) {
+            for (const item of items) {
+              if (item.product_id && item.quantity > 0) {
+                await merchantClient.rpc('increment_product_stock', {
+                  p_id: item.product_id,
+                  qty: item.quantity
+                }).catch(() => {})
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     console.log(`[merchant-db] ✅ Order ${orderId} updated to ${status} on merchant ${merchantId} DB`)
     return true
   } catch (err) {
@@ -950,10 +976,6 @@ export async function getAdminSystemOverview(heartbeatMap = null, io = null) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function submitMerchantKyc(payload) {
-  const { data, error } = await getAdminClient().rpc('submit_platform_merchant_kyc', { p_submission: payload })
-  if (error) throw new Error('KYC was not saved: ' + error.message)
-  if (!data?.id) throw new Error('KYC was not saved: merchant not found')
-  return data
   const admin = getAdminClient()
   try {
     const { data, error } = await admin.rpc('submit_platform_merchant_kyc', { p_submission: payload })
@@ -961,7 +983,7 @@ export async function submitMerchantKyc(payload) {
       return data
     }
     if (error) {
-      console.warn('[admin-supabase] submit_platform_merchant_kyc RPC notice:', error.message)
+      console.warn('[admin-supabase] submit_platform_merchant_kyc RPC notice (will use direct update):', error.message)
     }
   } catch (rpcErr) {
     console.warn('[admin-supabase] submit_platform_merchant_kyc RPC exception, falling back to direct table update:', rpcErr.message)
@@ -1010,7 +1032,23 @@ export async function submitMerchantKyc(payload) {
     throw new Error('KYC was not saved: ' + updateError.message)
   }
   if (!updatedMerchant) {
-    throw new Error('KYC was not saved: merchant not found in admin database')
+    // If merchant record doesn't exist yet, insert it
+    const newMerchant = {
+      id: merchantId,
+      user_id: merchantId,
+      business_name: payload.nid_name || 'Store Merchant',
+      status: 'PENDING_VERIFICATION',
+      ...updates
+    }
+    const { data: inserted, error: insertErr } = await admin
+      .from('merchants')
+      .insert(newMerchant)
+      .select()
+      .maybeSingle()
+    if (insertErr || !inserted) {
+      throw new Error('KYC was not saved: merchant not found in admin database')
+    }
+    updatedMerchant = inserted
   }
 
   // Record audit entry in merchant_kyc_submissions
@@ -1026,6 +1064,15 @@ export async function submitMerchantKyc(payload) {
       liveness_passed: true,
       ocr_raw_text: payload.ocr_raw_text || '',
       status: 'PENDING',
+      // Store enriched NID OCR fields in metadata JSON column (no new schema columns needed)
+      metadata: {
+        name_bangla:  payload.name_bangla  || null,
+        name_english: payload.name_english || null,
+        father_name:  payload.father_name  || null,
+        mother_name:  payload.mother_name  || null,
+        blood_group:  payload.blood_group  || null,
+        doc_type:     payload.doc_type     || null,
+      },
     })
   } catch (auditErr) {
     console.warn('[admin-supabase] merchant_kyc_submissions audit insert notice:', auditErr.message)
@@ -1044,13 +1091,6 @@ export async function listPendingKycSubmissions() {
 
 export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_by = 'ADMIN' }) {
   if (!['APPROVE', 'VERIFY', 'REJECT'].includes(action)) throw new Error('Invalid review action')
-  const { data, error } = await getAdminClient().rpc('review_platform_merchant_kyc', {
-    p_merchant_id: merchantId, p_status: action === 'REJECT' ? 'REJECTED' : 'VERIFIED',
-    p_reason: reason || '', p_reviewer: reviewed_by,
-  })
-  if (error) throw new Error('KYC review was not saved: ' + error.message)
-  if (!data?.id) throw new Error('KYC merchant not found')
-  return data
   const status = action === 'REJECT' ? 'REJECTED' : 'VERIFIED'
   const admin = getAdminClient()
   try {
@@ -1059,6 +1099,9 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
       p_reason: reason || '', p_reviewer: reviewed_by,
     })
     if (!error && data?.id) return data
+    if (error) {
+      console.warn('[admin-supabase] review_platform_merchant_kyc RPC notice (will use direct update):', error.message)
+    }
   } catch (rpcErr) {
     console.warn('[admin-supabase] review_platform_merchant_kyc RPC notice:', rpcErr.message)
   }
@@ -1077,8 +1120,14 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
     // Ensure 3-month free trial is set upon verification if not already present
     updates.trial_ends_at = new Date(Date.now() + 90 * 86400000).toISOString()
   }
-  const { data: mData, error: mErr } = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
+  let { data: mData, error: mErr } = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
+  if (!mData) {
+    const res = await admin.from('merchants').update(updates).eq('user_id', merchantId).select().maybeSingle()
+    mData = res.data
+    mErr = res.error
+  }
   if (mErr) throw new Error('KYC review was not saved: ' + mErr.message)
+  if (!mData) throw new Error('KYC merchant not found')
 
   try {
     await admin.from('merchant_kyc_submissions')
@@ -1089,7 +1138,7 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
         rejection_reason: updates.kyc_rejection_reason,
         updated_at: nowIso
       })
-      .eq('merchant_id', merchantId)
+      .eq('merchant_id', mData.id)
       .eq('status', 'PENDING')
   } catch (_) {}
 
@@ -1310,7 +1359,8 @@ export async function createSubscriptionOrder({ merchantId, planType, method = '
   } catch (_) {}
 
   let merchant = null
-  if (admin) {
+  const isMerchantUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
+  if (admin && isMerchantUuid) {
     try {
       const { data } = await admin
         .from('merchants')
@@ -1402,7 +1452,8 @@ export async function verifyAndActivateSubscription({ merchantId, orderId, trxId
 
   // Retrieve merchant and verify NID existence
   let merchant = null
-  if (admin) {
+  const isMerchantUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
+  if (admin && isMerchantUuid) {
     try {
       const { data } = await admin
         .from('merchants')
@@ -1520,3 +1571,191 @@ export async function verifyAndActivateSubscription({ merchantId, orderId, trxId
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// MERCHANT APP PIN MANAGEMENT
+// The raw 4-digit PIN is NEVER stored. Only a SHA-256 hex hash.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Store or update the SHA-256 hash of a merchant's 4-digit PIN.
+ * Supports updating existing merchant or upserting initial record during onboarding.
+ * @param {string} merchantId - The merchant's UUID or user_id
+ * @param {string} pinHash    - SHA-256 hex string of the PIN
+ * @param {string} [userEmail]- Optional user email
+ * @param {string} [userId]   - Optional platform auth user UUID
+ */
+export async function setPinHash(merchantId, pinHash, userEmail = null, userId = null) {
+  const admin = getAdminClient()
+  const uid = userId || merchantId
+  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null
+  const nowIso = new Date().toISOString()
+
+  // 1. Try by id first
+  let { data, error } = await admin
+    .from('merchants')
+    .update({ app_pin_hash: pinHash, pin_reset_requested: false, updated_at: nowIso })
+    .eq('id', merchantId)
+    .select('id, user_id, app_pin_hash, pin_reset_requested')
+    .maybeSingle()
+
+  // 2. Try by user_id
+  if (!data && uid) {
+    const res = await admin
+      .from('merchants')
+      .update({ app_pin_hash: pinHash, pin_reset_requested: false, updated_at: nowIso })
+      .eq('user_id', uid)
+      .select('id, user_id, app_pin_hash, pin_reset_requested')
+      .maybeSingle()
+    if (res.data) data = res.data
+  }
+
+  // 3. Try by email
+  if (!data && cleanEmail) {
+    const res = await admin
+      .from('merchants')
+      .update({ app_pin_hash: pinHash, pin_reset_requested: false, updated_at: nowIso })
+      .ilike('email', cleanEmail)
+      .select('id, user_id, app_pin_hash, pin_reset_requested')
+      .maybeSingle()
+    if (res.data) data = res.data
+  }
+
+  // 4. If merchant record does not exist yet (e.g. newly signed-up user in onboarding step 2),
+  //    UPSERT the initial merchant row so their PIN and account are bound in admin database!
+  if (!data) {
+    const newMerchant = {
+      id: merchantId,
+      user_id: uid,
+      app_pin_hash: pinHash,
+      pin_reset_requested: false,
+      status: 'PENDING_VERIFICATION',
+      created_at: nowIso,
+      updated_at: nowIso,
+    }
+    if (cleanEmail) newMerchant.email = cleanEmail
+
+    const res = await admin
+      .from('merchants')
+      .upsert(newMerchant)
+      .select('id, user_id, app_pin_hash, pin_reset_requested')
+      .maybeSingle()
+
+    if (res.error) {
+      console.error('[setPinHash] initial upsert error:', res.error.message)
+      throw new Error('PIN initial insert failed: ' + res.error.message)
+    }
+    data = res.data || newMerchant
+  }
+
+  if (error && !data) throw new Error('PIN update failed: ' + error.message)
+  return data
+}
+
+/**
+ * Fetch the stored PIN hash and reset flag for a merchant.
+ */
+export async function getPinHash(merchantId, userEmail = null, userId = null) {
+  const admin = getAdminClient()
+  const uid = userId || merchantId
+  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null
+
+  // 1. By id
+  let { data } = await admin
+    .from('merchants')
+    .select('id, user_id, app_pin_hash, pin_reset_requested')
+    .eq('id', merchantId)
+    .maybeSingle()
+
+  // 2. By user_id
+  if (!data && uid) {
+    const res = await admin
+      .from('merchants')
+      .select('id, user_id, app_pin_hash, pin_reset_requested')
+      .eq('user_id', uid)
+      .maybeSingle()
+    if (res.data) data = res.data
+  }
+
+  // 3. By email
+  if (!data && cleanEmail) {
+    const res = await admin
+      .from('merchants')
+      .select('id, user_id, app_pin_hash, pin_reset_requested')
+      .ilike('email', cleanEmail)
+      .maybeSingle()
+    if (res.data) data = res.data
+  }
+
+  return data || null
+}
+
+/**
+ * Admin action: clear the merchant's PIN hash so they must set a new one.
+ */
+export async function clearPinHash(merchantId, userId = null) {
+  const admin = getAdminClient()
+  const uid = userId || merchantId
+  const nowIso = new Date().toISOString()
+
+  let { data, error } = await admin
+    .from('merchants')
+    .update({ app_pin_hash: null, pin_reset_requested: false, updated_at: nowIso })
+    .eq('id', merchantId)
+    .select('id, app_pin_hash, pin_reset_requested')
+    .maybeSingle()
+
+  if (!data && uid) {
+    const res = await admin
+      .from('merchants')
+      .update({ app_pin_hash: null, pin_reset_requested: false, updated_at: nowIso })
+      .eq('user_id', uid)
+      .select('id, app_pin_hash, pin_reset_requested')
+      .maybeSingle()
+    data = res.data
+    error = res.error
+  }
+
+  if (error && !data) throw new Error('PIN clear failed: ' + error.message)
+  return data
+}
+
+/**
+ * Merchant requests an admin PIN reset (sets pin_reset_requested = true).
+ */
+export async function requestPinReset(merchantId, userEmail = null, userId = null) {
+  const admin = getAdminClient()
+  const uid = userId || merchantId
+  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null
+  const nowIso = new Date().toISOString()
+
+  let { data, error } = await admin
+    .from('merchants')
+    .update({ pin_reset_requested: true, updated_at: nowIso })
+    .eq('id', merchantId)
+    .select('id, pin_reset_requested')
+    .maybeSingle()
+
+  if (!data && uid) {
+    const res = await admin
+      .from('merchants')
+      .update({ pin_reset_requested: true, updated_at: nowIso })
+      .eq('user_id', uid)
+      .select('id, pin_reset_requested')
+      .maybeSingle()
+    data = res.data
+    error = res.error
+  }
+
+  if (!data && cleanEmail) {
+    const res = await admin
+      .from('merchants')
+      .update({ pin_reset_requested: true, updated_at: nowIso })
+      .ilike('email', cleanEmail)
+      .select('id, pin_reset_requested')
+      .maybeSingle()
+    if (res.data) data = res.data
+  }
+
+  if (error && !data) throw new Error('PIN reset request failed: ' + error.message)
+  return data
+}

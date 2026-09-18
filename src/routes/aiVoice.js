@@ -40,7 +40,6 @@ export function aiVoiceRouter(io) {
         merchant_id: merchantId,
         agent_name: 'তানিয়া (Tania)',
         language: 'bn-BD', // 'bn-BD' | 'en-US' | 'mixed'
-        language: 'bn-BD',
         voice_gender: 'female',
         auto_answer: true,
         business_name: 'স্বপ্নপে স্টোর',
