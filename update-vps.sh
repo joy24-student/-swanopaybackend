@@ -31,10 +31,9 @@ cd "$TARGET_DIR"
 echo -e "${YELLOW}📍 Working in: $TARGET_DIR${NC}"
 
 # 2. Pull latest changes safely
-echo -e "${YELLOW}📥 Pulling latest code from origin/main...${NC}"
-git stash 2>/dev/null || true
+echo -e "${YELLOW}📥 Syncing latest code with origin/main...${NC}"
 git fetch origin main
-git pull origin main
+git reset --hard origin/main
 
 # 3. Ensure required directories and permissions
 echo -e "${YELLOW}📁 Verifying storage directories...${NC}"
