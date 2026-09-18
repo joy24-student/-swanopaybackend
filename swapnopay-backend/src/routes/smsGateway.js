@@ -36,11 +36,16 @@ export function smsGatewayRouter(io, heartbeatMap = new Map()) {
       req.merchant_id = apiKey.startsWith('sp_gw_m_')
         ? apiKey.replace('sp_gw_m_', '').split('_')[0]
         : apiKey
-    } else {
-      // Default sandbox / demo merchant if not provided
-      req.merchant_id = req.query.merchant_id || req.body?.merchant_id || '00000000-0000-0000-0000-000000000001'
+      return next()
     }
-    next()
+
+    // Allow sandbox / demo merchant ONLY in test or development environments
+    if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+      req.merchant_id = req.query.merchant_id || req.body?.merchant_id || '00000000-0000-0000-0000-000000000001'
+      return next()
+    }
+
+    return res.status(401).json({ ok: false, error: 'Unauthorized: Missing x-api-key header' })
   }
 
   // ────────────────────────────────────────────────────────────────────────────

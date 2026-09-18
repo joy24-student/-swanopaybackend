@@ -60,17 +60,17 @@ fun ReportsMainScreen(viewModel: AppViewModel) {
     val isDark by viewModel.isDarkMode.collectAsState()
     SideEffect { isDarkModeGlobal = isDark }
 
-    // Dynamic Dual-Theme Colors (Enterprise Slate Dark & Crisp Executive White Mode)
-    val screenBg = if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
-    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
-    val cardBorder = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-    val primaryText = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val secondaryText = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+    // Dynamic Dual-Theme Colors (Matching New Sale Dark Mode Canvas & Crisp Executive White Mode)
+    val screenBg = if (isDark) Color(0xFF090806) else Color(0xFFF8FAFC)
+    val cardBg = if (isDark) Color(0xFF13100C) else Color.White
+    val cardBorder = if (isDark) Color(0xFF2C2213) else Color(0xFFE2E8F0)
+    val primaryText = if (isDark) Color.White else Color(0xFF0F172A)
+    val secondaryText = if (isDark) Color(0xFF9CA3AF) else Color(0xFF64748B)
     val goldAccent = Color(0xFFF59E0B)
     val greenSuccess = Color(0xFF10B981)
     val redDanger = Color(0xFFEF4444)
     val blueAccent = Color(0xFF3B82F6)
-    val softBg = if (isDark) Color(0xFF131B2E) else Color(0xFFF1F5F9)
+    val softBg = if (isDark) Color(0xFF1C1710) else Color(0xFFF1F5F9)
 
     // Data States from ViewModel
     val posSales by viewModel.posSales.collectAsState()

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient'
+import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, ADMIN_SUPABASE_URL } from '../adminSupabaseClient'
 import { Link } from 'react-router-dom'
 import {
   ShieldCheck,
@@ -59,16 +59,42 @@ export default function KycReviews() {
         .order('kyc_submitted_at', { ascending: false, nullsFirst: false })
 
       if (error) throw error
+
+      // Also fetch submission audits to augment missing document URLs
+      let subData: any[] | null = null
+      try {
+        const res = await adminSupabase
+          .from('merchant_kyc_submissions')
+          .select('*')
+          .order('created_at', { ascending: false })
+        subData = res.data
+      } catch (_) {}
+
       if (data) {
-        setSubmissions(data as KycRecord[])
-        if (!selectedMerchant && data.length > 0) {
-          const firstPending = data.find((m: any) => m.kyc_status === 'PENDING' || m.kyc_status === 'PENDING_REVIEW')
-          setSelectedMerchant(firstPending || data[0])
+        const mergedList = (data as KycRecord[]).map(m => {
+          const sub = subData?.find(s => s.merchant_id === m.id || s.merchant_id === m.user_id)
+          return {
+            ...m,
+            nid_front_url: m.nid_front_url || sub?.nid_front_url,
+            nid_back_url: m.nid_back_url || sub?.nid_back_url,
+            face_photo_url: m.face_photo_url || sub?.face_photo_url,
+            nid_number: m.nid_number || sub?.nid_number,
+            nid_name: m.nid_name || sub?.nid_name,
+            nid_dob: m.nid_dob || sub?.nid_dob,
+          }
+        })
+        setSubmissions(mergedList)
+        if (!selectedMerchant && mergedList.length > 0) {
+          const firstPending = mergedList.find(m => m.kyc_status === 'PENDING' || m.kyc_status === 'PENDING_REVIEW')
+          setSelectedMerchant(firstPending || mergedList[0])
+        } else if (selectedMerchant) {
+          const updatedSelected = mergedList.find(m => m.id === selectedMerchant.id)
+          if (updatedSelected) setSelectedMerchant(updatedSelected)
         }
       }
     } catch (err: any) {
       console.error('[KycReviews] fetch error:', err.message)
-      setActionMessage({ type: 'error', text: 'KYC records could not be loaded: ' + err.message })
+      setActionMessage({ type: 'error', text: 'KYC records notice: ' + err.message })
     } finally {
       setLoading(false)
     }
@@ -88,13 +114,6 @@ export default function KycReviews() {
       adminSupabase.removeChannel(channel)
     }
   }, [])
-
-  function formatImageUrl(url?: string | null) {
-    if (!url) return null
-    if (url.startsWith('http') || url.startsWith('data:')) return url
-    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
-    return `${backend.replace(/\/$/, '')}/${url.replace(/^\//, '')}`
-  }
 
   async function handleApprove(merchantId: string) {
     setActionLoading(true)
@@ -397,11 +416,18 @@ export default function KycReviews() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
                     NID Front Side
                   </div>
-                  {selectedMerchant.nid_front_url ? (
+                  {selectedMerchant.nid_front_url && formatKycImageUrl(selectedMerchant.nid_front_url) ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.nid_front_url) || ''}
+                      src={formatKycImageUrl(selectedMerchant.nid_front_url)!}
                       alt="NID Front"
-                      onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.nid_front_url))}
+                      onClick={() => setPreviewImage(formatKycImageUrl(selectedMerchant.nid_front_url))}
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (el.src.includes('/uploads/kyc/')) {
+                          const file = el.src.split('/uploads/kyc/')[1]
+                          el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${selectedMerchant.id}/${file}`
+                        }
+                      }}
                       style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (
@@ -421,11 +447,18 @@ export default function KycReviews() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
                     NID Back Side
                   </div>
-                  {selectedMerchant.nid_back_url ? (
+                  {selectedMerchant.nid_back_url && formatKycImageUrl(selectedMerchant.nid_back_url) ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.nid_back_url) || ''}
+                      src={formatKycImageUrl(selectedMerchant.nid_back_url)!}
                       alt="NID Back"
-                      onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.nid_back_url))}
+                      onClick={() => setPreviewImage(formatKycImageUrl(selectedMerchant.nid_back_url))}
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (el.src.includes('/uploads/kyc/')) {
+                          const file = el.src.split('/uploads/kyc/')[1]
+                          el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${selectedMerchant.id}/${file}`
+                        }
+                      }}
                       style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (
@@ -445,11 +478,18 @@ export default function KycReviews() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
                     Biometric Selfie
                   </div>
-                  {selectedMerchant.face_photo_url ? (
+                  {selectedMerchant.face_photo_url && formatKycImageUrl(selectedMerchant.face_photo_url) ? (
                     <img
-                      src={formatImageUrl(selectedMerchant.face_photo_url) || ''}
+                      src={formatKycImageUrl(selectedMerchant.face_photo_url)!}
                       alt="Selfie"
-                      onClick={() => setPreviewImage(formatImageUrl(selectedMerchant.face_photo_url))}
+                      onClick={() => setPreviewImage(formatKycImageUrl(selectedMerchant.face_photo_url))}
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (el.src.includes('/uploads/kyc/')) {
+                          const file = el.src.split('/uploads/kyc/')[1]
+                          el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${selectedMerchant.id}/${file}`
+                        }
+                      }}
                       style={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 'var(--radius-xs)', cursor: 'pointer' }}
                     />
                   ) : (

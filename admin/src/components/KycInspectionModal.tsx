@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, FileText, Camera, Check, Loader2 } from 'lucide-react'
-import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient'
+import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, ADMIN_SUPABASE_URL } from '../adminSupabaseClient'
 
 interface KycInspectionModalProps {
   merchant: any | null
@@ -14,26 +14,50 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
   const [isRejecting, setIsRejecting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [frontUrl, setFrontUrl] = useState<string | null>(null)
+  const [backUrl, setBackUrl] = useState<string | null>(null)
+  const [faceUrl, setFaceUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!merchant) return
+    const initialFront = formatKycImageUrl(merchant.nid_front_url)
+    const initialBack = formatKycImageUrl(merchant.nid_back_url)
+    const initialFace = formatKycImageUrl(merchant.face_photo_url)
+
+    setFrontUrl(initialFront)
+    setBackUrl(initialBack)
+    setFaceUrl(initialFace)
+
+    // If any document image is missing on the merchant row, lookup merchant_kyc_submissions
+    if (!initialFront || !initialBack || !initialFace) {
+      adminSupabase
+        .from('merchant_kyc_submissions')
+        .select('nid_front_url, nid_back_url, face_photo_url')
+        .or(`merchant_id.eq.${merchant.id},merchant_id.eq.${merchant.user_id || merchant.id}`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            if (!initialFront && data.nid_front_url) setFrontUrl(formatKycImageUrl(data.nid_front_url))
+            if (!initialBack && data.nid_back_url) setBackUrl(formatKycImageUrl(data.nid_back_url))
+            if (!initialFace && data.face_photo_url) setFaceUrl(formatKycImageUrl(data.face_photo_url))
+          }
+        })
+        .catch(() => {})
+    }
+  }, [merchant])
 
   if (!isOpen || !merchant) return null
 
-  function formatImageUrl(url?: string | null) {
-    if (!url) return null
-    if (url.startsWith('http') || url.startsWith('data:')) return url
-    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
-    return `${backend.replace(/\/$/, '')}/${url.replace(/^\//, '')}`
-  }
-
   async function handleApprove() {
     setLoading(true)
-    const now = new Date().toISOString()
     try {
       await reviewMerchantIdentity(merchant.id, 'APPROVE')
-
       onActionComplete()
       onClose()
     } catch (err: any) {
-      alert('Failed to approve KYC: ' + err.message)
+      alert('Approval notice: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -45,14 +69,12 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
       return
     }
     setLoading(true)
-    const now = new Date().toISOString()
     try {
       await reviewMerchantIdentity(merchant.id, 'REJECT', rejectReason.trim())
-
       onActionComplete()
       onClose()
     } catch (err: any) {
-      alert('Failed to reject KYC: ' + err.message)
+      alert('Rejection notice: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -155,11 +177,19 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
               <span>NID Front</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {formatImageUrl(merchant.nid_front_url) ? (
+              {frontUrl ? (
                 <img
-                  src={formatImageUrl(merchant.nid_front_url)!}
+                  src={frontUrl}
                   alt="NID Front"
-                  onClick={() => setPreviewImage(formatImageUrl(merchant.nid_front_url))}
+                  onClick={() => setPreviewImage(frontUrl)}
+                  onError={(e) => {
+                    // If loading from API domain fails, try Supabase storage fallback
+                    const el = e.currentTarget
+                    if (el.src.includes('/uploads/kyc/')) {
+                      const file = el.src.split('/uploads/kyc/')[1]
+                      el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${merchant.id}/${file}`
+                    }
+                  }}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
                 />
               ) : (
@@ -175,11 +205,18 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
               <span>NID Back</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {formatImageUrl(merchant.nid_back_url) ? (
+              {backUrl ? (
                 <img
-                  src={formatImageUrl(merchant.nid_back_url)!}
+                  src={backUrl}
                   alt="NID Back"
-                  onClick={() => setPreviewImage(formatImageUrl(merchant.nid_back_url))}
+                  onClick={() => setPreviewImage(backUrl)}
+                  onError={(e) => {
+                    const el = e.currentTarget
+                    if (el.src.includes('/uploads/kyc/')) {
+                      const file = el.src.split('/uploads/kyc/')[1]
+                      el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${merchant.id}/${file}`
+                    }
+                  }}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
                 />
               ) : (
@@ -195,11 +232,18 @@ export default function KycInspectionModal({ merchant, isOpen, onClose, onAction
               <span>Face Selfie</span>
             </div>
             <div style={{ height: 160, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {formatImageUrl(merchant.face_photo_url) ? (
+              {faceUrl ? (
                 <img
-                  src={formatImageUrl(merchant.face_photo_url)!}
+                  src={faceUrl}
                   alt="Selfie"
-                  onClick={() => setPreviewImage(formatImageUrl(merchant.face_photo_url))}
+                  onClick={() => setPreviewImage(faceUrl)}
+                  onError={(e) => {
+                    const el = e.currentTarget
+                    if (el.src.includes('/uploads/kyc/')) {
+                      const file = el.src.split('/uploads/kyc/')[1]
+                      el.src = `${ADMIN_SUPABASE_URL}/storage/v1/object/public/kyc-documents/${merchant.id}/${file}`
+                    }
+                  }}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in' }}
                 />
               ) : (

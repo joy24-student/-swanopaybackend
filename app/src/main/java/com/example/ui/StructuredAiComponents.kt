@@ -81,9 +81,6 @@ fun StructuredAiMessageBubble(
     val cardBorder = if (isDarkMode) Color(0xFF232B3E) else Color(0xFFE2E8F0)
     val userBubbleBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFF0F172A)
 
-    var isCopied by remember { mutableStateOf(false) }
-    var isSpeaking by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,104 +134,6 @@ fun StructuredAiMessageBubble(
                         .fillMaxWidth()
                         .padding(14.dp)
                 ) {
-                    // TOP BAR: Assistant Identity, Sparkle Badge & Utility Actions
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(Color(0xFF8B5CF6), Color(0xFF6366F1))
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            Column {
-                                Text(
-                                    text = "AI Business Copilot",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkMode) Color(0xFFC084FC) else Color(0xFF7C3AED)
-                                )
-                                Text(
-                                    text = "স্মার্ট ব্যবসায়িক বিশ্লেষণ",
-                                    fontSize = 10.sp,
-                                    color = textMuted
-                                )
-                            }
-                        }
-
-                        // Copy & Audio Readout Actions
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // Speaker / TTS Button
-                            IconButton(
-                                onClick = {
-                                    val plain = stripMarkdownToPlainText(rawContent)
-                                    if (onSpeak != null) {
-                                        onSpeak(plain)
-                                    } else if (ttsEngine != null) {
-                                        ttsEngine.speak(plain, TextToSpeech.QUEUE_FLUSH, null, "copilot_msg")
-                                    }
-                                    isSpeaking = true
-                                },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
-                                    contentDescription = "Read aloud",
-                                    tint = if (isSpeaking) Color(0xFF10B981) else textMuted,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            // Copy Button
-                            IconButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("Copilot Response", rawContent)
-                                    clipboard.setPrimaryClip(clip)
-                                    isCopied = true
-                                    Toast.makeText(context, "মেসেজ কপি করা হয়েছে", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
-                                    contentDescription = "Copy text",
-                                    tint = if (isCopied) Color(0xFF10B981) else textMuted,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(
-                        color = if (isDarkMode) Color(0xFF1E2638) else Color(0xFFF1F5F9),
-                        thickness = 1.dp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
                     // PARSED STRUCTURED CONTENT BLOCKS
                     val parsedBlocks = remember(rawContent) { parseMarkdownBlocks(rawContent) }
                     Column(

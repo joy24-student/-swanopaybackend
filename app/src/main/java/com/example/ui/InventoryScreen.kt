@@ -128,16 +128,6 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     }
                 }
             )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddDialog = true },
-                icon = { Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black) },
-                text = { Text("নতুন পণ্য (Add Product)", fontWeight = FontWeight.Bold, color = Color.Black) },
-                containerColor = yellowPrimary,
-                contentColor = Color.Black,
-                shape = RoundedCornerShape(16.dp)
-            )
         }
     ) { innerPadding ->
         Column(
@@ -203,12 +193,15 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     onClick = { showAddDialog = true },
                     modifier = Modifier.height(50.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = yellowPrimary),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = yellowPrimary,
+                        contentColor = Color.Black
+                    ),
                     contentPadding = PaddingValues(horizontal = 14.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Add Item", tint = Color.Black, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Item", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 13.sp)
+                    Text("Add Item", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 13.sp, maxLines = 1)
                 }
             }
 
@@ -220,7 +213,7 @@ fun InventoryScreen(viewModel: AppViewModel) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(bottom = 96.dp)
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 // 1. SUMMARY METRICS CARD
                 item {

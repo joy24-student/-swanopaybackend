@@ -1095,8 +1095,7 @@ fun LockScreen(viewModel: AppViewModel) {
     // Check PIN once entered 4 characters
     LaunchedEffect(pinInput) {
         if (pinInput.length == 4) {
-            val validPin = appPin.ifEmpty { "1234" }
-            if (pinInput == validPin) {
+            if (viewModel.verifyPin(pinInput)) {
                 pinError = false
                 kotlinx.coroutines.delay(200)
                 viewModel.unlockAppAndRestore()
@@ -1287,13 +1286,7 @@ fun LockScreen(viewModel: AppViewModel) {
 
                 // Forgot PIN / Password Button
                 TextButton(
-                    onClick = {
-                        android.widget.Toast.makeText(
-                            context,
-                            "For security, re-authenticate with the business owner account to reset the device PIN.",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    },
+                    onClick = { showForgotPinDialog = true },
                     modifier = Modifier.padding(top = 4.dp)
                 ) {
                     Row(
@@ -1329,167 +1322,120 @@ fun LockScreen(viewModel: AppViewModel) {
                 subtitle = "Swipe down or drag handle to dismiss",
                 icon = Icons.Outlined.LockReset
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     if (forgotPinStep == 1) {
-                        Text(
-                            "আপনার নিবন্ধিত মার্চেন্ট মোবাইল নম্বরে পিন পুনরুদ্ধারের ওটিপি পাঠানো হবে:",
-                            fontSize = 13.sp,
-                            color = AppTextSecondary
-                        )
-                        OutlinedTextField(
-                            value = recoveryPhoneInput,
-                            onValueChange = { recoveryPhoneInput = it },
-                            label = { Text("মার্চেন্ট মোবাইল নম্বর") },
-                            singleLine = true,
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = Color(0xFF818CF8)) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF818CF8),
-                                unfocusedBorderColor = AppCardBorderColor,
-                                focusedTextColor = AppTextPrimary,
-                                unfocusedTextColor = AppTextPrimary
-                            ),
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)),
+                            border = BorderStroke(1.dp, Color(0xFF818CF8).copy(alpha = 0.4f)),
                             modifier = Modifier.fillMaxWidth()
-                        )
-                        if (resetErrorMessage.isNotEmpty()) {
-                            Text(resetErrorMessage, color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        HorizontalDivider(color = AppDividerColor, modifier = Modifier.padding(vertical = 4.dp))
-
-                        // Recovery requires an authenticated owner flow; never expose a default PIN.
-                        OutlinedButton(
-                            onClick = {
-                                resetErrorMessage = "Sign in again with the owner account to reset this device PIN."
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF818CF8)),
-                            border = BorderStroke(1.dp, Color(0xFF818CF8))
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Owner re-authentication required", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF818CF8), modifier = Modifier.size(18.dp))
+                                    Text("পিন সিস্টেম", fontWeight = FontWeight.Bold, color = Color(0xFF818CF8), fontSize = 13.sp)
+                                }
+                                Text(
+                                    "আপনার পিন মার্চেন্ট অ্যাকাউন্টের সাথে সংযুক্ত। পিন পুনরুদ্ধার করতে দুটি বিকল্প রয়েছে:",
+                                    fontSize = 12.sp, color = AppTextSecondary, lineHeight = 18.sp
+                                )
+                            }
                         }
+
+                        if (resetErrorMessage.isNotEmpty()) {
+                            Text(resetErrorMessage,
+                                color = if (resetErrorMessage.startsWith("✅")) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showForgotPinDialog = false; viewModel.navigateTo("Login") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) {
+                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("পাসওয়ার্ড দিয়ে লগইন করুন", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("লগইনের পরে নতুন পিন সেট করুন", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { forgotPinStep = 2; resetErrorMessage = "" },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF818CF8)),
+                            border = BorderStroke(1.dp, Color(0xFF818CF8)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) {
+                            Icon(Icons.Default.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("এডমিনের কাছে রিসেটের অনুরোধ", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("এডমিন পিন মুছে দেবেন, নতুন পিন সেট করতে হবে", fontSize = 11.sp)
+                            }
+                        }
+
                     } else if (forgotPinStep == 2) {
+                        Text("এডমিনের কাছে পিন রিসেটের অনুরোধ পাঠান",
+                            fontWeight = FontWeight.Bold, fontSize = 15.sp, color = AppTextPrimary)
                         Text(
-                            "আপনার মোবাইল নম্বর ($recoveryPhoneInput) এ ৪-সংখ্যার ওটিপি কোড পাঠানো হয়েছে।",
-                            fontSize = 13.sp,
-                            color = AppTextSecondary
-                        )
-                        if (sentOtpCode.isNotEmpty()) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                                border = BorderStroke(1.dp, Color(0xFF38BDF8)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(Icons.Default.Sms, contentDescription = null, tint = Color(0xFF38BDF8))
-                                    Text("ওটিপি কোড: $sentOtpCode", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                }
-                            }
-                        }
-                        OutlinedTextField(
-                            value = otpInput,
-                            onValueChange = { if (it.length <= 4) otpInput = it },
-                            label = { Text("৪-সংখ্যার ওটিপি কোড (OTP)") },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF818CF8),
-                                unfocusedBorderColor = AppCardBorderColor,
-                                focusedTextColor = AppTextPrimary,
-                                unfocusedTextColor = AppTextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            "অনুরোধ পাঠানোর পরে এডমিন আপনার পিন মুছে দেবেন। " +
+                            "এরপরে পাসওয়ার্ড দিয়ে লগইন করে নতুন পিন সেট করুন।",
+                            fontSize = 12.sp, color = AppTextSecondary, lineHeight = 18.sp
                         )
                         if (resetErrorMessage.isNotEmpty()) {
-                            Text(resetErrorMessage, color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(resetErrorMessage,
+                                color = if (resetErrorMessage.startsWith("✅")) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                    } else if (forgotPinStep == 3) {
-                        Text(
-                            "আপনার নতুন ৪-সংখ্যার পিন নম্বর সেট করুন:",
-                            fontSize = 13.sp,
-                            color = AppTextSecondary
-                        )
-                        OutlinedTextField(
-                            value = newPinInput,
-                            onValueChange = { if (it.length <= 4) newPinInput = it },
-                            label = { Text("নতুন ৪-ডিজিট পিন (New PIN)") },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF818CF8),
-                                unfocusedBorderColor = AppCardBorderColor,
-                                focusedTextColor = AppTextPrimary,
-                                unfocusedTextColor = AppTextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = confirmNewPinInput,
-                            onValueChange = { if (it.length <= 4) confirmNewPinInput = it },
-                            label = { Text("পিন পুনরায় লিখুন (Confirm PIN)") },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF818CF8),
-                                unfocusedBorderColor = AppCardBorderColor,
-                                focusedTextColor = AppTextPrimary,
-                                unfocusedTextColor = AppTextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (resetErrorMessage.isNotEmpty()) {
-                            Text(resetErrorMessage, color = Color(0xFFEF4444), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            when (forgotPinStep) {
-                                1 -> {
-                                    resetErrorMessage = "Secure PIN recovery requires owner re-authentication and is not available from the lock screen."
+                        Button(
+                            onClick = {
+                                viewModel.requestPinReset { success, msg ->
+                                    resetErrorMessage = if (success) "✅ $msg" else "❌ $msg"
+                                    if (success) forgotPinStep = 3
                                 }
-                                2 -> {
-                                    if (sentOtpCode.isBlank() || otpInput != sentOtpCode) {
-                                        resetErrorMessage = "ভুল ওটিপি কোড! অনুগ্রহ করে সঠিক কোড দিন"
-                                    } else {
-                                        resetErrorMessage = ""
-                                        forgotPinStep = 3
-                                    }
-                                }
-                                3 -> {
-                                    if (newPinInput.length < 4) {
-                                        resetErrorMessage = "পিন অন্তত ৪ সংখ্যার হতে হবে"
-                                    } else if (newPinInput != confirmNewPinInput) {
-                                        resetErrorMessage = "পিন দুটি মেলেনি"
-                                    } else {
-                                        viewModel.updatePin(newPinInput)
-                                        viewModel.unlockApp()
-                                        android.widget.Toast.makeText(context, "✅ নতুন পিন সফলভাবে সংরক্ষিত হয়েছে!", android.widget.Toast.LENGTH_LONG).show()
-                                        showForgotPinDialog = false
-                                        forgotPinStep = 1
-                                        viewModel.navigateTo("Main")
-                                    }
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1), contentColor = Color.White),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Text(
-                            text = when (forgotPinStep) {
-                                1 -> "ওটিপি পাঠান (Send OTP)"
-                                2 -> "ওটিপি যাচাই (Verify)"
-                                else -> "সেভ & আনলক (Save & Unlock)"
                             },
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF818CF8), contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("এডমিনের কাছে অনুরোধ পাঠান", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { forgotPinStep = 1; resetErrorMessage = "" },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTextSecondary),
+                            border = BorderStroke(1.dp, AppCardBorderColor),
+                            shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()
+                        ) { Text("পিছনে যান", fontSize = 13.sp) }
+
+                    } else if (forgotPinStep == 3) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null,
+                            tint = Color(0xFF10B981), modifier = Modifier.size(56.dp))
+                        Text("অনুরোধ পাঠানো হয়েছে!",
+                            fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF10B981))
+                        Text(
+                            "এডমিন যাচাই করে আপনার পিন মুছে দেবেন। " +
+                            "এরপরে পাসওয়ার্ড দিয়ে লগইন করে নতুন পিন সেট করতে পারবেন।",
+                            fontSize = 12.sp, color = AppTextSecondary, lineHeight = 18.sp
                         )
+                        Button(
+                            onClick = {
+                                showForgotPinDialog = false; forgotPinStep = 1; resetErrorMessage = ""
+                                viewModel.navigateTo("Login")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5), contentColor = Color.White),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                        ) {
+                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("পাসওয়ার্ড দিয়ে লগইন করুন", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
+                }
                 }
             }
         }
@@ -3235,6 +3181,9 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                                                 else -> {
                                                                     if (onboardingPin.length < 4) {
                                                                         onboardingPin += key
+                                                                        if (onboardingPin.length == 4) {
+                                                                            viewModel.updatePin(onboardingPin)
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -3700,9 +3649,15 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                         }
                                     }
                                 }
+                                if (currentStep == 2 && onboardingPin.length == 4) {
+                                    viewModel.updatePin(onboardingPin)
+                                }
                                 if (currentStep < 4) {
                                     currentStep++
                                 } else {
+                                    if (onboardingPin.length == 4) {
+                                        viewModel.updatePin(onboardingPin)
+                                    }
                                     viewModel.setOnboarded(true)
                                     viewModel.navigateTo("Main")
                                 }
@@ -11762,7 +11717,9 @@ fun MoreScreen(viewModel: AppViewModel) {
 
                         // Plan Row inside Profile Card
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.navigateTo("Subscription") },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -11792,7 +11749,7 @@ fun MoreScreen(viewModel: AppViewModel) {
                             }
 
                             Button(
-                                onClick = { showPlanSheet = true },
+                                onClick = { viewModel.navigateTo("Subscription") },
                                 colors = ButtonDefaults.buttonColors(containerColor = goldPrimary),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
@@ -12867,7 +12824,7 @@ fun SettingsScreen(viewModel: AppViewModel) {
 
                     Button(
                         onClick = {
-                            if (currentPinInput != appPin) {
+                            if (!viewModel.verifyPin(currentPinInput)) {
                                 pinErrorMessage = "Current PIN is incorrect!"
                             } else if (newPinInput.length < 4) {
                                 pinErrorMessage = "New PIN must be 4 digits"
@@ -12876,7 +12833,7 @@ fun SettingsScreen(viewModel: AppViewModel) {
                             } else {
                                 viewModel.updatePin(newPinInput)
                                 pinErrorMessage = ""
-                                pinSuccessMessage = "PIN updated successfully!"
+                                pinSuccessMessage = "PIN updated and synced to cloud!"
                                 showChangePinDialog = false
                             }
                         },
@@ -16839,11 +16796,11 @@ fun DashboardScreen(viewModel: AppViewModel) {
             QuickActionItem("Scan", Icons.Outlined.PhotoCamera, "QrScanner", goldBg, "কিউআর ও বারকোড স্ক্যানার"),
             QuickActionItem("Inventory", Icons.Outlined.Inventory2, "Inventory", goldBg, "পণ্য তালিকা ও স্টক ব্যবস্থাপনা"),
             QuickActionItem("Customer Due", Icons.Outlined.People, "CustomerLedger", goldBg, "কাস্টমার বাকি খাতা ও কালেকশন"),
-            QuickActionItem("Supplier Due", Icons.Outlined.LocalShipping, "SupplierLedger", goldBg, "মহাজন বা সাপ্লায়ার দেনা খাতা"),
-            QuickActionItem("DPS Savings", Icons.Outlined.AccountBalanceWallet, "Deposits", goldBg, "ডিপিএস ও সঞ্চয় খাতা"),
-            QuickActionItem("Business Loan", Icons.Outlined.MonetizationOn, "Loans", goldBg, "ব্যবসা লোন ও কিস্তি আদায় খাতা"),
-            QuickActionItem("Expense", Icons.Outlined.AccountBalanceWallet, "ExpenseSales", goldBg, "দোকান খরচ ও দৈনন্দিন আয়"),
             QuickActionItem("Reports", Icons.Outlined.BarChart, "Reports", goldBg, "লাভ-ক্ষতি ও ব্যবসায়িক রিপোর্ট"),
+            QuickActionItem("DPS Savings", Icons.Outlined.AccountBalanceWallet, "Deposits", goldBg, "ডিপিএস ও সঞ্চয় খাতা"),
+            QuickActionItem("Expense", Icons.Outlined.AccountBalanceWallet, "ExpenseSales", goldBg, "দোকান খরচ ও দৈনন্দিন আয়"),
+            QuickActionItem("Supplier Due", Icons.Outlined.LocalShipping, "SupplierLedger", goldBg, "মহাজন বা সাপ্লায়ার দেনা খাতা"),
+            QuickActionItem("Business Loan", Icons.Outlined.MonetizationOn, "Loans", goldBg, "ব্যবসা লোন ও কিস্তি আদায় খাতা"),
             QuickActionItem("Invoices", Icons.Outlined.Description, "Invoice", goldBg, "বিক্রয় রশিদ ও চালান প্রিন্ট"),
             QuickActionItem("Digital Pay", Icons.Outlined.CreditCard, "PaymentMethods", goldBg, "বিকাশ, নগদ ও গেটওয়ে পেমেন্ট"),
             QuickActionItem("Sales Log", Icons.Outlined.ReceiptLong, "Sales", goldBg, "পূর্ববর্তী বিক্রয়ের বিস্তারিত তালিকা"),
@@ -19789,23 +19746,29 @@ data class LStep(val bangla: String, val icon: androidx.compose.ui.graphics.vect
 
 data class NidOcrResult(
     val nidNumber: String = "",
-    val name: String = "",
-    val dob: String = "",
+    val docType: String = "",          // "Smart NID (10 Digits)", "Old NID (13/17 Digits)"
+    val nameEnglish: String = "",      // ALL CAPS English name from front face
+    val nameBangla: String = "",       // বাংলা নাম from front face
+    val fatherName: String = "",       // পিতা / Father
+    val motherName: String = "",       // মাতা / Mother
+    val dob: String = "",              // Date of Birth
+    val bloodGroup: String = "",       // A+, B+, O+, AB+, etc.
+    val address: String = "",          // from back side
+    val confidenceScore: Float = 0.85f,
     val rawText: String = ""
 )
 
 fun parseBangladeshNidText(raw: String): NidOcrResult {
+    // ── Bengali digit normalization ──
     val bengaliDigits = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
     val englishDigits = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
     var normalized = raw
-    for (i in 0..9) {
-        normalized = normalized.replace(bengaliDigits[i], englishDigits[i])
-    }
+    for (i in 0..9) { normalized = normalized.replace(bengaliDigits[i], englishDigits[i]) }
 
-    // Standardize Bengali month representations
+    // ── Bengali month normalization ──
     val bengaliMonths = listOf(
-        Regex("""(জানুয়ারি|জানুয়ারী|জানু)""", RegexOption.IGNORE_CASE) to "Jan",
-        Regex("""(ফেব্রুয়ারি|ফেব্রুয়ারী|ফেব্রু)""", RegexOption.IGNORE_CASE) to "Feb",
+        Regex("""(জানুয়ারি|জানুয়ারী|জানু)""", RegexOption.IGNORE_CASE) to "Jan",
+        Regex("""(ফেব্রুয়ারি|ফেব্রুয়ারী|ফেব্রু)""", RegexOption.IGNORE_CASE) to "Feb",
         Regex("""(মার্চ)""", RegexOption.IGNORE_CASE) to "Mar",
         Regex("""(এপ্রিল)""", RegexOption.IGNORE_CASE) to "Apr",
         Regex("""(মে)""", RegexOption.IGNORE_CASE) to "May",
@@ -19817,141 +19780,195 @@ fun parseBangladeshNidText(raw: String): NidOcrResult {
         Regex("""(নভেম্বর|নভে)""", RegexOption.IGNORE_CASE) to "Nov",
         Regex("""(ডিসেম্বর|ডিসে)""", RegexOption.IGNORE_CASE) to "Dec"
     )
-    for ((pattern, engMonth) in bengaliMonths) {
-        normalized = pattern.replace(normalized, engMonth)
-    }
+    for ((pattern, engMonth) in bengaliMonths) { normalized = pattern.replace(normalized, engMonth) }
 
     val lines = normalized.lines().map { it.trim() }.filter { it.isNotEmpty() }
     var foundNid = ""
-    var foundName = ""
+    var foundNameEnglish = ""
+    var foundNameBangla = ""
+    var foundFather = ""
+    var foundMother = ""
     var foundDob = ""
+    var foundBlood = ""
+    var foundAddress = ""
 
-    // ── 1. NID Number Extraction ──
+    // ── 1. NID Number ──
     val nidKeywords = listOf("NID NO", "NID No", "National ID", "ID NO", "NID", "NO:", "আইডি নম্বর", "আইডি নং", "জাতীয় পরিচয়", "পরিচয়পত্র নম্বর")
     for (i in lines.indices) {
         val line = lines[i]
         if (nidKeywords.any { line.contains(it, ignoreCase = true) }) {
             val digitsSame = line.filter { it.isDigit() }
-            if (digitsSame.length in listOf(10, 13, 17)) {
-                foundNid = digitsSame
-                break
-            }
+            if (digitsSame.length in listOf(10, 13, 17) && !digitsSame.startsWith("01")) { foundNid = digitsSame; break }
             if (i + 1 < lines.size) {
                 val digitsNext = lines[i + 1].filter { it.isDigit() }
-                if (digitsNext.length in listOf(10, 13, 17)) {
-                    foundNid = digitsNext
-                    break
-                }
+                if (digitsNext.length in listOf(10, 13, 17) && !digitsNext.startsWith("01")) { foundNid = digitsNext; break }
             }
         }
     }
-
     if (foundNid.isEmpty()) {
-        val spacedCandidateRegex = Regex("""\b(?:\d[\s\-]*){10,17}\b""")
+        val spacedRegex = Regex("""\b(?:\d[\s\-]*){10,17}\b""")
         for (line in lines) {
-            val matches = spacedCandidateRegex.findAll(line)
-            for (m in matches) {
+            for (m in spacedRegex.findAll(line)) {
                 val digits = m.value.filter { it.isDigit() }
-                if (digits.length in listOf(10, 13, 17)) {
-                    foundNid = digits
-                    break
-                }
+                if (digits.length in listOf(10, 13, 17) && !digits.startsWith("01")) { foundNid = digits; break }
             }
             if (foundNid.isNotEmpty()) break
         }
     }
-
     if (foundNid.isEmpty()) {
-        val tenDigitRegex = Regex("""\b\d{10}\b""")
-        val seventeenDigitRegex = Regex("""\b\d{17}\b""")
-        val thirteenDigitRegex = Regex("""\b\d{13}\b""")
         for (line in lines) {
-            val m10 = tenDigitRegex.find(line)
+            val m10 = Regex("""\b\d{10}\b""").find(line)
             if (m10 != null && !m10.value.startsWith("01")) { foundNid = m10.value; break }
-            val m17 = seventeenDigitRegex.find(line)
+            val m17 = Regex("""\b(19\d{2}|20\d{2})\d{13}\b""").find(line)
             if (m17 != null) { foundNid = m17.value; break }
-            val m13 = thirteenDigitRegex.find(line)
+            val m13 = Regex("""\b\d{13}\b""").find(line)
             if (m13 != null) { foundNid = m13.value; break }
         }
     }
 
-    // ── 2. Date of Birth Extraction ──
+    // ── 2. Date of Birth ──
     val dobDateRegex = Regex("""\b(\d{1,2})[\s\-\/\.]*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-\/\.]*(\d{4})\b""", RegexOption.IGNORE_CASE)
     val dobNumericRegex = Regex("""\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b""")
     val dobYearFirstRegex = Regex("""\b(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})\b""")
-
-    val dobKeywords = listOf("Date of Birth", "Birth", "DOB", " জন্ম তারিখ", "জন্ম তারিখ", "জন্ম")
+    val dobKeywords = listOf("Date of Birth", "Birth", "DOB", "জন্ম তারিখ", "জন্ম তারিখ", "জন্ম")
     for (i in lines.indices) {
         val line = lines[i]
         if (dobKeywords.any { line.contains(it, ignoreCase = true) }) {
-            val mText = dobDateRegex.find(line)
-            if (mText != null) { foundDob = mText.value; break }
-            val mNum = dobNumericRegex.find(line)
-            if (mNum != null) { foundDob = mNum.value; break }
-            val mYear = dobYearFirstRegex.find(line)
-            if (mYear != null) { foundDob = mYear.value; break }
-
+            val m = dobDateRegex.find(line) ?: dobNumericRegex.find(line) ?: dobYearFirstRegex.find(line)
+            if (m != null) { foundDob = m.value; break }
             if (i + 1 < lines.size) {
                 val next = lines[i + 1]
-                val nextText = dobDateRegex.find(next)
-                if (nextText != null) { foundDob = nextText.value; break }
-                val nextNum = dobNumericRegex.find(next)
-                if (nextNum != null) { foundDob = nextNum.value; break }
+                val mn = dobDateRegex.find(next) ?: dobNumericRegex.find(next)
+                if (mn != null) { foundDob = mn.value; break }
             }
         }
     }
-
     if (foundDob.isEmpty()) {
         for (line in lines) {
-            val mText = dobDateRegex.find(line)
-            if (mText != null) { foundDob = mText.value; break }
-            val mNum = dobNumericRegex.find(line)
-            if (mNum != null) { foundDob = mNum.value; break }
-            val mYear = dobYearFirstRegex.find(line)
-            if (mYear != null) { foundDob = mYear.value; break }
+            val m = dobDateRegex.find(line) ?: dobNumericRegex.find(line) ?: dobYearFirstRegex.find(line)
+            if (m != null) { foundDob = m.value; break }
         }
     }
 
-    // ── 3. Name Extraction ──
+    // ── 3. Names (English, Bangla, Father, Mother) ──
     val excludeWords = listOf("Father", "Mother", "Husband", "Republic", "Government", "National", "Card", "Blood", "Group", "Date", "Birth", "NID", "পিতা", "মাতা", "স্বামী", "গণপ্রজাতন্ত্রী", "বাংলাদেশ", "পরিচয়পত্র")
-
     for (i in lines.indices) {
         val line = lines[i]
-        if (line.startsWith("Name:", ignoreCase = true) || line.startsWith("Name :", ignoreCase = true) || line.startsWith("NAME:", ignoreCase = true)) {
-            val extracted = line.substringAfter(":").trim().trimStart('-', ':', '.', ' ')
-            if (extracted.length > 2 && excludeWords.none { extracted.contains(it, ignoreCase = true) }) {
-                foundName = extracted
-                break
+        val trimmed = line.trim()
+
+        // English Name (explicit label)
+        if (foundNameEnglish.isEmpty()) {
+            val labelMatch = Regex("""^(?:Name|NAME)\s*[:\-\.](.+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            if (labelMatch != null) {
+                val candidate = labelMatch.groupValues[1].trim()
+                if (candidate.length > 2 && excludeWords.none { candidate.contains(it, ignoreCase = true) })
+                    foundNameEnglish = candidate
+            } else if (trimmed.equals("Name", ignoreCase = true) || trimmed.equals("NAME", ignoreCase = true)) {
+                if (i + 1 < lines.size) {
+                    val next = lines[i + 1].trim()
+                    if (next.length > 2 && excludeWords.none { next.contains(it, ignoreCase = true) }) foundNameEnglish = next
+                }
             }
-        } else if ((line.equals("Name", ignoreCase = true) || line.equals("NAME", ignoreCase = true)) && i + 1 < lines.size) {
-            val next = lines[i + 1].trim().trimStart('-', ':', '.', ' ')
-            if (next.length > 2 && excludeWords.none { next.contains(it, ignoreCase = true) }) {
-                foundName = next
-                break
+        }
+
+        // Bangla Name
+        if (foundNameBangla.isEmpty()) {
+            val labelMatch = Regex("""^(?:নাম)\s*[:\-\.](.+)""").find(trimmed)
+            if (labelMatch != null) {
+                val candidate = labelMatch.groupValues[1].trim()
+                if (candidate.length > 2) foundNameBangla = candidate
+            } else if (trimmed == "নাম" && i + 1 < lines.size) {
+                val next = lines[i + 1].trim()
+                if (next.length > 2 && excludeWords.none { next.contains(it) }) foundNameBangla = next
+            }
+        }
+
+        // Father's Name
+        if (foundFather.isEmpty()) {
+            val match = Regex("""^(?:পিতা|Father)\s*[:\-\.](.+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            if (match != null) {
+                val candidate = match.groupValues[1].trim()
+                if (candidate.length > 2) foundFather = candidate
+            } else if ((trimmed.equals("পিতা") || trimmed.equals("Father", ignoreCase = true)) && i + 1 < lines.size) {
+                val next = lines[i + 1].trim()
+                if (next.length > 2) foundFather = next
+            }
+        }
+
+        // Mother's Name
+        if (foundMother.isEmpty()) {
+            val match = Regex("""^(?:মাতা|Mother)\s*[:\-\.](.+)""", RegexOption.IGNORE_CASE).find(trimmed)
+            if (match != null) {
+                val candidate = match.groupValues[1].trim()
+                if (candidate.length > 2) foundMother = candidate
+            } else if ((trimmed.equals("মাতা") || trimmed.equals("Mother", ignoreCase = true)) && i + 1 < lines.size) {
+                val next = lines[i + 1].trim()
+                if (next.length > 2) foundMother = next
             }
         }
     }
 
-    if (foundName.isEmpty()) {
-        for (i in lines.indices) {
-            val line = lines[i]
-            if (line.startsWith("নাম:", ignoreCase = true) || line.startsWith("নাম :", ignoreCase = true)) {
-                val extracted = line.substringAfter(":").trim().trimStart('-', ':', '.', ' ')
-                if (extracted.length > 2 && excludeWords.none { extracted.contains(it, ignoreCase = true) }) {
-                    foundName = extracted
-                    break
-                }
-            } else if (line.equals("নাম", ignoreCase = true) && i + 1 < lines.size) {
-                val next = lines[i + 1].trim().trimStart('-', ':', '.', ' ')
-                if (next.length > 2 && excludeWords.none { next.contains(it, ignoreCase = true) }) {
-                    foundName = next
-                    break
-                }
+    // Fallback: detect ALL CAPS English name
+    if (foundNameEnglish.isEmpty()) {
+        for (line in lines) {
+            val clean = line.trim()
+            if (Regex("""^[A-Z][A-Z\.\s]{3,34}$""").matches(clean) && excludeWords.none { clean.contains(it.uppercase()) }) {
+                foundNameEnglish = clean; break
             }
         }
     }
 
-    return NidOcrResult(nidNumber = foundNid, name = foundName, dob = foundDob, rawText = raw)
+    // ── 4. Blood Group ──
+    val bloodMatch = Regex("""\b(A|B|AB|O)\s*([+\-]|ve|\+ve|\-ve)\b""", RegexOption.IGNORE_CASE).find(normalized)
+    if (bloodMatch != null) {
+        val grp = bloodMatch.groupValues[1].uppercase()
+        val sign = if (bloodMatch.groupValues[2].contains("-")) "-" else "+"
+        foundBlood = "$grp$sign"
+    }
+
+    // ── 5. Address (back side) ──
+    val addressKeywords = listOf("ঠিকানা:", "স্থায়ী ঠিকানা:", "বর্তমান ঠিকানা:", "Address:", "Village:", "গ্রাম:")
+    for (i in lines.indices) {
+        val line = lines[i]
+        if (addressKeywords.any { line.contains(it, ignoreCase = true) }) {
+            val afterColon = line.substringAfter(":").trim()
+            val addrLines = mutableListOf<String>()
+            if (afterColon.isNotEmpty()) addrLines.add(afterColon)
+            for (j in i + 1 until minOf(i + 4, lines.size)) {
+                val next = lines[j]
+                if (addressKeywords.none { next.contains(it) } && nidKeywords.none { next.contains(it) }) addrLines.add(next)
+                else break
+            }
+            foundAddress = addrLines.joinToString(", ")
+            break
+        }
+    }
+
+    // ── 6. Document Type ──
+    val docType = when {
+        foundNid.length == 10 -> "Smart NID (10 Digits)"
+        foundNid.length == 13 -> "Old NID (13 Digits)"
+        foundNid.length == 17 -> "Old NID (17 Digits)"
+        raw.contains("জন্ম নিবন্ধন", ignoreCase = true) || raw.contains("Birth Registration", ignoreCase = true) -> "Birth Certificate"
+        else -> "NID Card"
+    }
+
+    val fieldsFound = listOf(foundNid, foundNameEnglish, foundNameBangla, foundDob).count { it.isNotEmpty() }
+    val confidence = when (fieldsFound) { 4 -> 0.96f; 3 -> 0.88f; 2 -> 0.75f; 1 -> 0.60f; else -> 0.40f }
+
+    return NidOcrResult(
+        nidNumber = foundNid,
+        docType = docType,
+        nameEnglish = foundNameEnglish,
+        nameBangla = foundNameBangla,
+        fatherName = foundFather,
+        motherName = foundMother,
+        dob = foundDob,
+        bloodGroup = foundBlood,
+        address = foundAddress,
+        confidenceScore = confidence,
+        rawText = raw
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -20254,7 +20271,12 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
 
     // NID step states
     var nidNumber by remember { mutableStateOf("") }
-    var nidName by remember { mutableStateOf("") }
+    var nidName by remember { mutableStateOf("") }       // English name (primary)
+    var nidNameBangla by remember { mutableStateOf("") } // Bengali name
+    var nidFatherName by remember { mutableStateOf("") } // Father's name
+    var nidMotherName by remember { mutableStateOf("") } // Mother's name
+    var nidBloodGroup by remember { mutableStateOf("") } // Blood group
+    var nidDocType by remember { mutableStateOf("") }    // Document type
     var nidDob by remember { mutableStateOf("") }
     var frontNidSelected by remember { mutableStateOf(false) }
     var backNidSelected by remember { mutableStateOf(false) }
@@ -20326,9 +20348,14 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                         if (result.nidNumber.isNotEmpty()) {
                             nidNumber = result.nidNumber
                         }
-                        if (result.name.isNotEmpty()) {
-                            nidName = result.name
+                        if (result.nameEnglish.isNotEmpty()) {
+                            nidName = result.nameEnglish
                         }
+                        if (result.nameBangla.isNotEmpty()) nidNameBangla = result.nameBangla
+                        if (result.fatherName.isNotEmpty()) nidFatherName = result.fatherName
+                        if (result.motherName.isNotEmpty()) nidMotherName = result.motherName
+                        if (result.bloodGroup.isNotEmpty()) nidBloodGroup = result.bloodGroup
+                        if (result.docType.isNotEmpty()) nidDocType = result.docType
                         if (result.dob.isNotEmpty()) {
                             nidDob = result.dob
                         }
@@ -20411,9 +20438,14 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                         if (result.nidNumber.isNotEmpty()) {
                             nidNumber = result.nidNumber
                         }
-                        if (result.name.isNotEmpty()) {
-                            nidName = result.name
+                        if (result.nameEnglish.isNotEmpty()) {
+                            nidName = result.nameEnglish
                         }
+                        if (result.nameBangla.isNotEmpty()) nidNameBangla = result.nameBangla
+                        if (result.fatherName.isNotEmpty()) nidFatherName = result.fatherName
+                        if (result.motherName.isNotEmpty()) nidMotherName = result.motherName
+                        if (result.bloodGroup.isNotEmpty()) nidBloodGroup = result.bloodGroup
+                        if (result.docType.isNotEmpty()) nidDocType = result.docType
                         if (result.dob.isNotEmpty()) {
                             nidDob = result.dob
                         }
@@ -20485,7 +20517,14 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
             frontBytes = frontNidBytes ?: byteArrayOf(),
             backBytes = backNidBytes ?: byteArrayOf(),
             selfieBytes = bytes,
-            ocrRawText = ocrRawText
+            ocrRawText = ocrRawText,
+            // Enhanced NID OCR fields
+            nameBangla = nidNameBangla,
+            nameEnglish = nidName,
+            fatherName = nidFatherName,
+            motherName = nidMotherName,
+            bloodGroup = nidBloodGroup,
+            docType = nidDocType
         ) { success, errorMsg ->
             isSubmittingKyc = false
             isProcessingFace = false
@@ -20866,17 +20905,26 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                                     }
                                     if (ocrCompleted) {
                                         HorizontalDivider(color = SuccessGreen.copy(alpha = 0.2f))
-                                        listOf(
-                                            "নাম" to (if (nidName.isNotEmpty()) nidName else activeProfile.businessName),
-                                            "এনআইডি" to nidNumber.ifEmpty { "—" },
-                                            "জন্ম তারিখ" to (if (nidDob.isNotEmpty()) nidDob else "১৯৯০-০১-০১"),
-                                            "অবস্থা" to "সক্রিয় (যাচাইকৃত)"
-                                        ).forEach { (label, value) ->
+                                        // Primary Fields
+                                        val displayFields = buildList {
+                                            add("ডকুমেন্ট ধরন" to nidDocType.ifEmpty { "NID Card" })
+                                            add("ইংরেজি নাম" to (if (nidName.isNotEmpty()) nidName else activeProfile.businessName))
+                                            if (nidNameBangla.isNotEmpty()) add("বাংলা নাম" to nidNameBangla)
+                                            if (nidFatherName.isNotEmpty()) add("পিতার নাম" to nidFatherName)
+                                            if (nidMotherName.isNotEmpty()) add("মাতার নাম" to nidMotherName)
+                                            add("এনআইডি নম্বর" to nidNumber.ifEmpty { "—" })
+                                            add("জন্ম তারিখ" to (if (nidDob.isNotEmpty()) nidDob else "—"))
+                                            if (nidBloodGroup.isNotEmpty()) add("রক্তের গ্রুপ" to nidBloodGroup)
+                                            add("অবস্থা" to "সক্রিয় (যাচাইকৃত)")
+                                        }
+                                        displayFields.forEach { (label, value) ->
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                                 Text(label, fontSize = 12.sp, color = AppTextSecondary)
                                                 Text(
                                                     value, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                                    color = if (label == "অবস্থা") SuccessGreen else AppTextPrimary
+                                                    color = if (label == "অবস্থা") SuccessGreen else AppTextPrimary,
+                                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                                    modifier = Modifier.weight(1f, fill = false).padding(start = 8.dp)
                                                 )
                                             }
                                         }
@@ -21287,14 +21335,19 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                                     HorizontalDivider(color = AppDividerColor)
                                     val recordList = mutableListOf(
                                         "মার্চেন্ট আইডি" to activeProfile.id.uppercase(),
-                                        "নাম"            to (if (nidName.isNotEmpty()) nidName else activeProfile.businessName),
+                                        "ডকুমেন্ট ধরন"  to nidDocType.ifEmpty { "NID Card" },
+                                        "ইংরেজি নাম"    to (if (nidName.isNotEmpty()) nidName else activeProfile.businessName),
                                         "এনআইডি নম্বর"  to nidNumber.ifEmpty { "—" },
-                                        "জন্ম তারিখ"    to (if (nidDob.isNotEmpty()) nidDob else "১৯৯০-০১-০১"),
+                                        "জন্ম তারিখ"    to (if (nidDob.isNotEmpty()) nidDob else "—"),
                                         "লাইভনেস চেক"     to "পাস (ML Kit Face)",
                                         "বায়োমেট্রিক সেলফি" to (if (selfieBytes != null && selfieBytes!!.isNotEmpty()) "ক্যাপচার্ড (${selfieBytes!!.size / 1024} KB)" else "রেকর্ডেড"),
-                                        "অবস্থা"            to (if (isVerified) "যাচাইকৃত (VERIFIED)" else if (isRejected) "বাতিল (REJECTED)" else "পর্যালোচনায় রয়েছে (PENDING)"),
-                                        "এডমিন রিভিউ"     to (if (isVerified) "অনুমোদিত ও সক্রিয়" else if (isRejected) "বাতিল করা হয়েছে" else if (isSubmittingKyc) "জমা হচ্ছে..." else "রিভিউ পেন্ডিং")
+                                        "অবস্থা"            to (if (isVerified) "যাচাইকৃত (VERIFIED)" else if (isRejected) "বাতিল (REJECTED)" else "পর্যালোচনায় রয়েছে (PENDING)"),
+                                        "এডমিন রিভিউ"     to (if (isVerified) "অনুমোদিত ও সক্রিয়" else if (isRejected) "বাতিল করা হয়েছে" else if (isSubmittingKyc) "জমা হচ্ছে..." else "রিভিউ পেন্ডিং")
                                     )
+                                    if (nidNameBangla.isNotEmpty()) recordList.add(1, "বাংলা নাম" to nidNameBangla)
+                                    if (nidFatherName.isNotEmpty()) recordList.add("পিতার নাম" to nidFatherName)
+                                    if (nidMotherName.isNotEmpty()) recordList.add("মাতার নাম" to nidMotherName)
+                                    if (nidBloodGroup.isNotEmpty()) recordList.add("রক্তের গ্রুপ" to nidBloodGroup)
                                     if (isRejected && activeProfile.kycRejectionReason.isNotBlank()) {
                                         recordList.add("বাতিলের কারণ" to activeProfile.kycRejectionReason)
                                     }
@@ -24760,12 +24813,12 @@ fun StockInStepByStepScreen(viewModel: AppViewModel) {
 
     val amberColor = Color(0xFFF5C518)
     val amberIconColor = Color(0xFFF59E0B)
-    val amberLightBg = if (isDarkMode) Color(0xFF332915) else Color(0xFFFFF8E7)
-    val backgroundColor = if (isDarkMode) Color(0xFF0F1117) else Color(0xFFF8F9FA)
-    val surfaceColor = if (isDarkMode) Color(0xFF1E1F2E) else Color.White
+    val amberLightBg = if (isDarkMode) Color(0xFF2B200E) else Color(0xFFFFF8E7)
+    val backgroundColor = if (isDarkMode) Color(0xFF090806) else Color(0xFFF8F9FA)
+    val surfaceColor = if (isDarkMode) Color(0xFF13100C) else Color.White
     val textMainColor = if (isDarkMode) Color.White else Color(0xFF111827)
     val textMutedColor = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF6B7280)
-    val borderColor = if (isDarkMode) Color(0xFF2D303E) else Color(0xFFE5E7EB)
+    val borderColor = if (isDarkMode) Color(0xFF2C2213) else Color(0xFFE5E7EB)
 
     var selectedSupplier by remember(suppliers) { mutableStateOf<SupplierEntity?>(suppliers.firstOrNull()) }
     var challanNo by remember { mutableStateOf("") }
@@ -27764,6 +27817,8 @@ fun AiCopilotHexagonEmblem(modifier: Modifier = Modifier) {
 @Composable
 fun AiCopilotScreen(viewModel: AppViewModel) {
     val chatHistory by viewModel.aiChatHistory.collectAsState()
+    val savedChatSessions by viewModel.savedChatSessions.collectAsState()
+    val currentSessionId by viewModel.currentSessionId.collectAsState()
     val isThinking by viewModel.isAiThinking.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
 
@@ -28194,7 +28249,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                 Surface(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable { viewModel.clearChat() },
+                                        .clickable { viewModel.startNewChatSession() },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isDarkMode) Color(0xFF1E2333) else Color(0xFFF1F5F9)
                                 ) {
@@ -29439,13 +29494,13 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "🕒 এআই ইতিহাস (Chat History)",
+                                    text = "🕒 সংরক্ষিত আলোচনা (Chat Windows)",
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = textMain
                                 )
                                 Text(
-                                    text = "${chatHistory.size} Messages",
+                                    text = "${savedChatSessions.size} Windows",
                                     fontSize = 10.5.sp,
                                     color = Color(0xFF6366F1),
                                     fontWeight = FontWeight.SemiBold
@@ -29454,106 +29509,123 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // History Item List
+                            // History Item List (Full Chat Windows)
                             LazyColumn(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                val filteredChat = chatHistory.filter {
-                                    historySearchQuery.isEmpty() || (it["content"] ?: "").contains(historySearchQuery, ignoreCase = true)
+                                val filteredSessions = savedChatSessions.filter { session ->
+                                    historySearchQuery.isEmpty() ||
+                                        session.title.contains(historySearchQuery, ignoreCase = true) ||
+                                        session.messages.any { (it["content"] ?: "").contains(historySearchQuery, ignoreCase = true) }
                                 }
 
-                                if (filteredChat.isNotEmpty()) {
-                                    items(filteredChat) { msg ->
-                                        val isUser = msg["role"] == "user"
-                                        val titleStr = if (isUser) "আপনি: " + (msg["content"] ?: "") else "এআই: " + (msg["content"] ?: "")
+                                if (filteredSessions.isEmpty()) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(28.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (historySearchQuery.isEmpty()) "কোনো সংরক্ষিত চ্যাট উইন্ডো নেই" else "কোনো মিল পাওয়া যায়নি",
+                                                fontSize = 12.sp,
+                                                color = textMuted
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    items(filteredSessions, key = { it.id }) { session ->
+                                        val isActive = session.id == currentSessionId
+                                        val dateStr = java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(session.timestamp))
+
                                         Card(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clickable {
-                                                    userText = msg["content"] ?: ""
+                                                    viewModel.loadChatSession(session.id)
                                                     showHistoryDrawer = false
                                                 },
-                                            shape = RoundedCornerShape(10.dp),
+                                            shape = RoundedCornerShape(12.dp),
                                             colors = CardDefaults.cardColors(
-                                                containerColor = if (isDarkMode) Color(0xFF131A2E) else Color(0xFFF8FAFC)
+                                                containerColor = if (isActive) (if (isDarkMode) Color(0xFF1E243A) else Color(0xFFEEF2FF)) else (if (isDarkMode) Color(0xFF131A2E) else Color(0xFFF8FAFC))
                                             ),
-                                            border = BorderStroke(0.8.dp, cardBorder)
+                                            border = BorderStroke(if (isActive) 1.2.dp else 0.8.dp, if (isActive) Color(0xFF6366F1) else cardBorder)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(10.dp),
+                                                modifier = Modifier.padding(12.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = if (isUser) Icons.Default.Person else Icons.Default.AutoAwesome,
-                                                    contentDescription = null,
-                                                    tint = if (isUser) Color(0xFF6366F1) else Color(0xFFA855F7),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = titleStr,
-                                                    fontSize = 11.5.sp,
-                                                    color = textMain,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(34.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isActive) Color(0xFF6366F1) else (if (isDarkMode) Color(0xFF232B3E) else Color(0xFFE2E8F0))),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ChatBubbleOutline,
+                                                        contentDescription = null,
+                                                        tint = if (isActive) Color.White else (if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = session.title,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textMain,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
+                                                        if (isActive) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(4.dp),
+                                                                color = Color(0xFF6366F1)
+                                                            ) {
+                                                                Text(
+                                                                    text = "Open",
+                                                                    fontSize = 9.sp,
+                                                                    color = Color.White,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                                    Text(
+                                                        text = "$dateStr • ${session.messages.size} Messages",
+                                                        fontSize = 11.sp,
+                                                        color = textMuted
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { viewModel.deleteChatSession(session.id) },
+                                                    modifier = Modifier.size(26.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Close,
+                                                        contentDescription = "Delete window",
+                                                        tint = textMuted,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
                                             }
-                                        }
-                                    }
-                                }
-
-                                val savedHistory = chatHistory.asSequence()
-                                    .filter { it["role"] == "user" }
-                                    .mapNotNull { it["content"]?.takeIf(String::isNotBlank) }
-                                    .distinct()
-                                    .filter { historySearchQuery.isEmpty() || it.contains(historySearchQuery, ignoreCase = true) }
-                                    .toList()
-
-                                item {
-                                    Text(
-                                        text = "সংরক্ষিত রিপোর্ট ইতিহাস (Saved Reports)",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = textMuted,
-                                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                                    )
-                                }
-
-                                items(savedHistory) { historyTitle ->
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                viewModel.sendOpenRouterCopilotMessage(historyTitle)
-                                                showHistoryDrawer = false
-                                            },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isDarkMode) Color(0xFF131A2E) else Color(0xFFF8FAFC)
-                                        ),
-                                        border = BorderStroke(0.8.dp, cardBorder)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.History,
-                                                contentDescription = null,
-                                                tint = Color(0xFFF97316),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = historyTitle,
-                                                fontSize = 11.5.sp,
-                                                color = textMain,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
                                         }
                                     }
                                 }
@@ -29567,7 +29639,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(
-                                    onClick = { viewModel.clearChat() },
+                                    onClick = { viewModel.clearAllChatSessions() },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(10.dp),
                                     border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
@@ -29579,16 +29651,21 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Clear History", fontSize = 11.sp, color = Color(0xFFEF4444))
+                                    Text("Clear All", fontSize = 11.sp, color = Color(0xFFEF4444))
                                 }
 
                                 Button(
-                                    onClick = { showHistoryDrawer = false },
+                                    onClick = {
+                                        viewModel.startNewChatSession()
+                                        showHistoryDrawer = false
+                                    },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
                                 ) {
-                                    Text("Close", fontSize = 11.sp, color = Color.White)
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("New Window", fontSize = 11.sp, color = Color.White)
                                 }
                             }
                         }
@@ -30392,9 +30469,10 @@ fun StockInQrScreen(viewModel: AppViewModel) {
 
     var showQrLabelsCard by remember { mutableStateOf(false) }
     var createdProductSummary by remember { mutableStateOf<String?>(null) }
+    val screenBg = if (isDarkMode) Color(0xFF090806) else Color(0xFFF8FAFC)
 
     Scaffold(
-        containerColor = AppScreenBg,
+        containerColor = screenBg,
         topBar = {
             GradientTopBar(
                 title = "QR Code Stock In (পণ্য স্টক-ইন)",

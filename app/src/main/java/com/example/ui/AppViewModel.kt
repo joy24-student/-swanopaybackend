@@ -65,6 +65,53 @@ data class SplashInitStep(
     val isError: Boolean = false
 )
 
+data class CopilotChatSession(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val messages: List<Map<String, String>>
+) {
+    fun toJson(): JSONObject {
+        val obj = JSONObject()
+        obj.put("id", id)
+        obj.put("title", title)
+        obj.put("timestamp", timestamp)
+        val msgArr = JSONArray()
+        for (m in messages) {
+            val mObj = JSONObject()
+            m.forEach { (k, v) -> mObj.put(k, v) }
+            msgArr.put(mObj)
+        }
+        obj.put("messages", msgArr)
+        return obj
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): CopilotChatSession? {
+            return try {
+                val id = obj.optString("id", java.util.UUID.randomUUID().toString())
+                val title = obj.optString("title", "Chat Window")
+                val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                val msgArr = obj.optJSONArray("messages") ?: JSONArray()
+                val messages = mutableListOf<Map<String, String>>()
+                for (i in 0 until msgArr.length()) {
+                    val mObj = msgArr.optJSONObject(i) ?: continue
+                    val map = mutableMapOf<String, String>()
+                    val keys = mObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        map[k] = mObj.optString(k, "")
+                    }
+                    messages.add(map)
+                }
+                CopilotChatSession(id, title, timestamp, messages)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+}
+
 data class EmployeeItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
@@ -109,9 +156,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         "QrScanner",
         "Inventory",
         "CustomerLedger",
-        "SupplierLedger",
+        "Reports",
         "Deposits",
-        "Loans"
+        "ExpenseSales"
     )
 
     private val _enabledQuickActions = MutableStateFlow<List<String>>(
@@ -123,6 +170,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val saved = securityPrefs.getString("enabled_quick_actions", null)
         if (saved.isNullOrBlank()) return defaultQuickActionRoutes
         val list = saved.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val oldDefaultQuickActionRoutes = listOf(
+            "PosCheckout",
+            "StockIn",
+            "QrScanner",
+            "Inventory",
+            "CustomerLedger",
+            "SupplierLedger",
+            "Deposits",
+            "Loans"
+        )
+        if (list == oldDefaultQuickActionRoutes) {
+            return defaultQuickActionRoutes
+        }
         return if (list.isNotEmpty()) list else defaultQuickActionRoutes
     }
 
@@ -684,6 +744,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (account != null) {
                     applyRestoredMerchantSetup(account)
                     setOnboarded(account.isOnboarded)
+                    syncPinFromCloud()
                 } else {
                     // Fallback to local profile if offline or server temporarily unavailable
                     if (!isOnboarded()) {
@@ -1366,26 +1427,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun submitFullKycVerification(
         nidNumber: String, nidName: String, nidDob: String,
         frontBytes: ByteArray, backBytes: ByteArray, selfieBytes: ByteArray,
-        ocrRawText: String = "", onComplete: ((Boolean, String?) -> Unit)? = null
+        ocrRawText: String = "",
+        // Enhanced NID OCR fields from Bangladeshi NID card parsing
+        nameBangla: String = "", nameEnglish: String = "",
+        fatherName: String = "", motherName: String = "",
+        bloodGroup: String = "", docType: String = "",
+        onComplete: ((Boolean, String?) -> Unit)? = null
     ) {
         viewModelScope.launch {
             try {
                 require(frontBytes.isNotEmpty() && backBytes.isNotEmpty() && selfieBytes.isNotEmpty()) {
                     "Both NID images and live face capture are required."
                 }
-                val payload = org.json.JSONObject().put("nid_number", nidNumber.trim())
-                    .put("nid_name", nidName).put("nid_dob", nidDob).put("liveness_passed", true)
-                    .put("ocr_raw_text", ocrRawText)
-                    .put("front_base64", android.util.Base64.encodeToString(frontBytes, android.util.Base64.NO_WRAP))
-                    .put("back_base64", android.util.Base64.encodeToString(backBytes, android.util.Base64.NO_WRAP))
-                    .put("selfie_base64", android.util.Base64.encodeToString(selfieBytes, android.util.Base64.NO_WRAP))
-                val saved = platformRequest("/v1/kyc/submit", payload).getJSONObject("merchant")
-                val updated = _activeProfile.value.copy(kycStatus = saved.getString("kyc_status"),
-                    kycRejectionReason = "", nidNumber = saved.getString("nid_number"),
-                    nidFrontUrl = saved.getString("nid_front_url"), nidBackUrl = saved.getString("nid_back_url"))
-                _activeProfile.value = updated
-                repository.insertMerchantProfile(updated)
-                onComplete?.invoke(true, null)
                 val merchantId = _activeProfile.value.id.ifEmpty { "merchant_${System.currentTimeMillis()}" }
 
                 // Compress camera images asynchronously off main thread
@@ -1406,6 +1459,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val payload = org.json.JSONObject().put("nid_number", nidNumber.trim())
                             .put("nid_name", nidName.trim()).put("nid_dob", nidDob.trim()).put("liveness_passed", true)
                             .put("ocr_raw_text", ocrRawText)
+                            .put("name_bangla", nameBangla.trim())
+                            .put("name_english", nameEnglish.trim())
+                            .put("father_name", fatherName.trim())
+                            .put("mother_name", motherName.trim())
+                            .put("blood_group", bloodGroup.trim())
+                            .put("doc_type", docType.trim())
                             .put("front_base64", android.util.Base64.encodeToString(compressedFront, android.util.Base64.NO_WRAP))
                             .put("back_base64", android.util.Base64.encodeToString(compressedBack, android.util.Base64.NO_WRAP))
                             .put("selfie_base64", android.util.Base64.encodeToString(compressedSelfie, android.util.Base64.NO_WRAP))
@@ -1482,6 +1541,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } catch (e: Exception) {
                     android.util.Log.w("AppViewModel", "Selfie storage upload exception", e)
+                }
+
+                // If storage upload did not return URL, fallback to inline base64 data URI so images always appear
+                if (frontUrl.isBlank()) {
+                    frontUrl = "data:image/jpeg;base64," + android.util.Base64.encodeToString(compressedFront, android.util.Base64.NO_WRAP)
+                }
+                if (backUrl.isBlank()) {
+                    backUrl = "data:image/jpeg;base64," + android.util.Base64.encodeToString(compressedBack, android.util.Base64.NO_WRAP)
+                }
+                if (selfieUrl.isBlank()) {
+                    selfieUrl = "data:image/jpeg;base64," + android.util.Base64.encodeToString(compressedSelfie, android.util.Base64.NO_WRAP)
                 }
 
                 var directSuccess = false
@@ -1784,6 +1854,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     applyRestoredMerchantSetup(account)
                     setOnboarded(true)
                 }
+                val localPinHash = _appPin.value.ifBlank { securityPrefs.getString("app_pin_hash", "") ?: "" }
+                if (localPinHash.isNotBlank()) {
+                    uploadPinHashToCloud(localPinHash)
+                }
             } catch (syncError: Exception) {
                 logFirebaseStatus("Platform cloud sync deferred: ${syncError.message}")
             }
@@ -1853,6 +1927,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 setOnboarded(account.isOnboarded)
+                // Sync PIN hash from Supabase (cloud-synced PIN system)
+                syncPinFromCloud()
                 navigateTo(if (!account.isOnboarded) "Onboarding" else if (_isBiometricLocked.value) "LockScreen" else "Main")
                 onSuccess()
             } catch (error: Exception) {
@@ -2239,6 +2315,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 saveEncryptedSessionToken(userEmail, authUserId, "Supabase OAuth")
                 securityPrefs.edit().remove("supabase_pkce_verifier").apply()
                 setOnboarded(account.isOnboarded)
+                syncPinFromCloud()
                 _isAuthenticating.value = false
                 _authError.value = null
                 navigateTo(if (!account.isOnboarded) "Onboarding" else if (_isBiometricLocked.value) "LockScreen" else "Main")
@@ -2323,8 +2400,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    private val _appPin = MutableStateFlow(securityPrefs.getString("app_pin", "") ?: "")
+    private val _appPin = MutableStateFlow(securityPrefs.getString("app_pin_hash", "") ?: "")
     val appPin: StateFlow<String> = _appPin.asStateFlow()
+
+    // True while syncPinFromCloud is running
+    private val _isPinSyncing = MutableStateFlow(false)
+    val isPinSyncing: StateFlow<Boolean> = _isPinSyncing.asStateFlow()
 
     private val _isBiometricLocked = MutableStateFlow(securityPrefs.getBoolean("is_biometric_locked", true))
     val isBiometricLocked: StateFlow<Boolean> = _isBiometricLocked.asStateFlow()
@@ -2338,10 +2419,107 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _securitySyncError = MutableStateFlow<String?>(null)
     val securitySyncError: StateFlow<String?> = _securitySyncError.asStateFlow()
 
+    // ─── PIN Helpers ────────────────────────────────────────────
+
+    /** SHA-256 hex of a raw string */
+    private fun sha256Hex(raw: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return digest.digest(raw.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Verify the user-entered PIN against the stored cloud hash.
+     * Fast local comparison — no network round-trip needed on unlock.
+     */
+    fun verifyPin(input: String): Boolean {
+        val storedHash = _appPin.value
+        if (storedHash.isBlank()) {
+            // No PIN set — fall back to legacy plain-text for migration
+            val legacyPin = securityPrefs.getString("app_pin", "") ?: ""
+            return input == legacyPin.ifEmpty { "1234" }
+        }
+        return sha256Hex(input) == storedHash
+    }
+
+    /**
+     * Set a new PIN: hash it, save locally and sync hash to Supabase.
+     * Called from Settings "Change PIN" dialog and from onboarding first-time setup.
+     */
     fun updatePin(newPin: String) {
-        _appPin.value = newPin
-        securityPrefs.edit().putString("app_pin", newPin).apply()
-        syncSecuritySettingsToSupabase()
+        val hash = sha256Hex(newPin)
+        _appPin.value = hash
+        securityPrefs.edit()
+            .putString("app_pin_hash", hash)
+            .remove("app_pin")          // remove legacy plain-text
+            .apply()
+        // Sync to Supabase in background
+        viewModelScope.launch { uploadPinHashToCloud(hash) }
+    }
+
+    /** Upload the pin hash to the backend /v1/pin/set */
+    private suspend fun uploadPinHashToCloud(hash: String) {
+        try {
+            val payload = org.json.JSONObject().put("pin_hash", hash)
+            platformRequest("/v1/pin/set", payload)
+            logFirebaseStatus("PIN hash synced to Supabase successfully.")
+        } catch (e: Exception) {
+            logFirebaseStatus("PIN cloud sync failed (will retry on next login): ${e.message}")
+        }
+    }
+
+    /**
+     * Fetch the PIN hash from Supabase after login / session restore.
+     * If admin cleared the PIN or requested reset, clears local hash so merchant
+     * is prompted to set a new PIN.
+     * If cloud has no PIN yet but device has one from onboarding, uploads it.
+     */
+    fun syncPinFromCloud() {
+        viewModelScope.launch {
+            _isPinSyncing.value = true
+            try {
+                val resp = platformRequest("/v1/pin/sync")
+                val pinHash = if (resp.isNull("pin_hash")) null else resp.optString("pin_hash", null)
+                val resetRequested = resp.optBoolean("pin_reset_requested", false)
+
+                if (resetRequested) {
+                    // Admin explicitly requested reset — clear local hash so user sets new PIN
+                    _appPin.value = ""
+                    securityPrefs.edit().remove("app_pin_hash").remove("app_pin").apply()
+                    logFirebaseStatus("PIN reset requested by admin. Local PIN cleared.")
+                } else if (!pinHash.isNullOrBlank()) {
+                    // Update local cache with cloud hash
+                    _appPin.value = pinHash
+                    securityPrefs.edit().putString("app_pin_hash", pinHash).apply()
+                    logFirebaseStatus("PIN hash synced from Supabase and stored locally.")
+                } else {
+                    // Cloud has no PIN hash yet. If this device has a local PIN hash (e.g. from onboarding), upload it!
+                    val localHash = _appPin.value.ifBlank { securityPrefs.getString("app_pin_hash", "") ?: "" }
+                    if (localHash.isNotBlank()) {
+                        uploadPinHashToCloud(localHash)
+                    }
+                }
+            } catch (e: Exception) {
+                logFirebaseStatus("PIN sync skipped (offline or error): ${e.message}")
+            } finally {
+                _isPinSyncing.value = false
+            }
+        }
+    }
+
+    /**
+     * Request that the admin reset (clear) this merchant's PIN.
+     * Sets pin_reset_requested = true in Supabase.
+     */
+    fun requestPinReset(onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val resp = platformRequest("/v1/pin/request-reset")
+                onComplete(true, resp.optString("message", "Reset request sent to admin."))
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Request failed. Check your internet connection.")
+            }
+        }
     }
 
     fun setBiometricLock(enabled: Boolean) {
@@ -2359,8 +2537,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun syncSecuritySettingsToSupabase() {
-        // PINs and biometric preferences are device credentials. They stay in
-        // EncryptedSharedPreferences and are never uploaded to a remote table.
         _isSecuritySyncing.value = false
         _securitySyncError.value = null
         logFirebaseStatus("Device security settings saved securely on this device.")
@@ -8636,31 +8812,94 @@ function executePayment() {
     }
 
     // AI Conversational Chat & Memory
-    private val _aiChatHistory = MutableStateFlow<List<Map<String, String>>>(
-        listOf(
-            mapOf("role" to "assistant", "content" to "আসসালামু আলাইকুম! আমি আপনার ব্যবসা সহকারী এআই। আপনার লেজার খাতা, বেচাকেনা ও ঋণের হিসাব মেলাতে বা যেকোনো প্রশ্ন করতে বলুন।")
-        )
+    private val defaultCopilotGreeting = mapOf(
+        "role" to "assistant",
+        "content" to "আসসালামু আলাইকুম! আমি আপনার ব্যবসা সহকারী এআই। আপনার লেজার খাতা, বেচাকেনা ও ঋণের হিসাব মেলাতে বা যেকোনো প্রশ্ন করতে বলুন।"
     )
+
+    private val _currentSessionId = MutableStateFlow<String>(java.util.UUID.randomUUID().toString())
+    val currentSessionId: StateFlow<String> = _currentSessionId.asStateFlow()
+
+    private val _aiChatHistory = MutableStateFlow<List<Map<String, String>>>(listOf(defaultCopilotGreeting))
     val aiChatHistory: StateFlow<List<Map<String, String>>> = _aiChatHistory.asStateFlow()
 
-    private val _isAiThinking = MutableStateFlow(false)
-    val isAiThinking: StateFlow<Boolean> = _isAiThinking.asStateFlow()
+    private val _savedChatSessions = MutableStateFlow<List<CopilotChatSession>>(loadSavedChatSessions())
+    val savedChatSessions: StateFlow<List<CopilotChatSession>> = _savedChatSessions.asStateFlow()
 
-    private val _aiMemory = MutableStateFlow(securityPrefs.getString("ai_memory", "") ?: "")
-    val aiMemory: StateFlow<String> = _aiMemory.asStateFlow()
+    private fun loadSavedChatSessions(): List<CopilotChatSession> {
+        val jsonStr = securityPrefs.getString("copilot_chat_sessions_v1", null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(jsonStr)
+            val list = mutableListOf<CopilotChatSession>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                CopilotChatSession.fromJson(item)?.let { list.add(it) }
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
-    private val _autoApproveAiActions = MutableStateFlow(securityPrefs.getBoolean("ai_auto_approve", false))
-    val autoApproveAiActions: StateFlow<Boolean> = _autoApproveAiActions.asStateFlow()
+    private fun persistChatSessions() {
+        val list = _savedChatSessions.value
+        val arr = JSONArray()
+        for (session in list) {
+            arr.put(session.toJson())
+        }
+        securityPrefs.edit().putString("copilot_chat_sessions_v1", arr.toString()).apply()
+    }
 
-    fun setAutoApproveAiActions(enabled: Boolean) {
-        _autoApproveAiActions.value = enabled
-        securityPrefs.edit().putBoolean("ai_auto_approve", enabled).apply()
+    fun saveOrUpdateCurrentChatSession() {
+        val messages = _aiChatHistory.value
+        val firstUserMsg = messages.firstOrNull { it["role"] == "user" }?.get("content")?.trim() ?: return
+        val sessionTitle = if (firstUserMsg.length > 50) firstUserMsg.take(47) + "..." else firstUserMsg
+        val currentId = _currentSessionId.value
+        val list = _savedChatSessions.value.toMutableList()
+        val existingIndex = list.indexOfFirst { it.id == currentId }
+        val updatedSession = CopilotChatSession(
+            id = currentId,
+            title = sessionTitle,
+            timestamp = System.currentTimeMillis(),
+            messages = messages
+        )
+        if (existingIndex >= 0) {
+            list[existingIndex] = updatedSession
+        } else {
+            list.add(0, updatedSession)
+        }
+        _savedChatSessions.value = list
+        persistChatSessions()
+    }
+
+    fun startNewChatSession() {
+        _currentSessionId.value = java.util.UUID.randomUUID().toString()
+        _aiChatHistory.value = listOf(defaultCopilotGreeting)
+    }
+
+    fun loadChatSession(sessionId: String) {
+        val session = _savedChatSessions.value.find { it.id == sessionId } ?: return
+        _currentSessionId.value = session.id
+        _aiChatHistory.value = session.messages
+    }
+
+    fun deleteChatSession(sessionId: String) {
+        val list = _savedChatSessions.value.filterNot { it.id == sessionId }
+        _savedChatSessions.value = list
+        persistChatSessions()
+        if (_currentSessionId.value == sessionId) {
+            startNewChatSession()
+        }
+    }
+
+    fun clearAllChatSessions() {
+        _savedChatSessions.value = emptyList()
+        securityPrefs.edit().remove("copilot_chat_sessions_v1").apply()
+        startNewChatSession()
     }
 
     fun clearChat() {
-        _aiChatHistory.value = listOf(
-            mapOf("role" to "assistant", "content" to "আসসালামু আলাইকুম! আমি আপনার ব্যবসা সহকারী এআই। আপনার লেজার খাতা, বেচাকেনা ও ঋণের হিসাব মেলাতে বা যেকোনো প্রশ্ন করতে বলুন।")
-        )
+        startNewChatSession()
     }
 
     fun appendToAiMemory(newNote: String) {
@@ -9691,6 +9930,7 @@ function executePayment() {
         val currentHistory = _aiChatHistory.value.toMutableList()
         currentHistory.add(mapOf("role" to "user", "content" to userInput))
         _aiChatHistory.value = currentHistory.toList()
+        saveOrUpdateCurrentChatSession()
         
         _isAiThinking.value = true
         val provider = _selectedAiProvider.value
@@ -9828,6 +10068,7 @@ function executePayment() {
         }
         updatedHistory.add(chatMessage.toMap())
         _aiChatHistory.value = updatedHistory.toList()
+        saveOrUpdateCurrentChatSession()
         logFirebaseStatus("AI assistant response received.")
         
         if (actionJsonStr != null && _autoApproveAiActions.value) {
@@ -9838,6 +10079,7 @@ function executePayment() {
                     "content" to "✅ [স্বয়ংক্রিয় এন্ট্রি] $status"
                 ))
                 _aiChatHistory.value = currentHistory2.toList()
+                saveOrUpdateCurrentChatSession()
             }
         }
     }
@@ -9847,6 +10089,7 @@ function executePayment() {
         val updatedHistory = _aiChatHistory.value.toMutableList()
         updatedHistory.add(mapOf("role" to "assistant", "content" to "দুঃখিত, এআই সংযোগ করতে সমস্যা হচ্ছে। ত্রুটি: $error"))
         _aiChatHistory.value = updatedHistory.toList()
+        saveOrUpdateCurrentChatSession()
         logFirebaseStatus("AI provider failed: $error")
     }
 

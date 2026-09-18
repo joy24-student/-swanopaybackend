@@ -3763,10 +3763,16 @@ echo $payment->payment_url;`
     ];
 
     const radymateStorageKey = 'radymate-gallery-images';
+    const defaultSupabaseUrl = 'https://tldubojeokgyoclxnzkb.supabase.co';
+    const defaultSupabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0';
+
+    window.RADYMATE_SUPABASE_URL = window.RADYMATE_SUPABASE_URL || defaultSupabaseUrl;
+    window.RADYMATE_SUPABASE_ANON_KEY = window.RADYMATE_SUPABASE_ANON_KEY || defaultSupabaseKey;
+
     const radymateSupabase = (() => {
       if (!window.supabase) return null;
-      const url = window.RADYMATE_SUPABASE_URL || '';
-      const key = window.RADYMATE_SUPABASE_ANON_KEY || '';
+      const url = window.RADYMATE_SUPABASE_URL || defaultSupabaseUrl;
+      const key = window.RADYMATE_SUPABASE_ANON_KEY || defaultSupabaseKey;
       if (!url || !key) return null;
       return window.supabase.createClient(url, key);
     })();
@@ -3820,7 +3826,7 @@ echo $payment->payment_url;`
         try {
           await radymateSupabase
             .from('showcase_config')
-            .upsert({ key: 'radymate_gallery', value: { items: gallery, updated_at: new Date().toISOString() }, updated_at: new Date().toISOString() });
+            .upsert({ key: 'radymate_gallery', value: { items: gallery, updated_at: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
         } catch (error) {
           console.warn('Unable to sync Radymate gallery to Supabase:', error);
         }
@@ -3884,7 +3890,234 @@ echo $payment->payment_url;`
 
     document.getElementById('radymate-add-image')?.addEventListener('click', addRadymateGalleryItem);
     document.getElementById('radymate-reset-gallery')?.addEventListener('click', resetRadymateGallery);
+
+    /* ── 3D APP SHOWCASE CAROUSEL (DYNAMIC SUPABASE SYNC) ──────────────── */
+    const defaultAppGalleryCards = [
+      {
+        id: 'card-dashboard',
+        badge: 'Dashboard',
+        title: 'Executive Dashboard',
+        description: 'Instant overview of sales, profit, and merchant health.',
+        screen_bg: 'linear-gradient(135deg, #1e1b4b, #312e81 40%, #0f172a)',
+        widgets: [
+          { label: 'Sales', value: '৳ 28K' },
+          { label: 'Orders', value: '214' },
+          { label: 'Win', value: '92%' }
+        ],
+        active: true
+      },
+      {
+        id: 'card-pos',
+        badge: 'POS',
+        title: 'POS & Billing',
+        description: 'Fast billing, payment capture, and instant checkout.',
+        screen_bg: 'linear-gradient(135deg, #111827, #1e293b 55%, #0f172a)',
+        widgets: [
+          { label: 'Cart', value: '৳ 1,250' },
+          { label: 'Items', value: '3' },
+          { label: 'Paid', value: 'Cash' }
+        ],
+        active: true
+      },
+      {
+        id: 'card-ai-growth',
+        badge: 'Popular',
+        title: 'AI + Growth Engine',
+        description: 'Sales intelligence and recommendation workflows.',
+        screen_bg: 'linear-gradient(135deg, #1a1203, #2a1d0d 50%, #0f172a)',
+        widgets: [
+          { label: 'Profit', value: '৳ 9.6K' },
+          { label: 'Match', value: '98%' },
+          { label: 'AI', value: 'Ready' }
+        ],
+        active: true,
+        highlight: true
+      },
+      {
+        id: 'card-ledger',
+        badge: 'Ledger',
+        title: 'Digital Ledger',
+        description: 'Track cashflow, supplier dues, and customer balances.',
+        screen_bg: 'linear-gradient(135deg, #0f172a, #112236 45%, #0b1120)',
+        widgets: [
+          { label: 'Due', value: '৳ 11K' },
+          { label: 'Clients', value: '24' },
+          { label: 'Alerts', value: '5' }
+        ],
+        active: true
+      },
+      {
+        id: 'card-copilot',
+        badge: 'AI',
+        title: 'Merchant Copilot',
+        description: 'Actionable suggestions in Bangla or English.',
+        screen_bg: 'linear-gradient(135deg, #111827, #0f172a 50%, #1f2937)',
+        widgets: [
+          { label: 'Sales', value: '৳ 48K' },
+          { label: 'Trend', value: '2.1x' },
+          { label: 'Advice', value: 'Yes' }
+        ],
+        active: true
+      }
+    ];
+
+    async function loadRemoteAppGallery() {
+      if (!radymateSupabase) return null;
+      try {
+        const { data, error } = await radymateSupabase
+          .from('showcase_config')
+          .select('value')
+          .eq('key', 'app_gallery')
+          .maybeSingle();
+
+        if (error) {
+          console.warn('App gallery Supabase read warning:', error.message);
+          return null;
+        }
+
+        return data?.value || null;
+      } catch (e) {
+        console.warn('App gallery fetch error:', e);
+        return null;
+      }
+    }
+
+    async function renderAppGallery() {
+      const remote = await loadRemoteAppGallery();
+      const track = document.getElementById('gallery-carousel-track');
+      if (!track) return;
+
+      const items = (remote && Array.isArray(remote.items) && remote.items.length)
+        ? remote.items.filter(it => it.active !== false)
+        : defaultAppGalleryCards;
+
+      const headingEl = document.querySelector('#gallery h2');
+      const subtitleEl = document.querySelector('#gallery p');
+      if (remote && remote.section_title && headingEl) {
+        headingEl.innerHTML = remote.section_title.replace('SwapnoPay', '<span class="gold-gradient-text">SwapnoPay</span>');
+      }
+      if (remote && remote.section_subtitle && subtitleEl) {
+        subtitleEl.innerText = remote.section_subtitle;
+      }
+
+      track.innerHTML = items.map((card) => {
+        const borderStyle = card.highlight ? 'style="border-color: rgba(245,158,11,0.42);"' : '';
+        const titleColorClass = card.highlight ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white';
+
+        let screenContent = '';
+        if (card.image) {
+          screenContent = `
+            <div class="screen-badge">${card.badge || 'App'}</div>
+            <img src="${card.image}" alt="${card.title}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
+          `;
+        } else {
+          const widgets = Array.isArray(card.widgets) && card.widgets.length
+            ? card.widgets
+            : [{ label: 'Speed', value: '100%' }, { label: 'Status', value: 'Live' }, { label: 'Security', value: 'Bank' }];
+          const widgetHtml = widgets.map(w => `
+            <div class="widget-mini"><strong>${w.value}</strong><span>${w.label}</span></div>
+          `).join('');
+
+          screenContent = `
+            <div class="screen-badge">${card.badge || 'App'}</div>
+            <div class="screen-widget">${widgetHtml}</div>
+          `;
+        }
+
+        const screenBgStyle = card.image ? '' : `style="background: ${card.screen_bg || 'linear-gradient(135deg, #111827, #1e293b 55%, #0f172a)'};"`;
+
+        return `
+          <div class="carousel-card" ${borderStyle}>
+            <div class="carousel-screen" ${screenBgStyle}>
+              ${screenContent}
+            </div>
+            <div class="mt-4 px-1">
+              <h4 class="font-extrabold text-sm ${titleColorClass}">${card.title}</h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">${card.description}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function syncLandingPageConfig() {
+      if (!radymateSupabase) return;
+      try {
+        const { data, error } = await radymateSupabase
+          .from('showcase_config')
+          .select('value')
+          .eq('key', 'landing_page_config')
+          .maybeSingle();
+
+        if (error || !data || !data.value) return;
+        const cfg = data.value;
+
+        // 1. Direct APK Download link
+        if (cfg.apk_download_url) {
+          const apkBtns = document.querySelectorAll('a[href="#download"], a[href$=".apk"]');
+          apkBtns.forEach(btn => {
+            const txt = (btn.textContent || '').toLowerCase();
+            if (txt.includes('apk') || txt.includes('download') || txt.includes('ডাউনলোড')) {
+              btn.setAttribute('href', cfg.apk_download_url);
+              if (cfg.apk_download_url.startsWith('http') || cfg.apk_download_url.endsWith('.apk')) {
+                btn.setAttribute('download', 'swapnopay-release.apk');
+              }
+            }
+          });
+        }
+
+        // 2. Play Store link
+        if (cfg.play_store_url) {
+          const playStoreBtn = document.querySelector('#download a:first-child');
+          if (playStoreBtn && playStoreBtn.textContent.includes('Google Play')) {
+            playStoreBtn.setAttribute('href', cfg.play_store_url);
+            playStoreBtn.setAttribute('target', '_blank');
+          }
+        }
+
+        // 3. Status text
+        if (cfg.status_text) {
+          const statusSpan = document.querySelector('.hero-status span:last-child');
+          if (statusSpan) statusSpan.innerText = cfg.status_text;
+        }
+
+        // 4. Floating settlement metric
+        if (cfg.metric_settlement) {
+          const settlementVal = document.querySelector('.floating-metric--one .metric-value');
+          if (settlementVal) settlementVal.innerText = cfg.metric_settlement;
+        }
+
+        // 5. Video URL
+        if (cfg.demo_video_url) {
+          const iframe = document.querySelector('#video-modal iframe');
+          if (iframe && cfg.demo_video_url) iframe.src = cfg.demo_video_url;
+        }
+      } catch (err) {
+        console.warn('syncLandingPageConfig error:', err);
+      }
+    }
+
+    // Initialize all components
     renderRadymateGallery();
+    renderAppGallery();
+    syncLandingPageConfig();
+
+    // Supabase Realtime channel for instant landing page updates
+    if (radymateSupabase) {
+      radymateSupabase
+        .channel('web_live_showcase')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config' }, (payload) => {
+          const k = payload.new?.key;
+          if (k === 'app_gallery') {
+            renderAppGallery();
+          } else if (k === 'radymate_gallery') {
+            renderRadymateGallery();
+          } else if (k === 'landing_page_config') {
+            syncLandingPageConfig();
+          }
+        })
+        .subscribe();
+    }
 
     // App Gallery Scroll
     function scrollGallery(amount) {

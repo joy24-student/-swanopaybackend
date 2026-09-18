@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase, reviewMerchantIdentity } from '../adminSupabaseClient';
+import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, getMerchantPinStatus, clearMerchantPin, forceRequestPinReset } from '../adminSupabaseClient';
 import { useParams, Link } from 'react-router-dom';
 import {
   User,
@@ -16,6 +16,9 @@ import {
   Building,
   Save,
   AlertTriangle,
+  Lock,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function MerchantDetail() {
@@ -32,6 +35,9 @@ export default function MerchantDetail() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
   const [showRejectBox, setShowRejectBox] = useState(false);
+  const [pinStatus, setPinStatus] = useState<{ pin_set: boolean; pin_reset_requested: boolean } | null>(null);
+  const [pinActionLoading, setPinActionLoading] = useState(false);
+  const [pinActionResult, setPinActionResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -40,12 +46,44 @@ export default function MerchantDetail() {
 
       // 1. Load merchant from Admin Supabase
       try {
-        const { data } = await adminSupabase
+        let { data } = await adminSupabase
           .from('merchants')
           .select('*')
           .eq('id', id)
-          .single();
-        if (data) mData = data;
+          .maybeSingle();
+
+        if (!data) {
+          const res = await adminSupabase
+            .from('merchants')
+            .select('*')
+            .eq('user_id', id)
+            .maybeSingle();
+          data = res.data;
+        }
+
+        if (data) {
+          try {
+            const { data: subData } = await adminSupabase
+              .from('merchant_kyc_submissions')
+              .select('*')
+              .or(`merchant_id.eq.${data.id},merchant_id.eq.${data.user_id || data.id}`)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (subData) {
+              data = {
+                ...data,
+                nid_front_url: data.nid_front_url || subData.nid_front_url,
+                nid_back_url: data.nid_back_url || subData.nid_back_url,
+                face_photo_url: data.face_photo_url || subData.face_photo_url,
+                nid_number: data.nid_number || subData.nid_number,
+                nid_name: data.nid_name || subData.nid_name,
+                nid_dob: data.nid_dob || subData.nid_dob,
+              };
+            }
+          } catch (_) {}
+          mData = data;
+        }
       } catch (e) {
         console.warn('[MerchantDetail] Supabase fetch error:', e);
       }
@@ -91,6 +129,14 @@ export default function MerchantDetail() {
         console.warn('[MerchantDetail] Connections fetch error:', e);
       }
 
+      // 5. Load merchant PIN status
+      try {
+        const status = await getMerchantPinStatus(id);
+        setPinStatus(status);
+      } catch (e) {
+        console.warn('[MerchantDetail] PIN status fetch error:', e);
+      }
+
       setLoading(false);
     })();
   }, [id]);
@@ -118,10 +164,7 @@ export default function MerchantDetail() {
   };
 
   const formatDocUrl = (url: string | null | undefined) => {
-    if (!url) return null;
-    if (url.startsWith('http') || url.startsWith('data:')) return url;
-    const backend = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top';
-    return `${backend.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+    return formatKycImageUrl(url);
   };
 
   const handleReviewKyc = async (action: 'APPROVE' | 'REJECT') => {
@@ -565,6 +608,116 @@ export default function MerchantDetail() {
             </div>
           )}
         </div>
+
+        {/* ── PIN Security ──────────────────────────────────────── */}
+        <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-default)', padding: 24, marginTop: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Lock size={18} color="var(--accent)" />
+            <span style={{ fontWeight: 700, fontSize: 15 }}>App PIN Security</span>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            The merchant's 4-digit app PIN is stored as a SHA-256 hash in Supabase. Raw PINs are never visible. Admin can clear the PIN to force the merchant to set a new one.
+          </p>
+
+          {/* Status badges */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+              background: pinStatus?.pin_set ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+              color: pinStatus?.pin_set ? '#10B981' : '#EF4444',
+              border: `1px solid ${pinStatus?.pin_set ? '#10B981' : '#EF4444'}` }}>
+              {pinStatus?.pin_set ? <Check size={14} /> : <X size={14} />}
+              {pinStatus?.pin_set ? 'PIN is set' : 'No PIN configured'}
+            </div>
+            {pinStatus?.pin_reset_requested && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+                background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid #F59E0B' }}>
+                <AlertTriangle size={14} />
+                Reset Requested by Merchant
+              </div>
+            )}
+          </div>
+
+          {/* Action result message */}
+          {pinActionResult && (
+            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, marginBottom: 16,
+              background: pinActionResult.startsWith('✅') ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+              color: pinActionResult.startsWith('✅') ? '#10B981' : '#EF4444',
+              border: `1px solid ${pinActionResult.startsWith('✅') ? '#10B981' : '#EF4444'}` }}>
+              {pinActionResult}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {/* Clear PIN */}
+            <button
+              disabled={pinActionLoading || !pinStatus?.pin_set}
+              onClick={async () => {
+                if (!id || !window.confirm('Clear this merchant\'s PIN? They will need to set a new PIN on next login.')) return;
+                setPinActionLoading(true);
+                setPinActionResult(null);
+                try {
+                  await clearMerchantPin(id);
+                  setPinStatus({ pin_set: false, pin_reset_requested: false });
+                  setPinActionResult('✅ PIN cleared. Merchant must set a new PIN on next login.');
+                } catch (err: any) {
+                  setPinActionResult('❌ ' + err.message);
+                } finally { setPinActionLoading(false); }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, border: 'none',
+                background: !pinStatus?.pin_set ? 'var(--bg-subtle)' : 'rgba(239,68,68,0.12)',
+                color: !pinStatus?.pin_set ? 'var(--text-secondary)' : '#EF4444',
+                fontWeight: 700, fontSize: 13, cursor: !pinStatus?.pin_set ? 'not-allowed' : 'pointer',
+                outline: '1px solid currentColor' }}>
+              <Trash2 size={15} />
+              {pinActionLoading ? 'Clearing...' : 'Clear PIN'}
+            </button>
+
+            {/* Force Reset (mark pin_reset_requested = true) */}
+            <button
+              disabled={pinActionLoading || !pinStatus?.pin_set || pinStatus?.pin_reset_requested}
+              onClick={async () => {
+                if (!id) return;
+                setPinActionLoading(true);
+                setPinActionResult(null);
+                try {
+                  await forceRequestPinReset(id);
+                  setPinStatus(prev => prev ? { ...prev, pin_reset_requested: true } : prev);
+                  setPinActionResult('✅ PIN marked for forced reset. It will be cleared on next merchant sync.');
+                } catch (err: any) {
+                  setPinActionResult('❌ ' + err.message);
+                } finally { setPinActionLoading(false); }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, border: 'none',
+                background: (!pinStatus?.pin_set || pinStatus?.pin_reset_requested) ? 'var(--bg-subtle)' : 'rgba(129,140,248,0.12)',
+                color: (!pinStatus?.pin_set || pinStatus?.pin_reset_requested) ? 'var(--text-secondary)' : '#818CF8',
+                fontWeight: 700, fontSize: 13, cursor: (!pinStatus?.pin_set || pinStatus?.pin_reset_requested) ? 'not-allowed' : 'pointer',
+                outline: '1px solid currentColor' }}>
+              <RefreshCw size={15} />
+              {pinActionLoading ? 'Working...' : 'Force Reset (Next Sync)'}
+            </button>
+
+            {/* Refresh PIN status */}
+            <button
+              disabled={pinActionLoading}
+              onClick={async () => {
+                if (!id) return;
+                setPinActionLoading(true);
+                try {
+                  const status = await getMerchantPinStatus(id);
+                  setPinStatus(status);
+                  setPinActionResult('✅ PIN status refreshed.');
+                } catch (err: any) {
+                  setPinActionResult('❌ ' + err.message);
+                } finally { setPinActionLoading(false); }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, border: '1px solid var(--border-default)',
+                background: 'var(--bg-subtle)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              <RefreshCw size={15} />
+              Refresh Status
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );

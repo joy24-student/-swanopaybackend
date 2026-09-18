@@ -554,6 +554,9 @@ async function handleSyncMerchantSetup(req, res) {
         photo_url: photo_url || '',
         updated_at: new Date().toISOString()
       }
+      if (req.body?.pin_hash) {
+        profileData.app_pin_hash = req.body.pin_hash
+      }
       const { data: mData, error: mErr } = await admin
         .from('merchants')
         .upsert(profileData)

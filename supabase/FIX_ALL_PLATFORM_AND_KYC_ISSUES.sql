@@ -295,6 +295,92 @@ CREATE POLICY "KYC Submissions write policy"
   WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
+-- 9B. PLATFORM KYC FUNCTIONS (IDEMPOTENT STORED PROCEDURES)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.submit_platform_merchant_kyc(p_submission jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE m public.merchants;
+BEGIN
+  SELECT * INTO m FROM public.merchants WHERE id::text = p_submission->>'merchant_id' OR user_id::text = p_submission->>'merchant_id' FOR UPDATE;
+  IF NOT FOUND THEN
+    INSERT INTO public.merchants (
+      id, user_id, business_name, nid_number, nid_name, nid_dob,
+      nid_front_url, nid_back_url, face_photo_url, kyc_status, status, kyc_submitted_at
+    ) VALUES (
+      COALESCE(NULLIF(p_submission->>'merchant_id', '')::uuid, gen_random_uuid()),
+      p_submission->>'merchant_id',
+      COALESCE(NULLIF(p_submission->>'nid_name', ''), 'Store Merchant'),
+      COALESCE(p_submission->>'nid_number', ''),
+      p_submission->>'nid_name',
+      p_submission->>'nid_dob',
+      p_submission->>'nid_front_url',
+      p_submission->>'nid_back_url',
+      p_submission->>'face_photo_url',
+      'PENDING',
+      'PENDING_VERIFICATION',
+      now()
+    ) RETURNING * INTO m;
+  ELSE
+    UPDATE public.merchants SET
+      nid_number = COALESCE(p_submission->>'nid_number', m.nid_number),
+      nid_name = COALESCE(p_submission->>'nid_name', m.nid_name),
+      nid_dob = COALESCE(p_submission->>'nid_dob', m.nid_dob),
+      nid_front_url = COALESCE(p_submission->>'nid_front_url', m.nid_front_url),
+      nid_back_url = COALESCE(p_submission->>'nid_back_url', m.nid_back_url),
+      face_photo_url = COALESCE(p_submission->>'face_photo_url', m.face_photo_url),
+      kyc_status = 'PENDING',
+      kyc_submitted_at = now(),
+      kyc_reviewed_at = NULL,
+      kyc_reviewed_by = NULL,
+      kyc_rejection_reason = NULL,
+      updated_at = now()
+    WHERE id = m.id RETURNING * INTO m;
+  END IF;
+
+  INSERT INTO public.merchant_kyc_submissions (
+    merchant_id, nid_number, nid_name, nid_dob, nid_front_url, nid_back_url,
+    face_photo_url, liveness_passed, ocr_raw_text, status
+  ) VALUES (
+    m.id, m.nid_number, m.nid_name, m.nid_dob, m.nid_front_url, m.nid_back_url,
+    m.face_photo_url, true, COALESCE(p_submission->>'ocr_raw_text', ''), 'PENDING'
+  );
+
+  RETURN to_jsonb(m);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.review_platform_merchant_kyc(p_merchant_id text, p_status text, p_reason text, p_reviewer text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE m public.merchants;
+BEGIN
+  IF p_status NOT IN ('VERIFIED','REJECTED') THEN RAISE EXCEPTION 'Invalid review status'; END IF;
+  SELECT * INTO m FROM public.merchants WHERE id::text = p_merchant_id OR user_id::text = p_merchant_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Merchant not found'; END IF;
+
+  UPDATE public.merchants SET
+    kyc_status = p_status,
+    kyc_reviewed_at = now(),
+    kyc_reviewed_by = p_reviewer,
+    kyc_rejection_reason = CASE WHEN p_status = 'REJECTED' THEN p_reason ELSE NULL END,
+    status = CASE WHEN p_status = 'VERIFIED' AND status = 'PENDING_VERIFICATION' THEN 'ACTIVE' ELSE status END,
+    trial_ends_at = CASE WHEN p_status = 'VERIFIED' THEN now() + interval '90 days' ELSE trial_ends_at END,
+    updated_at = now()
+  WHERE id = m.id RETURNING * INTO m;
+
+  UPDATE public.merchant_kyc_submissions SET
+    status = CASE WHEN p_status = 'VERIFIED' THEN 'APPROVED' ELSE 'REJECTED' END,
+    reviewed_at = now(),
+    reviewed_by = p_reviewer,
+    rejection_reason = m.kyc_rejection_reason,
+    updated_at = now()
+  WHERE merchant_id = m.id AND status = 'PENDING';
+
+  RETURN to_jsonb(m);
+END $$;
+
+GRANT EXECUTE ON FUNCTION public.submit_platform_merchant_kyc(jsonb) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.review_platform_merchant_kyc(text, text, text, text) TO anon, authenticated, service_role;
+
+-- ------------------------------------------------------------------------------
 -- 10. SEED REALISTIC KYC VERIFICATION REQUESTS
 -- ------------------------------------------------------------------------------
 -- Insert sample merchants with pending KYC so the Admin Panel immediately displays them

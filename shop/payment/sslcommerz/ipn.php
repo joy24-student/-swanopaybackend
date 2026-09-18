@@ -41,6 +41,18 @@ try {
         $tran_id
     ]);
 
+    if ($status === 'VALID') {
+        $order_items_stmt = $pdo->prepare("SELECT product_id, quantity FROM tbl_order WHERE payment_id = ?");
+        $order_items_stmt->execute([$tran_id]);
+        $order_items = $order_items_stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stock_update_stmt = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ?");
+        foreach ($order_items as $item) {
+            if (!empty($item['product_id']) && !empty($item['quantity'])) {
+                $stock_update_stmt->execute([(int)$item['quantity'], (int)$item['product_id']]);
+            }
+        }
+    }
+
     $log_data .= "RESULT: SUCCESS. Status updated to: " . $payment_status . " for TXNID: " . $tran_id . "\n";
 
 } catch (\PDOException $e) {

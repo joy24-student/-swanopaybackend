@@ -13,6 +13,7 @@ import PaymentAnalytics from './pages/PaymentAnalytics'
 import SystemHealth from './pages/SystemHealth'
 import MfsRegexManager from './pages/MfsRegexManager'
 import KycReviews from './pages/KycReviews'
+import LandingPageControl from './pages/LandingPageControl'
 import { AuthProvider, RequireAdmin } from './auth'
 import { ToastProvider } from './components/ToastProvider'
 import AdminLayout from './components/AdminLayout'
@@ -76,6 +77,14 @@ export default function App() {
             <RequireAdmin>
               <AdminLayout>
                 <SystemSettings />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+
+          <Route path="/landing-page" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <LandingPageControl />
               </AdminLayout>
             </RequireAdmin>
           } />

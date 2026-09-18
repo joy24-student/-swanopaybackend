@@ -132,16 +132,9 @@ foreach ($_SESSION['cart_p_id'] as $key => $product_id) {
         $customer_details['cust_id'] // Corrected: Pass the customer ID
     ]);
     
-    // Update product stock (p_qty)
-    // Update product stock (p_qty)
-$statement = $pdo->prepare("UPDATE tbl_product SET p_qty = p_qty - ? WHERE p_id = ?");
-$statement->execute([$_SESSION['cart_p_qty'][$key] ?? 0, $product_id]); // Added null coalescing for safety
-}
-
-// Update coupon usage count if a coupon was applied
-if ($coupon_id && $coupon_code) {
-    $statement = $pdo->prepare("UPDATE tbl_coupon SET used_count = used_count + 1 WHERE coupon_id = ?");
-    $statement->execute([$coupon_id]);
+    // Note: Product stock decrement and coupon usage update are deferred to 
+    // success_handler.php / ipn.php upon validated payment confirmation to prevent
+    // permanent inventory leakage on cancelled or abandoned payment attempts.
 }
 
 // === 4. PREPARE AND SEND DATA TO SSLCommerz API ===

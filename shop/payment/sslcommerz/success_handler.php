@@ -56,12 +56,12 @@ if (isset($response['status']) && $response['status'] == 'VALID') {
     $paid_amount = $response['amount'] ?? 0;
     
     // Check if the order amount matches the validated amount to prevent fraud
-    $statement = $pdo->prepare("SELECT paid_amount FROM tbl_payment WHERE txnid = ?");
+    $statement = $pdo->prepare("SELECT paid_amount, payment_status FROM tbl_payment WHERE txnid = ?");
     $statement->execute([$tran_id]);
     $db_payment = $statement->fetch(PDO::FETCH_ASSOC);
 
     // Basic amount check (Note: For absolute security, this needs to be float/decimal comparison)
-    if ($db_payment && $db_payment['paid_amount'] == $paid_amount) {
+    if ($db_payment && (float)$db_payment['paid_amount'] == (float)$paid_amount) {
 
         // A. Update the payment status to 'Completed'
         $statement = $pdo->prepare("UPDATE tbl_payment SET 
@@ -78,8 +78,27 @@ if (isset($response['status']) && $response['status'] == 'VALID') {
             $card_type,
             $tran_id
         ]);
+
+        // B. Decrement stock and update coupon usage on first verified completion
+        if (($db_payment['payment_status'] ?? '') !== 'Completed') {
+            $order_items_stmt = $pdo->prepare("SELECT product_id, quantity FROM tbl_order WHERE payment_id = ?");
+            $order_items_stmt->execute([$tran_id]);
+            $order_items = $order_items_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stock_update_stmt = $pdo->prepare("UPDATE tbl_product SET p_qty = GREATEST(0, p_qty - ?) WHERE p_id = ?");
+            foreach ($order_items as $item) {
+                if (!empty($item['product_id']) && !empty($item['quantity'])) {
+                    $stock_update_stmt->execute([(int)$item['quantity'], (int)$item['product_id']]);
+                }
+            }
+
+            $coupon_id = $_SESSION['coupon']['id'] ?? null;
+            if ($coupon_id) {
+                $cp_stmt = $pdo->prepare("UPDATE tbl_coupon SET used_count = used_count + 1 WHERE coupon_id = ?");
+                $cp_stmt->execute([$coupon_id]);
+            }
+        }
         
-        // B. Redirect the customer to the final success display page
+        // C. Redirect the customer to the final success display page
         header("location: ../../payment_success.php?method=sslcommerz&tran_id=" . $tran_id . "&session_id=" . session_id());
         exit;
     } else {

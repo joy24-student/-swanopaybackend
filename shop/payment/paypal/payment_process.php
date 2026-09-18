@@ -17,7 +17,24 @@ $cancel_url = 'payment.php';
 $notify_url = 'payment/paypal/verify_process.php';
 
 $item_name = 'Product Item(s)';
-$item_amount = $_POST['final_total'];
+// Server-side recalculation to prevent price tampering via client POST parameters
+$calculated_total = 0;
+if (!empty($_SESSION['cart_p_id'])) {
+    $p_stmt = $pdo->prepare("SELECT p_current_price FROM tbl_product WHERE p_id = ?");
+    foreach ($_SESSION['cart_p_id'] as $key => $p_id) {
+        $p_qty = (int)($_SESSION['cart_p_qty'][$key] ?? 1);
+        $p_stmt->execute([(int)$p_id]);
+        $prod = $p_stmt->fetch(PDO::FETCH_ASSOC);
+        $unit_price = $prod ? (float)$prod['p_current_price'] : (float)($_SESSION['cart_p_current_price'][$key] ?? 0);
+        $calculated_total += ($unit_price * $p_qty);
+    }
+}
+$shipping_cost = (float)($_SESSION['shipping_cost'] ?? 0);
+$coupon_discount = (float)($_SESSION['coupon_discount'] ?? ($_SESSION['coupon']['discount'] ?? 0));
+$item_amount = max(0, ($calculated_total + $shipping_cost) - $coupon_discount);
+if ($item_amount <= 0 && !empty($_SESSION['final_total'])) {
+    $item_amount = (float)$_SESSION['final_total'];
+}
 $item_number = time();
 
 $payment_date = date('Y-m-d H:i:s');

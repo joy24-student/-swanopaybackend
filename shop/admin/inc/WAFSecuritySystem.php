@@ -422,10 +422,31 @@ class WAFSecuritySystem {
      * Verify CAPTCHA (basic implementation)
      */
     public function verifyCAPTCHA($response) {
-        // TODO: Integrate with reCAPTCHA v3 or hCaptcha
-        // For now, just mark as verified
-        $_SESSION['captcha_verified'] = true;
-        return true;
+        if (empty($response) || !is_string($response) || trim($response) === '') {
+            return false;
+        }
+
+        // 1. Check external reCAPTCHA if configured
+        $secret = getenv('RECAPTCHA_SECRET_KEY') ?: (defined('RECAPTCHA_SECRET_KEY') ? RECAPTCHA_SECRET_KEY : '');
+        if (!empty($secret)) {
+            $verify = @file_get_contents("https://www.google.com/recaptcha/api/siteverify?secret=" . urlencode($secret) . "&response=" . urlencode($response));
+            $res = json_decode($verify, true);
+            if (!empty($res['success'])) {
+                $_SESSION['captcha_verified'] = true;
+                unset($_SESSION['require_captcha']);
+                return true;
+            }
+            return false;
+        }
+
+        // 2. Check session challenge if generated
+        if (!empty($_SESSION['captcha_challenge']) && hash_equals((string)$_SESSION['captcha_challenge'], trim($response))) {
+            $_SESSION['captcha_verified'] = true;
+            unset($_SESSION['require_captcha'], $_SESSION['captcha_challenge']);
+            return true;
+        }
+
+        return false;
     }
     
     // ========================================================================

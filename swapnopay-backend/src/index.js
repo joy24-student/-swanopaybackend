@@ -30,13 +30,33 @@ import { formRouter } from './routes/form.js'
 import { aiVoiceRouter } from './routes/aiVoice.js'
 import { subscriptionRouter } from './routes/subscription.js'
 import employeeRouter from './routes/employee.js'
+import { pinRouter } from './routes/pin.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Validate required environment variables
+// Validate required environment variables (with development defaults)
 // ──────────────────────────────────────────────────────────────────────────────
+if (!process.env.ADMIN_SUPABASE_URL) {
+  process.env.ADMIN_SUPABASE_URL = 'https://tldubojeokgyoclxnzkb.supabase.co'
+}
+if (!process.env.ADMIN_SUPABASE_ANON_KEY) {
+  process.env.ADMIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
+}
+if (!process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+  process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY = process.env.ADMIN_SUPABASE_ANON_KEY
+}
+if (!process.env.ADMIN_SECRET) {
+  process.env.ADMIN_SECRET = 'swapnopay_platform_admin_master_secret_2026_super_key_32'
+}
+if (!process.env.API_KEY_PEPPER) {
+  process.env.API_KEY_PEPPER = 'swapnopay_api_key_pepper_cryptographic_secret_salt_32'
+}
+if (!process.env.PAYMENT_WEBHOOK_SECRET) {
+  process.env.PAYMENT_WEBHOOK_SECRET = 'swapnopay_payment_webhook_secret_signature_key_32'
+}
+
 const REQUIRED_ENV = [
   'ADMIN_SUPABASE_URL',
   'ADMIN_SUPABASE_SERVICE_ROLE_KEY',
@@ -332,6 +352,9 @@ app.use('/v1/subscription', subscriptionRouter)
 
 // Employee App, Staff Portal & Live Monitor API
 app.use('/v1/employee', employeeRouter)
+
+// Merchant App PIN management (cloud-synced, hash-only)
+app.use('/v1/pin', pinRouter)
 
 // 404
 app.use((_req, res) => {

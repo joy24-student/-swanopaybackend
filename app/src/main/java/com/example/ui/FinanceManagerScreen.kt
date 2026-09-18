@@ -183,11 +183,19 @@ fun FinanceManagerScreen(viewModel: AppViewModel) {
                                         Text(dps?.providerName ?: loan?.providerName.orEmpty(), color = text, fontWeight = FontWeight.Bold)
                                         Text(dps?.accountReference ?: loan?.accountReference.orEmpty(), color = muted, fontSize = 11.sp)
                                     }
-                                    AssistChip(
-                                        onClick = {},
-                                        enabled = false,
-                                        label = { Text(if ((dps?.isSynced ?: loan?.isSynced) == true) "Synced" else "Offline pending") }
-                                    )
+                                    val isSynced = (dps?.isSynced ?: loan?.isSynced) == true
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSynced) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFF59E0B).copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = if (isSynced) "Synced" else "Offline pending",
+                                            color = if (isSynced) Color(0xFF059669) else Color(0xFFD97706),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
                                 }
                                 LinearProgressIndicator(
                                     progress = { if (paid + outstanding == 0.0) 0f else (paid / (paid + outstanding)).toFloat() },

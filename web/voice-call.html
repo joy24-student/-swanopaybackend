@@ -145,11 +145,13 @@
 
         // Send to SwapnoPay Backend Gemini API
         try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const activeMerchantId = urlParams.get('merchant_id') || localStorage.getItem('swapnopay_merchant_id') || 'default';
           const res = await fetch('/v1/voice/record-to-ai', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              merchant_id: 'default',
+              merchant_id: activeMerchantId,
               speech_text: spoken
             })
           });

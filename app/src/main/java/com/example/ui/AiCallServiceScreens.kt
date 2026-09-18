@@ -1253,11 +1253,13 @@ fun InteractiveVoiceTestDialog(
                                 val updated = conversation + AiCallTurn("customer", userQ, "00:05")
                                 conversation = updated
 
-                                // Mock rule reply for instant test feedback
+                                // Offline test simulation engine (mirrors server AI persona guidelines)
                                 val reply = if (userQ.contains("খোলা") || userQ.contains("সময়")) {
                                     "আমাদের শোরুম সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে। আপনি যেকোনো সময় আসতে পারেন।"
                                 } else if (userQ.contains("বাকি") || userQ.contains("টাকা")) {
                                     "আপনার বকেয়া দেখতে অনুগ্রহ করে মোবাইল নম্বরটি বলুন, আমি চেক করে দিচ্ছি।"
+                                } else if (userQ.contains("অর্ডার") || userQ.contains("ডেলিভারি")) {
+                                    "আপনার অর্ডার নম্বরটি প্রদান করুন, আমি বর্তমান ডেলিভারি স্ট্যাটাস ট্র্যাকিং করে দিচ্ছি।"
                                 } else {
                                     "জি আমি বুঝতে পেরেছি। আপনার প্রশ্নের সন্তোষজনক সমাধান দিতে আমি প্রস্তুত। আর কী জানতে চান?"
                                 }

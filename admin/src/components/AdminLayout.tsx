@@ -26,7 +26,8 @@ import {
   LogOut,
   ExternalLink,
   ChevronDown,
-  Layers
+  Layers,
+  Sparkles
 } from 'lucide-react'
 
 interface AdminLayoutProps {
@@ -162,6 +163,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           to: '/settings',
           label: 'CMS & Settings',
           icon: <Settings size={17} />
+        },
+        {
+          to: '/landing-page',
+          label: 'Landing Page & Gallery',
+          icon: <Sparkles size={17} />
         }
       ]
     }
@@ -181,6 +187,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     if (path === '/health') return ['Monitoring', 'System Health & Latency']
     if (path === '/connect-supabase') return ['Infrastructure', 'Central Supabase']
     if (path === '/settings') return ['Configuration', 'System CMS']
+    if (path === '/landing-page') return ['Showcase', 'Landing Page & App Gallery']
     return ['Platform', 'Console']
   }
 

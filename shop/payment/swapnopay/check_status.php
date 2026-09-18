@@ -12,9 +12,9 @@ if (empty($tran_id)) {
 }
 
 $supabase_url = defined('SUPABASE_URL') ? SUPABASE_URL : getenv('SUPABASE_URL');
-$supabase_key = defined('SUPABASE_SERVICE_KEY') && !empty(SUPABASE_SERVICE_KEY) 
-    ? SUPABASE_SERVICE_KEY 
-    : (defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : getenv('SUPABASE_ANON_KEY'));
+$supabase_key = defined('SUPABASE_ANON_KEY') && !empty(SUPABASE_ANON_KEY) 
+    ? SUPABASE_ANON_KEY 
+    : (getenv('SUPABASE_ANON_KEY') ?: (defined('SUPABASE_SERVICE_KEY') ? SUPABASE_SERVICE_KEY : getenv('SUPABASE_SERVICE_KEY')));
 
 if (!empty($supabase_url) && !empty($supabase_key)) {
     $clean_supabase_url = rtrim($supabase_url, '/');

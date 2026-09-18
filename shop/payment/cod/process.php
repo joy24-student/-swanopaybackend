@@ -216,17 +216,20 @@ if (!empty($supabase_url) && !empty($supabase_key)) {
         $order_number = 'ORD-' . date('Ymd') . '-' . mt_rand(1000, 9999);
         $clean_supabase_url = rtrim($supabase_url, '/');
 
-        // 1. Get Merchant ID
-        $ch_m = curl_init("{$clean_supabase_url}/rest/v1/merchants?select=id&limit=1");
-        curl_setopt($ch_m, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch_m, CURLOPT_HTTPHEADER, [
-            "apikey: {$supabase_key}",
-            "Authorization: Bearer {$supabase_key}"
-        ]);
-        $res_m = curl_exec($ch_m);
-        curl_close($ch_m);
-        $merchants = json_decode($res_m, true);
-        $merchant_id = !empty($merchants[0]['id']) ? $merchants[0]['id'] : null;
+        // 1. Get Merchant ID (prefer runtime host configuration in multi-tenant mode)
+        $merchant_id = !empty($runtime['merchant_id']) ? $runtime['merchant_id'] : null;
+        if (!$merchant_id) {
+            $ch_m = curl_init("{$clean_supabase_url}/rest/v1/merchants?select=id&limit=1");
+            curl_setopt($ch_m, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch_m, CURLOPT_HTTPHEADER, [
+                "apikey: {$supabase_key}",
+                "Authorization: Bearer {$supabase_key}"
+            ]);
+            $res_m = curl_exec($ch_m);
+            curl_close($ch_m);
+            $merchants = json_decode($res_m, true);
+            $merchant_id = !empty($merchants[0]['id']) ? $merchants[0]['id'] : null;
+        }
 
         if ($merchant_id) {
             // 2. Insert into Supabase orders
