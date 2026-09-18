@@ -4,6 +4,7 @@ Integrates EasyOCR and Tesseract OCR with automatic fallback and smart engine se
 """
 
 import os
+import sys
 from typing import Dict, Any, List, Optional
 
 
@@ -19,7 +20,7 @@ class MultiOCREngine:
                 import easyocr
                 self._easyocr_reader = easyocr.Reader(self.languages, gpu=False)
             except Exception as e:
-                print(f"[MultiOCREngine] EasyOCR initialization warning: {e}")
+                print(f"[MultiOCREngine] EasyOCR initialization warning: {e}", file=sys.stderr)
         return self._easyocr_reader
 
     def is_tesseract_available(self) -> bool:
@@ -40,7 +41,7 @@ class MultiOCREngine:
             results = reader.readtext(image_input, detail=0)
             return "\n".join(results)
         except Exception as e:
-            print(f"[MultiOCREngine] EasyOCR error: {e}")
+            print(f"[MultiOCREngine] EasyOCR error: {e}", file=sys.stderr)
             return ""
 
     def extract_text_tesseract(self, image_input) -> str:
@@ -60,7 +61,7 @@ class MultiOCREngine:
 
             return pytesseract.image_to_string(img, lang="ben+eng")
         except Exception as e:
-            print(f"[MultiOCREngine] Tesseract error: {e}")
+            print(f"[MultiOCREngine] Tesseract error: {e}", file=sys.stderr)
             return ""
 
     def combine_ocr_results(self, image_input) -> str:

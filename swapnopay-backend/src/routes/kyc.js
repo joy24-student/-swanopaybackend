@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { submitMerchantKyc, listPendingKycSubmissions, reviewMerchantKyc, getAdminClient, getSubscriptionConfig } from '../services/adminSupabase.js'
 import { requirePlatformUser, requirePlatformMerchant } from '../services/merchantAccount.js'
 import { requireAdminSecret } from '../middleware/auth.js'
+import { extractBangladeshiNid } from '../services/nidOcrService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -91,6 +92,21 @@ router.post('/submit', requirePlatformUser, async (req, res) => {
       doc_type,
     } = req.body || {}
 
+    const cleanNid = String(nid_number || '').trim()
+    if (!/^(?:[0-9]{10}|[0-9]{13}|[0-9]{17})$/.test(cleanNid)) {
+      return res.status(400).json({ error: 'একটি সঠিক ১০, ১৩ বা ১৭ ডিজিটের জাতীয় পরিচয়পত্র (NID) নম্বর দিন।' })
+    }
+
+    if (!front_base64 && !incomingFrontUrl) {
+      return res.status(400).json({ error: 'NID কার্ডের সামনের পাতার ছবি আবশ্যক।' })
+    }
+    if (!back_base64 && !incomingBackUrl) {
+      return res.status(400).json({ error: 'NID কার্ডের পেছনের পাতার ছবি আবশ্যক।' })
+    }
+    if ((!selfie_base64 && !incomingFaceUrl) || liveness_passed === false) {
+      return res.status(400).json({ error: 'সরাসরি সেলফি ও লাইভনেস ভেরিফিকেশন সম্পন্ন করা আবশ্যক।' })
+    }
+
     const admin = getAdminClient()
     const userId = req.platformUser.id
     const userEmail = req.platformUser.email
@@ -128,21 +144,6 @@ router.post('/submit', requirePlatformUser, async (req, res) => {
 
     if (!merchant_id) {
       return res.status(400).json({ error: 'merchant_id is required' })
-    }
-
-    const cleanNid = String(nid_number || '').trim()
-    if (!/^(?:[0-9]{10}|[0-9]{13}|[0-9]{17})$/.test(cleanNid)) {
-      return res.status(400).json({ error: 'একটি সঠিক ১০, ১৩ বা ১৭ ডিজিটের জাতীয় পরিচয়পত্র (NID) নম্বর দিন।' })
-    }
-
-    if (!front_base64 && !incomingFrontUrl) {
-      return res.status(400).json({ error: 'NID কার্ডের সামনের পাতার ছবি আবশ্যক।' })
-    }
-    if (!back_base64 && !incomingBackUrl) {
-      return res.status(400).json({ error: 'NID কার্ডের পেছনের পাতার ছবি আবশ্যক।' })
-    }
-    if ((!selfie_base64 && !incomingFaceUrl) || liveness_passed === false) {
-      return res.status(400).json({ error: 'সরাসরি সেলফি ও লাইভনেস ভেরিফিকেশন সম্পন্ন করা আবশ্যক।' })
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -322,49 +323,30 @@ router.post('/extract-nid', requirePlatformUser, async (req, res) => {
       return res.status(400).json({ error: 'At least one image (front_base64 or back_base64) is required.' })
     }
 
-    const extractedFields = {
-      nid_number: null,
-      doc_type: 'UNKNOWN',
-      name_english: null,
-      name_bangla: null,
-      father_name: null,
-      mother_name: null,
-      date_of_birth: null,
-      blood_group: null,
-      is_valid: false
-    }
+    const ocrResult = await extractBangladeshiNid({ frontBase64: front_base64, backBase64: back_base64 })
 
-    // Process base64 images through sharp for text analysis hints
-    for (const [side, b64] of [['front', front_base64], ['back', back_base64]]) {
-      if (!b64) continue
-      try {
-        const cleanBase64 = b64.replace(/^data:image\/\w+;base64,/, '')
-        const buffer = Buffer.from(cleanBase64, 'base64')
-        if (buffer.length === 0) continue
-
-        // Use sharp to detect image metadata (real OCR would go here)
-        // In production, integrate with cloud OCR (Google Cloud Vision, AWS Textract, or a local service)
-        const imageInfo = await sharp(buffer, { limitInputPixels: 40000000 }).metadata()
-        console.log(`[kyc/extract-nid] ${side}: ${imageInfo.width}x${imageInfo.height} ${imageInfo.format}`)
-      } catch (imgErr) {
-        console.warn(`[kyc/extract-nid] Image processing notice for ${side}:`, imgErr.message)
-      }
-    }
-
-    // Regex/heuristic extraction on base64 decoded text is not practical server-side without OCR
-    // Return the structure with extraction status — Android app handles on-device ML Kit OCR
     res.json({
       ok: true,
-      extraction_mode: 'client_side_mlkit',
-      message: 'On-device ML Kit OCR is primary. Server-side OCR requires cloud vision integration.',
-      extracted_fields: extractedFields,
+      extraction_mode: ocrResult.extraction_mode,
+      extracted_fields: {
+        nid_number: ocrResult.nid_number,
+        doc_type: ocrResult.doc_type,
+        name_english: ocrResult.name_english,
+        name_bangla: ocrResult.name_bangla,
+        father_name: ocrResult.father_name,
+        mother_name: ocrResult.mother_name,
+        date_of_birth: ocrResult.date_of_birth,
+        blood_group: ocrResult.blood_group,
+        is_valid: ocrResult.is_valid,
+        confidence: ocrResult.confidence
+      },
       validation: {
-        nid_number: extractedFields.nid_number ? 'valid' : 'missing',
-        name_english: extractedFields.name_english ? 'found' : 'missing',
-        name_bangla: extractedFields.name_bangla ? 'found' : 'missing',
-        father_name: extractedFields.father_name ? 'found' : 'missing',
-        mother_name: extractedFields.mother_name ? 'found' : 'missing',
-        date_of_birth: extractedFields.date_of_birth ? 'found' : 'missing'
+        nid_number: ocrResult.nid_number ? 'valid' : 'missing',
+        name_english: ocrResult.name_english ? 'found' : 'missing',
+        name_bangla: ocrResult.name_bangla ? 'found' : 'missing',
+        father_name: ocrResult.father_name ? 'found' : 'missing',
+        mother_name: ocrResult.mother_name ? 'found' : 'missing',
+        date_of_birth: ocrResult.date_of_birth ? 'found' : 'missing'
       }
     })
   } catch (err) {

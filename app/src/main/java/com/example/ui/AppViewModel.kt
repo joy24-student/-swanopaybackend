@@ -1424,6 +1424,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun extractNidDetailsFromServer(
+        imageBytes: ByteArray,
+        isFront: Boolean = true,
+        onResult: ((Map<String, String>) -> Unit)? = null
+    ) {
+        if (imageBytes.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val compressed = withContext(Dispatchers.Default) {
+                    compressKycImage(imageBytes, maxDim = 1280, quality = 80)
+                }
+                val base64Str = android.util.Base64.encodeToString(compressed, android.util.Base64.NO_WRAP)
+                val payload = org.json.JSONObject()
+                if (isFront) {
+                    payload.put("front_base64", base64Str)
+                } else {
+                    payload.put("back_base64", base64Str)
+                }
+                val response = platformRequest("/v1/kyc/extract-nid", payload)
+                val fields = response.optJSONObject("extracted_fields")
+                if (fields != null) {
+                    val map = mutableMapOf<String, String>()
+                    val keys = fields.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        if (!fields.isNull(k)) {
+                            val v = fields.optString(k, "")
+                            if (v.isNotBlank() && v != "null") {
+                                map[k] = v
+                            }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        onResult?.invoke(map)
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("AppViewModel", "Server NID extraction notice: ${e.message}")
+            }
+        }
+    }
+
     fun submitFullKycVerification(
         nidNumber: String, nidName: String, nidDob: String,
         frontBytes: ByteArray, backBytes: ByteArray, selfieBytes: ByteArray,

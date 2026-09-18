@@ -20364,6 +20364,18 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                         isOcrProcessing = false
                         ocrCompleted = true
                         speak("ওসিআর স্ক্যান সফলভাবে সম্পন্ন হয়েছে। পরিচয়পত্রের তথ্য শনাক্ত করা হয়েছে।")
+
+                        // Enrich with Bengali OCR server extraction if Bangla or parental fields are missing
+                        val currentFront = frontNidBytes
+                        if (currentFront != null && currentFront.isNotEmpty() && (nidNameBangla.isEmpty() || nidFatherName.isEmpty() || nidMotherName.isEmpty())) {
+                            viewModel.extractNidDetailsFromServer(currentFront, isFront = true) { extracted ->
+                                if (nidNameBangla.isEmpty() && !extracted["name_bangla"].isNullOrEmpty()) nidNameBangla = extracted["name_bangla"]!!
+                                if (nidFatherName.isEmpty() && !extracted["father_name"].isNullOrEmpty()) nidFatherName = extracted["father_name"]!!
+                                if (nidMotherName.isEmpty() && !extracted["mother_name"].isNullOrEmpty()) nidMotherName = extracted["mother_name"]!!
+                                if (nidNumber.isEmpty() && !extracted["nid_number"].isNullOrEmpty()) nidNumber = extracted["nid_number"]!!
+                                if (nidName.isEmpty() && !extracted["name_english"].isNullOrEmpty()) nidName = extracted["name_english"]!!
+                            }
+                        }
                     }
                     .addOnFailureListener {
                         runCatching { recognizer.close() }
@@ -20492,6 +20504,11 @@ fun KycVerificationScreen(viewModel: AppViewModel) {
                     backNidBytes = bytes
                     backNidSelected = true
                     speak("পরিচয়পত্রের পেছনের অংশ লাইভ ক্যাপচার সম্পন্ন হয়েছে।")
+                    viewModel.extractNidDetailsFromServer(bytes, isFront = false) { extracted ->
+                        if (nidBloodGroup.isEmpty() && !extracted["blood_group"].isNullOrEmpty()) {
+                            nidBloodGroup = extracted["blood_group"]!!
+                        }
+                    }
                 }
             }
         )
