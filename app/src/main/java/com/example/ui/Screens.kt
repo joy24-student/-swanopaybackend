@@ -1436,10 +1436,8 @@ fun LockScreen(viewModel: AppViewModel) {
                         }
                     }
                 }
-                }
             }
         }
-
     }
 }
 

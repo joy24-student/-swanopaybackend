@@ -8844,6 +8844,25 @@ function executePayment() {
         securityPrefs.edit().putString("gemini_model", model).apply()
     }
 
+    private val _aiMemory = MutableStateFlow(securityPrefs.getString("ai_memory", "") ?: "")
+    val aiMemory: StateFlow<String> = _aiMemory.asStateFlow()
+
+    fun updateAiMemory(memory: String) {
+        _aiMemory.value = memory
+        securityPrefs.edit().putString("ai_memory", memory).apply()
+    }
+
+    private val _isAiThinking = MutableStateFlow(false)
+    val isAiThinking: StateFlow<Boolean> = _isAiThinking.asStateFlow()
+
+    private val _autoApproveAiActions = MutableStateFlow(securityPrefs.getBoolean("auto_approve_ai_actions", false))
+    val autoApproveAiActions: StateFlow<Boolean> = _autoApproveAiActions.asStateFlow()
+
+    fun setAutoApproveAiActions(enabled: Boolean) {
+        _autoApproveAiActions.value = enabled
+        securityPrefs.edit().putBoolean("auto_approve_ai_actions", enabled).apply()
+    }
+
     fun getAutoSelectedGeminiModel(): String {
         val memoryLen = _aiMemory.value.length
         val historyLen = _aiChatHistory.value.size
