@@ -132,7 +132,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AppRepository(application.applicationContext)
     private val localAccountReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     val installationId: String get() = repository.installationId
-    private val hostedFormRouterOrigin = "https://swapnopay.top"
+    private val hostedFormRouterOrigin = "https://pay.swapnopay.top"
     val profiles = repository.getProfiles()
     private val _activeProfile = MutableStateFlow(profiles.first())
     val activeProfile: StateFlow<MerchantProfileEntity> = _activeProfile.asStateFlow()

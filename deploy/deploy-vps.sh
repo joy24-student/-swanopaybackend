@@ -248,7 +248,7 @@ server {
     client_max_body_size 50M;
 
     location / {
-        proxy_pass http://127.0.0.1:4000/;
+        proxy_pass http://127.0.0.1:4000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "Upgrade";

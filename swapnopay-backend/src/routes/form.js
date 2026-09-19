@@ -186,7 +186,7 @@ export function formRouter(io = null) {
       }
 
       const reqOrigin = req.get('host') ? `${req.protocol}://${req.get('host')}` : null
-      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || reqOrigin || 'https://swapnopay.top'
+      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || reqOrigin || 'https://pay.swapnopay.top'
       const publicUrl = `${publicOrigin}/f/${normalizedSlug || cleanFormId}`
 
       console.log(`[form-router] Route registered: ${publicUrl}`)

@@ -1556,11 +1556,7 @@ object SupabaseClient {
                         val rawUrl = json?.optString("public_url")?.ifBlank {
                             json.optString("slug_url")
                         } ?: "${routerBaseUrl.trimEnd('/')}/f/$formSlug"
-                        val publicUrl = if (rawUrl.contains("pay.swapnopay.top")) {
-                            rawUrl.replace("pay.swapnopay.top", "swapnopay.top")
-                        } else {
-                            rawUrl
-                        }
+                        val publicUrl = rawUrl
                         if (publicUrl.startsWith("http://") || publicUrl.startsWith("https://")) onSuccess(publicUrl)
                         else onFailure("The branded form router returned an invalid URL.")
                     } else {
