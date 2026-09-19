@@ -34,6 +34,7 @@ object SupabaseConnectionRepository {
 
         val bodyJson = JSONObject().apply {
             put("user_id", userId)
+            put("redirect_back", "swapnopay://supabase-connected")
         }.toString()
 
         val request = Request.Builder()

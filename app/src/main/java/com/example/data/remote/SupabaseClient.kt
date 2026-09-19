@@ -2049,6 +2049,41 @@ object SupabaseClient {
         onSuccess: (accessToken: String, refreshToken: String) -> Unit,
         onFailure: (String) -> Unit
     ) {
+        // If clientSecret is empty, use the backend exchange proxy at api.swapnopay.top/v1/oauth/exchange
+        if (clientSecret.isBlank()) {
+            val proxyEndpoint = "https://api.swapnopay.top/v1/oauth/exchange"
+            val proxyJson = JSONObject().apply {
+                put("code", code.trim())
+                put("code_verifier", codeVerifier.trim())
+                put("redirect_uri", redirectUri.trim())
+            }.toString()
+
+            val proxyReq = Request.Builder()
+                .url(proxyEndpoint)
+                .post(proxyJson.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            try {
+                val executed = withContext(Dispatchers.IO) {
+                    client.newCall(proxyReq).execute().use { response ->
+                        val bodyStr = response.body?.string()
+                        if (response.isSuccessful && bodyStr != null) {
+                            val json = JSONObject(bodyStr)
+                            val access = json.optString("access_token", "")
+                            val refresh = json.optString("refresh_token", "")
+                            if (access.isNotBlank()) {
+                                onSuccess(access, refresh)
+                                true
+                            } else false
+                        } else false
+                    }
+                }
+                if (executed) return
+            } catch (e: Exception) {
+                Log.w("SupabaseClient", "Exchange proxy error: ${e.message}")
+            }
+        }
+
         val endpoint = "https://api.supabase.com/v1/oauth/token"
         val bodyBuilder = okhttp3.FormBody.Builder()
             .add("grant_type", "authorization_code")

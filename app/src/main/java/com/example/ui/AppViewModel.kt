@@ -3535,9 +3535,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startControlPlaneOAuth(context: android.content.Context) {
         managementApiError.value = null
-        isExternalActivityExpected = true
-        // Directly initiate on-device Supabase OAuth 2.0 PKCE flow
-        startSupabaseOAuthFlow(context)
+        isFetchingManagementProjects.value = true
+        val userId = activeProfile.value.id.ifBlank { "merchant_${java.util.UUID.randomUUID().toString().take(8)}" }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.example.data.repository.SupabaseConnectionRepository.startOAuthFlow(
+                controlPlaneUrl = controlPlaneUrl.value,
+                userId = userId,
+                onSuccess = { authorizeUrl ->
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        isFetchingManagementProjects.value = false
+                        isExternalActivityExpected = true
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(authorizeUrl)).apply {
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            managementApiError.value = "Unable to launch browser: ${e.message}"
+                        }
+                    }
+                },
+                onFailure = { err ->
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        isFetchingManagementProjects.value = false
+                        // Fallback to direct authorize flow
+                        startSupabaseOAuthFlow(context)
+                    }
+                }
+            )
+        }
     }
 
     fun handleControlPlaneOAuthConnected(txId: String) {
