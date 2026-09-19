@@ -93,6 +93,7 @@ export function requireWebhookSecret(req, res, next) {
  * Used for merchant-specific configuration routes.
  */
 export async function requireMerchantOrAdminAuth(req, res, next) {
+  if (req.isAdmin || req.merchantUser) return next()
   const adminSecret = process.env.ADMIN_SECRET
 
   // 1. Check static X-Admin-Secret header
@@ -163,6 +164,25 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
     } catch (err) {
       console.warn('[auth] Merchant/Admin JWT verification error:', err.message)
     }
+  }
+
+  // 3. Device ID fallback authentication
+  const deviceId = req.headers['x-device-id'] || req.query?.device_id || req.body?.device_id
+  const targetMerchantId = req.body?.merchant_id || req.query?.merchant_id || req.params?.merchant_id || req.params?.id
+  if (deviceId && targetMerchantId) {
+    try {
+      const { getAdminClient } = await import('../services/adminSupabase.js')
+      const adminClient = getAdminClient()
+      const { data: dev } = await adminClient
+        .from('merchant_devices')
+        .select('merchant_id')
+        .eq('device_id', deviceId)
+        .maybeSingle()
+      if (dev && dev.merchant_id === targetMerchantId) {
+        req.merchantUser = { id: targetMerchantId }
+        return next()
+      }
+    } catch (_) {}
   }
 
   return res.status(401).json({ error: 'Unauthorized: valid merchant or admin credentials required' })
