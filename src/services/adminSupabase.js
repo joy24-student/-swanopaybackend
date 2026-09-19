@@ -1027,6 +1027,20 @@ export async function submitMerchantKyc(payload) {
     updateError = res.error
   }
 
+  // Schema cache fallback: if column doesn't exist in Supabase PostgREST schema cache (e.g. trial_ends_at)
+  if (updateError && (updateError.message?.includes('trial_ends_at') || updateError.message?.includes('schema cache'))) {
+    console.warn('[admin-supabase] submitMerchantKyc retrying without trial_ends_at:', updateError.message)
+    delete updates.trial_ends_at
+    const retry = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
+    updatedMerchant = retry.data
+    updateError = retry.error
+    if (!updatedMerchant && !updateError) {
+      const res2 = await admin.from('merchants').update(updates).eq('user_id', merchantId).select().maybeSingle()
+      updatedMerchant = res2.data
+      updateError = res2.error
+    }
+  }
+
   if (updateError) {
     console.error('[admin-supabase] Direct merchant update error:', updateError.message)
     throw new Error('KYC was not saved: ' + updateError.message)
@@ -1121,11 +1135,26 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
     updates.trial_ends_at = new Date(Date.now() + 90 * 86400000).toISOString()
   }
   let { data: mData, error: mErr } = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
-  if (!mData) {
+  if (!mData && !mErr) {
     const res = await admin.from('merchants').update(updates).eq('user_id', merchantId).select().maybeSingle()
     mData = res.data
     mErr = res.error
   }
+
+  // Schema cache fallback: if column doesn't exist in Supabase PostgREST schema cache (e.g. trial_ends_at)
+  if (mErr && (mErr.message?.includes('trial_ends_at') || mErr.message?.includes('schema cache'))) {
+    console.warn('[admin-supabase] reviewMerchantKyc retrying without trial_ends_at:', mErr.message)
+    delete updates.trial_ends_at
+    const retry = await admin.from('merchants').update(updates).eq('id', merchantId).select().maybeSingle()
+    mData = retry.data
+    mErr = retry.error
+    if (!mData && !mErr) {
+      const res2 = await admin.from('merchants').update(updates).eq('user_id', merchantId).select().maybeSingle()
+      mData = res2.data
+      mErr = res2.error
+    }
+  }
+
   if (mErr) throw new Error('KYC review was not saved: ' + mErr.message)
   if (!mData) throw new Error('KYC merchant not found')
 
@@ -1238,8 +1267,18 @@ export async function getMerchantSubscriptionStatus(merchantId) {
       } else {
         mQuery = mQuery.eq('id', merchantId)
       }
-      const { data } = await mQuery.maybeSingle()
-      merchant = data
+      let { data, error } = await mQuery.maybeSingle()
+      if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
+        const fallbackQuery = admin
+          .from('merchants')
+          .select('id, user_id, email, business_name, nid_number, kyc_status, status, created_at')
+        const fallbackRes = isUuid
+          ? await fallbackQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`).maybeSingle()
+          : await fallbackQuery.eq('id', merchantId).maybeSingle()
+        merchant = fallbackRes.data
+      } else {
+        merchant = data
+      }
     } catch (err) {
       console.warn('[subscription] Merchant fetch notice:', err.message)
     }
