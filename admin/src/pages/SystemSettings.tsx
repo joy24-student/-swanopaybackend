@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   adminSupabase,
   DEFAULT_RADYMATE_GALLERY,
@@ -9,6 +9,37 @@ import {
   upsertShowcaseConfig,
 } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
+import {
+  Globe,
+  CreditCard,
+  Code2,
+  Image as ImageIcon,
+  Video,
+  PhoneCall,
+  HelpCircle,
+  BookOpen,
+  FileText,
+  Tag,
+  ShieldCheck,
+  Check,
+  AlertTriangle,
+  Save,
+  RefreshCw,
+  Plus,
+  Trash2,
+  ExternalLink,
+  RotateCcw,
+  UploadCloud,
+  Clock,
+  Mail,
+  MessageSquare,
+  MapPin,
+  CheckCircle2,
+  X,
+  Sliders,
+  Sparkles,
+  Lock,
+} from 'lucide-react';
 
 export interface FaqItem {
   question: string;
@@ -119,123 +150,81 @@ Create a new checkout session and obtain a hosted payment URL.
   "code": 200,
   "message": "Payment session initialized successfully",
   "data": {
-    "order_id": "ORD-2026-9812",
     "payment_url": "https://pay.swapnopay.top/pay/ORD-2026-9812",
-    "assigned_gateway_number": "01784992118",
-    "gateway_type": "bKash Personal",
-    "payable_amount": 1250.00,
-    "expires_at": "2026-09-07T21:15:00Z"
+    "order_id": "ORD-2026-9812",
+    "amount": 1250.00,
+    "currency": "BDT",
+    "assigned_receiver": "01784992118",
+    "payment_method": "bKash",
+    "expires_at": "2026-09-16T04:04:12.000Z"
   }
 }
 \`\`\`
 
 ---
 
-### 3.2 Verify Payment & SMS Match
-Verify incoming carrier transaction details against pending orders.
+### 3.2 Verify Payment Status
+Query current settlement and matching state for any existing order.
 
-- **Method**: \`POST\`
-- **Endpoint**: \`/v1/payment/verify\`
-
-#### Request Body:
-\`\`\`json
-{
-  "order_id": "ORD-2026-9812",
-  "tran_id": "9H8B7G6F5E",
-  "sender_phone": "01712963652",
-  "amount": 1250.00,
-  "payment_method": "bKash"
-}
-\`\`\`
+- **Method**: \`GET\`
+- **Endpoint**: \`/v1/payment/verify?order_id=ORD-2026-9812\`
 
 #### Response (200 OK):
 \`\`\`json
 {
   "status": "PAID",
   "order_id": "ORD-2026-9812",
+  "amount": 1250.00,
   "trx_id": "9H8B7G6F5E",
-  "verified": true,
-  "matched_at": "2026-09-07T20:16:30Z"
+  "sender_phone": "01712963652",
+  "matched_at": "2026-09-16T03:54:19.421Z",
+  "payment_method": "bKash"
 }
 \`\`\`
 
 ---
 
-### 3.3 Query Order Status
-Poll or inspect live order settlement status.
+## 4. Instant Webhook Notifications
 
-- **Method**: \`GET\`
-- **Endpoint**: \`/v1/payment/status/{orderId}\`
+When an incoming carrier SMS is matched, SwapnoPay dispatches an encrypted HTTP POST webhook to your configured \`webhook_url\`.
 
----
+### 4.1 Webhook Signature Verification
+Every webhook includes the following security headers:
+- \`X-SwapnoPay-Signature\`: HMAC-SHA256 hash of the raw JSON request body signed with your \`WEBHOOK_SECRET\`.
+- \`X-SwapnoPay-Timestamp\`: Unix epoch in milliseconds.
 
-### 3.4 Hosted Form Dynamic Submission
-Submit custom dynamic fields and uploaded proof attachments.
+#### Example Verification (Node.js):
+\`\`\`javascript
+import crypto from 'crypto';
 
-- **Method**: \`POST\`
-- **Endpoint**: \`/v1/hosted-form/submit\`
-
----
-
-## 4. Webhooks & HMAC Signature Security
-
-SwapnoPay sends instant JSON HTTP POST notifications whenever an order changes state.
-
-### 4.1 Signature Header
-Every webhook request contains an HMAC SHA-256 signature:
-\`\`\`http
-X-Signature: sha256=4f6a9e1029c8b3...
+export function verifyWebhook(rawBody, signatureHeader, webhookSecret) {
+  const hmac = crypto.createHmac('sha256', webhookSecret);
+  const digest = hmac.update(rawBody).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signatureHeader));
+}
 \`\`\`
 
-### 4.2 Webhook Event: \`payment.paid\`
+#### Webhook Payload:
 \`\`\`json
 {
-  "event": "payment.paid",
-  "timestamp": "2026-09-07T20:16:30Z",
+  "event": "payment.succeeded",
+  "created_at": "2026-09-16T03:54:20.100Z",
   "data": {
     "order_id": "ORD-2026-9812",
-    "status": "PAID",
     "amount": 1250.00,
     "currency": "BDT",
-    "payment_method": "bKash",
     "trx_id": "9H8B7G6F5E",
-    "sender_phone": "01712963652"
+    "sender_phone": "01712963652",
+    "receiver_phone": "01784992118",
+    "payment_method": "bKash",
+    "match_latency_ms": 7.4
   }
 }
 \`\`\`
 
-### 4.3 HMAC Verification Examples
-
-#### Node.js / Express:
-\`\`\`javascript
-const crypto = require('crypto');
-
-function verifySwapnoPayWebhook(rawBody, signatureHeader, secret) {
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
-}
-\`\`\`
-
-#### Python / Flask / FastAPI:
-\`\`\`python
-import hmac, hashlib
-
-def verify_swapnopay_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
-    expected = "sha256=" + hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
-\`\`\`
-
-#### PHP:
-\`\`\`php
-function verifySwapnoPayWebhook($rawBody, $signatureHeader, $secret) {
-    $expected = 'sha256=' . hash_hmac('sha256', $rawBody, $secret);
-    return hash_equals($expected, $signatureHeader);
-}
-\`\`\`
-
 ---
 
-## 5. Error Codes
+## 5. Standard Error Codes
 
 | Error Code | HTTP Status | Description |
 |---|---|---|
@@ -247,12 +236,12 @@ function verifySwapnoPayWebhook($rawBody, $signatureHeader, $secret) {
 `;
 
 const DEFAULT_CONFIG: SystemRemoteConfig = {
-  developer_portal_url: "https://developer.swapnopay.app",
-  developer_docs_url: "https://docs.swapnopay.app/api",
-  api_portal_url: "https://developer.swapnopay.app/keys",
-  webhook_docs_url: "https://docs.swapnopay.app/webhooks",
+  developer_portal_url: "https://pay.swapnopay.top/portal.html",
+  developer_docs_url: "https://pay.swapnopay.top/docs.html",
+  api_portal_url: "https://pay.swapnopay.top/portal.html#api-keys",
+  webhook_docs_url: "https://pay.swapnopay.top/docs.html#webhooks",
   support_hotline: "+880 1794 827103",
-  support_email: "support@swapnopay.io",
+  support_email: "support@swapnopay.top",
   support_whatsapp: "+8801712963652",
   support_address: "Level 14, Banani Tower, Dhaka, Bangladesh",
   support_hours: "24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)",
@@ -343,9 +332,21 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
   ]
 };
 
+type SettingsTab =
+  | 'links'
+  | 'subscription'
+  | 'api_docs'
+  | 'gallery'
+  | 'video'
+  | 'support_contacts'
+  | 'faqs'
+  | 'guides'
+  | 'articles'
+  | 'tickets';
+
 export default function SystemSettings() {
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'links' | 'api_docs' | 'support_contacts' | 'video' | 'faqs' | 'guides' | 'articles' | 'tickets' | 'gallery' | 'subscription'>('links');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -354,6 +355,7 @@ export default function SystemSettings() {
   const [galleryTitle, setGalleryTitle] = useState('Radymate E-commerce launch');
   const [galleryCaption, setGalleryCaption] = useState('One-click launch storefront');
   const [gallerySaving, setGallerySaving] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
   const [subConfig, setSubConfig] = useState({
     monthly_fee: 100,
     quarterly_fee: 250,
@@ -371,7 +373,8 @@ export default function SystemSettings() {
           .from('showcase_config')
           .select('value')
           .eq('key', 'system_config')
-          .single();
+          .maybeSingle();
+
         if (data?.value) {
           const val = data.value;
           setConfig({
@@ -383,7 +386,7 @@ export default function SystemSettings() {
             faqs: Array.isArray(val.faqs) ? val.faqs : DEFAULT_CONFIG.faqs,
             guides: Array.isArray(val.guides) ? val.guides : DEFAULT_CONFIG.guides,
             articles: Array.isArray(val.articles) ? val.articles : DEFAULT_CONFIG.articles,
-            ticket_categories: Array.isArray(val.ticket_categories) ? val.ticket_categories : DEFAULT_CONFIG.ticket_categories
+            ticket_categories: Array.isArray(val.ticket_categories) ? val.ticket_categories : DEFAULT_CONFIG.ticket_categories,
           });
         }
       } catch (e) {
@@ -404,6 +407,7 @@ export default function SystemSettings() {
           .select('*')
           .eq('id', 'default_config')
           .maybeSingle();
+
         if (subData) {
           setSubConfig({
             monthly_fee: Number(subData.monthly_fee) || 100,
@@ -452,10 +456,10 @@ export default function SystemSettings() {
           updated_at: new Date().toISOString(),
         });
       if (error) throw error;
-      setStatusMsg('✅ Subscription pricing and trial period updated successfully!');
+      setStatusMsg('SUCCESS: Subscription pricing and trial period updated successfully!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
-      setStatusMsg('❌ Failed to save subscription config: ' + err.message);
+      setStatusMsg('ERROR: Failed to save subscription config: ' + err.message);
     } finally {
       setSubSaving(false);
     }
@@ -469,15 +473,15 @@ export default function SystemSettings() {
     try {
       const payload: SystemRemoteConfig = {
         ...config,
-        last_updated: Date.now()
+        last_updated: Date.now(),
       };
 
       await upsertShowcaseConfig('system_config', payload);
 
-      setStatusMsg('✅ Successfully saved and broadcasted via Supabase Realtime!');
+      setStatusMsg('SUCCESS: Successfully saved and broadcasted via Supabase Realtime!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
-      setStatusMsg('❌ Failed to save: ' + err.message);
+      setStatusMsg('ERROR: Failed to save: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -485,7 +489,7 @@ export default function SystemSettings() {
 
   const handleGalleryUpload = async () => {
     if (!galleryUploadFile) {
-      setStatusMsg('❌ Select an image before uploading to the Radymate gallery bucket.');
+      setStatusMsg('ERROR: Select an image before uploading to the Radymate gallery bucket.');
       return;
     }
 
@@ -497,25 +501,26 @@ export default function SystemSettings() {
       const updatedGallery = [uploadedItem, ...radymateGallery];
       setRadymateGallery(updatedGallery);
       await saveRadymateGalleryConfig(updatedGallery);
-      setStatusMsg('✅ Image uploaded to the Supabase bucket and synced to the Radymate gallery.');
+      setStatusMsg('SUCCESS: Image uploaded to the Supabase bucket and synced to the Radymate gallery.');
       setGalleryUploadFile(null);
       setGalleryTitle('Radymate E-commerce launch');
       setGalleryCaption('One-click launch storefront');
     } catch (err: any) {
-      setStatusMsg('❌ Upload failed: ' + (err?.message || 'Unknown error'));
+      setStatusMsg('ERROR: Upload failed: ' + (err?.message || 'Unknown error'));
     } finally {
       setGallerySaving(false);
     }
   };
 
   const handleGalleryReset = async () => {
+    if (!window.confirm('Reset gallery to default showcase images?')) return;
     setGallerySaving(true);
     try {
       setRadymateGallery(DEFAULT_RADYMATE_GALLERY);
       await saveRadymateGalleryConfig(DEFAULT_RADYMATE_GALLERY);
-      setStatusMsg('✅ Radymate gallery reset to the default public showcase images.');
+      setStatusMsg('SUCCESS: Radymate gallery reset to default showcase images.');
     } catch (err: any) {
-      setStatusMsg('❌ Failed to reset gallery: ' + (err?.message || 'Unknown error'));
+      setStatusMsg('ERROR: Failed to reset gallery: ' + (err?.message || 'Unknown error'));
     } finally {
       setGallerySaving(false);
     }
@@ -523,12 +528,12 @@ export default function SystemSettings() {
 
   const handleAddVideoTutorial = () => {
     const newVid: VideoTutorial = {
-      id: "vid_" + Date.now(),
-      title: "New Video Tutorial #" + ((config.video_tutorials || []).length + 1),
-      description: "Step-by-step instructions for integration.",
-      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      duration: "3:00 min",
-      category: "General"
+      id: 'vid_' + Date.now(),
+      title: 'New Video Tutorial #' + ((config.video_tutorials || []).length + 1),
+      description: 'Step-by-step instructions for integration.',
+      videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      duration: '3:00 min',
+      category: 'General',
     };
     const updated = [...(config.video_tutorials || []), newVid];
     setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
@@ -542,28 +547,28 @@ export default function SystemSettings() {
   const handleAddFaq = () => {
     setConfig({
       ...config,
-      faqs: [...config.faqs, { question: 'New FAQ Question?', answer: 'Answer description here...' }]
+      faqs: [...config.faqs, { question: 'New FAQ Question?', answer: 'Answer explanation here...' }],
     });
   };
 
   const handleRemoveFaq = (index: number) => {
     setConfig({
       ...config,
-      faqs: config.faqs.filter((_, i) => i !== index)
+      faqs: config.faqs.filter((_, i) => i !== index),
     });
   };
 
   const handleAddGuide = () => {
     setConfig({
       ...config,
-      guides: [...config.guides, { title: (config.guides.length + 1) + '. Guide Title', description: 'Step instructions here...' }]
+      guides: [...config.guides, { title: (config.guides.length + 1) + '. Guide Title', description: 'Step instructions here...' }],
     });
   };
 
   const handleRemoveGuide = (index: number) => {
     setConfig({
       ...config,
-      guides: config.guides.filter((_, i) => i !== index)
+      guides: config.guides.filter((_, i) => i !== index),
     });
   };
 
@@ -571,572 +576,857 @@ export default function SystemSettings() {
     const newId = 'art_' + Date.now();
     setConfig({
       ...config,
-      articles: [...config.articles, { id: newId, title: 'New Support Guide', category: 'General', content: 'Detailed guide content...' }]
+      articles: [...config.articles, { id: newId, title: 'New Support Guide', category: 'General', content: 'Detailed guide content...' }],
     });
   };
 
   const handleRemoveArticle = (index: number) => {
     setConfig({
       ...config,
-      articles: config.articles.filter((_, i) => i !== index)
+      articles: config.articles.filter((_, i) => i !== index),
     });
   };
 
   const handleAddCategory = () => {
-    const name = prompt('Enter new ticket / report category name:');
-    if (name && name.trim()) {
-      setConfig({
-        ...config,
-        ticket_categories: [...config.ticket_categories, name.trim()]
-      });
+    if (newCategoryInput && newCategoryInput.trim()) {
+      if (!config.ticket_categories.includes(newCategoryInput.trim())) {
+        setConfig({
+          ...config,
+          ticket_categories: [...config.ticket_categories, newCategoryInput.trim()],
+        });
+      }
+      setNewCategoryInput('');
     }
   };
 
   const handleRemoveCategory = (index: number) => {
     setConfig({
       ...config,
-      ticket_categories: config.ticket_categories.filter((_, i) => i !== index)
+      ticket_categories: config.ticket_categories.filter((_, i) => i !== index),
     });
   };
 
+  const navTabs: { key: SettingsTab; label: string; icon: React.ComponentType<{ size?: number; color?: string }>; count?: number }[] = [
+    { key: 'links', label: 'Developer Portal Links', icon: Globe },
+    { key: 'subscription', label: 'Subscription & Pricing', icon: CreditCard },
+    { key: 'api_docs', label: 'API Documentation CMS', icon: Code2 },
+    { key: 'gallery', label: 'Radymate Showcase', icon: ImageIcon, count: radymateGallery.length },
+    { key: 'video', label: 'Video Tutorials', icon: Video, count: (config.video_tutorials || []).length },
+    { key: 'support_contacts', label: 'Support Contacts', icon: PhoneCall },
+    { key: 'faqs', label: 'FAQs Manager', icon: HelpCircle, count: config.faqs.length },
+    { key: 'guides', label: 'Integration Guides', icon: BookOpen, count: config.guides.length },
+    { key: 'articles', label: 'Help Articles', icon: FileText, count: config.articles.length },
+    { key: 'tickets', label: 'Report Categories', icon: Tag, count: config.ticket_categories.length },
+  ];
+
   if (loading) {
-    return <div className="container"><div className="card">Loading remote system & support configuration...</div></div>;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320, gap: 12, color: 'var(--text-muted)' }}>
+        <RefreshCw size={20} className="spin" color="var(--brand-primary)" />
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Loading system configuration & CMS...</span>
+      </div>
+    );
   }
 
   return (
-    <div className="container">
-      <div className="header">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 80 }}>
+      {/* ──────────────── Header ──────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1>Admin Control Panel & CMS</h1>
-          <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>
-            Customize Developer Portal links, Help & Support Screen (Video Tutorials, FAQs, Guides, Articles, Report Categories) synced in real-time with Android app.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--brand-subtle)',
+                color: 'var(--brand-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Sliders size={18} />
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
+              System Settings & CMS
+            </h1>
+            <span className="status-pill success" style={{ fontSize: 11 }}>
+              <span className="status-dot" />
+              Supabase Realtime Live
+            </span>
+          </div>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>
+            Continuous configuration for Developer Portal URLs, Anti-Piracy Billing Gates, Video Guides, and Help Center synced in real-time.
           </p>
+          {config.last_updated && (
+            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 11 }}>
+              Last saved: {new Date(config.last_updated).toLocaleString()}
+            </p>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link to="/support"><button className="button" style={{ background: '#4F46E5' }}>🎫 Helpdesk Inbox</button></Link>
-          <Link to="/dashboard"><button className="button" style={{ background: '#64748B' }}>Dashboard</button></Link>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Link to="/support" className="btn btn-secondary btn-sm">
+            <HelpCircle size={14} />
+            Helpdesk Inbox
+          </Link>
+          <Link to="/gateway-settings" className="btn btn-secondary btn-sm">
+            <CreditCard size={14} />
+            Gateway Settings
+          </Link>
+          <Link to="/dashboard" className="btn btn-primary btn-sm">
+            Overview Dashboard
+          </Link>
         </div>
       </div>
 
+      {/* ──────────────── Status Banner ──────────────── */}
       {statusMsg && (
-        <div style={{
-          padding: '12px 16px',
-          background: statusMsg.startsWith('✅') ? '#ECFDF5' : '#FEF2F2',
-          border: '1px solid ' + (statusMsg.startsWith('✅') ? '#10B981' : '#EF4444'),
-          borderRadius: 8,
-          color: statusMsg.startsWith('✅') ? '#065F46' : '#991B1B',
-          marginBottom: 16,
-          fontWeight: 600
-        }}>
-          {statusMsg}
+        <div
+          style={{
+            padding: '12px 18px',
+            background: statusMsg.startsWith('SUCCESS') || statusMsg.startsWith('✅') ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+            border: `1px solid ${statusMsg.startsWith('SUCCESS') || statusMsg.startsWith('✅') ? 'var(--success-border)' : 'var(--danger-border)'}`,
+            borderRadius: 'var(--radius-md)',
+            color: statusMsg.startsWith('SUCCESS') || statusMsg.startsWith('✅') ? 'var(--success-text)' : 'var(--danger-text)',
+            fontWeight: 600,
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            animation: 'fadeIn 200ms ease',
+          }}
+        >
+          {statusMsg.startsWith('SUCCESS') || statusMsg.startsWith('✅') ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          <span>{statusMsg.replace(/^(SUCCESS:|ERROR:|✅|❌)\s*/, '')}</span>
+          <button
+            type="button"
+            onClick={() => setStatusMsg('')}
+            style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex' }}
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          { key: 'links', label: '💻 Developer Portal Links' },
-          { key: 'subscription', label: '💳 Subscription & Pricing' },
-          { key: 'api_docs', label: '📚 API Documentation CMS' },
-          { key: 'gallery', label: '🖼️ Radymate Gallery (' + radymateGallery.length + ')' },
-          { key: 'video', label: '🎥 Video Tutorials (' + ((config.video_tutorials || []).length) + ')' },
-          { key: 'support_contacts', label: '📞 Support Contacts' },
-          { key: 'faqs', label: '❓ FAQs (' + config.faqs.length + ')' },
-          { key: 'guides', label: '📖 Guides (' + config.guides.length + ')' },
-          { key: 'articles', label: '📄 Help Articles (' + config.articles.length + ')' },
-          { key: 'tickets', label: '🎫 Report Categories (' + config.ticket_categories.length + ')' }
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className="button"
-            style={{
-              background: activeTab === tab.key ? '#4F46E5' : '#E2E8F0',
-              color: activeTab === tab.key ? 'white' : '#1E293B',
-              fontWeight: 'bold',
-              padding: '8px 14px',
-              fontSize: 12.5
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ──────────────── Segmented Tab Navigation ──────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          borderBottom: '1px solid var(--border-default)',
+          overflowX: 'auto',
+          paddingBottom: 2,
+          scrollbarWidth: 'none',
+        }}
+      >
+        {navTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 14px',
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                background: isActive ? 'var(--brand-subtle)' : 'transparent',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--brand-primary)' : '2px solid transparent',
+                borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              <Icon size={15} />
+              <span>{tab.label}</span>
+              {tab.count !== undefined && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: 'var(--radius-full)',
+                    background: isActive ? 'var(--brand-primary)' : 'var(--bg-muted)',
+                    color: isActive ? 'white' : 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <form onSubmit={handleSave}>
-        {activeTab === 'subscription' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: 0, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  💳 Subscription Pricing, Free Trial & Anti-Piracy Billing Gates
-                </h3>
-                <p style={{ fontSize: 13, color: '#64748B', margin: '4px 0 0 0' }}>
-                  Dynamically adjust monthly, quarterly, and yearly subscription fees, free trial duration, and enforce 1-NID = 1-Account anti-abuse verification.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="button"
-                onClick={handleSaveSubscriptionConfig}
-                disabled={subSaving}
-                style={{ background: '#10B981', fontWeight: 'bold' }}
-              >
-                {subSaving ? 'Saving...' : '💾 Save Pricing & Trial Settings'}
-              </button>
-            </div>
-
-            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 14, marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 6px 0', color: '#0F172A', fontSize: 14 }}>🛡️ Anti-Piracy & Anti-Abuse Rules Enforcement</h4>
-              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#475569', lineHeight: '1.6' }}>
-                <li><strong>Strict 1 NID = 1 Account:</strong> The backend prevents any National ID (NID) number from being registered to more than one merchant account.</li>
-                <li><strong>Mandatory NID Verification:</strong> If enabled, accounts without submitted/verified NID are gated from accessing core billing & transaction services.</li>
-                <li><strong>Dynamic Paywall:</strong> When the free trial and active subscriptions expire, the mobile app automatically locks access with an un-bypassable billing paywall.</li>
-                <li><strong>Native Gateway Flow:</strong> All subscription payments are processed directly through SwapnoPay's own receiving gateway (bKash, Nagad, Rocket).</li>
-              </ul>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 20 }}>
-              <div style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 10, padding: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#4338CA', textTransform: 'uppercase', marginBottom: 6 }}>
-                  Monthly Subscription Plan
-                </div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
-                  Monthly Fee (BDT ৳) *
-                </label>
-                <input
-                  type="number"
-                  className="input"
-                  value={subConfig.monthly_fee}
-                  onChange={(e) => setSubConfig({ ...subConfig, monthly_fee: Number(e.target.value) })}
-                  min={1}
-                  required
-                />
-                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳100 / 30 Days</span>
-              </div>
-
-              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#15803D', textTransform: 'uppercase', marginBottom: 6 }}>
-                  Quarterly Subscription Plan
-                </div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
-                  Quarterly Fee (BDT ৳) *
-                </label>
-                <input
-                  type="number"
-                  className="input"
-                  value={subConfig.quarterly_fee}
-                  onChange={(e) => setSubConfig({ ...subConfig, quarterly_fee: Number(e.target.value) })}
-                  min={1}
-                  required
-                />
-                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳250 / 90 Days</span>
-              </div>
-
-              <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 10, padding: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', marginBottom: 6 }}>
-                  Yearly Subscription Plan (Best Value)
-                </div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
-                  Yearly Fee (BDT ৳) *
-                </label>
-                <input
-                  type="number"
-                  className="input"
-                  value={subConfig.yearly_fee}
-                  onChange={(e) => setSubConfig({ ...subConfig, yearly_fee: Number(e.target.value) })}
-                  min={1}
-                  required
-                />
-                <span style={{ fontSize: 11, color: '#64748B', display: 'block', marginTop: 4 }}>Standard default: ৳650 / 365 Days</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-              <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 10, padding: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 4 }}>
-                  🎁 Free Trial Period for New Accounts (Days)
-                </label>
-                <input
-                  type="number"
-                  className="input"
-                  value={subConfig.trial_days}
-                  onChange={(e) => setSubConfig({ ...subConfig, trial_days: Number(e.target.value) })}
-                  min={0}
-                  required
-                />
-                <span style={{ fontSize: 12, color: '#64748B', display: 'block', marginTop: 4 }}>
-                  Default is 90 days (3 Months Free Trial) granted on KYC registration.
-                </span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  <input
-                    type="checkbox"
-                    checked={subConfig.is_trial_enabled}
-                    onChange={(e) => setSubConfig({ ...subConfig, is_trial_enabled: e.target.checked })}
-                  />
-                  Enable 3-Month Free Trial for newly registered accounts
-                </label>
-              </div>
-
-              <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#9F1239', marginBottom: 4 }}>
-                  🔒 Strict Identity & NID Verification Gate
-                </label>
-                <p style={{ fontSize: 12, color: '#475569', margin: '0 0 12px 0' }}>
-                  When enabled, merchants MUST complete NID document submission and face liveness verification before using any features or buying subscriptions.
-                </p>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#BE123C' }}>
-                  <input
-                    type="checkbox"
-                    checked={subConfig.enforce_nid_verification}
-                    onChange={(e) => setSubConfig({ ...subConfig, enforce_nid_verification: e.target.checked })}
-                  />
-                  Enforce Mandatory NID Verification (1 NID = 1 Account strictly)
-                </label>
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* ════════════════ TAB 1: DEVELOPER PORTAL LINKS ════════════════ */}
         {activeTab === 'links' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <h3 style={{ marginTop: 0 }}>💻 Developer Portal & API Links Customization</h3>
-            <p style={{ fontSize: 12, color: '#64748B' }}>
-              These URLs are dynamically opened when merchants tap Developer Portal in the More screen or integration guides.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="card">
+            <div className="card-header">
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Developer Portal URL (More Screen Button) *
-                </label>
-                <input
-                  className="input"
-                  value={config.developer_portal_url}
-                  onChange={(e) => setConfig({ ...config, developer_portal_url: e.target.value })}
-                  placeholder="https://developer.swapnopay.app"
-                  required
-                />
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Globe size={16} color="var(--brand-primary)" />
+                  Developer Portal & Public Endpoints
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Destination links opened when merchants tap Developer Portal in the Android app, SDK downloads, and integration docs.
+                </p>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Developer API Docs URL *
-                </label>
-                <input
-                  className="input"
-                  value={config.developer_docs_url}
-                  onChange={(e) => setConfig({ ...config, developer_docs_url: e.target.value })}
-                  placeholder="https://docs.swapnopay.app/api"
-                  required
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  API Keys Management Portal URL
-                </label>
-                <input
-                  className="input"
-                  value={config.api_portal_url}
-                  onChange={(e) => setConfig({ ...config, api_portal_url: e.target.value })}
-                  placeholder="https://developer.swapnopay.app/keys"
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Webhooks Guide & Sandbox URL
-                </label>
-                <input
-                  className="input"
-                  value={config.webhook_docs_url}
-                  onChange={(e) => setConfig({ ...config, webhook_docs_url: e.target.value })}
-                  placeholder="https://docs.swapnopay.app/webhooks"
-                />
+            </div>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
+                <div>
+                  <label className="form-label">
+                    Developer Web Portal URL *
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      className="input"
+                      value={config.developer_portal_url}
+                      onChange={(e) => setConfig({ ...config, developer_portal_url: e.target.value })}
+                      placeholder="https://pay.swapnopay.top/portal.html"
+                      required
+                    />
+                    {config.developer_portal_url && (
+                      <a
+                        href={config.developer_portal_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm"
+                        style={{ position: 'absolute', right: 4 }}
+                        title="Test link in new tab"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </div>
+                  <span className="form-hint">Opened via the 'Developer Portal' main button on the mobile app More screen.</span>
+                </div>
+
+                <div>
+                  <label className="form-label">
+                    Developer API Documentation URL *
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      className="input"
+                      value={config.developer_docs_url}
+                      onChange={(e) => setConfig({ ...config, developer_docs_url: e.target.value })}
+                      placeholder="https://pay.swapnopay.top/docs.html"
+                      required
+                    />
+                    {config.developer_docs_url && (
+                      <a
+                        href={config.developer_docs_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm"
+                        style={{ position: 'absolute', right: 4 }}
+                        title="Test link in new tab"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </div>
+                  <span className="form-hint">Comprehensive REST API & SDK reference guide destination.</span>
+                </div>
+
+                <div>
+                  <label className="form-label">
+                    API Keys Management Portal URL
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      className="input"
+                      value={config.api_portal_url}
+                      onChange={(e) => setConfig({ ...config, api_portal_url: e.target.value })}
+                      placeholder="https://pay.swapnopay.top/portal.html#api-keys"
+                    />
+                    {config.api_portal_url && (
+                      <a
+                        href={config.api_portal_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm"
+                        style={{ position: 'absolute', right: 4 }}
+                        title="Test link in new tab"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </div>
+                  <span className="form-hint">Direct link for merchants to generate and inspect their API keys.</span>
+                </div>
+
+                <div>
+                  <label className="form-label">
+                    Webhooks Guide & Sandbox Simulator URL
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      className="input"
+                      value={config.webhook_docs_url}
+                      onChange={(e) => setConfig({ ...config, webhook_docs_url: e.target.value })}
+                      placeholder="https://pay.swapnopay.top/docs.html#webhooks"
+                    />
+                    {config.webhook_docs_url && (
+                      <a
+                        href={config.webhook_docs_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm"
+                        style={{ position: 'absolute', right: 4 }}
+                        title="Test link in new tab"
+                      >
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </div>
+                  <span className="form-hint">Instant webhook listener setup and HMAC signature verification guide.</span>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {activeTab === 'support_contacts' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <h3 style={{ marginTop: 0 }}>📞 Help & Support Contact Details</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Hotline Phone Number (Direct Dial) *
-                </label>
-                <input
-                  className="input"
-                  value={config.support_hotline}
-                  onChange={(e) => setConfig({ ...config, support_hotline: e.target.value })}
-                  placeholder="+880 1794 827103"
-                  required
-                />
+        {/* ════════════════ TAB 2: SUBSCRIPTION & PRICING ════════════════ */}
+        {activeTab === 'subscription' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Header Card */}
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CreditCard size={16} color="var(--brand-primary)" />
+                    Subscription Pricing, Free Trial & Anti-Piracy Billing Gates
+                  </h3>
+                  <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                    Dynamically adjust monthly, quarterly, and yearly subscription fees, trial duration, and enforce 1-NID = 1-Account anti-abuse verification.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSaveSubscriptionConfig}
+                  disabled={subSaving}
+                >
+                  <Save size={13} />
+                  {subSaving ? 'Saving...' : 'Save Pricing & Trial Settings'}
+                </button>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Support Email Inquiries *
-                </label>
-                <input
-                  className="input"
-                  value={config.support_email}
-                  onChange={(e) => setConfig({ ...config, support_email: e.target.value })}
-                  placeholder="support@swapnopay.io"
-                  required
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  WhatsApp Support Link / Number *
-                </label>
-                <input
-                  className="input"
-                  value={config.support_whatsapp}
-                  onChange={(e) => setConfig({ ...config, support_whatsapp: e.target.value })}
-                  placeholder="+8801712963652"
-                  required
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Operating Hours
-                </label>
-                <input
-                  className="input"
-                  value={config.support_hours}
-                  onChange={(e) => setConfig({ ...config, support_hours: e.target.value })}
-                  placeholder="24/7 Chat & Ticket Support"
-                />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  Main Headquarters Address
-                </label>
-                <input
-                  className="input"
-                  value={config.support_address}
-                  onChange={(e) => setConfig({ ...config, support_address: e.target.value })}
-                  placeholder="Level 14, Banani Tower, Dhaka, Bangladesh"
-                />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>
-                  System Broadcast Announcement
-                </label>
-                <textarea
-                  className="input"
-                  value={config.system_notice}
-                  onChange={(e) => setConfig({ ...config, system_notice: e.target.value })}
-                  placeholder="Broadcast message shown to all merchants..."
-                  style={{ minHeight: 60, fontFamily: 'inherit' }}
-                />
+
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Anti-Piracy Security Rules */}
+                <div
+                  style={{
+                    background: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <ShieldCheck size={18} color="var(--brand-primary)" />
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Anti-Piracy & Anti-Abuse Rules Enforcement
+                    </h4>
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 22, fontSize: 13, color: 'var(--text-secondary)', lineHeight: '1.7' }}>
+                    <li><strong>Strict 1 NID = 1 Account:</strong> The backend prevents any National ID (NID) number from being registered to more than one merchant account.</li>
+                    <li><strong>Mandatory NID Verification Gate:</strong> If enabled, accounts without verified NID are gated from billing & automated matching services.</li>
+                    <li><strong>Dynamic Paywall:</strong> When free trials and subscriptions expire, the mobile app automatically locks access with an un-bypassable billing paywall.</li>
+                    <li><strong>Native Gateway Flow:</strong> All subscription payments are processed directly through SwapnoPay's own automated receiving gateway (bKash, Nagad, Rocket).</li>
+                  </ul>
+                </div>
+
+                {/* 3 Pricing Plans */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+                  {/* Monthly Plan */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-lg)',
+                      padding: 18,
+                      boxShadow: 'var(--shadow-xs)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Monthly Plan
+                      </span>
+                      <span className="status-pill neutral" style={{ fontSize: 10 }}>
+                        30 Days
+                      </span>
+                    </div>
+                    <label className="form-label">
+                      Monthly Fee (BDT ৳) *
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: 12, fontWeight: 700, color: 'var(--text-muted)' }}>৳</span>
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ paddingLeft: 28, fontSize: 16, fontWeight: 700 }}
+                        value={subConfig.monthly_fee}
+                        onChange={(e) => setSubConfig({ ...subConfig, monthly_fee: Number(e.target.value) })}
+                        min={1}
+                        required
+                      />
+                    </div>
+                    <span className="form-hint">Standard default: ৳100 / 30 Days</span>
+                  </div>
+
+                  {/* Quarterly Plan */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-lg)',
+                      padding: 18,
+                      boxShadow: 'var(--shadow-xs)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--info)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Quarterly Plan
+                      </span>
+                      <span className="status-pill info" style={{ fontSize: 10 }}>
+                        90 Days • Popular
+                      </span>
+                    </div>
+                    <label className="form-label">
+                      Quarterly Fee (BDT ৳) *
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: 12, fontWeight: 700, color: 'var(--text-muted)' }}>৳</span>
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ paddingLeft: 28, fontSize: 16, fontWeight: 700 }}
+                        value={subConfig.quarterly_fee}
+                        onChange={(e) => setSubConfig({ ...subConfig, quarterly_fee: Number(e.target.value) })}
+                        min={1}
+                        required
+                      />
+                    </div>
+                    <span className="form-hint">Standard default: ৳250 / 90 Days</span>
+                  </div>
+
+                  {/* Yearly Plan */}
+                  <div
+                    style={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-lg)',
+                      padding: 18,
+                      boxShadow: 'var(--shadow-xs)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Yearly Plan
+                      </span>
+                      <span className="status-pill success" style={{ fontSize: 10 }}>
+                        365 Days • Best Value
+                      </span>
+                    </div>
+                    <label className="form-label">
+                      Yearly Fee (BDT ৳) *
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: 12, fontWeight: 700, color: 'var(--text-muted)' }}>৳</span>
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ paddingLeft: 28, fontSize: 16, fontWeight: 700 }}
+                        value={subConfig.yearly_fee}
+                        onChange={(e) => setSubConfig({ ...subConfig, yearly_fee: Number(e.target.value) })}
+                        min={1}
+                        required
+                      />
+                    </div>
+                    <span className="form-hint">Standard default: ৳650 / 365 Days</span>
+                  </div>
+                </div>
+
+                {/* Free Trial & Gate Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                  {/* Trial Card */}
+                  <div
+                    style={{
+                      background: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 18,
+                    }}
+                  >
+                    <label className="form-label" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Free Trial Duration (Days)
+                    </label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={subConfig.trial_days}
+                      onChange={(e) => setSubConfig({ ...subConfig, trial_days: Number(e.target.value) })}
+                      min={0}
+                      required
+                    />
+                    <span className="form-hint">Default is 90 days (3 Months Free Trial) granted on KYC registration.</span>
+
+                    <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={subConfig.is_trial_enabled}
+                          onChange={(e) => setSubConfig({ ...subConfig, is_trial_enabled: e.target.checked })}
+                        />
+                        <span className="slider" />
+                      </label>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Enable 3-Month Free Trial for newly registered accounts
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* NID Enforcement Card */}
+                  <div
+                    style={{
+                      background: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 18,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <Lock size={15} color="var(--danger)" />
+                      <label className="form-label" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                        Strict Identity & NID Verification Gate
+                      </label>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0' }}>
+                      When enabled, merchants MUST complete NID document submission before buying subscriptions or using gateway endpoints.
+                    </p>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          checked={subConfig.enforce_nid_verification}
+                          onChange={(e) => setSubConfig({ ...subConfig, enforce_nid_verification: e.target.checked })}
+                        />
+                        <span className="slider" />
+                      </label>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: subConfig.enforce_nid_verification ? 'var(--danger-text)' : 'var(--text-secondary)' }}>
+                        Enforce Mandatory NID Verification (1 NID = 1 Account)
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
 
+        {/* ════════════════ TAB 3: API DOCUMENTATION CMS ════════════════ */}
         {activeTab === 'api_docs' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div className="card">
+            <div className="card-header">
               <div>
-                <h3 style={{ margin: 0 }}>📚 Developer API Documentation (Markdown CMS)</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>
-                  Edit the comprehensive API specification. Changes are immediately synced to both the Android App Developer Portal (One-Click Copy & Reference) and the Web Docs Portal.
-                </span>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Code2 size={16} color="var(--brand-primary)" />
+                  Developer API Documentation Specification (Markdown CMS)
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Edit the comprehensive API specification. Changes are immediately synced to both the Android App Developer Portal and Web Docs.
+                </p>
               </div>
+
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   type="button"
+                  className="btn btn-secondary btn-sm"
                   onClick={() => setConfig({ ...config, api_documentation: DEFAULT_API_DOCS_MARKDOWN })}
-                  style={{
-                    background: '#EEF2FF',
-                    color: '#4F46E5',
-                    border: '1px solid #C7D2FE',
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: 700
-                  }}
                 >
-                  Load Exhaustive API Docs Template 📄
+                  <FileText size={13} />
+                  Load Official API Spec Template
                 </button>
                 <button
                   type="button"
+                  className="btn btn-ghost btn-sm"
                   onClick={() => setConfig({ ...config, api_documentation: '' })}
-                  style={{
-                    background: '#F1F5F9',
-                    color: '#64748B',
-                    border: '1px solid #CBD5E1',
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: 600
-                  }}
                 >
+                  <RotateCcw size={13} />
                   Clear (Use System Default)
                 </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 12, color: '#64748B' }}>
-              <span>Character Count: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).length}</strong></span>
-              <span>Lines: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).split('\n').length}</strong></span>
-              <span>Status: <strong style={{ color: config.api_documentation ? '#10B981' : '#64748B' }}>{config.api_documentation ? 'Custom CMS Override Active' : 'System Default Active'}</strong></span>
-            </div>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                <span className="status-pill neutral">
+                  Characters: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).length.toLocaleString()}</strong>
+                </span>
+                <span className="status-pill neutral">
+                  Lines: <strong>{(config.api_documentation || DEFAULT_API_DOCS_MARKDOWN).split('\n').length}</strong>
+                </span>
+                <span className={`status-pill ${config.api_documentation ? 'success' : 'neutral'}`}>
+                  <span className="status-dot" />
+                  {config.api_documentation ? 'Custom CMS Override Active' : 'System Default Template Active'}
+                </span>
+              </div>
 
-            <textarea
-              className="input"
-              value={config.api_documentation}
-              onChange={(e) => setConfig({ ...config, api_documentation: e.target.value })}
-              placeholder="Leave empty to use built-in exhaustive API specification, or enter customized Markdown documentation here..."
-              style={{
-                minHeight: 450,
-                fontFamily: 'Fira Code, monospace',
-                fontSize: 12.5,
-                lineHeight: 1.5,
-                background: '#0F172A',
-                color: '#38BDF8',
-                border: '1px solid #334155'
-              }}
-            />
+              <textarea
+                className="input"
+                value={config.api_documentation}
+                onChange={(e) => setConfig({ ...config, api_documentation: e.target.value })}
+                placeholder="Leave empty to use built-in exhaustive API specification, or enter customized Markdown documentation here..."
+                style={{
+                  minHeight: 460,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12.5,
+                  lineHeight: 1.6,
+                  background: 'var(--bg-subtle)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 16,
+                  resize: 'vertical',
+                }}
+              />
+            </div>
           </div>
         )}
 
+        {/* ════════════════ TAB 4: RADYMATE SHOWCASE GALLERY ════════════════ */}
         {activeTab === 'gallery' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <h3 style={{ margin: 0 }}>🖼️ Radymate Studio Gallery</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>
-                  Upload product launch screenshots to the Supabase Storage bucket, then save the gallery config so the public storefront reads them.
-                </span>
-              </div>
-              <button type="button" className="button" onClick={handleGalleryReset} disabled={gallerySaving} style={{ background: '#64748B' }}>
-                {gallerySaving ? 'Resetting...' : 'Reset to default'}
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Gallery Title</label>
-                <input className="input" value={galleryTitle} onChange={(e) => setGalleryTitle(e.target.value)} placeholder="Radymate E-commerce launch" />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Caption</label>
-                <input className="input" value={galleryCaption} onChange={(e) => setGalleryCaption(e.target.value)} placeholder="One-click launch storefront" />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: '#334155' }}>Upload image to Supabase Storage</label>
-                <input
-                  className="input"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setGalleryUploadFile(e.target.files?.[0] || null)}
-                />
-                <div style={{ marginTop: 6, fontSize: 11, color: '#64748B' }}>
-                  Bucket target: <strong>radymate-gallery</strong>. The uploaded image must be public to render on the front-end homepage.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Upload Box */}
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ImageIcon size={16} color="var(--brand-primary)" />
+                    Radymate Studio Gallery Management
+                  </h3>
+                  <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                    Upload storefront launch screenshots to the Supabase Storage bucket. The public landing page & gallery dynamically read these images.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleGalleryReset}
+                  disabled={gallerySaving}
+                >
+                  <RotateCcw size={13} />
+                  {gallerySaving ? 'Resetting...' : 'Reset to Default Showcase'}
+                </button>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button type="button" className="button" onClick={handleGalleryUpload} disabled={gallerySaving || !galleryUploadFile} style={{ background: '#10B981' }}>
-                {gallerySaving ? 'Uploading...' : 'Upload & Save to Supabase'}
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              {radymateGallery.map((item, index) => (
-                <div key={`${item.title}-${index}`} style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden', background: '#F8FAFC' }}>
-                  <img src={item.image} alt={item.title} style={{ width: '100%', height: 118, objectFit: 'cover', display: 'block' }} />
-                  <div style={{ padding: 10 }}>
-                    <div style={{ fontWeight: 800, fontSize: 12, color: '#1E293B' }}>{item.title}</div>
-                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{item.caption}</div>
-                    <div style={{ fontSize: 10, color: '#0EA5E9', marginTop: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                      {item.source === 'storage' ? 'Supabase storage' : 'Fallback demo'}
-                    </div>
+              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div>
+                    <label className="form-label">Gallery Title</label>
+                    <input
+                      className="input"
+                      value={galleryTitle}
+                      onChange={(e) => setGalleryTitle(e.target.value)}
+                      placeholder="Radymate E-commerce launch"
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Caption / Tagline</label>
+                    <input
+                      className="input"
+                      value={galleryCaption}
+                      onChange={(e) => setGalleryCaption(e.target.value)}
+                      placeholder="One-click launch storefront"
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label">Upload Image to Supabase Storage</label>
+                    <input
+                      className="input"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setGalleryUploadFile(e.target.files?.[0] || null)}
+                    />
+                    <span className="form-hint">
+                      Target bucket: <strong>radymate-gallery</strong>. Uploaded images are publicly cached and served via Supabase CDN.
+                    </span>
                   </div>
                 </div>
-              ))}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleGalleryUpload}
+                    disabled={gallerySaving || !galleryUploadFile}
+                  >
+                    <UploadCloud size={15} />
+                    {gallerySaving ? 'Uploading to Supabase...' : 'Upload & Save to Storage'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Gallery Grid */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title">
+                  Current Gallery Images ({radymateGallery.length})
+                </h3>
+              </div>
+              <div className="card-body">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                  {radymateGallery.map((item, index) => (
+                    <div
+                      key={`${item.title}-${index}`}
+                      style={{
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 'var(--radius-md)',
+                        overflow: 'hidden',
+                        background: 'var(--bg-surface)',
+                        boxShadow: 'var(--shadow-xs)',
+                      }}
+                    >
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        style={{ width: '100%', height: 130, objectFit: 'cover', display: 'block', background: 'var(--bg-subtle)' }}
+                      />
+                      <div style={{ padding: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.title}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.caption}
+                        </div>
+                        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span
+                            className={`status-pill ${item.source === 'storage' ? 'success' : 'neutral'}`}
+                            style={{ fontSize: 10 }}
+                          >
+                            {item.source === 'storage' ? 'Supabase Storage' : 'Default Demo'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
+        {/* ════════════════ TAB 5: VIDEO TUTORIALS ════════════════ */}
         {activeTab === 'video' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div className="card">
+            <div className="card-header">
               <div>
-                <h3 style={{ margin: 0 }}>🎥 Video Integration Tutorials Manager</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>
-                  Manage video tutorials shown on the Android Developer Portal and Web Documentation. Supports YouTube URLs and MP4 direct streams.
-                </span>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Video size={16} color="var(--brand-primary)" />
+                  Video Integration Tutorials Manager
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Manage video guides shown on the mobile Developer Portal and Web Documentation. Supports YouTube URLs and MP4 direct streams.
+                </p>
               </div>
               <button
                 type="button"
-                className="button"
+                className="btn btn-primary btn-sm"
                 onClick={handleAddVideoTutorial}
-                style={{ background: '#10B981', display: 'flex', alignItems: 'center', gap: 6 }}
               >
-                + Add Video Tutorial
+                <Plus size={14} />
+                Add Video Tutorial
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {(config.video_tutorials || []).map((vid: VideoTutorial, index: number) => (
-                <div key={vid.id || index} style={{ padding: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div
+                  key={vid.id || index}
+                  style={{
+                    padding: 18,
+                    background: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#4F46E5', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+                      <span
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          background: 'var(--brand-primary)',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
                         {index + 1}
                       </span>
-                      <strong style={{ fontSize: 14, color: '#1E293B' }}>{vid.title || 'Untitled Tutorial'}</strong>
+                      <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+                        {vid.title || 'Untitled Tutorial'}
+                      </strong>
                       {vid.category && (
-                        <span style={{ background: '#EEF2FF', color: '#4F46E5', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                        <span className="status-pill info" style={{ fontSize: 11 }}>
                           {vid.category}
                         </span>
                       )}
                       {vid.duration && (
-                        <span style={{ background: '#FEF3C7', color: '#B45309', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                        <span className="status-pill neutral" style={{ fontSize: 11 }}>
                           ⏱ {vid.duration}
                         </span>
                       )}
                     </div>
+
                     <div style={{ display: 'flex', gap: 8 }}>
                       {vid.videoUrl && (
                         <a
                           href={vid.videoUrl}
                           target="_blank"
                           rel="noreferrer"
-                          style={{
-                            background: '#F1F5F9',
-                            color: '#0284C7',
-                            padding: '4px 10px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textDecoration: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4
-                          }}
+                          className="btn btn-secondary btn-sm"
+                          title="Open Video Link"
                         >
-                          ▶ Test Link
+                          <ExternalLink size={12} />
+                          Test Link
                         </a>
                       )}
                       <button
                         type="button"
                         onClick={() => handleRemoveVideoTutorial(index)}
-                        style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
+                        className="btn btn-danger btn-sm"
+                        title="Delete tutorial"
                       >
+                        <Trash2 size={12} />
                         Delete
                       </button>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
-                        Video Title *
-                      </label>
+                      <label className="form-label">Video Title *</label>
                       <input
                         className="input"
                         value={vid.title}
@@ -1150,9 +1440,7 @@ export default function SystemSettings() {
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
-                        Category
-                      </label>
+                      <label className="form-label">Category</label>
                       <input
                         className="input"
                         value={vid.category || ''}
@@ -1161,13 +1449,11 @@ export default function SystemSettings() {
                           updated[index] = { ...updated[index], category: e.target.value };
                           setConfig({ ...config, video_tutorials: updated });
                         }}
-                        placeholder="e.g. Automation, Gateways, Setup"
+                        placeholder="e.g. Automation, Setup"
                       />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
-                        Duration Badge
-                      </label>
+                      <label className="form-label">Duration Badge</label>
                       <input
                         className="input"
                         value={vid.duration}
@@ -1181,29 +1467,23 @@ export default function SystemSettings() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 10 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
-                        Video URL / YouTube Link *
-                      </label>
-                      <input
-                        className="input"
-                        value={vid.videoUrl}
-                        onChange={(e) => {
-                          const updated = [...(config.video_tutorials || [])];
-                          updated[index] = { ...updated[index], videoUrl: e.target.value };
-                          setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
-                        }}
-                        placeholder="https://www.youtube.com/watch?v=... or direct MP4 URL"
-                        required
-                      />
-                    </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label className="form-label">Video URL / YouTube Link *</label>
+                    <input
+                      className="input"
+                      value={vid.videoUrl}
+                      onChange={(e) => {
+                        const updated = [...(config.video_tutorials || [])];
+                        updated[index] = { ...updated[index], videoUrl: e.target.value };
+                        setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
+                      }}
+                      placeholder="https://www.youtube.com/watch?v=... or direct MP4 URL"
+                      required
+                    />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, marginBottom: 4, color: '#475569' }}>
-                      Description
-                    </label>
+                    <label className="form-label">Description</label>
                     <textarea
                       className="input"
                       value={vid.description}
@@ -1213,7 +1493,7 @@ export default function SystemSettings() {
                         setConfig({ ...config, video_tutorials: updated, video_tutorial: updated[0] || config.video_tutorial });
                       }}
                       placeholder="Step-by-step video instructions..."
-                      style={{ minHeight: 50, fontFamily: 'inherit' }}
+                      style={{ minHeight: 60 }}
                     />
                   </div>
                 </div>
@@ -1222,252 +1502,552 @@ export default function SystemSettings() {
           </div>
         )}
 
+        {/* ════════════════ TAB 6: SUPPORT CONTACTS ════════════════ */}
+        {activeTab === 'support_contacts' && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <PhoneCall size={16} color="var(--brand-primary)" />
+                  Official Help & Support Contact Details
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Contact details displayed on the merchant app Support screen, including hotline dialing, WhatsApp chat, and live announcements.
+                </p>
+              </div>
+            </div>
+
+            <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
+              <div>
+                <label className="form-label">
+                  Hotline Phone Number (Direct Dial) *
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    value={config.support_hotline}
+                    onChange={(e) => setConfig({ ...config, support_hotline: e.target.value })}
+                    placeholder="+880 1794 827103"
+                    required
+                  />
+                  {config.support_hotline && (
+                    <a
+                      href={`tel:${config.support_hotline}`}
+                      className="btn btn-ghost btn-sm"
+                      style={{ position: 'absolute', right: 4 }}
+                      title="Test direct dial"
+                    >
+                      <PhoneCall size={13} />
+                    </a>
+                  )}
+                </div>
+                <span className="form-hint">Tapped by merchants for immediate operator phone support.</span>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  Support Email Inquiries *
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    value={config.support_email}
+                    onChange={(e) => setConfig({ ...config, support_email: e.target.value })}
+                    placeholder="support@swapnopay.top"
+                    required
+                  />
+                  {config.support_email && (
+                    <a
+                      href={`mailto:${config.support_email}`}
+                      className="btn btn-ghost btn-sm"
+                      style={{ position: 'absolute', right: 4 }}
+                      title="Send email"
+                    >
+                      <Mail size={13} />
+                    </a>
+                  )}
+                </div>
+                <span className="form-hint">Primary contact email for business inquiries and billing queries.</span>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  WhatsApp Support Link / Number *
+                </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    value={config.support_whatsapp}
+                    onChange={(e) => setConfig({ ...config, support_whatsapp: e.target.value })}
+                    placeholder="+8801712963652"
+                    required
+                  />
+                  {config.support_whatsapp && (
+                    <a
+                      href={`https://wa.me/${config.support_whatsapp.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-ghost btn-sm"
+                      style={{ position: 'absolute', right: 4 }}
+                      title="Open WhatsApp chat"
+                    >
+                      <MessageSquare size={13} />
+                    </a>
+                  )}
+                </div>
+                <span className="form-hint">Opens directly into WhatsApp Messenger for live chat assistance.</span>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  Operating Hours
+                </label>
+                <input
+                  className="input"
+                  value={config.support_hours}
+                  onChange={(e) => setConfig({ ...config, support_hours: e.target.value })}
+                  placeholder="24/7 Chat & Ticket Support"
+                />
+                <span className="form-hint">Availability indicator shown to merchants.</span>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">
+                  Main Headquarters Address
+                </label>
+                <input
+                  className="input"
+                  value={config.support_address}
+                  onChange={(e) => setConfig({ ...config, support_address: e.target.value })}
+                  placeholder="Level 14, Banani Tower, Dhaka, Bangladesh"
+                />
+                <span className="form-hint">Official company registration and office location.</span>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">
+                  System Broadcast Announcement
+                </label>
+                <textarea
+                  className="input"
+                  value={config.system_notice}
+                  onChange={(e) => setConfig({ ...config, system_notice: e.target.value })}
+                  placeholder="Broadcast message shown to all merchants..."
+                  style={{ minHeight: 70 }}
+                />
+                <span className="form-hint">Broadcast banner message displayed on top of the merchant dashboard.</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 7: FAQS ════════════════ */}
         {activeTab === 'faqs' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="card">
+            <div className="card-header">
               <div>
-                <h3 style={{ margin: 0 }}>❓ Frequently Asked Questions (FAQs)</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>Add, edit, or remove FAQs displayed in the Help Center</span>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <HelpCircle size={16} color="var(--brand-primary)" />
+                  Frequently Asked Questions (FAQs)
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Questions and answers displayed in the mobile Help Center accordion.
+                </p>
               </div>
               <button
                 type="button"
-                className="button"
+                className="btn btn-primary btn-sm"
                 onClick={handleAddFaq}
-                style={{ background: '#10B981' }}
               >
-                + Add FAQ
+                <Plus size={14} />
+                Add FAQ Question
               </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {config.faqs.map((faq: FaqItem, index: number) => (
-                <div key={index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <strong style={{ fontSize: 13, color: '#1E293B' }}>Question #{index + 1}</strong>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFaq(index)}
-                      style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <input
-                    className="input"
-                    value={faq.question}
-                    onChange={(e) => {
-                      const updated = [...config.faqs];
-                      updated[index].question = e.target.value;
-                      setConfig({ ...config, faqs: updated });
-                    }}
-                    placeholder="Question..."
-                    style={{ marginBottom: 8 }}
-                  />
-                  <textarea
-                    className="input"
-                    value={faq.answer}
-                    onChange={(e) => {
-                      const updated = [...config.faqs];
-                      updated[index].answer = e.target.value;
-                      setConfig({ ...config, faqs: updated });
-                    }}
-                    placeholder="Answer explanation..."
-                    style={{ minHeight: 60, fontFamily: 'inherit' }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'guides' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>📖 Step-by-Step Integration Guides</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>Displayed under the Guides modal in mobile Support</span>
-              </div>
-              <button
-                type="button"
-                className="button"
-                onClick={handleAddGuide}
-                style={{ background: '#10B981' }}
-              >
-                + Add Guide Step
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {config.guides.map((guide: GuideItem, index: number) => (
-                <div key={index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <strong style={{ fontSize: 13, color: '#1E293B' }}>Step #{index + 1}</strong>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveGuide(index)}
-                      style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <input
-                    className="input"
-                    value={guide.title}
-                    onChange={(e) => {
-                      const updated = [...config.guides];
-                      updated[index].title = e.target.value;
-                      setConfig({ ...config, guides: updated });
-                    }}
-                    placeholder="Step Title (e.g. 1. App Configuration)"
-                    style={{ marginBottom: 8 }}
-                  />
-                  <textarea
-                    className="input"
-                    value={guide.description}
-                    onChange={(e) => {
-                      const updated = [...config.guides];
-                      updated[index].description = e.target.value;
-                      setConfig({ ...config, guides: updated });
-                    }}
-                    placeholder="Step detailed instructions..."
-                    style={{ minHeight: 60, fontFamily: 'inherit' }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'articles' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>📄 Help Center Articles</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>Primary article cards and searchable documentation on Support home</span>
-              </div>
-              <button
-                type="button"
-                className="button"
-                onClick={handleAddArticle}
-                style={{ background: '#10B981' }}
-              >
-                + Add Article
-              </button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {config.articles.map((art: ArticleItem, index: number) => (
-                <div key={art.id || index} style={{ padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <strong style={{ fontSize: 13, color: '#1E293B' }}>Article #{index + 1} ({art.id})</strong>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveArticle(index)}
-                      style={{ background: '#FEE2E2', color: '#EF4444', border: 'none', padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 8 }}>
-                    <input
-                      className="input"
-                      value={art.title}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const updated = [...config.articles];
-                        updated[index].title = e.target.value;
-                        setConfig({ ...config, articles: updated });
-                      }}
-                      placeholder="Article Title..."
-                    />
-                    <input
-                      className="input"
-                      value={art.category}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const updated = [...config.articles];
-                        updated[index].category = e.target.value;
-                        setConfig({ ...config, articles: updated });
-                      }}
-                      placeholder="Category..."
-                    />
-                  </div>
-                  <textarea
-                    className="input"
-                    value={art.content}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
-                      const updated = [...config.articles];
-                      updated[index].content = e.target.value;
-                      setConfig({ ...config, articles: updated });
-                    }}
-                    placeholder="Full article content (markdown & bullets supported)..."
-                    style={{ minHeight: 90, fontFamily: 'inherit' }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'tickets' && (
-          <div className="card" style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>🎫 Submit Report / Ticket Categories</h3>
-                <span style={{ fontSize: 12, color: '#64748B' }}>Configurable categories merchants can pick when reporting an issue</span>
-              </div>
-              <button
-                type="button"
-                className="button"
-                onClick={handleAddCategory}
-                style={{ background: '#10B981' }}
-              >
-                + Add Category
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {config.ticket_categories.map((cat: string, index: number) => (
                 <div
                   key={index}
                   style={{
-                    padding: '8px 12px',
-                    background: '#EEF2FF',
-                    border: '1px solid #C7D2FE',
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8
+                    padding: 16,
+                    background: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
                   }}
                 >
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#3730A3' }}>{cat}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCategory(index)}
-                    style={{ background: 'transparent', border: 'none', color: '#EF4444', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    ✕
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Question #{index + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFaq(index)}
+                      className="btn btn-danger btn-sm"
+                      title="Delete question"
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label className="form-label">Question</label>
+                    <input
+                      className="input"
+                      value={faq.question}
+                      onChange={(e) => {
+                        const updated = [...config.faqs];
+                        updated[index].question = e.target.value;
+                        setConfig({ ...config, faqs: updated });
+                      }}
+                      placeholder="Question..."
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Answer Explanation</label>
+                    <textarea
+                      className="input"
+                      value={faq.answer}
+                      onChange={(e) => {
+                        const updated = [...config.faqs];
+                        updated[index].answer = e.target.value;
+                        setConfig({ ...config, faqs: updated });
+                      }}
+                      placeholder="Answer explanation..."
+                      style={{ minHeight: 60 }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+        {/* ════════════════ TAB 8: INTEGRATION GUIDES ════════════════ */}
+        {activeTab === 'guides' && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <BookOpen size={16} color="var(--brand-primary)" />
+                  Step-by-Step Integration Guides
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Interactive setup steps displayed under the Guides section in mobile Support.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleAddGuide}
+              >
+                <Plus size={14} />
+                Add Guide Step
+              </button>
+            </div>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {config.guides.map((guide: GuideItem, index: number) => (
+                <div
+                  key={index}
+                  style={{
+                    padding: 16,
+                    background: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Step #{index + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveGuide(index)}
+                      className="btn btn-danger btn-sm"
+                      title="Delete step"
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label className="form-label">Step Title</label>
+                    <input
+                      className="input"
+                      value={guide.title}
+                      onChange={(e) => {
+                        const updated = [...config.guides];
+                        updated[index].title = e.target.value;
+                        setConfig({ ...config, guides: updated });
+                      }}
+                      placeholder="Step Title (e.g. 1. App Configuration)"
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Step Instructions</label>
+                    <textarea
+                      className="input"
+                      value={guide.description}
+                      onChange={(e) => {
+                        const updated = [...config.guides];
+                        updated[index].description = e.target.value;
+                        setConfig({ ...config, guides: updated });
+                      }}
+                      placeholder="Step detailed instructions..."
+                      style={{ minHeight: 65 }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 9: HELP ARTICLES ════════════════ */}
+        {activeTab === 'articles' && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FileText size={16} color="var(--brand-primary)" />
+                  Help Center Documentation Articles
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Detailed troubleshooting and configuration articles shown on mobile Support home.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleAddArticle}
+              >
+                <Plus size={14} />
+                Add Help Article
+              </button>
+            </div>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {config.articles.map((art: ArticleItem, index: number) => (
+                <div
+                  key={art.id || index}
+                  style={{
+                    padding: 18,
+                    background: 'var(--bg-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="status-pill neutral" style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                        {art.id}
+                      </span>
+                      <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+                        {art.title || 'Untitled Article'}
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveArticle(index)}
+                      className="btn btn-danger btn-sm"
+                      title="Delete article"
+                    >
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label className="form-label">Article Title</label>
+                      <input
+                        className="input"
+                        value={art.title}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const updated = [...config.articles];
+                          updated[index].title = e.target.value;
+                          setConfig({ ...config, articles: updated });
+                        }}
+                        placeholder="Article Title..."
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">Category</label>
+                      <input
+                        className="input"
+                        value={art.category}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const updated = [...config.articles];
+                          updated[index].category = e.target.value;
+                          setConfig({ ...config, articles: updated });
+                        }}
+                        placeholder="Category (e.g. Automation, Disputes)..."
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="form-label">Full Article Content (Markdown supported)</label>
+                    <textarea
+                      className="input"
+                      value={art.content}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                        const updated = [...config.articles];
+                        updated[index].content = e.target.value;
+                        setConfig({ ...config, articles: updated });
+                      }}
+                      placeholder="Full article content (markdown & bullets supported)..."
+                      style={{ minHeight: 90 }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ TAB 10: REPORT CATEGORIES ════════════════ */}
+        {activeTab === 'tickets' && (
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Tag size={16} color="var(--brand-primary)" />
+                  Submit Report & Ticket Categories
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Configurable categories merchants can pick when reporting an issue or opening a support dispute.
+                </p>
+              </div>
+            </div>
+
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Category Chips */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {config.ticket_categories.map((cat: string, index: number) => (
+                  <div
+                    key={index}
+                    style={{
+                      padding: '7px 12px',
+                      background: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 'var(--radius-full)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      boxShadow: 'var(--shadow-xs)',
+                    }}
+                  >
+                    <span>{cat}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCategory(index)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: 2,
+                        borderRadius: '50%',
+                        transition: 'color var(--transition-fast)',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      title="Remove category"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Category Inline */}
+              <div style={{ display: 'flex', gap: 10, maxWidth: 420, alignItems: 'center' }}>
+                <input
+                  className="input"
+                  value={newCategoryInput}
+                  onChange={(e) => setNewCategoryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  placeholder="Enter new category name..."
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryInput.trim()}
+                >
+                  <Plus size={14} />
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════ STICKY BOTTOM SAVE BAR ════════════════ */}
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: 'var(--bg-surface)',
+            borderTop: '1px solid var(--border-default)',
+            padding: '14px 28px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.06)',
+            zIndex: 35,
+            backdropFilter: 'blur(12px)',
+          }}
+        >
           <button
             type="button"
+            className="btn btn-secondary btn-sm"
             onClick={() => {
-              if (window.confirm('Reset all settings and CMS content to system defaults?')) {
+              if (window.confirm('Reset all CMS settings to system defaults?')) {
                 setConfig(DEFAULT_CONFIG);
               }
             }}
-            style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
           >
+            <RotateCcw size={13} />
             Reset All Defaults
           </button>
-          <button
-            type="submit"
-            className="button"
-            disabled={isSaving}
-            style={{ background: '#10B981', padding: '12px 24px', fontSize: 14, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8 }}
-          >
-            {isSaving ? 'Broadcasting to Mobile...' : '💾 Save & Broadcast All Changes to Mobile App'}
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Realtime WebSocket broadcast active
+            </span>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+              style={{ minWidth: 220, height: 38 }}
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw size={14} className="spin" />
+                  Broadcasting to Mobile App...
+                </>
+              ) : (
+                <>
+                  <Save size={14} />
+                  Save & Broadcast All Changes
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

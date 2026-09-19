@@ -472,6 +472,51 @@ body {
   justify-content: center;
 }
 
+/* ──────────────── Inputs & Form Controls ──────────────── */
+.input, textarea.input, select.input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.input:focus, textarea.input:focus, select.input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
+}
+
+.input::placeholder, textarea.input::placeholder {
+  color: var(--text-subtle);
+}
+
+.input:disabled, textarea.input:disabled {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-hint {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* ──────────────── Cards ──────────────── */
 .card {
   background: var(--bg-surface);
