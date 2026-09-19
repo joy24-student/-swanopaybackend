@@ -11977,31 +11977,13 @@ function executePayment() {
                     val json = org.json.JSONObject(resStr)
                     if (json.optBoolean("ok")) {
                         fetchAiCallLogs()
-                        onResult(true, "এআই সফলভাবে কাস্টমারকে কল করেছে এবং তাগাদা পৌঁছে দিয়েছে।")
+                        val msg = json.optString("message", "এআই তাগাদা কল সেশন শুরু হয়েছে।")
+                        onResult(true, msg)
                     } else {
                         onResult(false, json.optString("error", "কল সম্পন্ন করা যায়নি।"))
                     }
                 } else {
-                    val simulated = AiCallRecord(
-                        id = "out_${System.currentTimeMillis()}",
-                        merchantId = merchantId,
-                        direction = "outbound",
-                        from = _aiVoiceSettings.value.callerNumber,
-                        to = customerPhone,
-                        customerName = customerName,
-                        purpose = "বকেয়া আদায় তাগাদা (৳${dueAmount.toInt()})",
-                        status = "completed",
-                        duration = "0m 45s",
-                        createdAt = "এখনই",
-                        summary = "এআই কল সম্পন্ন। কাস্টমার আগামী শুক্রবার টাকা পরিশোধ করার প্রতিশ্রুতি দিয়েছেন।",
-                        transcript = listOf(
-                            AiCallTurn("assistant", "আসসালামু আলাইকুম $customerName, স্বপ্নপে স্টোর থেকে বলছি। আপনার ${dueAmount.toInt()} টাকা বকেয়া রয়েছে। আপনি কি আগামীকালের মধ্যে পরিশোধ করবেন?", "00:03"),
-                            AiCallTurn("customer", "হ্যাঁ আমি শুক্রবার এসে বাকি টাকা পরিশোধ করে দেব।", "00:20"),
-                            AiCallTurn("assistant", "অনেক ধন্যবাদ $customerName সাহেব। আপনার দিনটি শুভ হোক!", "00:28")
-                        )
-                    )
-                    _aiCallLogs.value = listOf(simulated) + _aiCallLogs.value
-                    onResult(true, "এআই তাগাদা কল সফল হয়েছে! কাস্টমার শুক্রবার টাকা পরিশোধের প্রতিশ্রুতি দিয়েছেন।")
+                    onResult(false, "সার্ভারের সাথে সংযোগ স্থাপন করা যায়নি। ইন্টারনেট সংযোগ চেক করুন।")
                 }
             } catch (e: Exception) {
                 _isTriggeringAiCall.value = false
@@ -12037,15 +12019,25 @@ function executePayment() {
                     .post(body)
                     .build()
 
-                withContext(Dispatchers.IO) {
+                val resStr = withContext(Dispatchers.IO) {
                     runCatching {
                         client.newCall(req).execute().use { it.body?.string() }
-                    }
+                    }.getOrNull()
                 }
 
                 _isTriggeringAiCall.value = false
-                fetchAiCallLogs()
-                onResult(true, "অর্ডার কনফার্মেশন কল সম্পন্ন হয়েছে। গ্রাহক অর্ডারটি গ্রহণ করেছেন।")
+                if (!resStr.isNullOrBlank()) {
+                    val json = org.json.JSONObject(resStr)
+                    if (json.optBoolean("ok")) {
+                        fetchAiCallLogs()
+                        val msg = json.optString("message", "অর্ডার কনফার্মেশন কল সেশন শুরু হয়েছে।")
+                        onResult(true, msg)
+                    } else {
+                        onResult(false, json.optString("error", "কনফার্মেশন কল ব্যর্থ হয়েছে"))
+                    }
+                } else {
+                    onResult(false, "সার্ভারের সাথে সংযোগ স্থাপন করা যায়নি। ইন্টারনেট সংযোগ চেক করুন।")
+                }
             } catch (e: Exception) {
                 _isTriggeringAiCall.value = false
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -12089,6 +12081,62 @@ function executePayment() {
         }
     }
 
+    fun fetchAiVoiceSettings() {
+        viewModelScope.launch {
+            try {
+                val merchantId = _activeProfile.value.id.ifEmpty { "default" }
+                val client = okhttp3.OkHttpClient()
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.swapnopay.top/v1/voice/settings?merchant_id=$merchantId")
+                    .get()
+                    .build()
+
+                val resStr = withContext(Dispatchers.IO) {
+                    runCatching { client.newCall(req).execute().use { it.body?.string() } }.getOrNull()
+                }
+
+                if (!resStr.isNullOrBlank()) {
+                    val json = org.json.JSONObject(resStr)
+                    if (json.optBoolean("ok")) {
+                        val sObj = json.optJSONObject("settings")
+                        if (sObj != null) {
+                            _aiVoiceSettings.value = AiVoiceSettingsState(
+                                agentName = sObj.optString("agent_name", _aiVoiceSettings.value.agentName),
+                                language = sObj.optString("language", _aiVoiceSettings.value.language),
+                                voiceGender = sObj.optString("voice_gender", _aiVoiceSettings.value.voiceGender),
+                                autoAnswer = sObj.optBoolean("auto_answer", _aiVoiceSettings.value.autoAnswer),
+                                businessName = sObj.optString("business_name", _aiVoiceSettings.value.businessName),
+                                greetingBn = sObj.optString("greeting_bn", _aiVoiceSettings.value.greetingBn),
+                                dueReminderScript = sObj.optString("due_reminder_script", _aiVoiceSettings.value.dueReminderScript),
+                                callerNumber = sObj.optString("caller_number", _aiVoiceSettings.value.callerNumber)
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w("AppViewModel", "Voice settings fetch notice: ${e.message}")
+            }
+        }
+    }
+
+    fun dialCustomerPhone(context: Context, phone: String) {
+        val cleanPhone = phone.trim()
+        if (cleanPhone.isBlank()) {
+            android.widget.Toast.makeText(context, "ফোন নম্বর পাওয়া যায়নি", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_DIAL).apply {
+                data = android.net.Uri.parse("tel:$cleanPhone")
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "ডায়ালার ওপেন করা যায়নি: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun sendInstantRecordToAi(
         speechText: String,
         audioBase64: String? = null,
@@ -12120,39 +12168,65 @@ function executePayment() {
                     }.getOrNull()
                 }
 
-                _isTriggeringAiCall.value = false
                 if (!resStr.isNullOrBlank()) {
                     val json = org.json.JSONObject(resStr)
-                    val trans = json.optString("transcription", speechText)
-                    val reply = json.optString("ai_reply", "জি আপনার প্রশ্নের উত্তর প্রস্তুত করা হচ্ছে।")
-                    fetchAiCallLogs()
-                    onResult(true, trans, reply)
-                } else {
-                    val reply = if (speechText.contains("খোলা") || speechText.contains("সময়")) {
-                        "আমাদের প্রতিষ্ঠান প্রতিদিন সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে।"
-                    } else if (speechText.contains("বাকি") || speechText.contains("টাকা")) {
-                        "আপনার বাকি বা পেমেন্ট হিসাব দেখতে অনুগ্রহ করে মোবাইল নম্বরটি বলুন, আমি চেক করে দিচ্ছি।"
-                    } else {
-                        "জি আমি বুঝতে পেরেছি। আপনার প্রশ্নের সন্তোষজনক সমাধান দিতে আমি প্রস্তুত।"
+                    if (json.optBoolean("ok")) {
+                        _isTriggeringAiCall.value = false
+                        val trans = json.optString("transcription", speechText)
+                        val reply = json.optString("ai_reply", "জি আপনার প্রশ্নের উত্তর প্রস্তুত করা হচ্ছে।")
+                        fetchAiCallLogs()
+                        onResult(true, trans, reply)
+                        return@launch
                     }
-                    val simLog = AiCallRecord(
-                        id = "turn_${System.currentTimeMillis()}",
-                        merchantId = merchantId,
-                        direction = "inbound",
-                        from = "ভয়েস রেকর্ড",
-                        customerName = "গ্রাহক",
-                        purpose = "ভয়েস কোয়েরি",
-                        status = "completed",
-                        duration = "0m 15s",
-                        createdAt = "এখনই",
-                        summary = speechText,
-                        transcript = listOf(
-                            AiCallTurn("customer", speechText, "00:02"),
-                            AiCallTurn("assistant", reply, "00:06")
-                        )
+                }
+
+                // Real on-device Gemini fallback if backend is unreachable
+                val apiKey = _geminiApiKey.value
+                if (apiKey.isNotBlank() && speechText.isNotBlank()) {
+                    val systemPrompt = "আপনি ${_aiVoiceSettings.value.businessName} এর স্মার্ট এআই ভয়েস সহকারী (${_aiVoiceSettings.value.agentName})। গ্রাহকের যেকোনো প্রশ্নের উত্তর মার্জিত, প্রফেশনাল ও সংক্ষিপ্ত বাংলায় দিন।"
+                    val messages = org.json.JSONArray().apply {
+                        put(org.json.JSONObject().put("role", "user").put("content", "$systemPrompt\n\nগ্রাহক বলেছেন: \"$speechText\""))
+                    }
+                    GeminiClient.getChatCompletion(
+                        apiKey = apiKey,
+                        model = _selectedGeminiModel.value.ifBlank { "gemini-2.5-flash" },
+                        messages = messages,
+                        onSuccess = { replyText ->
+                            _isTriggeringAiCall.value = false
+                            val cleanReply = replyText.trim()
+                            val realLog = AiCallRecord(
+                                id = "turn_${System.currentTimeMillis()}",
+                                merchantId = merchantId,
+                                direction = "inbound",
+                                from = "ভয়েস রেকর্ড",
+                                customerName = "গ্রাহক",
+                                purpose = "ভয়েস কোয়েরি",
+                                status = "completed",
+                                duration = "0m 15s",
+                                createdAt = "এখনই",
+                                summary = speechText,
+                                transcript = listOf(
+                                    AiCallTurn("customer", speechText, "00:02"),
+                                    AiCallTurn("assistant", cleanReply, "00:06")
+                                )
+                            )
+                            _aiCallLogs.value = listOf(realLog) + _aiCallLogs.value
+                            onResult(true, speechText, cleanReply)
+                        },
+                        onFailure = { err ->
+                            _isTriggeringAiCall.value = false
+                            onResult(false, speechText, "এআই রেসপন্স পেতে ব্যর্থ হয়েছে: $err")
+                        }
                     )
-                    _aiCallLogs.value = listOf(simLog) + _aiCallLogs.value
-                    onResult(true, speechText, reply)
+                } else {
+                    _isTriggeringAiCall.value = false
+                    val errorMsg = if (resStr.isNullOrBlank()) {
+                        "এআই সার্ভারের সাথে সংযোগ করা যায়নি এবং জেমিনি এপিআই কী সেট নেই।"
+                    } else {
+                        val json = runCatching { org.json.JSONObject(resStr) }.getOrNull()
+                        json?.optString("error", "ভয়েস প্রসেসিং ব্যর্থ হয়েছে") ?: "ভয়েস প্রসেসিং ব্যর্থ হয়েছে"
+                    }
+                    onResult(false, speechText, errorMsg)
                 }
             } catch (e: Exception) {
                 _isTriggeringAiCall.value = false
@@ -12163,15 +12237,7 @@ function executePayment() {
     }
 
     // ── AI Mass Campaign & Feedback Spreadsheet ──
-    private val _aiCampaignFeedbacks = kotlinx.coroutines.flow.MutableStateFlow<List<AiCampaignFeedbackItem>>(
-        listOf(
-            AiCampaignFeedbackItem("fb_01", "আব্দুল করিম", "+8801711223344", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "ATTENDING", "ইনশাআল্লাহ আমি শুক্রবার বিকাল ৪টায় মিটিংয়ে উপস্থিত থাকব।", "POSITIVE", "COMPLETED", "0m 45s", "২৫ মিনিট আগে"),
-            AiCampaignFeedbackItem("fb_02", "রহিম শেখ", "+8801822334455", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "DECLINED", "ঢাকার বাইরে জরুরি কাজে থাকায় উপস্থিত থাকতে পারব না।", "NEGATIVE", "COMPLETED", "0m 32s", "৪৫ মিনিট আগে"),
-            AiCampaignFeedbackItem("fb_03", "ফারুক আহমেদ", "+8801933445566", "বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন", "DISCOUNT_OFFER", "INTERESTED", "অফারের নতুন পোশাকের ক্যাটালগ কি হোয়াটসঅ্যাপে পাঠানো যাবে?", "POSITIVE", "COMPLETED", "1m 10s", "১ ঘণ্টা আগে"),
-            AiCampaignFeedbackItem("fb_04", "সালমা বেগম", "+8801644556677", "বার্ষিক মার্চেন্ট সম্মেলন ২০২৬", "MEETING_INVITE", "ATTENDING", "আমি সময়মতো আসব এবং সাথে আরো দুইজন সদস্য নিয়ে আসব।", "POSITIVE", "COMPLETED", "0m 52s", "দেড় ঘণ্টা আগে"),
-            AiCampaignFeedbackItem("fb_05", "তানভীর হাসান", "+8801755667788", "বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন", "DISCOUNT_OFFER", "PENDING", "রিং হচ্ছে... এখনো উত্তর দেয়নি।", "NEUTRAL", "PENDING", "0m 00s", "২ ঘণ্টা আগে")
-        )
-    )
+    private val _aiCampaignFeedbacks = kotlinx.coroutines.flow.MutableStateFlow<List<AiCampaignFeedbackItem>>(emptyList())
     val aiCampaignFeedbacks: kotlinx.coroutines.flow.StateFlow<List<AiCampaignFeedbackItem>> = _aiCampaignFeedbacks.asStateFlow()
 
     fun fetchCampaignFeedbacks() {
@@ -12230,6 +12296,10 @@ function executePayment() {
         recipients: List<Pair<String, String>>,
         onComplete: (Boolean, String) -> Unit
     ) {
+        if (recipients.isEmpty()) {
+            onComplete(false, "প্রাপকের তালিকা খালি। অনুগ্রহ করে অন্তত একজন গ্রাহক যোগ করুন।")
+            return
+        }
         viewModelScope.launch {
             _isTriggeringAiCall.value = true
             try {
@@ -12259,26 +12329,16 @@ function executePayment() {
 
                 _isTriggeringAiCall.value = false
                 if (!resStr.isNullOrBlank()) {
-                    fetchCampaignFeedbacks()
-                    onComplete(true, "ক্যাম্পেইন সফলভাবে শুরু হয়েছে! গ্রাহকদের উত্তর স্প্রেডশিটে জমা হচ্ছে।")
-                } else {
-                    val newItems = recipients.map { (name, phone) ->
-                        AiCampaignFeedbackItem(
-                            id = "cmp_${System.currentTimeMillis()}_${phone.takeLast(4)}",
-                            customerName = name,
-                            customerPhone = phone,
-                            campaignTitle = title,
-                            campaignType = type,
-                            decision = if (name.contains("করিম") || name.contains("সালমা")) "ATTENDING" else "INTERESTED",
-                            feedbackText = if (type == "MEETING_INVITE") "হ্যাঁ আমি মিটিংয়ে অংশগ্রহণ করতে আগ্রহী।" else "অফারের বিস্তারিত পাঠালে ভালো হয়।",
-                            sentiment = "POSITIVE",
-                            callStatus = "COMPLETED",
-                            callDuration = "0m 40s",
-                            createdAt = "এখনই"
-                        )
+                    val json = org.json.JSONObject(resStr)
+                    if (json.optBoolean("ok")) {
+                        fetchCampaignFeedbacks()
+                        val msg = json.optString("message", "ক্যাম্পেইন সফলভাবে শুরু হয়েছে! গ্রাহকদের উত্তর স্প্রেডশিটে জমা হচ্ছে।")
+                        onComplete(true, msg)
+                    } else {
+                        onComplete(false, json.optString("error", "ক্যাম্পেইন শুরু করতে সমস্যা হয়েছে।"))
                     }
-                    _aiCampaignFeedbacks.value = newItems + _aiCampaignFeedbacks.value
-                    onComplete(true, "ক্যাম্পেইন শুরু হয়েছে এবং ${recipients.size} জন গ্রাহকের কাছে কল পৌঁছে দেওয়া হয়েছে।")
+                } else {
+                    onComplete(false, "সার্ভার সংযোগ ত্রুটি। ইন্টারনেট সংযোগ চেক করুন।")
                 }
             } catch (e: Exception) {
                 _isTriggeringAiCall.value = false

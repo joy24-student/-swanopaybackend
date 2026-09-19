@@ -19,25 +19,98 @@
 
 import express from 'express'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Persistent storage directory and files
+const DATA_DIR = path.resolve(__dirname, '../../data')
+const VOICE_CALLS_FILE = path.join(DATA_DIR, 'voice_call_logs.json')
+const VOICE_CAMPAIGNS_FILE = path.join(DATA_DIR, 'voice_campaign_feedbacks.json')
+const VOICE_CONFIGS_FILE = path.join(DATA_DIR, 'voice_configs.json')
+
+// Candidate Gemini models in order of priority
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+]
 
 export function aiVoiceRouter(io) {
   const router = express.Router()
 
-  // In-memory call log storage: Map<call_id, CallRecord>
-  // CallRecord: { id, merchant_id, direction: 'inbound'|'outbound', from, to, customer_name, purpose, status, transcript: Array<{role, text, time}>, summary, duration, created_at }
+  // Storage: Map<call_id, CallRecord>
   const callLogs = new Map()
 
-  // In-memory Merchant AI Persona Settings: Map<merchant_id, VoiceConfig>
+  // Merchant AI Persona Settings: Map<merchant_id, VoiceConfig>
   const merchantVoiceConfigs = new Map()
 
-  // In-memory Mass Campaign Feedback Records: Map<feedback_id, FeedbackRecord>
+  // Mass Campaign Feedback Records: Map<feedback_id, FeedbackRecord>
   const campaignFeedbacks = new Map()
+
+  // ── Persistence Handlers (Real Disk Persistence) ──
+  function initPersistence() {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true })
+      }
+      if (fs.existsSync(VOICE_CALLS_FILE)) {
+        const raw = fs.readFileSync(VOICE_CALLS_FILE, 'utf8')
+        const items = JSON.parse(raw || '[]')
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (item?.id) callLogs.set(item.id, item)
+          }
+        }
+      }
+      if (fs.existsSync(VOICE_CAMPAIGNS_FILE)) {
+        const raw = fs.readFileSync(VOICE_CAMPAIGNS_FILE, 'utf8')
+        const items = JSON.parse(raw || '[]')
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            if (item?.id) campaignFeedbacks.set(item.id, item)
+          }
+        }
+      }
+      if (fs.existsSync(VOICE_CONFIGS_FILE)) {
+        const raw = fs.readFileSync(VOICE_CONFIGS_FILE, 'utf8')
+        const entries = JSON.parse(raw || '[]')
+        if (Array.isArray(entries)) {
+          for (const [k, v] of entries) {
+            if (k && v) merchantVoiceConfigs.set(k, v)
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[aiVoice] Persistence initialization notice:', err.message)
+    }
+  }
+
+  function saveVoiceData() {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true })
+      }
+      fs.writeFileSync(VOICE_CALLS_FILE, JSON.stringify(Array.from(callLogs.values()), null, 2), 'utf8')
+      fs.writeFileSync(VOICE_CAMPAIGNS_FILE, JSON.stringify(Array.from(campaignFeedbacks.values()), null, 2), 'utf8')
+      fs.writeFileSync(VOICE_CONFIGS_FILE, JSON.stringify(Array.from(merchantVoiceConfigs.entries()), null, 2), 'utf8')
+    } catch (err) {
+      console.warn('[aiVoice] Persistence save error:', err.message)
+    }
+  }
+
+  // Load persistent records immediately
+  initPersistence()
 
   // Helper to get or init merchant config
   const getMerchantConfig = (merchantId) => {
-    if (!merchantVoiceConfigs.has(merchantId)) {
-      merchantVoiceConfigs.set(merchantId, {
-        merchant_id: merchantId,
+    const cleanId = String(merchantId || 'default').trim()
+    if (!merchantVoiceConfigs.has(cleanId)) {
+      merchantVoiceConfigs.set(cleanId, {
+        merchant_id: cleanId,
         agent_name: 'তানিয়া (Tania)',
         language: 'bn-BD', // 'bn-BD' | 'en-US' | 'mixed'
         voice_gender: 'female',
@@ -53,57 +126,63 @@ export function aiVoiceRouter(io) {
         caller_number: process.env.TWILIO_PHONE_NUMBER || '+8809612345678'
       })
     }
-    return merchantVoiceConfigs.get(merchantId)
+    return merchantVoiceConfigs.get(cleanId)
   }
 
-  // Prepopulate demo logs for seamless UI preview
-  // Prepopulate demo logs for seamless preview
-  // Prepopulate demo logs for immediate preview
-  const demoLogId = 'call_' + crypto.randomUUID().slice(0, 8)
-  callLogs.set(demoLogId, {
-    id: demoLogId,
-    merchant_id: 'default',
-    direction: 'inbound',
-    from: '+8801711223344',
-    to: '+8809612345678',
-    customer_name: 'কামাল হোসেন',
-    purpose: 'দোকান খোলার সময় ও পণ্য মূল্য জিজ্ঞাসা',
-    status: 'completed',
-    duration: '1m 24s',
-    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    summary: 'গ্রাহক দোকান খোলার সময় ও পণ্য মূল্য জানতে চেয়েছিলেন। এআই সন্তোষজনক উত্তর দিয়েছে।',
-    transcript: [
-      { role: 'assistant', text: 'আসসালামু আলাইকুম! স্বপ্নপে কাস্টমার কেয়ারে স্বাগতম। আমি এআই প্রতিনিধি তানিয়া, কীভাবে সাহায্য করতে পারি?', time: '00:02' },
-      { role: 'customer', text: 'আপনাদের দোকান কি আজ রাতে খোলা থাকবে?', time: '00:08' },
-      { role: 'assistant', text: 'জি হ্যাঁ, আমাদের শোরুম রাত ১০:৩০ টা পর্যন্ত খোলা থাকবে। আপনি যেকোনো সময় আসতে পারেন।', time: '00:15' },
-      { role: 'customer', text: 'আচ্ছা ধন্যবাদ!', time: '00:20' },
-      { role: 'assistant', text: 'আপনাকেও অনেক ধন্যবাদ! স্বপ্নপে এর সাথে থাকার জন্য শুভকামনা।', time: '00:25' }
-    ]
-  })
+  // Helper for Twilio outbound calling REST API
+  async function triggerTwilioCall(config, to, twimlUrl) {
+    if (!config.twilio_sid || !config.twilio_token || !config.caller_number) return null
+    try {
+      const auth = Buffer.from(`${config.twilio_sid}:${config.twilio_token}`).toString('base64')
+      const bodyParams = new URLSearchParams()
+      bodyParams.append('To', to)
+      bodyParams.append('From', config.caller_number)
+      bodyParams.append('Url', twimlUrl)
 
-  // Prepopulate demo campaign feedback rows for spreadsheet preview
-  const seedFeedback = (id, name, phone, title, type, decision, feedback, sentiment, status, duration, timeAgoMins) => {
-    campaignFeedbacks.set(id, {
-      id,
-      merchant_id: 'default',
-      customer_name: name,
-      customer_phone: phone,
-      campaign_title: title,
-      campaign_type: type, // 'MEETING_INVITE' | 'DISCOUNT_OFFER' | 'GENERAL'
-      decision, // 'ATTENDING' | 'INTERESTED' | 'DECLINED' | 'PENDING'
-      feedback_text: feedback,
-      sentiment, // 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE'
-      call_status: status, // 'COMPLETED' | 'PENDING' | 'NO_ANSWER'
-      call_duration: duration,
-      created_at: new Date(Date.now() - timeAgoMins * 60 * 1000).toISOString()
-    })
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${config.twilio_sid}/Calls.json`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: bodyParams.toString()
+      })
+      if (res.ok) {
+        return await res.json()
+      } else {
+        const errText = await res.text()
+        console.warn('[aiVoice] Twilio outbound call failure:', errText.slice(0, 160))
+        return null
+      }
+    } catch (e) {
+      console.warn('[aiVoice] Twilio network call error:', e.message)
+      return null
+    }
   }
 
-  seedFeedback('fb_01', 'আব্দুল করিম', '+8801711223344', 'বার্ষিক মার্চেন্ট সম্মেলন ২০২৬', 'MEETING_INVITE', 'ATTENDING', 'ইনশাআল্লাহ আমি শুক্রবার বিকাল ৪টায় মিটিংয়ে উপস্থিত থাকব।', 'POSITIVE', 'COMPLETED', '0m 45s', 25)
-  seedFeedback('fb_02', 'রহিম শেখ', '+8801822334455', 'বার্ষিক মার্চেন্ট সম্মেলন ২০২৬', 'MEETING_INVITE', 'DECLINED', 'ঢাকার বাইরে জরুরি কাজে থাকায় উপস্থিত থাকতে পারব না।', 'NEGATIVE', 'COMPLETED', '0m 32s', 45)
-  seedFeedback('fb_03', 'ফারুক আহমেদ', '+8801933445566', 'বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন', 'DISCOUNT_OFFER', 'INTERESTED', 'অফারের নতুন পোশাকের ক্যাটালগ কি হোয়াটসঅ্যাপে পাঠানো যাবে?', 'POSITIVE', 'COMPLETED', '1m 10s', 60)
-  seedFeedback('fb_04', 'সালমা বেগম', '+8801644556677', 'বার্ষিক মার্চেন্ট সম্মেলন ২০২৬', 'MEETING_INVITE', 'ATTENDING', 'আমি সময়মতো আসব এবং সাথে আরো দুইজন সদস্য নিয়ে আসব।', 'POSITIVE', 'COMPLETED', '0m 52s', 90)
-  seedFeedback('fb_05', 'তানভীর হাসান', '+8801755667788', 'বৈশাখী ২৫% ডিসকাউন্ট ক্যাম্পেইন', 'DISCOUNT_OFFER', 'PENDING', 'রিং হচ্ছে... এখনো উত্তর দেয়নি।', 'NEUTRAL', 'PENDING', '0m 00s', 120)
+  // ── Robust Gemini Multi-Model Caller ──
+  async function callGemini(apiKey, contents, generationConfig = {}) {
+    if (!apiKey) return null
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents, generationConfig })
+        })
+        if (response.ok) {
+          const data = await response.json()
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+          if (text) return text
+        }
+      } catch (e) {
+        console.warn(`[aiVoice] Gemini model ${model} error:`, e.message)
+      }
+    }
+    return null
+  }
 
   // ── Gemini Conversational Voice Reply ──
   async function generateAiVoiceReply(customerQuery, merchantConfig, conversationHistory = []) {
@@ -131,7 +210,6 @@ export function aiVoiceRouter(io) {
         return 'আমাদের চলতি স্পেশাল অফারে সকল কেনাকাটায় ২৫% পর্যন্ত ক্যাশব্যাক ও বিশেষ মূল্যছাড় চলছে।'
       }
       return 'ধন্যবাদ আপনার প্রশ্নের জন্য। আমাদের শপ সংক্রান্ত যেকোনো তথ্য, পণ্য ও পেমেন্ট সেবা দিতে আমি প্রস্তুত। আর কিছু কি জানতে চান?'
-      return 'ধন্যবাদ আপনার প্রশ্নের জন্য। আমাদের শপ সংক্রান্ত যেকোনো তথ্য, অফার ও পেমেন্ট সেবা দিতে আমি প্রস্তুত। আর কিছু কি জানতে চান?'
     }
 
     try {
@@ -152,36 +230,23 @@ Rules for voice responses:
         }
       ]
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 120
-          }
-        })
+      const reply = await callGemini(apiKey, contents, {
+        temperature: 0.3,
+        maxOutputTokens: 120
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (reply) {
-          // Clean any leftover markdown or asterisks for clean voice synthesis
-          return reply.replace(/[*_#`~]/g, '').trim()
-        }
+      if (reply) {
+        return reply.replace(/[*_#`~]/g, '').trim()
       }
     } catch (err) {
-      console.warn('[aiVoice] Gemini text generation error, using fallback:', err.message)
+      console.warn('[aiVoice] Gemini text generation error:', err.message)
     }
 
     return 'জি আমি বুঝতে পেরেছি। আপনার প্রশ্নের সমাধান দিতে আমি আমাদের প্রতিনিধির কাছে তথ্যটি নোট করে রাখছি।'
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 1. POST /v1/voice/record-to-ai - Instant Audio Ingestion (Zero Twilio)
+  // 1. POST /v1/voice/record-to-ai - Instant Audio Ingestion (Real Gemini Multimodal)
   // ────────────────────────────────────────────────────────────────────────────
   router.post('/record-to-ai', async (req, res) => {
     try {
@@ -200,7 +265,7 @@ Rules for voice responses:
       let transcribedUserText = speech_text || ''
       let aiVoiceReply = ''
 
-      // If audio bytes are provided and Gemini API key is available, use Gemini's Multimodal Audio understanding
+      // Real Gemini multimodal audio understanding if audio is present
       if (audio_base64 && apiKey) {
         try {
           const prompt = `You are ${config.agent_name}, the AI voice receptionist for "${config.business_name}".
@@ -225,27 +290,15 @@ Return strictly a JSON object with this format:
             }
           ]
 
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
-          const geminiRes = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents,
-              generationConfig: {
-                temperature: 0.2,
-                response_mime_type: 'application/json'
-              }
-            })
+          const textResponse = await callGemini(apiKey, contents, {
+            temperature: 0.2,
+            response_mime_type: 'application/json'
           })
 
-          if (geminiRes.ok) {
-            const resultData = await geminiRes.json()
-            const textResponse = resultData?.candidates?.[0]?.content?.parts?.[0]?.text
-            if (textResponse) {
-              const parsed = JSON.parse(textResponse)
-              transcribedUserText = parsed.transcription || transcribedUserText
-              aiVoiceReply = parsed.reply || ''
-            }
+          if (textResponse) {
+            const parsed = JSON.parse(textResponse)
+            transcribedUserText = parsed.transcription || transcribedUserText
+            aiVoiceReply = parsed.reply || ''
           }
         } catch (audioErr) {
           console.warn('[aiVoice] Gemini audio multimodal error:', audioErr.message)
@@ -268,20 +321,22 @@ Return strictly a JSON object with this format:
         id: callId,
         merchant_id,
         direction: 'inbound',
-        from: 'ইনস্ট্যান্ট ভয়েস রেকর্ড',
+        from: 'ইনস্ট্যান্ট ভয়েস ইনপুট',
         customer_name,
         purpose: 'কাস্টমার ভয়েস কোয়েরি',
         status: 'completed',
-        duration: '0m 22s',
+        duration: '0m 15s',
         created_at: new Date().toISOString(),
         summary: `গ্রাহকের অডিও: "${transcribedUserText.slice(0, 50)}..."`,
         transcript: [
-          { role: 'customer', text: transcribedUserText, time: '00:03' },
-          { role: 'assistant', text: aiVoiceReply, time: '00:08' }
+          { role: 'customer', text: transcribedUserText, time: '00:01' },
+          { role: 'assistant', text: aiVoiceReply, time: '00:05' }
         ]
       }
 
       callLogs.set(callId, newCall)
+      saveVoiceData()
+
       if (io) {
         io.emit('voice:call_updated', newCall)
       }
@@ -323,7 +378,7 @@ Return strictly a JSON object with this format:
         if (!phone) continue
 
         const feedbackId = 'fb_' + crypto.randomUUID().slice(0, 8)
-        const voiceCallUrl = `https://swapnopay.top/voice-call.html?campaign_id=${campaignId}&phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&type=${campaign_type}`
+        const voiceCallUrl = `https://swapnopay.top/voice-call.html?campaign_id=${campaignId}&phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&type=${campaign_type}&merchant_id=${encodeURIComponent(merchant_id)}`
 
         const record = {
           id: feedbackId,
@@ -334,9 +389,9 @@ Return strictly a JSON object with this format:
           customer_name: name,
           customer_phone: phone,
           decision: 'PENDING',
-          feedback_text: 'কল লিঙ্ক প্রেরণ করা হয়েছে, উত্তরের অপেক্ষায়...',
+          feedback_text: 'কল লিঙ্ক প্রস্তুত, গ্রাহকের উত্তরের অপেক্ষায়...',
           sentiment: 'NEUTRAL',
-          call_status: 'IN_PROGRESS',
+          call_status: 'INITIATED',
           call_duration: '0m 00s',
           voice_call_url: voiceCallUrl,
           created_at: new Date().toISOString()
@@ -345,6 +400,8 @@ Return strictly a JSON object with this format:
         campaignFeedbacks.set(feedbackId, record)
         createdItems.push(record)
       }
+
+      saveVoiceData()
 
       if (io) {
         io.emit('voice:campaign_started', { campaign_id: campaignId, count: createdItems.length })
@@ -393,19 +450,13 @@ Extract:
 3. "summary": short 1-sentence note of what the customer agreed to or commented.
 Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
 
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
-          const gRes = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.1, response_mime_type: 'application/json' }
-            })
+          const gText = await callGemini(apiKey, [{ role: 'user', parts: [{ text: prompt }] }], {
+            temperature: 0.1,
+            response_mime_type: 'application/json'
           })
 
-          if (gRes.ok) {
-            const data = await gRes.json()
-            const parsed = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}')
+          if (gText) {
+            const parsed = JSON.parse(gText || '{}')
             if (parsed.decision) decision = parsed.decision
             if (parsed.sentiment) sentiment = parsed.sentiment
             if (parsed.summary) cleanFeedback = parsed.summary
@@ -460,6 +511,8 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
         }
         campaignFeedbacks.set(newId, record)
       }
+
+      saveVoiceData()
 
       if (io) {
         io.emit('voice:feedback_updated', record)
@@ -580,12 +633,12 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
     if (caller_number) current.caller_number = caller_number
 
     merchantVoiceConfigs.set(merchantId, current)
+    saveVoiceData()
     return res.json({ ok: true, message: 'Voice settings updated successfully', settings: current })
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 3. POST /v1/voice/inbound - Webhook for Inbound Calls (Twilio / Plivo / SIP)
-  // 4. POST /v1/voice/interact - Text/Speech Conversational Turn
+  // 7. POST /v1/voice/inbound - Webhook for Inbound Calls (Twilio / Plivo / SIP)
   // ────────────────────────────────────────────────────────────────────────────
   router.all('/inbound', (req, res) => {
     const merchantId = req.query.merchant_id || 'default'
@@ -612,6 +665,8 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
         ]
       })
 
+      saveVoiceData()
+
       if (io) {
         io.emit('voice:incoming_call', { callSid, from: callerNumber, merchantId })
       }
@@ -633,7 +688,7 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 4. POST /v1/voice/interact - Conversational Turn (Twilio Gather or App/WebRTC)
+  // 8. POST /v1/voice/interact - Conversational Turn (Twilio Gather or App/WebRTC)
   // ────────────────────────────────────────────────────────────────────────────
   router.post('/interact', async (req, res) => {
     const merchantId = req.query.merchant_id || req.body.merchant_id || 'default'
@@ -684,9 +739,11 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
     const isFarewell = /ধন্যবাদ|আল্লাহ হাফেজ|বাই|বিদায়|thanks|bye|goodbye/i.test(customerSpeech)
     if (isFarewell) {
       callRecord.status = 'completed'
-      callRecord.duration = '1m 12s'
-      callRecord.summary = 'কলটি সফলভাবে সম্পন্ন হয়েছে। কাস্টমার সন্তুষ্ট।'
+      callRecord.duration = '1m 05s'
+      callRecord.summary = 'কলটি সফলভাবে সম্পন্ন হয়েছে।'
     }
+
+    saveVoiceData()
 
     if (io) {
       io.emit('voice:call_updated', callRecord)
@@ -721,7 +778,7 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 5. POST /v1/voice/outbound/due-reminder - Trigger Outbound Due Collection Call
+  // 9. POST /v1/voice/outbound/due-reminder - Real Outbound Due Reminder
   // ────────────────────────────────────────────────────────────────────────────
   router.post('/outbound/due-reminder', async (req, res) => {
     try {
@@ -747,38 +804,53 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
         .replace('{due_amount}', due_amount + ' টাকা')
         .replace('{due_date}', due_date)
 
-      // Register outbound call log
-      // Direct WebRTC / In-App Voice Call Session Link (Zero Twilio Dependency!)
-      const voiceCallLink = `https://swapnopay.top/voice-call.html?call_id=${callSid}&due=${due_amount}&merchant=${merchant_id}`
+      const voiceCallLink = `https://swapnopay.top/voice-call.html?call_id=${callSid}&due=${encodeURIComponent(due_amount)}&merchant_id=${encodeURIComponent(merchant_id)}&name=${encodeURIComponent(customer_name)}&phone=${encodeURIComponent(customer_phone)}`
+
+      // Real Twilio call if credentials configured
+      let callStatus = 'initiated'
+      let twilioSid = null
+      if (config.twilio_sid && config.twilio_token && config.caller_number) {
+        try {
+          const twimlUrl = `https://api.swapnopay.top/v1/voice/inbound?merchant_id=${encodeURIComponent(merchant_id)}&due=${encodeURIComponent(due_amount)}`
+          const twResult = await triggerTwilioCall(config, customer_phone, twimlUrl)
+          if (twResult?.sid) {
+            twilioSid = twResult.sid
+            callStatus = twResult.status || 'in-progress'
+          }
+        } catch (e) {
+          console.warn('[aiVoice] Outbound Twilio call trigger notice:', e.message)
+        }
+      }
 
       const newCall = {
         id: callSid,
+        twilio_sid: twilioSid,
         merchant_id,
         direction: 'outbound',
         from: config.caller_number,
         to: customer_phone,
         customer_name,
         purpose: `বকেয়া আদায় তাগাদা (৳${due_amount})`,
-        status: 'completed',
-        duration: '0m 48s',
+        status: callStatus,
+        duration: '0m 00s',
         voice_call_url: voiceCallLink,
         created_at: new Date().toISOString(),
-        summary: `এআই সফলভাবে তাগাদা দিয়েছে। বকেয়া ৳${due_amount} টাকা পরিশোধের জন্য রিমাইন্ডার পৌঁছে দেওয়া হয়েছে।`,
+        summary: `বকেয়া ৳${due_amount} টাকা আদায় সেশন সক্রিয়।`,
         transcript: [
-          { role: 'assistant', text: spokenScript, time: '00:03' },
-          { role: 'customer', text: 'হ্যাঁ আমি আগামী শুক্রবার এসে বাকি টাকা পরিশোধ করে দেব।', time: '00:22' },
-          { role: 'assistant', text: 'অনেক ধন্যবাদ জনাব ' + customer_name + '। আপনার দিনটি শুভ হোক!', time: '00:30' }
+          { role: 'assistant', text: spokenScript, time: '00:01' }
         ]
       }
 
       callLogs.set(callSid, newCall)
+      saveVoiceData()
+
       if (io) {
-        io.emit('voice:outbound_call_completed', newCall)
+        io.emit('voice:outbound_call_initiated', newCall)
       }
 
       return res.json({
         ok: true,
-        message: 'Outbound due reminder call completed (No Twilio needed)',
+        message: 'Outbound due reminder session initiated',
         call_id: callSid,
         script_spoken: spokenScript,
         voice_call_url: voiceCallLink,
@@ -790,7 +862,7 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 6. POST /v1/voice/outbound/order-confirm - Outbound Order Confirmation Call
+  // 10. POST /v1/voice/outbound/order-confirm - Real Outbound Order Confirmation
   // ────────────────────────────────────────────────────────────────────────────
   router.post('/outbound/order-confirm', (req, res) => {
     try {
@@ -814,6 +886,8 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
         .replace('{business_name}', config.business_name)
         .replace('{order_amount}', order_amount + ' টাকা')
 
+      const voiceCallLink = `https://swapnopay.top/voice-call.html?call_id=${callSid}&order=${encodeURIComponent(order_id)}&amount=${encodeURIComponent(order_amount)}&merchant_id=${encodeURIComponent(merchant_id)}&name=${encodeURIComponent(customer_name)}`
+
       const newCall = {
         id: callSid,
         merchant_id,
@@ -822,26 +896,28 @@ Return strictly JSON: {"decision": "...", "sentiment": "...", "summary": "..."}`
         to: customer_phone,
         customer_name,
         purpose: `অর্ডার কনফার্মেশন (${order_id})`,
-        status: 'completed',
-        duration: '0m 35s',
+        status: 'initiated',
+        duration: '0m 00s',
+        voice_call_url: voiceCallLink,
         created_at: new Date().toISOString(),
-        summary: `অর্ডার ${order_id} এর জন্য গ্রাহককে কল করা হয়েছে। গ্রাহক নিশ্চিত করেছেন।`,
+        summary: `অর্ডার ${order_id} (৳${order_amount}) এর জন্য কনফার্মেশন সেশন সক্রিয়।`,
         transcript: [
-          { role: 'assistant', text: script, time: '00:02' },
-          { role: 'customer', text: 'হ্যাঁ আমি অর্ডারটি নিশ্চিত করছি।', time: '00:15' },
-          { role: 'assistant', text: 'ধন্যবাদ! আপনার পার্সেলটি দ্রুত ডেলিভারির ব্যবস্থা করা হচ্ছে।', time: '00:22' }
+          { role: 'assistant', text: script, time: '00:01' }
         ]
       }
 
       callLogs.set(callSid, newCall)
+      saveVoiceData()
+
       if (io) {
         io.emit('voice:order_confirmed', newCall)
       }
 
       return res.json({
         ok: true,
-        message: 'Order confirmation call completed',
+        message: 'Order confirmation session initiated',
         call_id: callSid,
+        voice_call_url: voiceCallLink,
         call_record: newCall
       })
     } catch (err) {

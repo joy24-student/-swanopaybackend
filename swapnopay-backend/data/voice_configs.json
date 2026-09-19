@@ -1,0 +1,21 @@
+[
+  [
+    "test_m1",
+    {
+      "merchant_id": "test_m1",
+      "agent_name": "তানিয়া (Tania)",
+      "language": "bn-BD",
+      "voice_gender": "female",
+      "auto_answer": true,
+      "business_name": "স্বপ্নপে স্টোর",
+      "greeting_bn": "আসসালামু আলাইকুম! স্বপ্নপে কাস্টমার কেয়ারে আপনাকে স্বাগতম। আমি আপনার এআই প্রতিনিধি। আজ আপনাকে কীভাবে সাহায্য করতে পারি?",
+      "greeting_en": "Hello and welcome to SwapnoPay Customer Care. I am your AI assistant. How can I help you today?",
+      "due_reminder_script": "আসসালামু আলাইকুম {customer_name}, {business_name} থেকে বলছি। আপনার {due_amount} টাকা বকেয়া রয়েছে। আপনি কি আগামীকালের মধ্যে বিকাশ বা নগদে পরিশোধ করতে পারবেন?",
+      "order_confirm_script": "আসসালামু আলাইকুম {customer_name}, {business_name} থেকে আপনার {order_amount} টাকার অর্ডারটি পেয়েছি। আপনি কি অর্ডারটি নিশ্চিত করছেন?",
+      "gemini_api_key": "",
+      "twilio_sid": "",
+      "twilio_token": "",
+      "caller_number": "+8809612345678"
+    }
+  ]
+]

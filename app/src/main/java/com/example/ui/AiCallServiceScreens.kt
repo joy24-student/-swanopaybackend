@@ -113,6 +113,7 @@ fun AiCallCenterScreen(viewModel: AppViewModel) {
     LaunchedEffect(Unit) {
         viewModel.fetchAiCallLogs()
         viewModel.fetchCampaignFeedbacks()
+        viewModel.fetchAiVoiceSettings()
     }
 
     val bgColor = if (isDarkMode) Color(0xFF0F0E17) else Color(0xFFF8FAFC)
@@ -536,6 +537,10 @@ fun AiCallCenterScreen(viewModel: AppViewModel) {
             isBangla = isBangla,
             isLoading = isActionLoading,
             onDismiss = { showDueCallDialog = false },
+            onDirectDial = { phone ->
+                showDueCallDialog = false
+                viewModel.dialCustomerPhone(context, phone)
+            },
             onConfirm = { phone, name, amount ->
                 viewModel.triggerDueReminderCall(phone, name, amount) { success, msg ->
                     showDueCallDialog = false
@@ -565,6 +570,7 @@ fun AiCallCenterScreen(viewModel: AppViewModel) {
             isDarkMode = isDarkMode,
             isBangla = isBangla,
             voiceSettings = voiceSettings,
+            viewModel = viewModel,
             onDismiss = { showTestCallDialog = false }
         )
     }
@@ -994,6 +1000,7 @@ fun OutboundDueCallDialog(
     isBangla: Boolean,
     isLoading: Boolean,
     onDismiss: () -> Unit,
+    onDirectDial: ((phone: String) -> Unit)? = null,
     onConfirm: (phone: String, name: String, amount: Double) -> Unit
 ) {
     var customerPhone by remember { mutableStateOf("") }
@@ -1060,13 +1067,27 @@ fun OutboundDueCallDialog(
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text(if (isBangla) "এখনই কল দিন" else "Call Now", color = Color.White)
+                    Text(if (isBangla) "এখনই এআই কল দিন" else "Start AI Call", color = Color.White)
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) {
-                Text(if (isBangla) "বাতিল" else "Cancel")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDismiss, enabled = !isLoading) {
+                    Text(if (isBangla) "বাতিল" else "Cancel")
+                }
+                if (onDirectDial != null) {
+                    OutlinedButton(
+                        onClick = { onDirectDial(customerPhone) },
+                        enabled = customerPhone.isNotBlank() && !isLoading,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Phone, null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "সরাসরি ডায়াল" else "Direct Dial", fontSize = 11.sp)
+                    }
+                }
             }
         }
     )
@@ -1165,16 +1186,78 @@ fun InteractiveVoiceTestDialog(
     isDarkMode: Boolean,
     isBangla: Boolean,
     voiceSettings: AiVoiceSettingsState,
+    viewModel: AppViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var queryText by remember { mutableStateOf("") }
-    var isSpeaking by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     var conversation by remember {
         mutableStateOf(
             listOf(
                 AiCallTurn("assistant", voiceSettings.greetingBn, "00:01")
             )
         )
+    }
+
+    // TTS Engine initialization for speaking AI response aloud
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        var engineRef: TextToSpeech? = null
+        val engine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val locale = if (voiceSettings.language.startsWith("bn")) Locale("bn", "BD") else Locale.US
+                engineRef?.language = locale
+            }
+        }
+        engineRef = engine
+        tts = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+        }
+    }
+
+    // Android Native Speech Recognizer Launcher
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                queryText = spoken
+            }
+        }
+    }
+
+    val launchSpeech = {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (voiceSettings.language.startsWith("bn")) "bn-BD" else "en-US")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, if (isBangla) "এআই এর সাথে কথা বলুন..." else "Speak to AI...")
+            }
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Speech recognition not available", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun sendQuestion(text: String) {
+        if (text.isBlank() || isLoading) return
+        val userQ = text.trim()
+        queryText = ""
+        val updated = conversation + AiCallTurn("customer", userQ, "00:05")
+        conversation = updated
+        isLoading = true
+
+        viewModel.sendInstantRecordToAi(userQ) { success, _, reply ->
+            isLoading = false
+            val aiReply = if (success) reply else "দুঃখিত, উত্তর পেতে সমস্যা হয়েছে: $reply"
+            conversation = updated + AiCallTurn("assistant", aiReply, "00:10")
+            // Speak reply aloud via Android TTS
+            tts?.speak(aiReply, TextToSpeech.QUEUE_FLUSH, null, "ai_interactive_test")
+        }
     }
 
     AlertDialog(
@@ -1193,14 +1276,14 @@ fun InteractiveVoiceTestDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 350.dp),
+                    .heightIn(max = 380.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
                     text = if (isBangla)
-                        "দোকানের সময়, পণ্য বা পেমেন্ট নিয়ে প্রশ্ন লিখে এআই এর উত্তর পরীক্ষা করুন:"
+                        "দোকানের সময়, বকেয়া বা পণ্য নিয়ে প্রশ্ন লিখুন বা মাইকে বলুন—এআই বাস্তব উত্তর দেবে ও মুখে বলবে:"
                     else
-                        "Type a question to simulate customer speech over the call:",
+                        "Ask questions by typing or speaking—AI responds intelligently with voice playback:",
                     fontSize = 11.5.sp,
                     color = Color.Gray
                 )
@@ -1234,42 +1317,38 @@ fun InteractiveVoiceTestDialog(
                 // Input Box
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = queryText,
                         onValueChange = { queryText = it },
-                        placeholder = { Text(if (isBangla) "প্রশ্ন লিখুন (যেমন: দোকান কখন খোলা?)" else "Ask question...") },
+                        placeholder = { Text(if (isBangla) "প্রশ্ন লিখুন..." else "Ask question...") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
                         singleLine = true
                     )
-                    Button(
-                        onClick = {
-                            if (queryText.isNotBlank()) {
-                                val userQ = queryText
-                                queryText = ""
-                                val updated = conversation + AiCallTurn("customer", userQ, "00:05")
-                                conversation = updated
-
-                                // Offline test simulation engine (mirrors server AI persona guidelines)
-                                val reply = if (userQ.contains("খোলা") || userQ.contains("সময়")) {
-                                    "আমাদের শোরুম সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে। আপনি যেকোনো সময় আসতে পারেন।"
-                                } else if (userQ.contains("বাকি") || userQ.contains("টাকা")) {
-                                    "আপনার বকেয়া দেখতে অনুগ্রহ করে মোবাইল নম্বরটি বলুন, আমি চেক করে দিচ্ছি।"
-                                } else if (userQ.contains("অর্ডার") || userQ.contains("ডেলিভারি")) {
-                                    "আপনার অর্ডার নম্বরটি প্রদান করুন, আমি বর্তমান ডেলিভারি স্ট্যাটাস ট্র্যাকিং করে দিচ্ছি।"
-                                } else {
-                                    "জি আমি বুঝতে পেরেছি। আপনার প্রশ্নের সন্তোষজনক সমাধান দিতে আমি প্রস্তুত। আর কী জানতে চান?"
-                                }
-                                conversation = updated + AiCallTurn("assistant", reply, "00:10")
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPurple)
+                    IconButton(
+                        onClick = { launchSpeech() },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(BrandPurple.copy(alpha = 0.12f))
                     ) {
-                        Text(if (isBangla) "বলুন" else "Send")
+                        Icon(Icons.Default.Mic, contentDescription = "Voice Input", tint = BrandPurple)
+                    }
+                    Button(
+                        onClick = { sendQuestion(queryText) },
+                        enabled = queryText.isNotBlank() && !isLoading,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandPurple),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text(if (isBangla) "পাঠান" else "Send")
+                        }
                     }
                 }
             }
@@ -2182,15 +2261,14 @@ fun CampaignBroadcastDialog(
     val activeRecipients = remember(audienceMode, customers) {
         when (audienceMode) {
             "ALL_DEBTORS" -> {
-                val list = customers.filter { it.currentBalance > 0 }.map { it.name to it.phone }
-                if (list.isNotEmpty()) list else listOf("কামাল হোসেন" to "+8801711223344", "রহিম শেখ" to "+8801822334455")
+                customers.filter { it.currentBalance > 0 && it.phone.isNotBlank() }.map { it.name to it.phone }
             }
             "ALL_CUSTOMERS" -> {
-                val list = customers.map { it.name to it.phone }
-                if (list.isNotEmpty()) list else listOf("কামাল হোসেন" to "+8801711223344", "সালমা বেগম" to "+8801644556677", "ফারুক আহমেদ" to "+8801933445566")
+                customers.filter { it.phone.isNotBlank() }.map { it.name to it.phone }
             }
             else -> {
-                listOf("নমুনা টেস্ট কাস্টমার" to "+8801711998877")
+                val firstWithPhone = customers.firstOrNull { it.phone.isNotBlank() }
+                if (firstWithPhone != null) listOf(firstWithPhone.name to firstWithPhone.phone) else emptyList()
             }
         }
     }
@@ -2270,13 +2348,13 @@ fun CampaignBroadcastDialog(
                         }
                     }
 
-                    // General
+                    // General Notice
                     Surface(
                         modifier = Modifier
                             .weight(1f)
                             .clickable {
                                 campaignType = "GENERAL"
-                                title = "দোকানের জরুরি নোটিশ"
+                                title = "জরুরি গ্রাহক নোটিশ ও শুভেচ্ছা বার্তা"
                                 script = "আসসালামু আলাইকুম {customer_name}, {business_name} থেকে একটি জরুরি নোটিশ ও শুভেচ্ছা বার্তা জানাতে ফোন করেছি..."
                             },
                         shape = RoundedCornerShape(8.dp),
@@ -2360,6 +2438,23 @@ fun CampaignBroadcastDialog(
                         )
                     }
                 }
+
+                if (activeRecipients.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (isBangla) "কোনো ফোন নম্বর যুক্ত গ্রাহক পাওয়া যায়নি। অনুগ্রহ করে কাস্টমার সেকশনে গিয়ে গ্রাহকদের নাম ও মোবাইল নম্বর সংরক্ষণ করুন।"
+                                   else "No customers with valid phone numbers found. Please add customer phone numbers first.",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFFDC2626),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -2367,6 +2462,10 @@ fun CampaignBroadcastDialog(
                 onClick = {
                     if (title.isBlank() || script.isBlank()) {
                         Toast.makeText(context, if (isBangla) "শিরোনাম ও স্ক্রিপ্ট পূরণ করুন" else "Please fill title & script", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (activeRecipients.isEmpty()) {
+                        Toast.makeText(context, if (isBangla) "প্রাপক তালিকা খালি" else "Recipient list is empty", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
                     isBroadcasting = true
@@ -2381,7 +2480,7 @@ fun CampaignBroadcastDialog(
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     }
                 },
-                enabled = !isBroadcasting && !isLoading,
+                enabled = !isBroadcasting && !isLoading && activeRecipients.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(containerColor = BrandPurple),
                 shape = RoundedCornerShape(10.dp)
             ) {
