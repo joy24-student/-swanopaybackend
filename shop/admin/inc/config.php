@@ -6,7 +6,13 @@ error_reporting(E_ALL);
 
 // Hosting configuration is provisioned outside every public document root. An
 // unregistered Host must never fall back to another merchant's database.
-$runtimeRoot = getenv('SHOP_RUNTIME_DIR');
+$runtimeRoot = getenv('SHOP_RUNTIME_DIR') ?: ($_SERVER['SHOP_RUNTIME_DIR'] ?? null);
+if (!$runtimeRoot) {
+    $candidate = dirname(__DIR__, 3) . '/swapnopay-backend/data/shop-runtime';
+    if (is_dir($candidate)) {
+        $runtimeRoot = $candidate;
+    }
+}
 $runtime = null;
 if ($runtimeRoot) {
     // Hosted checkout supports COD until provider verification and reconciliation

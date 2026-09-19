@@ -168,7 +168,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
 
   // 3. Device ID fallback authentication
   const deviceId = req.headers['x-device-id'] || req.query?.device_id || req.body?.device_id
-  const targetMerchantId = req.body?.merchant_id || req.query?.merchant_id || req.params?.merchant_id || req.params?.id
+  const targetMerchantId = req.body?.merchant_id || req.query?.merchant_id || req.params?.merchant_id || req.params?.id || req.shopMerchantId
   if (deviceId && targetMerchantId) {
     try {
       const { getAdminClient } = await import('../services/adminSupabase.js')

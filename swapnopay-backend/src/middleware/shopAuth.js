@@ -24,6 +24,27 @@ export async function requireShopAuth(req, res, next) {
     }
   }
 
+  // 1b. Check Device ID (x-device-id header or device_id parameter)
+  const deviceId = req.headers['x-device-id'] || req.query?.device_id || req.body?.device_id
+  if (deviceId && req.shopMerchantId) {
+    try {
+      const adminClient = getAdminClient()
+      if (adminClient) {
+        const { data: dev } = await adminClient
+          .from('merchant_devices')
+          .select('merchant_id')
+          .eq('device_id', deviceId)
+          .maybeSingle()
+        if (dev && dev.merchant_id === req.shopMerchantId) {
+          req.merchantUser = { id: req.shopMerchantId }
+          return next()
+        }
+      }
+    } catch (e) {
+      console.warn('[shopAuth] Device ID auth notice:', e.message)
+    }
+  }
+
   const fallback = async () => {
     try {
       const token = rawAuth

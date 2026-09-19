@@ -41,6 +41,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val webShopState by viewModel.webShopState.collectAsState()
     val recentOrders by viewModel.orders.collectAsState()
+    val localProducts by viewModel.products.collectAsState()
     val activeProfile by viewModel.activeProfile.collectAsState()
 
     var storeName by remember { mutableStateOf<String>(webShopState.storeName) }
@@ -1004,6 +1005,155 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                 }
             }
 
+            // ── STORE CATALOG & INVENTORY SYNC CARD ──
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = cardBg,
+                    border = BorderStroke(1.dp, cardBorder),
+                    shadowElevation = 2.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF3B82F6).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Inventory2,
+                                        contentDescription = null,
+                                        tint = Color(0xFF3B82F6),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = "Store Catalog & Inventory Sync",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = primaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Sync POS products to web store catalog",
+                                        fontSize = 11.5.sp,
+                                        color = secondaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (webShopState.productsCount > 0) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, if (webShopState.productsCount > 0) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFF64748B).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "${webShopState.productsCount} ONLINE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (webShopState.productsCount > 0) Color(0xFF10B981) else Color(0xFF64748B),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        // Product count summary pills
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("Local POS Items", fontSize = 11.sp, color = secondaryText)
+                                    Text("${localProducts.size} products", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryText)
+                                }
+                            }
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("Online Storefront", fontSize = 11.sp, color = secondaryText)
+                                    Text("${webShopState.productsCount} in catalog", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3B82F6))
+                                }
+                            }
+                        }
+
+                        if (webShopState.syncMessage.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF3B82F6).copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = webShopState.syncMessage,
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF3B82F6),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.syncLocalInventoryToWebShop { count, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = !webShopState.isSyncing && (webShopState.isDeployed || webShopState.status == "LIVE"),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF3B82F6),
+                                disabledContainerColor = Color(0xFF3B82F6).copy(alpha = 0.4f)
+                            )
+                        ) {
+                            if (webShopState.isSyncing) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Syncing Products to Store...", fontSize = 12.5.sp, color = Color.White)
+                            } else {
+                                Icon(Icons.Default.Sync, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (webShopState.isDeployed || webShopState.status == "LIVE") "Sync Local Products to Store" else "Launch Store First to Sync Products",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             // Recent Web Orders Card
             item {

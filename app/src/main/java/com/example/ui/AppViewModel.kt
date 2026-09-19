@@ -11359,6 +11359,22 @@ function executePayment() {
             ?: ""
     }
 
+    private fun buildWebShopRequest(url: String): Request.Builder {
+        val reqBuilder = Request.Builder().url(url)
+        val token = getWebShopAuthToken()
+        if (token.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $token")
+        }
+        val apiKey = _merchantApiKey.value.takeIf { it.isNotBlank() }
+        if (apiKey != null) {
+            reqBuilder.header("x-api-key", apiKey)
+        }
+        if (installationId.isNotBlank()) {
+            reqBuilder.header("x-device-id", installationId)
+        }
+        return reqBuilder
+    }
+
     private val _webShopState = MutableStateFlow(WebShopState())
     val webShopState: StateFlow<WebShopState> = _webShopState.asStateFlow()
 
@@ -11386,21 +11402,9 @@ function executePayment() {
         try {
             val merchantId = _activeProfile.value.id
             val backendBase = "https://api.swapnopay.top"
-            val reqBuilder = Request.Builder()
-                .url("$backendBase/v1/shop/status?merchant_id=$merchantId")
+            val request = buildWebShopRequest("$backendBase/v1/shop/status?merchant_id=$merchantId")
                 .get()
-            val token = getWebShopAuthToken()
-            if (token.isNotBlank()) {
-                reqBuilder.header("Authorization", "Bearer $token")
-            }
-            val apiKey = _merchantApiKey.value.takeIf { it.isNotBlank() }
-            if (apiKey != null) {
-                reqBuilder.header("x-api-key", apiKey)
-            }
-            if (installationId.isNotBlank()) {
-                reqBuilder.header("x-device-id", installationId)
-            }
-            val request = reqBuilder.build()
+                .build()
             webShopHttpClient.newCall(request).execute().use { response ->
                 val body = response.body?.string()
                 if (response.isSuccessful && body != null) {
@@ -11501,21 +11505,9 @@ function executePayment() {
                 }
 
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/deploy")
+                val request = buildWebShopRequest("$backendBase/v1/shop/deploy")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val apiKey = _merchantApiKey.value.takeIf { it.isNotBlank() }
-                if (apiKey != null) {
-                    reqBuilder.header("x-api-key", apiKey)
-                }
-                if (installationId.isNotBlank()) {
-                    reqBuilder.header("x-device-id", installationId)
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()
@@ -11524,7 +11516,7 @@ function executePayment() {
                     if (isSuccess) {
                         val isLive = json.optBoolean("deployed", false) || response.code == 200
                         val respStatus = json.optString("status", if (isLive) "LIVE" else "QUEUED")
-                        val targetUrl = json.optString("shop_url", "https://${cleanSlug}.swapnopay.top")
+                        val targetUrl = json.optString("shop_url", "https://${cleanSlug}.shop.swapnopay.top")
                         val adminUrl = json.optString("admin_url", "$targetUrl/admin")
                         val adminLoginUrl = json.optString("admin_login_url", "$adminUrl/login.php")
                         val adminCreds = json.optJSONObject("admin_credentials")
@@ -11583,14 +11575,9 @@ function executePayment() {
                     put("custom_domain", cleanDomain.ifBlank { JSONObject.NULL })
                 }
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/domain")
+                val request = buildWebShopRequest("$backendBase/v1/shop/domain")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()
@@ -11657,14 +11644,9 @@ function executePayment() {
 
                 val backendBase = "https://api.swapnopay.top"
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/sync-inventory")
+                val request = buildWebShopRequest("$backendBase/v1/shop/sync-inventory")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
 
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
@@ -11724,14 +11706,9 @@ function executePayment() {
                 }
                 val backendBase = "https://api.swapnopay.top"
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/products")
+                val request = buildWebShopRequest("$backendBase/v1/shop/products")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()
@@ -11762,14 +11739,9 @@ function executePayment() {
                 }
                 val backendBase = "https://api.swapnopay.top"
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/orders/status")
+                val request = buildWebShopRequest("$backendBase/v1/shop/orders/status")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()
@@ -11804,14 +11776,9 @@ function executePayment() {
                 }
                 val backendBase = "https://api.swapnopay.top"
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/admin/credentials")
+                val request = buildWebShopRequest("$backendBase/v1/shop/admin/credentials")
                     .post(body)
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()
@@ -11837,14 +11804,9 @@ function executePayment() {
             try {
                 val merchantId = _activeProfile.value.id
                 val backendBase = "https://api.swapnopay.top"
-                val reqBuilder = Request.Builder()
-                    .url("$backendBase/v1/shop/products/$productId?merchant_id=$merchantId")
+                val request = buildWebShopRequest("$backendBase/v1/shop/products/$productId?merchant_id=$merchantId")
                     .delete()
-                val token = getWebShopAuthToken()
-                if (token.isNotBlank()) {
-                    reqBuilder.header("Authorization", "Bearer $token")
-                }
-                val request = reqBuilder.build()
+                    .build()
                 webShopHttpClient.newCall(request).execute().use { response ->
                     val respStr = response.body?.string()
                     val json = if (!respStr.isNullOrBlank()) JSONObject(respStr) else JSONObject()

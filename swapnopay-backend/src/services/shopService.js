@@ -67,7 +67,7 @@ export class ShopService {
   constructor(config, dependencies = {}) {
     this.config = config
     this.pool = dependencies.pool || (config.connectionString ? new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 }) : null)
-    this.dns = dependencies.dns || checkShopDns
+    this.dns = dependencies.dns || ((host, addresses, lookup) => checkShopDns(host, addresses, lookup, config.baseDomain))
     this.probe = dependencies.probe || probeStore
     this.initialized = null
     this.processing = false

@@ -39,7 +39,10 @@ git pull origin main
 # 3. Ensure required directories and permissions
 echo -e "${YELLOW}📁 Verifying storage directories...${NC}"
 mkdir -p "$TARGET_DIR/swapnopay-backend/uploads/kyc"
-mkdir -p "$TARGET_DIR/swapnopay-backend/data"
+mkdir -p "$TARGET_DIR/swapnopay-backend/data/shop-runtime/hosts"
+mkdir -p "$TARGET_DIR/swapnopay-backend/data/shop-sites/hosts"
+mkdir -p "$TARGET_DIR/swapnopay-backend/data/shop-sites/stores"
+chown -R www-data:www-data "$TARGET_DIR/swapnopay-backend/data/shop-runtime" "$TARGET_DIR/swapnopay-backend/data/shop-sites" 2>/dev/null || true
 chmod -R 775 "$TARGET_DIR/swapnopay-backend/uploads" "$TARGET_DIR/swapnopay-backend/data" 2>/dev/null || true
 
 # 4. Update Node.js Backend dependencies & restart service
