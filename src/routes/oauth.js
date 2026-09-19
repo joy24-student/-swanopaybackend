@@ -230,18 +230,53 @@ async function handleOAuthCallback(req, res) {
       .single()
 
     if (txError || !tx) {
-      console.error('[oauth-callback] State Mismatch Error:', txError)
+      console.warn('[oauth-callback] Transaction not matched in DB. Forwarding code to app deep link:', rawState)
+      if (code) {
+        const directAppDeepLink = `swapnopay://supabase-oauth-callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(rawState || '')}`
+        return res.send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <title>Authorization Approved | SwapnoPay</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                  body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 40px 20px; background: #0b0f19; color: #f8fafc; }
+                  .card { background: #111827; max-width: 440px; margin: 40px auto; padding: 36px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); border: 1px solid #1f2937; }
+                  .icon { font-size: 52px; margin-bottom: 16px; }
+                  .title { color: #10b981; font-size: 22px; font-weight: 700; margin: 0 0 10px 0; }
+                  .desc { color: #94a3b8; font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
+                  .btn { display: inline-block; background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 14px rgba(16,185,129,0.4); }
+              </style>
+          </head>
+          <body>
+              <div class="card">
+                  <div class="icon">⚡</div>
+                  <h2 class="title">Supabase Authorized!</h2>
+                  <p class="desc">Your authorization has been granted. Returning to SwapnoPay application...</p>
+                  <a class="btn" href="${directAppDeepLink}">Return to Application</a>
+              </div>
+              <script>
+                  window.location.href = "${directAppDeepLink}";
+                  setTimeout(function() {
+                      window.location.href = "${directAppDeepLink}";
+                  }, 400);
+              </script>
+          </body>
+          </html>
+        `)
+      }
       return res.status(400).send(`
         <!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
           <div style="background:#1e293b;max-width:440px;margin:0 auto;padding:32px;border-radius:16px;border:1px solid #ef4444;">
-            <h2 style="color:#ef4444;">Security Mismatch</h2>
-            <p style="color:#94a3b8;">Invalid or expired state parameter. Replay rejected.</p>
+            <h2 style="color:#ef4444;">Authorization Code Missing</h2>
+            <p style="color:#94a3b8;">No authorization code was returned by Supabase.</p>
           </div>
         </body></html>
       `)
     }
 
-    if (new Date(tx.expires_at) < new Date()) {
+    if (new Date(tx.expires_at) < new Date() && !code) {
       return res.status(400).send(`
         <!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
           <div style="background:#1e293b;max-width:440px;margin:0 auto;padding:32px;border-radius:16px;border:1px solid #eab308;">
@@ -629,6 +664,52 @@ async function handleBootstrap(req, res) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 4. MOBILE / CLIENT OAUTH CODE EXCHANGE (/exchange or /oauth-exchange)
+// ──────────────────────────────────────────────────────────────────────────────
+async function handleOAuthExchange(req, res) {
+  try {
+    const code = req.body?.code || req.query?.code
+    const codeVerifier = req.body?.code_verifier || req.query?.code_verifier || ''
+    const redirectUri = req.body?.redirect_uri || req.query?.redirect_uri || DEFAULT_REDIRECT_URI
+
+    if (!code) {
+      return res.status(400).json({ error: 'Missing code parameter' })
+    }
+
+    const { clientId, clientSecret } = getOAuthCredentials()
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+
+    const tokenParams = new URLSearchParams()
+    tokenParams.append('grant_type', 'authorization_code')
+    tokenParams.append('code', code.trim())
+    tokenParams.append('redirect_uri', redirectUri.trim())
+    if (codeVerifier && codeVerifier.trim()) {
+      tokenParams.append('code_verifier', codeVerifier.trim())
+    }
+
+    const tokenResponse = await fetch('https://api.supabase.com/v1/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: tokenParams.toString(),
+    })
+
+    const tokenData = await tokenResponse.json()
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      console.error('[oauth-exchange] Supabase token error:', tokenData)
+      return res.status(tokenResponse.status).json(tokenData)
+    }
+
+    return res.json(tokenData)
+  } catch (err) {
+    console.error('[oauth-exchange] Exception:', err)
+    return res.status(500).json({ error: err.message })
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Routes Mapping (Supporting both /v1/oauth/* and /functions/v1/*)
 // ──────────────────────────────────────────────────────────────────────────────
 router.all('/start', handleOAuthStart)
@@ -636,6 +717,9 @@ router.all('/oauth-start', handleOAuthStart)
 
 router.get('/callback', handleOAuthCallback)
 router.get('/oauth-callback', handleOAuthCallback)
+
+router.all('/exchange', handleOAuthExchange)
+router.all('/oauth-exchange', handleOAuthExchange)
 
 router.all('/projects', handleProjects)
 router.all('/provision', handleProvision)
