@@ -30,11 +30,17 @@ interface HealthStatus {
 
 export default function SystemHealth() {
   const { session } = useAuth();
-  const [backendUrl, setBackendUrl] = useState(
-    localStorage.getItem('swapnopay_backend_url') ||
-      ((import.meta as any).env?.VITE_BACKEND_URL as string) ||
-      'https://pay.swapnopay.top'
-  );
+  const defaultBackend =
+    ((import.meta as any).env?.VITE_BACKEND_URL as string) ||
+    (typeof window !== 'undefined' && window.location.hostname.includes('swapnopay.top') ? window.location.origin : 'https://api.swapnopay.top');
+
+  const [backendUrl, setBackendUrl] = useState(() => {
+    const saved = localStorage.getItem('swapnopay_backend_url');
+    if (saved && !saved.includes('pay.swapnopay.top')) {
+      return saved;
+    }
+    return defaultBackend;
+  });
   const [adminSecret, setAdminSecret] = useState(
     sessionStorage.getItem('swapnopay_admin_secret') ||
       localStorage.getItem('swapnopay_admin_secret') ||
@@ -492,7 +498,7 @@ export default function SystemHealth() {
                 style={{ paddingLeft: 32 }}
                 value={backendUrl}
                 onChange={e => setBackendUrl(e.target.value)}
-                placeholder="https://pay.swapnopay.top"
+                placeholder="https://api.swapnopay.top"
               />
             </div>
           </div>

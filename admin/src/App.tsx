@@ -114,11 +114,9 @@ export default function App() {
           } />
           
           <Route path="/health" element={
-            <RequireAdmin>
-              <AdminLayout>
-                <SystemHealth />
-              </AdminLayout>
-            </RequireAdmin>
+            <AdminLayout>
+              <SystemHealth />
+            </AdminLayout>
           } />
           
           <Route path="/mfs-patterns" element={

@@ -6,6 +6,7 @@ import {
   RadymateGalleryItem,
   saveRadymateGalleryConfig,
   uploadRadymateGalleryImage,
+  upsertShowcaseConfig,
 } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 
@@ -471,11 +472,7 @@ export default function SystemSettings() {
         last_updated: Date.now()
       };
 
-      const { error } = await adminSupabase
-        .from('showcase_config')
-        .upsert({ key: 'system_config', value: payload, updated_at: new Date().toISOString() });
-
-      if (error) throw error;
+      await upsertShowcaseConfig('system_config', payload);
 
       setStatusMsg('✅ Successfully saved and broadcasted via Supabase Realtime!');
       setTimeout(() => setStatusMsg(''), 5000);

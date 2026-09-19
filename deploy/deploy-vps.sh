@@ -230,8 +230,13 @@ server {
         proxy_send_timeout 86400s;
     }
 
-    location /healthz {
-        proxy_pass http://127.0.0.1:4000/healthz;
+    location ~* ^/(health|healthz)$ {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 
@@ -261,6 +266,47 @@ server {
 
     root $BASE_DIR/admin/dist;
     index index.html;
+
+    client_max_body_size 50M;
+
+    location /v1/ {
+        proxy_pass http://127.0.0.1:4000/v1/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location = /healthz {
+        proxy_pass http://127.0.0.1:4000/healthz;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location = /health {
+        if (\$http_accept !~* "text/html") {
+            rewrite ^ /internal_health last;
+        }
+        if (\$args ~* "json") {
+            rewrite ^ /internal_health last;
+        }
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    location = /internal_health {
+        internal;
+        proxy_pass http://127.0.0.1:4000/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 
     location / {
         try_files \$uri \$uri/ /index.html;

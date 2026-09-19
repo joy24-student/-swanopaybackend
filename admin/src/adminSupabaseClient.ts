@@ -251,20 +251,60 @@ export async function fetchRadymateGalleryConfig(): Promise<RadymateGalleryConfi
   }
 }
 
+export async function upsertShowcaseConfig(key: string, value: any) {
+  const now = new Date().toISOString()
+  try {
+    const { data: existing } = await adminSupabase
+      .from('showcase_config')
+      .select('id, key')
+      .eq('key', key)
+      .maybeSingle()
+
+    if (existing) {
+      const { data, error } = await adminSupabase
+        .from('showcase_config')
+        .update({ value, updated_at: now })
+        .eq('key', key)
+        .select('*')
+        .single()
+      if (!error) return data
+      if (error && error.code !== 'PGRST116') throw error
+    }
+
+    const { data, error } = await adminSupabase
+      .from('showcase_config')
+      .upsert({ key, value, updated_at: now }, { onConflict: 'key' })
+      .select('*')
+      .single()
+
+    if (!error) return data
+
+    // Fallback: If upsert hit a duplicate key conflict, update the existing row directly
+    const { data: updateData, error: updateError } = await adminSupabase
+      .from('showcase_config')
+      .update({ value, updated_at: now })
+      .eq('key', key)
+      .select('*')
+      .single()
+
+    if (updateError) throw updateError
+    return updateData
+  } catch (err: any) {
+    throw new Error(err?.message || 'Database error')
+  }
+}
+
 export async function saveRadymateGalleryConfig(items: RadymateGalleryItem[]) {
   const payload: RadymateGalleryConfig = {
     items: items.map((item) => ({ ...item, source: item.source || 'storage' })),
     updated_at: new Date().toISOString()
   }
 
-  const { data, error } = await adminSupabase
-    .from('showcase_config')
-    .upsert({ key: RADYMATE_GALLERY_KEY, value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (error) throw new Error('Failed to save Radymate gallery: ' + error.message)
-  return data
+  try {
+    return await upsertShowcaseConfig(RADYMATE_GALLERY_KEY, payload)
+  } catch (error: any) {
+    throw new Error('Failed to save Radymate gallery: ' + error.message)
+  }
 }
 
 export async function uploadRadymateGalleryImage(file: File, title: string, caption: string): Promise<RadymateGalleryItem> {
@@ -476,14 +516,11 @@ export async function saveAppGalleryConfig(config: AppGalleryConfig) {
     updated_at: new Date().toISOString()
   }
 
-  const { data, error } = await adminSupabase
-    .from('showcase_config')
-    .upsert({ key: APP_GALLERY_KEY, value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (error) throw new Error('Failed to save App Gallery config: ' + error.message)
-  return data
+  try {
+    return await upsertShowcaseConfig(APP_GALLERY_KEY, payload)
+  } catch (error: any) {
+    throw new Error('Failed to save App Gallery config: ' + error.message)
+  }
 }
 
 export async function fetchLandingPageConfig(): Promise<LandingPageConfig> {
@@ -515,14 +552,11 @@ export async function saveLandingPageConfig(config: LandingPageConfig) {
     updated_at: new Date().toISOString()
   }
 
-  const { data, error } = await adminSupabase
-    .from('showcase_config')
-    .upsert({ key: LANDING_PAGE_KEY, value: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (error) throw new Error('Failed to save Landing Page config: ' + error.message)
-  return data
+  try {
+    return await upsertShowcaseConfig(LANDING_PAGE_KEY, payload)
+  } catch (error: any) {
+    throw new Error('Failed to save Landing Page config: ' + error.message)
+  }
 }
 
 export async function uploadAppGalleryScreenshot(file: File, folder = 'app-showcase'): Promise<string> {
