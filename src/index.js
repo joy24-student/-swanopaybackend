@@ -312,6 +312,17 @@ app.get('/', (req, res, next) => {
 const webDir = path.resolve(__dirname, '../../web')
 app.use(express.static(webDir))
 
+// Friendly aliases for Documentation, Developer Console and Widget
+app.get(['/portal', '/console', '/developer', '/dev', '/sandbox', '/keys'], (_req, res) => {
+  res.redirect(301, '/portal.html')
+})
+app.get(['/docs', '/doc', '/documentation'], (_req, res) => {
+  res.redirect(301, '/docs.html')
+})
+app.get(['/widget'], (_req, res) => {
+  res.redirect(301, '/widget.html')
+})
+
 // Hosted Checkout Form Dynamic Slugs (/f/:slug, /forms/:slug, /form/:slug)
 app.get(['/f/:slug', '/forms/:slug', '/form/:slug'], (req, res) => {
   const formHtml = path.join(webDir, 'form.html')

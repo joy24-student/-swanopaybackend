@@ -34,9 +34,10 @@
         "enable_payment": true,
         "redirect_type": "SUCCESS_MSG",
         "success_message": "Your registration is complete!"
-      }
+      },
+      "merchant_id": "merchant-test-123"
     },
-    "updated_at": "2026-09-19T17:33:24.851Z"
+    "updated_at": "2026-09-19T18:41:06.360Z"
   },
   {
     "form_id": "free-form-uuid-002",
@@ -64,9 +65,10 @@
         "redirect_type": "REDIRECT_URL",
         "redirect_url": "https://myshop.com/thank-you",
         "redirect_delay_seconds": 3
-      }
+      },
+      "merchant_id": "merchant-test-123"
     },
-    "updated_at": "2026-09-19T17:33:24.953Z"
+    "updated_at": "2026-09-19T18:41:06.459Z"
   },
   {
     "form_id": "expired-form-uuid-003",
@@ -83,10 +85,11 @@
       "products": [],
       "theme": {
         "enable_closing_timeline": true,
-        "closing_deadline_epoch": 1789839145013,
+        "closing_deadline_epoch": 1789843206483,
         "closed_message": "Application deadline has passed."
-      }
+      },
+      "merchant_id": "merchant-test-123"
     },
-    "updated_at": "2026-09-19T17:33:25.019Z"
+    "updated_at": "2026-09-19T18:41:06.487Z"
   }
 ]

@@ -312,24 +312,40 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // POST /v1/payment/notify
   // Widget calls this when customer taps "I Have Completed Payment".
   // Emits to BOTH order room (widget) AND merchant room (Android app).
-  // Body: { order_id, merchant_id, payment_method, customer_phone }
+  // Body: { order_id, merchant_id, payment_method, customer_phone, trx_id }
   // ──────────────────────────────────────────────────────────────────────────
   router.post('/notify', async (req, res) => {
-    const { order_id, merchant_id, payment_method, customer_phone } = req.body || {}
+    const { order_id, merchant_id, payment_method, customer_phone, trx_id } = req.body || {}
 
     if (!order_id || typeof order_id !== 'string' || order_id.length > 100) {
       return res.status(400).json({ error: 'order_id is required' })
     }
 
-    console.log(`[payment/notify] Customer payment submitted — order: ${order_id} | method: ${payment_method} | merchant: ${merchant_id || 'unknown'}`)
+    const cleanTrx = trx_id ? String(trx_id).trim().toUpperCase() : null
+
+    console.log(`[payment/notify] Customer payment submitted — order: ${order_id} | TrxID: ${cleanTrx || 'none'} | method: ${payment_method} | merchant: ${merchant_id || 'unknown'}`)
 
     const notifyPayload = {
       order_id,
       merchant_id:    merchant_id || null,
       payment_method: payment_method || 'unknown',
+      trx_id:         cleanTrx,
       customer_phone: customer_phone ? maskPhone(customer_phone) : null,
       notified_at:    new Date().toISOString(),
     }
+
+    // Record or update payment event in platform DB
+    try {
+      recordPaymentEvent(order_id, {
+        tran_id: order_id,
+        trx_id: cleanTrx,
+        status: 'PENDING',
+        merchant_id: merchant_id || null,
+        sender_number: customer_phone || null,
+        payment_method: payment_method || 'unknown',
+        product_name: cleanTrx ? `Customer submitted TrxID: ${cleanTrx}` : 'Customer reported payment transfer'
+      })
+    } catch {}
 
     // Emit to widget watching this order
     io.to(`order:${order_id}`).emit('payment_pending', notifyPayload)
@@ -338,6 +354,37 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     if (merchant_id) {
       io.to(`merchant:${merchant_id}`).emit('customer_payment_pending', notifyPayload)
       console.log(`[payment/notify] Forwarded to merchant room: merchant:${merchant_id}`)
+    }
+
+    // Check if there is an unassigned or matching verified SMS payment event for this merchant and TrxID
+    if (cleanTrx && cleanTrx.length >= 6) {
+      try {
+        const { getAdminClient } = await import('../services/adminSupabase.js')
+        const admin = getAdminClient()
+        let query = admin.from('payment_events')
+          .select('*')
+          .eq('trx_id', cleanTrx)
+        if (merchant_id) query = query.eq('merchant_id', merchant_id)
+        const { data: matchedEvents } = await query.limit(1)
+
+        if (matchedEvents && matchedEvents.length > 0 && matchedEvents[0].status === 'PAID') {
+          await updateOrderStatusOnMerchantDB(merchant_id, order_id, 'PAID', {
+            matched_trx_id: cleanTrx,
+            payment_method: payment_method || matchedEvents[0].payment_method,
+            amount: matchedEvents[0].amount
+          })
+          io.to(`order:${order_id}`).emit('payment_status', {
+            order_id,
+            status: 'PAID',
+            trx_id: cleanTrx,
+            amount: matchedEvents[0].amount,
+            paid_at: new Date().toISOString()
+          })
+          return res.json({ ok: true, status: 'PAID', message: 'Payment verified immediately by TrxID match.' })
+        }
+      } catch (matchErr) {
+        console.warn('[payment/notify] Immediate match lookup notice:', matchErr.message)
+      }
     }
 
     res.json({ ok: true, message: 'Payment notification received. Watching for verification.' })
