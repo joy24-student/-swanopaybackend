@@ -11,6 +11,8 @@
     "test:shop-php": "node scripts/test-shop-php.js"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.3.2",
+    "@electric-sql/pglite-socket": "0.0.7",
     "@supabase/supabase-js": "^2.44.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -26,10 +28,7 @@
   "engines": {
     "node": ">=20"
   },
-  "devDependencies": {
-    "@electric-sql/pglite": "0.3.2",
-    "@electric-sql/pglite-socket": "0.0.7"
-  },
+  "devDependencies": {},
   "overrides": {
     "qs": "6.16.0"
   }

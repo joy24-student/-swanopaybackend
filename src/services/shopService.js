@@ -1,5 +1,4 @@
 import { Pool } from 'pg'
-import { PGlite } from '@electric-sql/pglite'
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
@@ -87,6 +86,7 @@ export class ShopService {
       let dbInstance = null
       const getDb = async () => {
         if (!dbInstance) {
+          const { PGlite } = await import('@electric-sql/pglite')
           await fs.mkdir(dbPath, { recursive: true })
           dbInstance = new PGlite(dbPath)
         }
