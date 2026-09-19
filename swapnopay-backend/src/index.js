@@ -106,13 +106,16 @@ const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '').trim()
 const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',').map(s => s.trim()).filter(Boolean) : []
 
 if (allowedOrigins.length === 0) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('[startup] ❌ ALLOWED_ORIGINS must be set in production (comma-separated list)')
-    process.exit(1)
-  }
-  console.warn('[startup] ⚠️  ALLOWED_ORIGINS not set — using safe localhost defaults for development')
-  // safe development defaults (can be overridden by ALLOWED_ORIGINS)
-  allowedOrigins.push('http://localhost:5173', 'http://127.0.0.1:5173')
+  allowedOrigins.push(
+    'https://swapnopay.top',
+    'https://www.swapnopay.top',
+    'https://pay.swapnopay.top',
+    'https://api.swapnopay.top',
+    'https://admin.swapnopay.top',
+    'https://shop.swapnopay.top',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+  )
 }
 
 const corsOptions = {
