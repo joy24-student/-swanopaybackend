@@ -7,7 +7,8 @@ import {
   getSubscriptionConfig,
   getMerchantSubscriptionStatus,
   createSubscriptionOrder,
-  verifyAndActivateSubscription
+  verifyAndActivateSubscription,
+  getMerchantSubscriptionHistory,
 } from '../services/adminSupabase.js'
 import { requirePlatformUser } from '../services/merchantAccount.js'
 
@@ -68,24 +69,91 @@ router.get('/my-status', requirePlatformUser, async (req, res) => {
 
 // ────────────────────────────────────────────────────────────────────────────
 // 3. POST /v1/subscription/checkout — Initiate SwapnoPay Gateway Checkout
+// Supports JSON API response for apps/SDKs or HTTP 302 browser redirect for web storefronts
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/checkout', async (req, res) => {
+const handleSubscriptionCheckout = async (req, res) => {
   try {
+    const payload = req.method === 'GET' ? req.query : (req.body || {})
     const {
       merchant_id = 'default',
       plan_type = 'MONTHLY',
-      payment_method = 'bKash'
-    } = req.body || {}
+      payment_method = 'bKash',
+      success_url,
+      fail_url,
+      cancel_url,
+      redirect = false,
+      format,
+    } = payload
 
     const order = await createSubscriptionOrder({
       merchantId: merchant_id,
       planType: plan_type,
-      method: payment_method
+      method: payment_method,
+      successUrl: success_url,
+      failUrl: fail_url,
+      cancelUrl: cancel_url,
     })
 
-    return res.json(order)
+    const shouldRedirect = redirect === true || redirect === 'true' || format === 'redirect'
+    if (shouldRedirect && order.checkout_url) {
+      return res.redirect(302, order.checkout_url)
+    }
+
+    return res.json({
+      ok: true,
+      status: 'SUCCESS',
+      ...order,
+      redirect_url: order.checkout_url,
+    })
   } catch (err) {
-    console.error('[subscription/checkout POST]', err.message)
+    console.error('[subscription/checkout]', err.message)
+    return res.status(400).json({ ok: false, error: err.message })
+  }
+}
+
+router.post('/checkout', handleSubscriptionCheckout)
+router.get('/checkout', handleSubscriptionCheckout)
+
+// ────────────────────────────────────────────────────────────────────────────
+// 3.1 POST /v1/subscription/webhook — Instant Payment Notification (IPN) Webhook
+// Mirrors standard merchant webhook listener for SwapnoPay payment gateway
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/webhook', async (req, res) => {
+  try {
+    const {
+      order_id,
+      tran_id,
+      trx_id,
+      status = 'PAID',
+      merchant_id = 'default',
+      payment_method = 'bKash',
+      plan_type,
+    } = req.body || {}
+
+    const resolvedOrderId = order_id || tran_id
+    if (!resolvedOrderId) {
+      return res.status(400).json({ ok: false, error: 'order_id is required' })
+    }
+
+    if (status === 'PAID') {
+      const result = await verifyAndActivateSubscription({
+        merchantId: merchant_id,
+        orderId: resolvedOrderId,
+        trxId: trx_id || resolvedOrderId,
+        method: payment_method,
+        planType: plan_type,
+      })
+
+      if (req.io) {
+        req.io.to(`merchant:${merchant_id}`).emit('merchant:subscription_updated', result)
+      }
+
+      return res.json({ ok: true, status: 'ACTIVATED', result })
+    }
+
+    return res.json({ ok: true, status: 'IGNORED', message: `Order status is ${status}` })
+  } catch (err) {
+    console.error('[subscription/webhook POST]', err.message)
     return res.status(400).json({ ok: false, error: err.message })
   }
 })
@@ -130,6 +198,23 @@ router.post('/verify', async (req, res) => {
   } catch (err) {
     console.error('[subscription/verify POST]', err.message)
     return res.status(400).json({ ok: false, error: err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 5. GET /v1/subscription/history — Retrieve Past Subscription Payment Records
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/history', async (req, res) => {
+  try {
+    const merchantId = req.query.merchant_id || req.headers['x-merchant-id']
+    if (!merchantId) {
+      return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+    }
+    const history = await getMerchantSubscriptionHistory(merchantId)
+    return res.json({ ok: true, history })
+  } catch (err) {
+    console.error('[subscription/history GET]', err.message)
+    return res.status(500).json({ ok: false, error: err.message })
   }
 })
 

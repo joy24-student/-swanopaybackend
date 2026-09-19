@@ -97,6 +97,12 @@ function normalizeUuid(val) {
   return null
 }
 
+function deterministicUuid(str) {
+  if (!str) return '00000000-0000-0000-0000-000000000001'
+  const hash = crypto.createHash('md5').update(String(str)).digest('hex')
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`
+}
+
 export function formRouter(io = null) {
   const router = Router()
 
@@ -151,9 +157,11 @@ export function formRouter(io = null) {
       try {
         if (formSnapshot && typeof formSnapshot === 'object') {
           const admin = getAdminClient()
+          const effectiveFormUuid = normalizeUuid(cleanFormId) || deterministicUuid(cleanFormId || normalizedSlug)
+          const effectiveMerchantUuid = normalizeUuid(formSnapshot.merchant_id || merchant_id) || deterministicUuid(formSnapshot.merchant_id || merchant_id || '00000000-0000-0000-0000-000000000001')
           const dbRow = {
-            id: normalizeUuid(cleanFormId) || cleanFormId,
-            merchant_id: formSnapshot.merchant_id || merchant_id || '00000000-0000-0000-0000-000000000001',
+            id: effectiveFormUuid,
+            merchant_id: effectiveMerchantUuid,
             title: formSnapshot.title || 'Hosted Payment Form',
             description: formSnapshot.description || '',
             slug: normalizedSlug,
@@ -177,7 +185,8 @@ export function formRouter(io = null) {
         console.warn('[form-router] Admin DB sync error:', dbErr.message)
       }
 
-      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
+      const reqOrigin = req.get('host') ? `${req.protocol}://${req.get('host')}` : null
+      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || reqOrigin || 'https://swapnopay.top'
       const publicUrl = `${publicOrigin}/f/${normalizedSlug || cleanFormId}`
 
       console.log(`[form-router] Route registered: ${publicUrl}`)
@@ -225,7 +234,35 @@ export function formRouter(io = null) {
     let form = null
 
     // 1. Check in-memory route cache
-    const route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+    let route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+    if (!route) {
+      const altSlug = normalizedIdentifier.startsWith('pay-') ? normalizedIdentifier.replace(/^pay-/, '') : `pay-${normalizedIdentifier}`
+      route = routeBySlug.get(altSlug)
+    }
+
+    // 1b. Reload from disk if not found in memory (in case written by another worker or process)
+    if (!route) {
+      try {
+        if (fs.existsSync(ROUTES_FILE)) {
+          const raw = fs.readFileSync(ROUTES_FILE, 'utf8')
+          const items = JSON.parse(raw || '[]')
+          for (const item of items) {
+            if (item.slug) routeBySlug.set(item.slug.toLowerCase(), item)
+            if (item.form_id) {
+              const cleanId = item.form_id.toLowerCase().replace(/-/g, '')
+              routeById.set(cleanId, item)
+              routeById.set(item.form_id.toLowerCase(), item)
+            }
+          }
+          route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+          if (!route) {
+            const altSlug = normalizedIdentifier.startsWith('pay-') ? normalizedIdentifier.replace(/^pay-/, '') : `pay-${normalizedIdentifier}`
+            route = routeBySlug.get(altSlug)
+          }
+        }
+      } catch (_) {}
+    }
+
     if (route && route.payload) {
       form = { ...route.payload }
     }
@@ -242,7 +279,17 @@ export function formRouter(io = null) {
           query = query.eq('slug', identifier)
         }
 
-        const { data, error } = await query.maybeSingle()
+        let { data, error } = await query.maybeSingle()
+        if ((error || !data) && !parsedUuid) {
+          // Try alt slug in DB
+          const altSlug = identifier.startsWith('pay-') ? identifier.replace(/^pay-/, '') : `pay-${identifier}`
+          const altRes = await admin.from('payment_forms').select('*').eq('slug', altSlug).maybeSingle()
+          if (!altRes.error && altRes.data) {
+            data = altRes.data
+            error = null
+          }
+        }
+
         if (!error && data) {
           form = data
           // Update cache

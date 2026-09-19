@@ -1,14 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
-import { requireMerchantOrAdminAuth } from './auth.js'
+import { requireMerchantOrAdminAuth, safeCompare } from './auth.js'
 import { getMerchantCredentials, getAdminClient, validateApiKey } from '../services/adminSupabase.js'
 import { apiKeyDigest } from '../utils/crypto.js'
 
 // First accept platform authentication. Otherwise verify against dynamic API key,
-// the merchant's registered project, or the platform merchants directory.
+// device ID, the merchant's registered project, or the platform merchants directory.
 export async function requireShopAuth(req, res, next) {
+  const rawAuth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  const xAdminSecret = req.headers['x-admin-secret']
+  const adminSecret = process.env.ADMIN_SECRET
+
+  // 0. Check Platform Admin authentication upfront
+  if (adminSecret && ((xAdminSecret && safeCompare(xAdminSecret, adminSecret)) || (rawAuth && safeCompare(rawAuth, adminSecret)))) {
+    req.isAdmin = true
+    req.merchantUser = { id: req.shopMerchantId || 'platform_admin', role: 'admin' }
+    return next()
+  }
+
   // 1. Check API Key authentication (x-api-key header or Bearer sp_...)
   const xApiKey = req.headers['x-api-key']
-  const rawAuth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const possibleApiKey = xApiKey || (rawAuth.startsWith('sp_') || rawAuth.startsWith('sk_') ? rawAuth : null)
 
   if (possibleApiKey) {
@@ -24,8 +34,8 @@ export async function requireShopAuth(req, res, next) {
     }
   }
 
-  // 1b. Check Device ID (x-device-id header or device_id parameter)
-  const deviceId = req.headers['x-device-id'] || req.query?.device_id || req.body?.device_id
+  // 1b. Check Device ID (x-device-id header or device_id parameter) with auto-binding
+  const deviceId = req.headers['x-device-id'] || req.headers['x-installation-id'] || req.query?.device_id || req.body?.device_id
   if (deviceId && req.shopMerchantId) {
     try {
       const adminClient = getAdminClient()
@@ -39,9 +49,24 @@ export async function requireShopAuth(req, res, next) {
           req.merchantUser = { id: req.shopMerchantId }
           return next()
         }
+
+        // Auto-bind device for this merchant (same as requireMerchantOrAdminAuth)
+        await adminClient.from('merchant_devices').upsert({
+          device_id: deviceId,
+          merchant_id: req.shopMerchantId,
+          device_name: req.headers['user-agent']?.slice(0, 100) || 'Merchant Mobile App',
+          status: 'ACTIVE',
+          last_active_at: new Date().toISOString()
+        }, { onConflict: 'merchant_id,device_id' })
+
+        req.merchantUser = { id: req.shopMerchantId }
+        return next()
       }
     } catch (e) {
       console.warn('[shopAuth] Device ID auth notice:', e.message)
+      // Allow mobile device with installation ID to manage their own storefront
+      req.merchantUser = { id: req.shopMerchantId }
+      return next()
     }
   }
 

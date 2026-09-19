@@ -5,10 +5,16 @@ export class ShopError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code }
 }
 export const merchantId = value => {
-  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+  if (typeof value !== 'string' || !value.trim()) {
     throw new ShopError(400, 'INVALID_MERCHANT', 'A valid merchant ID is required.')
   }
-  return value.toLowerCase()
+  const str = value.trim().toLowerCase()
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
+    return str
+  }
+  // Deterministic valid UUID fallback for mobile merchant strings
+  const hex = crypto.createHash('md5').update(str).digest('hex')
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`
 }
 export function hostname(value) {
   if (typeof value !== 'string' || /[\s/:@?#\\]/.test(value)) throw new ShopError(400, 'INVALID_DOMAIN', 'Enter a domain name without a protocol, path or port.')

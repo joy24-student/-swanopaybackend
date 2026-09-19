@@ -422,6 +422,22 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       console.warn(`[payment/verify] ⚠️  Could not update order on merchant DB for ${merchant_id} — continuing`)
     }
 
+    // ── Auto-activate subscription if order is a platform subscription (sub_*) ──
+    if (status === 'PAID' && (String(order_id).startsWith('sub_') || String(tran_id).startsWith('sub_'))) {
+      try {
+        const { verifyAndActivateSubscription } = await import('../services/adminSupabase.js')
+        const subResult = await verifyAndActivateSubscription({
+          merchantId: merchant_id,
+          orderId: order_id,
+          trxId: trx_id || tran_id,
+          method: payment_method || 'bKash'
+        })
+        console.log(`[payment/verify] 🌟 Platform subscription auto-activated for merchant ${merchant_id} (order: ${order_id})`, subResult?.subscription_plan)
+      } catch (subErr) {
+        console.warn(`[payment/verify] Subscription auto-activation notice:`, subErr.message)
+      }
+    }
+
     // ── Step 3: Send email receipts ──
     if (status === 'PAID') {
       getGatewayConfig()

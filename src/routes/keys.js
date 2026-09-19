@@ -20,14 +20,13 @@ import {
 import { generateRawApiKey, apiKeyDigest } from '../utils/crypto.js'
 
 const router = Router()
-router.use(requireMerchantOrAdminAuth)
 
 // ────────────────────────────────────────────────────────────────────────────
 // POST /v1/admin/keys/generate
 // Body: { merchant_id, merchant_name?, label? }
 // Returns the raw key ONCE — only the digest is stored in admin Supabase
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireMerchantOrAdminAuth, async (req, res) => {
   const { merchant_id, merchant_name, label } = req.body || {}
 
   if (!merchant_id || typeof merchant_id !== 'string') {
@@ -75,7 +74,7 @@ router.post('/generate', async (req, res) => {
 // POST /v1/admin/keys/revoke
 // Body: { key_id }
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/revoke', async (req, res) => {
+router.post('/revoke', requireMerchantOrAdminAuth, async (req, res) => {
   const { key_id } = req.body || {}
   if (!key_id || typeof key_id !== 'string') {
     return res.status(400).json({ error: 'key_id is required' })
@@ -128,7 +127,7 @@ router.post('/validate', async (req, res) => {
 // Query: ?merchant_id=<id>&email=<email>&device_id=<device_id>
 // Returns the active dynamic API key for the merchant
 // ────────────────────────────────────────────────────────────────────────────
-router.get('/active', async (req, res) => {
+router.get('/active', requireMerchantOrAdminAuth, async (req, res) => {
   const targetMerchantId = req.query.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
   const userEmail = req.query.email || (!req.isAdmin && req.merchantUser ? req.merchantUser.email : null)
   const deviceId = req.query.device_id || req.headers['x-device-id'] || null
@@ -154,7 +153,7 @@ router.get('/active', async (req, res) => {
 // Body: { merchant_id, merchant_name?, label? }
 // Revokes previous active keys and creates a fresh signed dynamic key
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/regenerate', async (req, res) => {
+router.post('/regenerate', requireMerchantOrAdminAuth, async (req, res) => {
   const targetMerchantId = req.body?.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
   if (!targetMerchantId) {
     return res.status(400).json({ ok: false, error: 'merchant_id is required' })
@@ -234,7 +233,7 @@ router.post('/regenerate', async (req, res) => {
 // Returns key records (digest is never sent to the client)
 // Supports ?merchant_id=<id> filter
 // ────────────────────────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requireMerchantOrAdminAuth, async (req, res) => {
   try {
     let keys = await listApiKeyRecords()
 
