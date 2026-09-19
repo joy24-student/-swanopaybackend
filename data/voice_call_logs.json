@@ -1048,5 +1048,75 @@
         "time": "00:01"
       }
     ]
+  },
+  {
+    "id": "turn_0df4459d",
+    "merchant_id": "test_m1",
+    "direction": "inbound",
+    "from": "ইনস্ট্যান্ট ভয়েস ইনপুট",
+    "customer_name": "আরিফ আহমেদ",
+    "purpose": "কাস্টমার ভয়েস কোয়েরি",
+    "status": "completed",
+    "duration": "0m 15s",
+    "created_at": "2026-09-19T15:11:40.269Z",
+    "summary": "গ্রাহকের অডিও: \"আপনাদের দোকান কখন খোলা থাকে?...\"",
+    "transcript": [
+      {
+        "role": "customer",
+        "text": "আপনাদের দোকান কখন খোলা থাকে?",
+        "time": "00:01"
+      },
+      {
+        "role": "assistant",
+        "text": "আমাদের প্রতিষ্ঠান প্রতিদিন সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে। ছুটির দিনেও আমাদের অনলাইন ডেলিভারি চালু থাকে।",
+        "time": "00:05"
+      }
+    ]
+  },
+  {
+    "id": "turn_512e859b",
+    "merchant_id": "test_m1",
+    "direction": "inbound",
+    "from": "ইনস্ট্যান্ট ভয়েস ইনপুট",
+    "customer_name": "গ্রাহক",
+    "purpose": "কাস্টমার ভয়েস কোয়েরি",
+    "status": "completed",
+    "duration": "0m 15s",
+    "created_at": "2026-09-19T15:11:40.525Z",
+    "summary": "গ্রাহকের অডিও: \"আপনাদের দোকান কখন খোলা থাকে?...\"",
+    "transcript": [
+      {
+        "role": "customer",
+        "text": "আপনাদের দোকান কখন খোলা থাকে?",
+        "time": "00:01"
+      },
+      {
+        "role": "assistant",
+        "text": "আমাদের প্রতিষ্ঠান প্রতিদিন সকাল ৯টা থেকে রাত ১০টা পর্যন্ত খোলা থাকে। ছুটির দিনেও আমাদের অনলাইন ডেলিভারি চালু থাকে।",
+        "time": "00:05"
+      }
+    ]
+  },
+  {
+    "id": "out_3a9c1152",
+    "twilio_sid": null,
+    "merchant_id": "test_m1",
+    "direction": "outbound",
+    "from": "+8809612345678",
+    "to": "+8801700112233",
+    "customer_name": "আব্দুল করিম",
+    "purpose": "বকেয়া আদায় তাগাদা (৳২৫০০)",
+    "status": "initiated",
+    "duration": "0m 00s",
+    "voice_call_url": "https://swapnopay.top/voice-call.html?call_id=out_3a9c1152&due=%E0%A7%A8%E0%A7%AB%E0%A7%A6%E0%A7%A6&merchant_id=test_m1&name=%E0%A6%86%E0%A6%AC%E0%A7%8D%E0%A6%A6%E0%A7%81%E0%A6%B2%20%E0%A6%95%E0%A6%B0%E0%A6%BF%E0%A6%AE&phone=%2B8801700112233",
+    "created_at": "2026-09-19T15:11:40.635Z",
+    "summary": "বকেয়া ৳২৫০০ টাকা আদায় সেশন সক্রিয়।",
+    "transcript": [
+      {
+        "role": "assistant",
+        "text": "আসসালামু আলাইকুম আব্দুল করিম, স্বপ্নপে স্টোর থেকে বলছি। আপনার ২৫০০ টাকা টাকা বকেয়া রয়েছে। আপনি কি আগামীকালের মধ্যে বিকাশ বা নগদে পরিশোধ করতে পারবেন?",
+        "time": "00:01"
+      }
+    ]
   }
 ]

@@ -282,6 +282,29 @@ app.use((req, _res, next) => {
 // Static file hosting for uploads (KYC docs, receipts, shop assets)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
+// Direct API Gateway Welcome / Info route (for https://api.swapnopay.top/)
+app.get('/', (req, res, next) => {
+  const host = (req.get('host') || '').toLowerCase()
+  if (host.startsWith('api.') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    return res.json({
+      ok: true,
+      service: 'SwapnoPay Central REST & WebSocket Gateway',
+      version: '3.0.0',
+      status: 'healthy',
+      endpoints: {
+        health: '/healthz',
+        v1: '/v1',
+        payment: '/v1/payment',
+        forms: '/v1/forms',
+        docs: 'https://pay.swapnopay.top/docs.html',
+        portal: 'https://pay.swapnopay.top/portal.html'
+      },
+      timestamp: new Date().toISOString()
+    })
+  }
+  next()
+})
+
 // Serve web root (checkout widget, hosted forms runner, docs)
 const webDir = path.resolve(__dirname, '../../web')
 app.use(express.static(webDir))
