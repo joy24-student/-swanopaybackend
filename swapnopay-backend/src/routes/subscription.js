@@ -43,7 +43,9 @@ router.get('/config', async (_req, res) => {
 router.get('/status', async (req, res) => {
   try {
     const merchantId = req.query.merchant_id || req.headers['x-merchant-id'] || 'default'
-    const status = await getMerchantSubscriptionStatus(merchantId)
+    const email = req.query.email || null
+    const deviceId = req.query.device_id || req.headers['x-device-id'] || null
+    const status = await getMerchantSubscriptionStatus(merchantId, email, deviceId)
     return res.json(status)
   } catch (err) {
     console.error('[subscription/status GET]', err.message)
@@ -55,7 +57,8 @@ router.get('/status', async (req, res) => {
 router.get('/my-status', requirePlatformUser, async (req, res) => {
   try {
     const merchantId = req.platformUser.id
-    const status = await getMerchantSubscriptionStatus(merchantId)
+    const email = req.platformUser.email
+    const status = await getMerchantSubscriptionStatus(merchantId, email)
     return res.json(status)
   } catch (err) {
     console.error('[subscription/my-status GET]', err.message)

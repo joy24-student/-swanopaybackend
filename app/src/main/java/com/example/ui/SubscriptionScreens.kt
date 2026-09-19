@@ -355,8 +355,8 @@ fun SubscriptionScreen(
                                         fontSize = 11.sp
                                     )
                                     Text(
-                                        text = if (subStatus.hasNid) (subStatus.nidNumber ?: "ভেরিফাইড") else "যুক্ত নেই (আবশ্যক)",
-                                        color = if (subStatus.hasNid) Color(0xFF6EE7B7) else Color(0xFFFCA5A5),
+                                        text = if (subStatus.hasNid || subStatus.isKycVerified) (subStatus.nidNumber ?: "ভেরিফাইড") else "যুক্ত নেই (আবশ্যক)",
+                                        color = if (subStatus.hasNid || subStatus.isKycVerified) Color(0xFF6EE7B7) else Color(0xFFFCA5A5),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
                                     )

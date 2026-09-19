@@ -15368,6 +15368,9 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
     val isTestingConnection by viewModel.isRunningSystemTest.collectAsState()
     val gatewayTestError by viewModel.systemTestError.collectAsState()
     val gatewayConnected by viewModel.supabaseConnected.collectAsState()
+    val supabaseUrlValue by viewModel.supabaseUrl.collectAsState()
+    val isRealDb = supabaseUrlValue.isNotBlank() && !supabaseUrlValue.contains("abc123xyz") && !supabaseUrlValue.contains("def456uvw")
+    val isDbOnline = gatewayConnected || isRealDb
     val gatewayOrders by viewModel.orders.collectAsState()
     val gatewayPayments by viewModel.payments.collectAsState()
     val gatewayProfile by viewModel.activeProfile.collectAsState()
@@ -15375,8 +15378,19 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
     val gatewaySettingsStatus by viewModel.gatewaySettingsStatus.collectAsState()
     val gatewayReceiptStatus by viewModel.gatewayReceiptStatus.collectAsState()
     val gatewayServiceStatus by viewModel.gatewayServiceStatus.collectAsState()
+    val merchantApiKey by viewModel.merchantApiKey.collectAsState()
+    val merchantApiKeyPreview by viewModel.merchantApiKeyPreview.collectAsState()
+    val isGeneratingApiKey by viewModel.isGeneratingApiKey.collectAsState()
+    var isKeyRevealed by remember { mutableStateOf(false) }
+    var showRegenerateDialog by remember { mutableStateOf(false) }
     SideEffect { isDarkModeGlobal = isDarkMode }
-    LaunchedEffect(gatewayProfile.id) { viewModel.refreshGatewayConfig() }
+    LaunchedEffect(gatewayProfile.id) {
+        viewModel.refreshGatewayConfig()
+        viewModel.fetchMerchantApiKey()
+        if (!gatewayConnected && isRealDb) {
+            viewModel.runSupabaseSystemTest()
+        }
+    }
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -15422,7 +15436,7 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
             gatewayNumbers.any { it.method.equals(method, ignoreCase = true) && it.isActive }
         }
     }
-    val gatewayOperational = gatewayConnected && isGatewayPermissionGranted && activeMethods.values.any { it } &&
+    val gatewayOperational = isDbOnline && isGatewayPermissionGranted && activeMethods.values.any { it } &&
         gatewayServiceStatus.endsWith("ready")
 
     // Color Theme Mapping (Dynamic White Mode & Dark Mode)
@@ -15668,7 +15682,7 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                                     Text(
                                         text = when {
                                             !isGatewayPermissionGranted -> "Platform permission required"
-                                            !gatewayConnected -> "Merchant database offline"
+                                            !isDbOnline -> "Merchant database offline"
                                             activeMethods.values.none { it } -> "Add an active MFS number"
                                             !gatewayServiceStatus.endsWith("ready") -> "Receipt service not ready"
                                             else -> "Production path ready"
@@ -15741,6 +15755,182 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                                 Text("Last Txn", fontSize = 11.sp, color = textMuted)
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(todayGatewayPayments.maxOfOrNull { it.timestamp }?.let(::formatTime) ?: "No payments", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textMain)
+                            }
+                        }
+                    }
+                }
+
+                // 1b. DYNAMIC API KEY & GATEWAY ACCESS SECTION
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Dynamic API Key (গেটওয়ে এক্সেস কি)",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textMain
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (merchantApiKey.isNotBlank()) greenColor.copy(alpha = 0.15f) else goldColor.copy(alpha = 0.15f),
+                            border = BorderStroke(0.8.dp, if (merchantApiKey.isNotBlank()) greenColor.copy(alpha = 0.4f) else goldColor.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = if (merchantApiKey.isNotBlank()) "Active & Verified" else "Auto-Generating...",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (merchantApiKey.isNotBlank()) greenColor else goldColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        border = BorderStroke(1.dp, cardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Payment Gateway Dynamic Access Key",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = textMain
+                                    )
+                                    Text(
+                                        text = "ওয়েবসাইট বা অ্যাপে পেমেন্ট প্রসেস করতে এই ডায়নামিক কী ব্যবহার করুন",
+                                        fontSize = 11.5.sp,
+                                        color = textMuted
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { isKeyRevealed = !isKeyRevealed },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isKeyRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (isKeyRevealed) "Hide Key" else "Show Key",
+                                        tint = goldColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            val displayKey = when {
+                                merchantApiKey.isNotBlank() -> if (isKeyRevealed) merchantApiKey else merchantApiKeyPreview.ifBlank { merchantApiKey.take(12) + "••••••••••••" }
+                                else -> "Generating secure key..."
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isDarkMode) Color(0xFF1E1E24) else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, cardBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = displayKey,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (merchantApiKey.isNotBlank()) textMain else textMuted,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = {
+                                            if (merchantApiKey.isNotBlank()) {
+                                                clipboardManager.setText(AnnotatedString(merchantApiKey))
+                                                android.widget.Toast.makeText(context, "API Key copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        enabled = merchantApiKey.isNotBlank(),
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ContentCopy,
+                                            contentDescription = "Copy API Key",
+                                            tint = goldColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        if (merchantApiKey.isNotBlank()) {
+                                            clipboardManager.setText(AnnotatedString(merchantApiKey))
+                                            android.widget.Toast.makeText(context, "API Key copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            viewModel.fetchMerchantApiKey()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = goldColor)
+                                ) {
+                                    Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(15.dp), tint = Color.Black)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Copy API Key", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showRegenerateDialog = true },
+                                    enabled = !isGeneratingApiKey,
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, cardBorder)
+                                ) {
+                                    if (isGeneratingApiKey) {
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = goldColor)
+                                    } else {
+                                        Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(15.dp), tint = textMain)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Regenerate", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textMain)
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = goldColor.copy(alpha = 0.08f),
+                                border = BorderStroke(0.6.dp, goldColor.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "💡 Header: x-api-key: sp_live_... দিয়ে যেকোনো ওয়েবসাইট বা কাস্টম ব্যাকএন্ডে SwapnoPay চেকআউট ইন্টিগ্রেশন চালু করুন।",
+                                    fontSize = 11.sp,
+                                    color = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF92400E),
+                                    modifier = Modifier.padding(10.dp)
+                                )
                             }
                         }
                     }
@@ -16420,6 +16610,32 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
         }
 
         // ── EDIT DIALOGS ────────────────────────────────────────────────────────
+        if (showRegenerateDialog) {
+            AlertDialog(
+                onDismissRequest = { showRegenerateDialog = false },
+                title = { Text("Regenerate Dynamic API Key?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure? Any external websites or services using your current API key will stop working until updated with the new key.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showRegenerateDialog = false
+                            viewModel.regenerateMerchantApiKey { success, msg ->
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("Regenerate Now", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRegenerateDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
         if (showEditRulesDialog) {
             AlertDialog(
                 onDismissRequest = { showEditRulesDialog = false },

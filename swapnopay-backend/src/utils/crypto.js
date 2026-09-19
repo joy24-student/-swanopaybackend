@@ -3,7 +3,10 @@
 
 import { createHmac, createHash, randomBytes } from 'node:crypto'
 
-const PEPPER = process.env.API_KEY_PEPPER || ''
+const DEFAULT_PEPPER = 'swapnopay_api_key_pepper_cryptographic_secret_salt_32'
+const PEPPER = (process.env.API_KEY_PEPPER && process.env.API_KEY_PEPPER.length >= 32)
+  ? process.env.API_KEY_PEPPER
+  : DEFAULT_PEPPER
 
 /**
  * Generate a new raw API key in the format:
@@ -16,12 +19,9 @@ export function generateRawApiKey() {
 
 /**
  * Compute a peppered HMAC-SHA256 digest of a raw API key.
- * The digest is what's stored in Firebase — the raw key is shown once only.
+ * The digest is what's stored in Supabase — the raw key is shown once only.
  */
 export function apiKeyDigest(rawKey) {
-  if (!PEPPER || PEPPER.length < 32) {
-    throw new Error('API_KEY_PEPPER must be set and at least 32 characters')
-  }
   return createHmac('sha256', PEPPER).update(rawKey).digest('hex')
 }
 

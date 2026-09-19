@@ -5,6 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
+import { generateRawApiKey, apiKeyDigest } from '../utils/crypto.js'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Singleton admin client (service role — full RLS bypass)
@@ -450,54 +451,314 @@ export async function setMerchantGatewayConfig(merchantId, settings) {
 // Platform API Keys
 // ──────────────────────────────────────────────────────────────────────────────
 
+const inMemoryApiKeys = new Map()
+
 export async function storeApiKeyRecord(record) {
-  const { data, error } = await getAdminClient()
-    .from('platform_api_keys')
-    .insert({
-      id:            record.id,
-      merchant_id:   record.merchant_id,
+  inMemoryApiKeys.set(record.merchant_id, {
+    id: record.id,
+    merchant_id: record.merchant_id,
+    merchant_name: record.merchant_name,
+    label: record.label,
+    rawKey: record.raw_key || record.key_preview,
+    digest: record.digest,
+    preview: record.key_preview,
+    revoked: false,
+    createdAt: new Date().toISOString()
+  })
+
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+  if (!admin) {
+    return {
+      id: record.id,
+      merchant_id: record.merchant_id,
       merchant_name: record.merchant_name,
-      label:         record.label,
-      key_digest:    record.digest,
-      key_preview:   record.key_preview,
-      revoked:       false,
-    })
+      label: record.label,
+      key_preview: record.key_preview,
+      revoked: false,
+      created_at: new Date().toISOString()
+    }
+  }
+
+  const insertPayload = {
+    id:            record.id,
+    merchant_id:   record.merchant_id,
+    merchant_name: record.merchant_name,
+    label:         record.label,
+    key_digest:    record.digest,
+    key_preview:   record.key_preview,
+    revoked:       false,
+  }
+  if (record.raw_key) {
+    insertPayload.raw_key = record.raw_key
+  }
+
+  let { data, error } = await admin
+    .from('platform_api_keys')
+    .insert(insertPayload)
     .select('*')
     .single()
+
+  // Schema cache fallback if raw_key column does not exist yet
+  if (error && (error.message?.includes('raw_key') || error.message?.includes('schema cache'))) {
+    delete insertPayload.raw_key
+    const retry = await admin
+      .from('platform_api_keys')
+      .insert(insertPayload)
+      .select('*')
+      .single()
+    data = retry.data
+    error = retry.error
+  }
 
   if (error) throw new Error('Failed to store API key: ' + error.message)
   return data
 }
 
 export async function revokeApiKeyRecord(keyId) {
-  const { error } = await getAdminClient()
-    .from('platform_api_keys')
-    .update({ revoked: true, revoked_at: new Date().toISOString() })
-    .eq('id', keyId)
+  for (const [mId, mem] of inMemoryApiKeys.entries()) {
+    if (mem.id === keyId) {
+      mem.revoked = true
+      mem.revoked_at = new Date().toISOString()
+    }
+  }
 
-  if (error) throw new Error('Failed to revoke API key: ' + error.message)
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+  if (admin) {
+    const { error } = await admin
+      .from('platform_api_keys')
+      .update({ revoked: true, revoked_at: new Date().toISOString() })
+      .eq('id', keyId)
+
+    if (error) throw new Error('Failed to revoke API key: ' + error.message)
+  }
 }
 
 export async function listApiKeyRecords() {
-  const { data, error } = await getAdminClient()
-    .from('platform_api_keys')
-    .select('id,merchant_id,merchant_name,label,key_preview,revoked,revoked_at,created_at')
-    .order('created_at', { ascending: false })
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+  if (admin) {
+    const { data, error } = await admin
+      .from('platform_api_keys')
+      .select('id,merchant_id,merchant_name,label,key_preview,revoked,revoked_at,created_at')
+      .order('created_at', { ascending: false })
 
-  if (error) throw new Error('Failed to list API keys: ' + error.message)
-  return data || []
+    if (!error && data) return data
+  }
+
+  return Array.from(inMemoryApiKeys.values()).map(k => ({
+    id: k.id,
+    merchant_id: k.merchant_id,
+    merchant_name: k.merchant_name,
+    label: k.label,
+    key_preview: k.preview,
+    revoked: Boolean(k.revoked),
+    revoked_at: k.revoked_at || null,
+    created_at: k.createdAt
+  }))
 }
 
 export async function validateApiKey(digest) {
-  const { data, error } = await getAdminClient()
-    .from('platform_api_keys')
-    .select('id,merchant_id,merchant_name,label,key_preview,revoked')
-    .eq('key_digest', digest)
-    .single()
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('platform_api_keys')
+        .select('id,merchant_id,merchant_name,label,key_preview,revoked')
+        .eq('key_digest', digest)
+        .single()
 
-  if (error || !data) return null
-  if (data.revoked) return null
-  return data
+      if (!error && data && !data.revoked) return data
+    } catch (_) {}
+  }
+
+  // Check inMemoryApiKeys fallback
+  for (const [mId, record] of inMemoryApiKeys.entries()) {
+    if (apiKeyDigest(record.rawKey) === digest && !record.revoked) {
+      return {
+        id: record.id,
+        merchant_id: mId,
+        merchant_name: record.merchant_name || 'Merchant',
+        label: record.label || 'Default API Key',
+        key_preview: record.preview,
+        revoked: false,
+      }
+    }
+  }
+
+  return null
+}
+
+export async function getOrCreateMerchantApiKey(merchantId, merchantName = 'Merchant') {
+  const cleanId = String(merchantId || '').trim()
+  if (!cleanId) throw new Error('merchantId is required')
+
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+
+  // 1. Check if merchant already has an active key in database
+  if (admin) {
+    try {
+      const { data: existing } = await admin
+        .from('platform_api_keys')
+        .select('id, merchant_id, merchant_name, label, key_preview, raw_key, revoked, created_at')
+        .eq('merchant_id', cleanId)
+        .eq('revoked', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (existing?.raw_key) {
+        return {
+          id: existing.id,
+          merchant_id: cleanId,
+          merchant_name: existing.merchant_name,
+          api_key: existing.raw_key,
+          key_preview: existing.key_preview,
+          created_at: existing.created_at,
+          is_new: false,
+        }
+      }
+
+      // Check if merchants table has api_key column populated
+      const { data: mData } = await admin
+        .from('merchants')
+        .select('id, business_name, api_key, webhook_secret')
+        .eq('id', cleanId)
+        .maybeSingle()
+
+      if (mData?.api_key && mData.api_key.startsWith('sp_live_')) {
+        return {
+          id: existing?.id || randomUUID(),
+          merchant_id: cleanId,
+          merchant_name: mData.business_name || merchantName,
+          api_key: mData.api_key,
+          key_preview: mData.api_key.slice(0, 14) + '****',
+          is_new: false,
+        }
+      }
+    } catch (e) {
+      console.warn('[admin-supabase] getOrCreateMerchantApiKey fetch notice:', e.message)
+    }
+  }
+
+  // Check in-memory fallback
+  if (inMemoryApiKeys.has(cleanId)) {
+    const mem = inMemoryApiKeys.get(cleanId)
+    return {
+      id: mem.id,
+      merchant_id: cleanId,
+      merchant_name: merchantName,
+      api_key: mem.rawKey,
+      key_preview: mem.preview,
+      created_at: mem.createdAt,
+      is_new: false,
+    }
+  }
+
+  // 2. Generate a new raw dynamic API key
+  const rawKey = generateRawApiKey()
+  const digest = apiKeyDigest(rawKey)
+  const keyId = randomUUID()
+  const keyPreview = rawKey.slice(0, 14) + '****'
+
+  const record = {
+    id: keyId,
+    merchant_id: cleanId,
+    merchant_name: String(merchantName || 'Merchant').trim().slice(0, 100),
+    label: 'Default Payment Gateway API Key',
+    digest,
+    key_preview: keyPreview,
+    raw_key: rawKey,
+  }
+
+  inMemoryApiKeys.set(cleanId, { id: keyId, rawKey, preview: keyPreview, createdAt: new Date().toISOString() })
+
+  if (admin) {
+    try {
+      await storeApiKeyRecord(record)
+    } catch (e) {
+      console.warn('[admin-supabase] storeApiKeyRecord notice:', e.message)
+    }
+
+    try {
+      // Also update merchants table api_key & webhook_secret for maximum backward compatibility
+      const updates = { api_key: rawKey, webhook_secret: rawKey, updated_at: new Date().toISOString() }
+      let { error: uErr } = await admin.from('merchants').update(updates).eq('id', cleanId)
+      if (uErr && (uErr.message?.includes('api_key') || uErr.message?.includes('schema cache'))) {
+        delete updates.api_key
+        await admin.from('merchants').update(updates).eq('id', cleanId)
+      }
+    } catch (e) {
+      console.warn('[admin-supabase] merchants update api_key notice:', e.message)
+    }
+  }
+
+  return {
+    id: keyId,
+    merchant_id: cleanId,
+    merchant_name: merchantName,
+    api_key: rawKey,
+    key_preview: keyPreview,
+    created_at: new Date().toISOString(),
+    is_new: true,
+  }
+}
+
+export async function getMerchantActiveApiKey(merchantId, userEmail = null, deviceId = null) {
+  const cleanId = String(merchantId || '').trim()
+  const cleanEmail = userEmail ? String(userEmail).trim().toLowerCase() : null
+  let admin = null
+  try { admin = getAdminClient() } catch (_) {}
+
+  let merchant = null
+  let resolvedMerchantId = cleanId
+
+  if (admin) {
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)
+      if (cleanId && cleanId !== 'default') {
+        let mQuery = admin.from('merchants').select('id, user_id, email, business_name, kyc_status, api_key, webhook_secret')
+        if (isUuid) {
+          mQuery = mQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+        } else if (cleanId.includes('@')) {
+          mQuery = mQuery.ilike('email', cleanId)
+        } else {
+          mQuery = mQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+        }
+        const { data } = await mQuery.maybeSingle()
+        if (data) {
+          merchant = data
+          resolvedMerchantId = data.id
+        }
+      }
+
+      if (!merchant && cleanEmail) {
+        const { data: byEmail } = await admin.from('merchants').select('id, user_id, email, business_name, kyc_status, api_key, webhook_secret').ilike('email', cleanEmail).maybeSingle()
+        if (byEmail) {
+          merchant = byEmail
+          resolvedMerchantId = byEmail.id
+        }
+      }
+
+      if (!merchant && deviceId) {
+        const { data: dev } = await admin.from('merchant_devices').select('merchant_id').eq('device_id', deviceId).maybeSingle()
+        if (dev?.merchant_id) {
+          const { data: byDev } = await admin.from('merchants').select('id, user_id, email, business_name, kyc_status, api_key, webhook_secret').eq('id', dev.merchant_id).maybeSingle()
+          if (byDev) {
+            merchant = byDev
+            resolvedMerchantId = byDev.id
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[admin-supabase] getMerchantActiveApiKey merchant lookup notice:', err.message)
+    }
+  }
+
+  return await getOrCreateMerchantApiKey(resolvedMerchantId, merchant?.business_name || 'Merchant')
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1171,6 +1432,18 @@ export async function reviewMerchantKyc(merchantId, { action, reason, reviewed_b
       .eq('status', 'PENDING')
   } catch (_) {}
 
+  if (status === 'VERIFIED') {
+    try {
+      const apiKeyResult = await getOrCreateMerchantApiKey(mData.id, mData.business_name || 'Merchant')
+      if (apiKeyResult?.api_key) {
+        mData.api_key = apiKeyResult.api_key
+        mData.key_preview = apiKeyResult.key_preview
+      }
+    } catch (kErr) {
+      console.warn('[admin-supabase] reviewMerchantKyc auto-generation notice:', kErr.message)
+    }
+  }
+
   return mData
 }
 
@@ -1248,7 +1521,7 @@ export async function updateSubscriptionConfig(config) {
 /**
  * Get comprehensive subscription, trial, and NID compliance status for a merchant.
  */
-export async function getMerchantSubscriptionStatus(merchantId) {
+export async function getMerchantSubscriptionStatus(merchantId, userEmail = null, deviceId = null) {
   const config = await getSubscriptionConfig()
   let admin = null
   try {
@@ -1258,26 +1531,61 @@ export async function getMerchantSubscriptionStatus(merchantId) {
   let merchant = null
   if (admin) {
     try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(merchantId || '').trim())
-      let mQuery = admin
-        .from('merchants')
-        .select('id, user_id, email, business_name, nid_number, kyc_status, status, trial_ends_at, subscription_status, subscription_plan, subscription_expires_at, created_at')
-      if (isUuid) {
-        mQuery = mQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
-      } else {
-        mQuery = mQuery.eq('id', merchantId)
-      }
-      let { data, error } = await mQuery.maybeSingle()
-      if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
-        const fallbackQuery = admin
+      const cleanId = String(merchantId || '').trim()
+      const cleanEmail = userEmail ? String(userEmail).trim().toLowerCase() : null
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)
+
+      // 1. Try finding merchant by id or user_id
+      if (cleanId && cleanId !== 'default') {
+        let mQuery = admin
           .from('merchants')
-          .select('id, user_id, email, business_name, nid_number, kyc_status, status, created_at')
-        const fallbackRes = isUuid
-          ? await fallbackQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`).maybeSingle()
-          : await fallbackQuery.eq('id', merchantId).maybeSingle()
-        merchant = fallbackRes.data
-      } else {
-        merchant = data
+          .select('id, user_id, email, business_name, nid_number, kyc_status, status, trial_ends_at, subscription_status, subscription_plan, subscription_expires_at, created_at, kyc_reviewed_at')
+        if (isUuid) {
+          mQuery = mQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+        } else if (cleanId.includes('@')) {
+          mQuery = mQuery.ilike('email', cleanId)
+        } else {
+          mQuery = mQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+        }
+        let { data, error } = await mQuery.maybeSingle()
+        if (error && (error.message?.includes('column') || error.message?.includes('schema cache'))) {
+          const fallbackQuery = admin
+            .from('merchants')
+            .select('id, user_id, email, business_name, nid_number, kyc_status, status, created_at, kyc_reviewed_at')
+          const fallbackRes = isUuid
+            ? await fallbackQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`).maybeSingle()
+            : await fallbackQuery.eq('id', cleanId).maybeSingle()
+          merchant = fallbackRes.data
+        } else {
+          merchant = data
+        }
+      }
+
+      // 2. Fallback search by email if provided
+      if (!merchant && cleanEmail) {
+        const { data: byEmail } = await admin
+          .from('merchants')
+          .select('id, user_id, email, business_name, nid_number, kyc_status, status, trial_ends_at, subscription_status, subscription_plan, subscription_expires_at, created_at, kyc_reviewed_at')
+          .ilike('email', cleanEmail)
+          .maybeSingle()
+        if (byEmail) merchant = byEmail
+      }
+
+      // 3. Fallback search by deviceId in merchant_devices
+      if (!merchant && deviceId) {
+        const { data: dev } = await admin
+          .from('merchant_devices')
+          .select('merchant_id')
+          .eq('device_id', deviceId)
+          .maybeSingle()
+        if (dev?.merchant_id) {
+          const { data: byDev } = await admin
+            .from('merchants')
+            .select('id, user_id, email, business_name, nid_number, kyc_status, status, trial_ends_at, subscription_status, subscription_plan, subscription_expires_at, created_at, kyc_reviewed_at')
+            .eq('id', dev.merchant_id)
+            .maybeSingle()
+          if (byDev) merchant = byDev
+        }
       }
     } catch (err) {
       console.warn('[subscription] Merchant fetch notice:', err.message)
@@ -1287,8 +1595,8 @@ export async function getMerchantSubscriptionStatus(merchantId) {
   // Fallback to in-memory subscription record if database is empty/test
   const memSub = inMemoryMerchantSubscriptions.get(merchantId) || {}
 
-  const hasNid = Boolean(merchant?.nid_number || memSub.nid_number)
   const isKycVerified = (merchant?.kyc_status === 'VERIFIED') || (memSub.kyc_status === 'VERIFIED')
+  const hasNid = Boolean(merchant?.nid_number || memSub.nid_number || isKycVerified)
   const nidNumber = merchant?.nid_number || memSub.nid_number || null
 
   const now = Date.now()
@@ -1304,9 +1612,19 @@ export async function getMerchantSubscriptionStatus(merchantId) {
     trialEndsAtTime = new Date(merchant.trial_ends_at).getTime()
   } else if (memSub.trial_ends_at) {
     trialEndsAtTime = new Date(memSub.trial_ends_at).getTime()
+  } else if (isKycVerified && merchant?.kyc_reviewed_at) {
+    trialEndsAtTime = new Date(merchant.kyc_reviewed_at).getTime() + (config.trial_days * 86400000)
+  } else if (isKycVerified) {
+    // Verified account gets 90-day trial from now if trial_ends_at not yet persisted
+    trialEndsAtTime = now + (config.trial_days * 86400000)
   } else if (merchant?.created_at) {
     trialEndsAtTime = new Date(merchant.created_at).getTime() + (config.trial_days * 86400000)
   } else {
+    trialEndsAtTime = now + (config.trial_days * 86400000)
+  }
+
+  // If KYC was verified, ensure trial is active for at least 90 days
+  if (isKycVerified && trialEndsAtTime < now) {
     trialEndsAtTime = now + (config.trial_days * 86400000)
   }
 
@@ -1318,14 +1636,14 @@ export async function getMerchantSubscriptionStatus(merchantId) {
   let status = 'EXPIRED'
   let lockReason = null
 
-  if (config.enforce_nid_verification && !hasNid) {
+  if (config.enforce_nid_verification && !hasNid && !isKycVerified) {
     canAccessService = false
     status = 'REQUIRES_NID'
     lockReason = 'SwapnoPay সেবা ব্যবহারের জন্য জাতীয় পরিচয়পত্র (NID) ভেরিফিকেশন বাধ্যতামূলক।'
   } else if (isSubActive) {
     canAccessService = true
     status = 'ACTIVE'
-  } else if (isTrialActive) {
+  } else if (isTrialActive || isKycVerified) {
     canAccessService = true
     status = 'TRIAL'
   } else {

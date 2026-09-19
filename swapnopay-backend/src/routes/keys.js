@@ -14,6 +14,8 @@ import {
   revokeApiKeyRecord,
   listApiKeyRecords,
   validateApiKey,
+  getMerchantActiveApiKey,
+  getOrCreateMerchantApiKey,
 } from '../services/adminSupabase.js'
 import { generateRawApiKey, apiKeyDigest } from '../utils/crypto.js'
 
@@ -118,6 +120,112 @@ router.post('/validate', async (req, res) => {
   } catch (err) {
     console.error('[keys/validate]', err.message)
     res.status(500).json({ ok: false, error: 'API key validation error: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /v1/admin/keys/active
+// Query: ?merchant_id=<id>&email=<email>&device_id=<device_id>
+// Returns the active dynamic API key for the merchant
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/active', async (req, res) => {
+  const targetMerchantId = req.query.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
+  const userEmail = req.query.email || (!req.isAdmin && req.merchantUser ? req.merchantUser.email : null)
+  const deviceId = req.query.device_id || req.headers['x-device-id'] || null
+
+  if (!targetMerchantId && !userEmail && !deviceId) {
+    return res.status(400).json({ ok: false, error: 'merchant_id or email is required' })
+  }
+
+  try {
+    const keyData = await getMerchantActiveApiKey(targetMerchantId, userEmail, deviceId)
+    return res.json({
+      ok: true,
+      ...keyData,
+    })
+  } catch (err) {
+    console.error('[keys/active]', err.message)
+    return res.status(500).json({ ok: false, error: 'Failed to fetch active API key: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /v1/admin/keys/regenerate
+// Body: { merchant_id, merchant_name?, label? }
+// Revokes previous active keys and creates a fresh signed dynamic key
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/regenerate', async (req, res) => {
+  const targetMerchantId = req.body?.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
+  if (!targetMerchantId) {
+    return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+  }
+
+  if (!req.isAdmin && req.merchantUser && req.merchantUser.id !== targetMerchantId) {
+    return res.status(403).json({ ok: false, error: 'Cannot regenerate keys for another merchant' })
+  }
+
+  try {
+    let admin = null
+    try {
+      const { getAdminClient } = await import('../services/adminSupabase.js')
+      admin = getAdminClient()
+    } catch (_) {}
+
+    if (admin) {
+      try {
+        await admin
+          .from('platform_api_keys')
+          .update({ revoked: true, revoked_at: new Date().toISOString() })
+          .eq('merchant_id', targetMerchantId)
+          .eq('revoked', false)
+      } catch (e) {
+        console.warn('[keys/regenerate] Revoke existing notice:', e.message)
+      }
+    }
+
+    const rawKey = generateRawApiKey()
+    const digest = apiKeyDigest(rawKey)
+    const keyId = uuidv4()
+    const keyPreview = rawKey.slice(0, 14) + '****'
+    const label = (req.body?.label || 'Regenerated Dynamic API Key').trim().slice(0, 80)
+
+    const record = {
+      id: keyId,
+      merchant_id: targetMerchantId.trim(),
+      merchant_name: req.body?.merchant_name || 'Merchant',
+      label,
+      digest,
+      key_preview: keyPreview,
+      raw_key: rawKey,
+    }
+
+    await storeApiKeyRecord(record)
+
+    if (admin) {
+      try {
+        const updates = { api_key: rawKey, webhook_secret: rawKey, updated_at: new Date().toISOString() }
+        let { error: uErr } = await admin.from('merchants').update(updates).eq('id', targetMerchantId)
+        if (uErr && (uErr.message?.includes('api_key') || uErr.message?.includes('schema cache'))) {
+          delete updates.api_key
+          await admin.from('merchants').update(updates).eq('id', targetMerchantId)
+        }
+      } catch (_) {}
+    }
+
+    console.log(`[keys/regenerate] API key regenerated for merchant: ${targetMerchantId}`)
+
+    res.status(201).json({
+      ok: true,
+      key_id: keyId,
+      api_key: rawKey,
+      key_preview: keyPreview,
+      merchant_id: targetMerchantId,
+      label,
+      message: 'Dynamic API key regenerated successfully.',
+    })
+  } catch (err) {
+    console.error('[keys/regenerate]', err.message)
+    res.status(500).json({ ok: false, error: 'Failed to regenerate API key: ' + err.message })
   }
 })
 

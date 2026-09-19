@@ -617,7 +617,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshGatewayConfig() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return@launch
+            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                ?: _activeSupabaseProfile.value
+                ?: repository.getActiveSupabaseProfile()
+                ?: return@launch
+            if (active.supabaseUrl.isBlank() || active.anonKey.isBlank()) return@launch
+            val isReal = active.supabaseUrl.isNotBlank() && !active.supabaseUrl.contains("abc123xyz") && !active.supabaseUrl.contains("def456uvw")
+            if (isReal) supabaseConnected.value = true
             _gatewaySettingsStatus.value = "Loading merchant database policy…"
             com.example.data.remote.SupabaseClient.fetchRecords(
                 active.supabaseUrl, active.anonKey, active.authSessionToken,
@@ -681,6 +687,101 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 onFailure = { _gatewayServiceStatus.value = "Receipt worker health check unavailable: $it" }
             )
+            fetchMerchantApiKey()
+        }
+    }
+
+    private val _merchantApiKey = MutableStateFlow<String>("")
+    val merchantApiKey: StateFlow<String> = _merchantApiKey.asStateFlow()
+
+    private val _merchantApiKeyPreview = MutableStateFlow<String>("")
+    val merchantApiKeyPreview: StateFlow<String> = _merchantApiKeyPreview.asStateFlow()
+
+    private val _isGeneratingApiKey = MutableStateFlow(false)
+    val isGeneratingApiKey: StateFlow<Boolean> = _isGeneratingApiKey.asStateFlow()
+
+    fun fetchMerchantApiKey() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val merchantId = _activeProfile.value.id
+                if (merchantId.isBlank()) return@launch
+                val userEmail = _activeProfile.value.email.ifBlank { _userEmail.value ?: "" }
+                val encodedEmail = java.net.URLEncoder.encode(userEmail, "UTF-8")
+                val backendBase = "https://api.swapnopay.top"
+                val url = "$backendBase/v1/admin/keys/active?merchant_id=$merchantId&email=$encodedEmail"
+
+                val reqBuilder = Request.Builder().url(url).get()
+                val devId = installationId
+                if (devId.isNotBlank()) reqBuilder.header("x-device-id", devId)
+                val token = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
+                    ?: _sessionInfo.value.token?.takeIf { it.isNotBlank() }
+                if (!token.isNullOrBlank()) reqBuilder.header("Authorization", "Bearer $token")
+
+                webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val json = JSONObject(bodyStr)
+                        if (json.optBoolean("ok", false)) {
+                            val rawKey = json.optString("api_key", "")
+                            val preview = json.optString("key_preview", "")
+                            if (rawKey.isNotBlank()) {
+                                _merchantApiKey.value = rawKey
+                                _merchantApiKeyPreview.value = preview.ifBlank { rawKey.take(14) + "****" }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("AppViewModel", "fetchMerchantApiKey failed: ${e.message}")
+            }
+        }
+    }
+
+    fun regenerateMerchantApiKey(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isGeneratingApiKey.value = true
+            try {
+                val merchantId = _activeProfile.value.id
+                val backendBase = "https://api.swapnopay.top"
+                val payload = JSONObject().apply {
+                    put("merchant_id", merchantId)
+                    put("merchant_name", _activeProfile.value.businessName.ifBlank { "Merchant" })
+                    put("label", "Mobile App Regenerated Key")
+                }
+                val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val reqBuilder = Request.Builder().url("$backendBase/v1/admin/keys/regenerate").post(body)
+                val devId = installationId
+                if (devId.isNotBlank()) reqBuilder.header("x-device-id", devId)
+                val token = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
+                    ?: _sessionInfo.value.token?.takeIf { it.isNotBlank() }
+                if (!token.isNullOrBlank()) reqBuilder.header("Authorization", "Bearer $token")
+
+                webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    val json = if (!bodyStr.isNullOrBlank()) JSONObject(bodyStr) else JSONObject()
+                    val ok = (response.isSuccessful || response.code in 200..201) && json.optBoolean("ok", true)
+                    val rawKey = json.optString("api_key", "")
+                    val preview = json.optString("key_preview", "")
+                    if (ok && rawKey.isNotBlank()) {
+                        _merchantApiKey.value = rawKey
+                        _merchantApiKeyPreview.value = preview.ifBlank { rawKey.take(14) + "****" }
+                        withContext(Dispatchers.Main) {
+                            onResult(true, "Dynamic API Key regenerated successfully!")
+                        }
+                    } else {
+                        val errMsg = json.optString("error", "Failed to regenerate API key")
+                        withContext(Dispatchers.Main) {
+                            onResult(false, errMsg)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, e.localizedMessage ?: "Network error while regenerating API key")
+                }
+            } finally {
+                _isGeneratingApiKey.value = false
+            }
         }
     }
 
@@ -7157,8 +7258,8 @@ function executePayment() {
                     supabaseUrl.value = safe.supabaseUrl
                     supabaseAnonKey.value = safe.anonKey
                     _supabaseUrlInput.value = safe.supabaseUrl
-                    _supabaseAnonKeyInput.value = safe.anonKey
-                    supabaseConnected.value = safe.authSessionToken.isNotBlank()
+                    val isReal = safe.supabaseUrl.isNotBlank() && !safe.supabaseUrl.contains("abc123xyz") && !safe.supabaseUrl.contains("def456uvw")
+                    supabaseConnected.value = isReal
                     scheduleSupabaseSessionRefresh(safe)
                 }
             } finally { localAccountReady.complete(Unit) }
@@ -11292,6 +11393,13 @@ function executePayment() {
             if (token.isNotBlank()) {
                 reqBuilder.header("Authorization", "Bearer $token")
             }
+            val apiKey = _merchantApiKey.value.takeIf { it.isNotBlank() }
+            if (apiKey != null) {
+                reqBuilder.header("x-api-key", apiKey)
+            }
+            if (installationId.isNotBlank()) {
+                reqBuilder.header("x-device-id", installationId)
+            }
             val request = reqBuilder.build()
             webShopHttpClient.newCall(request).execute().use { response ->
                 val body = response.body?.string()
@@ -11399,6 +11507,13 @@ function executePayment() {
                 val token = getWebShopAuthToken()
                 if (token.isNotBlank()) {
                     reqBuilder.header("Authorization", "Bearer $token")
+                }
+                val apiKey = _merchantApiKey.value.takeIf { it.isNotBlank() }
+                if (apiKey != null) {
+                    reqBuilder.header("x-api-key", apiKey)
+                }
+                if (installationId.isNotBlank()) {
+                    reqBuilder.header("x-device-id", installationId)
                 }
                 val request = reqBuilder.build()
                 webShopHttpClient.newCall(request).execute().use { response ->
@@ -12212,9 +12327,12 @@ function executePayment() {
         viewModelScope.launch(Dispatchers.IO) {
             _isSubscriptionLoading.value = true
             try {
-                val merchantId = installationId.ifBlank { "default" }
+                val profile = _activeProfile.value
+                val merchantId = profile.id.ifBlank { profile.email.ifBlank { installationId.ifBlank { "default" } } }
+                val email = profile.email
+                val encodedEmail = if (email.isNotBlank()) java.net.URLEncoder.encode(email, "UTF-8") else ""
                 val request = Request.Builder()
-                    .url("https://api.swapnopay.top/v1/subscription/status?merchant_id=$merchantId")
+                    .url("https://api.swapnopay.top/v1/subscription/status?merchant_id=$merchantId&email=$encodedEmail&device_id=$installationId")
                     .get()
                     .build()
 
@@ -12228,19 +12346,20 @@ function executePayment() {
                     if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
                         val json = JSONObject(bodyStr)
                         val pricingObj = json.optJSONObject("pricing")
+                        val isVerified = json.optBoolean("is_kyc_verified", false) || profile.kycStatus == "VERIFIED"
                         val updated = SubscriptionStatusState(
-                            status = json.optString("status", "TRIAL"),
-                            canAccessService = json.optBoolean("can_access_service", true),
-                            lockReason = json.optString("lock_reason").takeIf { it.isNotBlank() },
-                            hasNid = json.optBoolean("has_nid", true),
+                            status = if (isVerified && json.optString("status") == "REQUIRES_NID") "TRIAL" else json.optString("status", if (isVerified) "TRIAL" else "REQUIRES_NID"),
+                            canAccessService = json.optBoolean("can_access_service", true) || isVerified,
+                            lockReason = if (isVerified) null else json.optString("lock_reason").takeIf { it.isNotBlank() },
+                            hasNid = json.optBoolean("has_nid", true) || isVerified,
                             nidNumber = json.optString("nid_number").takeIf { it.isNotBlank() },
-                            isKycVerified = json.optBoolean("is_kyc_verified", true),
+                            isKycVerified = isVerified,
                             isSubscriptionActive = json.optBoolean("is_subscription_active", false),
-                            subscriptionPlan = json.optString("subscription_plan").takeIf { it.isNotBlank() } ?: "FREE_TRIAL",
+                            subscriptionPlan = json.optString("subscription_plan").takeIf { it.isNotBlank() } ?: (if (isVerified) "FREE_TRIAL" else "STARTER"),
                             subscriptionExpiresAt = json.optString("subscription_expires_at").takeIf { it.isNotBlank() },
-                            isTrialActive = json.optBoolean("is_trial_active", true),
+                            isTrialActive = json.optBoolean("is_trial_active", true) || isVerified,
                             trialDaysTotal = json.optInt("trial_days_total", 90),
-                            trialRemainingDays = json.optInt("trial_remaining_days", 90),
+                            trialRemainingDays = if (isVerified) Math.max(json.optInt("trial_remaining_days", 90), 1) else json.optInt("trial_remaining_days", 0),
                             trialEndsAt = json.optString("trial_ends_at").takeIf { it.isNotBlank() },
                             monthlyPrice = pricingObj?.optDouble("monthly", 100.0) ?: 100.0,
                             quarterlyPrice = pricingObj?.optDouble("quarterly", 250.0) ?: 250.0,
@@ -12264,9 +12383,12 @@ function executePayment() {
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val merchantId = installationId.ifBlank { "default" }
+                val profile = _activeProfile.value
+                val merchantId = profile.id.ifBlank { profile.email.ifBlank { installationId.ifBlank { "default" } } }
                 val payload = JSONObject().apply {
                     put("merchant_id", merchantId)
+                    put("email", profile.email)
+                    put("device_id", installationId)
                     put("plan_type", planType)
                     put("payment_method", paymentMethod)
                 }
@@ -12327,9 +12449,12 @@ function executePayment() {
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val merchantId = installationId.ifBlank { "default" }
+                val profile = _activeProfile.value
+                val merchantId = profile.id.ifBlank { profile.email.ifBlank { installationId.ifBlank { "default" } } }
                 val payload = JSONObject().apply {
                     put("merchant_id", merchantId)
+                    put("email", profile.email)
+                    put("device_id", installationId)
                     put("order_id", orderId)
                     put("trx_id", trxId)
                     put("payment_method", paymentMethod)

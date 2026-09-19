@@ -38,6 +38,9 @@ export default function MerchantDetail() {
   const [pinStatus, setPinStatus] = useState<{ pin_set: boolean; pin_reset_requested: boolean } | null>(null);
   const [pinActionLoading, setPinActionLoading] = useState(false);
   const [pinActionResult, setPinActionResult] = useState<string | null>(null);
+  const [keyActionLoading, setKeyActionLoading] = useState(false);
+  const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
+  const [keyActionResult, setKeyActionResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -216,6 +219,64 @@ export default function MerchantDetail() {
     }
   };
 
+  const handleGenerateApiKey = async () => {
+    if (!id) return;
+    setKeyActionLoading(true);
+    setKeyActionResult(null);
+    setNewlyGeneratedKey(null);
+    try {
+      const res = await fetch(`https://api.swapnopay.top/v1/admin/keys/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchant_id: id,
+          merchant_name: merchant?.business_name || 'Merchant',
+          label: 'Admin Generated Dynamic Key'
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setNewlyGeneratedKey(data.api_key);
+        setKeyActionResult('✅ Dynamic API key generated successfully!');
+        const { data: keys } = await adminSupabase
+          .from('platform_api_keys')
+          .select('*')
+          .eq('merchant_id', id);
+        if (keys) setApiKeys(keys);
+      } else {
+        setKeyActionResult('❌ ' + (data.error || 'Failed to generate key'));
+      }
+    } catch (e: any) {
+      setKeyActionResult('❌ ' + e.message);
+    } finally {
+      setKeyActionLoading(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (keyId: string) => {
+    if (!window.confirm('Are you sure you want to revoke this API key? Services using it will lose access immediately.')) return;
+    setKeyActionLoading(true);
+    try {
+      const res = await fetch(`https://api.swapnopay.top/v1/admin/keys/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key_id: keyId })
+      });
+      if (res.ok) {
+        setKeyActionResult('✅ API key revoked successfully');
+        const { data: keys } = await adminSupabase
+          .from('platform_api_keys')
+          .select('*')
+          .eq('merchant_id', id);
+        if (keys) setApiKeys(keys);
+      }
+    } catch (e: any) {
+      setKeyActionResult('❌ ' + e.message);
+    } finally {
+      setKeyActionLoading(false);
+    }
+  };
+
   if (loading || !merchant) {
     return <div className="container"><div className="card">Loading merchant profile...</div></div>;
   }
@@ -253,26 +314,107 @@ export default function MerchantDetail() {
         </div>
 
         <div className="card">
-          <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Key size={16} color="var(--brand-primary)" />
-            Active API Keys ({apiKeys.length})
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Key size={16} color="var(--brand-primary)" />
+              Dynamic API Keys ({apiKeys.length})
+            </h3>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={keyActionLoading}
+              onClick={handleGenerateApiKey}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {keyActionLoading ? 'Working...' : '+ Generate Key'}
+            </button>
+          </div>
+
+          {keyActionResult && (
+            <div style={{
+              padding: '6px 10px',
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              marginBottom: 10,
+              background: keyActionResult.startsWith('✅') ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+              color: keyActionResult.startsWith('✅') ? '#10B981' : '#EF4444',
+              border: `1px solid ${keyActionResult.startsWith('✅') ? '#10B981' : '#EF4444'}`
+            }}>
+              {keyActionResult}
+            </div>
+          )}
+
+          {newlyGeneratedKey && (
+            <div style={{
+              padding: 10,
+              borderRadius: 8,
+              background: 'rgba(245,158,11,0.12)',
+              border: '1px solid #F59E0B',
+              marginBottom: 10
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#F59E0B', marginBottom: 4 }}>
+                ⚠️ NEW RAW KEY (SHOWN ONCE):
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  className="input"
+                  readOnly
+                  value={newlyGeneratedKey}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, background: 'var(--bg-card)', padding: '4px 6px', flex: 1 }}
+                />
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(newlyGeneratedKey);
+                    alert('API key copied to clipboard!');
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          )}
+
           {apiKeys.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No API keys generated yet for this merchant.</p>
+            <div style={{ textAlign: 'center', padding: '12px 0' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 8px' }}>No API keys generated yet for this merchant.</p>
+              <button className="btn btn-primary btn-sm" onClick={handleGenerateApiKey} disabled={keyActionLoading}>
+                Generate Dynamic API Key
+              </button>
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {apiKeys.map(k => (
                 <div key={k.id} style={{ padding: 8, background: 'var(--bg-subtle)', borderRadius: 6, border: '1px solid var(--border-default)', fontSize: 12 }}>
-                  <div style={{ fontWeight: 700 }}>{k.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}><code>{k.key_preview}</code></div>
-                  <div style={{ fontSize: 10, color: k.revoked ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{k.revoked ? 'REVOKED' : 'ACTIVE'}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 700 }}>{k.label || 'Dynamic Gateway Key'}</div>
+                    {!k.revoked && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        style={{ fontSize: 10, padding: '2px 6px' }}
+                        disabled={keyActionLoading}
+                        onClick={() => handleRevokeApiKey(k.id)}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    <code>{k.key_preview}</code>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                    <span style={{ fontSize: 10, color: k.revoked ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
+                      {k.revoked ? 'REVOKED' : 'ACTIVE'}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      {new Date(k.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-          <Link to="/gateway-settings">
-            <button className="btn btn-secondary btn-sm" style={{ marginTop: 10, width: '100%' }}>Manage API Keys</button>
-          </Link>
         </div>
       </div>
 
