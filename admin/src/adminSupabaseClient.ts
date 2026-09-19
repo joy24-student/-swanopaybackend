@@ -52,28 +52,41 @@ export async function reviewMerchantIdentity(merchantId: string, action: 'APPROV
   }
 
   // 2. Direct Supabase update fallback (guaranteed to execute even without backend server)
-  let { data: updatedMerchant, error: updateError } = await adminSupabase
-    .from('merchants')
-    .update(updates)
-    .eq('id', merchantId)
-    .select('*')
-    .maybeSingle()
-
-  if (!updatedMerchant) {
-    const res = await adminSupabase
+  const runDirectUpdate = async (payload: Record<string, any>) => {
+    let res = await adminSupabase
       .from('merchants')
-      .update(updates)
-      .eq('user_id', merchantId)
+      .update(payload)
+      .eq('id', merchantId)
       .select('*')
       .maybeSingle()
-    updatedMerchant = res.data
-    updateError = res.error
+
+    if (!res.data && !res.error) {
+      res = await adminSupabase
+        .from('merchants')
+        .update(payload)
+        .eq('user_id', merchantId)
+        .select('*')
+        .maybeSingle()
+    }
+    return res
+  }
+
+  let updateFields = { ...updates }
+  let { data: updatedMerchant, error: updateError } = await runDirectUpdate(updateFields)
+
+  // Resilient fallback: if column doesn't exist in Supabase PostgREST schema cache (e.g. trial_ends_at)
+  if (updateError && (updateError.message?.includes('trial_ends_at') || updateError.message?.includes('schema cache'))) {
+    console.warn('[reviewMerchantIdentity] Schema cache column mismatch, retrying without trial_ends_at:', updateError.message)
+    delete updateFields.trial_ends_at
+    const retry = await runDirectUpdate(updateFields)
+    updatedMerchant = retry.data
+    updateError = retry.error
   }
 
   if (updateError) throw new Error('KYC review was not saved: ' + updateError.message)
   if (!updatedMerchant) {
     // If not found, return local representation with updates
-    updatedMerchant = { id: merchantId, ...updates }
+    updatedMerchant = { id: merchantId, ...updateFields }
   }
 
   // Update audit trail in merchant_kyc_submissions

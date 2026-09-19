@@ -85,6 +85,14 @@ ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS kyc_reviewed_at TIMESTAMPT
 ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT;
 ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS kyc_reviewed_by TEXT;
 
+-- Trial, Subscription & Security PIN Columns
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(30) DEFAULT 'TRIAL';
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50) DEFAULT 'STARTER';
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS app_pin_hash TEXT;
+ALTER TABLE public.merchants ADD COLUMN IF NOT EXISTS pin_reset_requested BOOLEAN DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_merchants_kyc_status ON public.merchants(kyc_status);
 
 -- ------------------------------------------------------------------------------
@@ -501,3 +509,7 @@ INSERT INTO public.payment_events (
 ('PAYMENT_COMPLETED', 'ORD-9824', 'Daily Needs', 2100.00, 'Upay', 'UPY9081234', '01645000004', 'PAID', now() - interval '2 hours'),
 ('PAYMENT_COMPLETED', 'ORD-9825', 'Book Zone', 650.00, 'bKash', 'TRX12K987A', '01556000005', 'PAID', now() - interval '3 hours')
 ON CONFLICT DO NOTHING;
+
+-- Force PostgREST schema cache reload immediately
+NOTIFY pgrst, 'reload schema';
+
