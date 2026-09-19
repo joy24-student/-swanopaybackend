@@ -68,6 +68,16 @@
                 <data android:scheme="swapnopay" android:host="supabase-connected" />
                 <data android:scheme="lenden23" android:host="auth-callback" />
             </intent-filter>
+
+            <!-- OAuth 2.0 HTTPS Callback Intent Filter -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="api.swapnopay.top" android:pathPrefix="/v1/oauth/callback" />
+                <data android:scheme="https" android:host="pay.swapnopay.top" android:pathPrefix="/v1/oauth/callback" />
+                <data android:scheme="https" android:host="swapnopay.top" android:pathPrefix="/v1/oauth/callback" />
+            </intent-filter>
         </activity>
 
         <!-- Service for SMS monitoring -->

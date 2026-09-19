@@ -2874,27 +2874,150 @@ fun OnboardingScreen(viewModel: AppViewModel) {
 
                                         when (oauthStepState) {
                                             com.example.ui.AppViewModel.OAuthStep.NOT_CONNECTED -> {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(52.dp)
-                                                        .clip(RoundedCornerShape(14.dp))
-                                                        .alpha(if (isFetchingProjects) 0.6f else 1f)
-                                                        .background(primaryBrush())
-                                                        .clickable(enabled = !isFetchingProjects) {
-                                                            viewModel.startControlPlaneOAuth(context)
-                                                        },
-                                                    contentAlignment = Alignment.Center
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.spacedBy(14.dp)
                                                 ) {
-                                                    if (isFetchingProjects) {
-                                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                                                            Text(if (isBangla) "অথরাইজ করা হচ্ছে..." else "Authorizing with Supabase...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    // Mode Selector Tabs: [⚡ ১-ট্যাপ ওঅথ ২.০] | [🔑 ম্যানুয়াল সেটআপ]
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .background(if (isDarkMode) Color(0xFF1E2029) else Color(0xFFF1F5F9))
+                                                            .padding(4.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(38.dp)
+                                                                .clip(RoundedCornerShape(10.dp))
+                                                                .background(if (useOAuthMode) BrandPurple else Color.Transparent)
+                                                                .clickable { useOAuthMode = true },
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = if (isBangla) "⚡ ওঅথ ২.০ (১-ট্যাপ)" else "⚡ OAuth 2.0 (1-Tap)",
+                                                                color = if (useOAuthMode) Color.White else AppTextSecondary,
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
                                                         }
+
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .height(38.dp)
+                                                                .clip(RoundedCornerShape(10.dp))
+                                                                .background(if (!useOAuthMode) BrandPurple else Color.Transparent)
+                                                                .clickable { useOAuthMode = false },
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = if (isBangla) "🔑 ম্যানুয়াল (URL ও কি)" else "🔑 Manual (URL & Key)",
+                                                                color = if (!useOAuthMode) Color.White else AppTextSecondary,
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (useOAuthMode) {
+                                                        // 1-Tap OAuth Connect Button
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(52.dp)
+                                                                .clip(RoundedCornerShape(14.dp))
+                                                                .alpha(if (isFetchingProjects) 0.6f else 1f)
+                                                                .background(primaryBrush())
+                                                                .clickable(enabled = !isFetchingProjects) {
+                                                                    viewModel.startControlPlaneOAuth(context)
+                                                                },
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            if (isFetchingProjects) {
+                                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                                                                    Text(if (isBangla) "অথরাইজ করা হচ্ছে..." else "Authorizing with Supabase...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                                }
+                                                            } else {
+                                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                                    Icon(Icons.Default.LockReset, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                                                    Text(if (isBangla) "⚡ সুপাবেস কানেক্ট করুন (OAuth 2.0)" else "⚡ Connect with Supabase", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Text(
+                                                            text = if (isBangla) "ব্রাউজারে আপনার সুপাবেস অ্যাকাউন্ট লগইন করে স্বপ্নাপে অ্যাপকে অনুমোদন দিলে প্রজেক্ট লিস্ট স্বয়ংক্রিয়ভাবে লোড হবে।"
+                                                            else "Log in to your Supabase account in the browser to authorize SwapnoPay. Your projects will be loaded automatically.",
+                                                            color = AppTextSecondary,
+                                                            fontSize = 11.sp,
+                                                            lineHeight = 15.sp,
+                                                            textAlign = TextAlign.Center,
+                                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                                                        )
                                                     } else {
-                                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(Icons.Default.LockReset, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                                            Text(if (isBangla) "⚡ সুপাবেস কানেক্ট করুন (OAuth 2.0)" else "⚡ Connect with Supabase", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                        // Manual Credential Entry Form
+                                                        Column(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                                        ) {
+                                                            OutlinedTextField(
+                                                                value = supabaseUrlInput,
+                                                                onValueChange = { supabaseUrlInput = it.trim() },
+                                                                label = { Text(if (isBangla) "সুপাবেস প্রজেক্ট URL" else "Supabase Project URL") },
+                                                                placeholder = { Text("https://xyzcompany.supabase.co") },
+                                                                singleLine = true,
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                shape = RoundedCornerShape(12.dp),
+                                                                colors = OutlinedTextFieldDefaults.colors(
+                                                                    focusedBorderColor = BrandPurple,
+                                                                    unfocusedBorderColor = AppCardBorderColor,
+                                                                    focusedTextColor = AppTextPrimary,
+                                                                    unfocusedTextColor = AppTextPrimary
+                                                                )
+                                                            )
+
+                                                            OutlinedTextField(
+                                                                value = supabaseAnonKeyInput,
+                                                                onValueChange = { supabaseAnonKeyInput = it.trim() },
+                                                                label = { Text(if (isBangla) "Anon / Publishable Key" else "Anon / Public Key") },
+                                                                placeholder = { Text("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...") },
+                                                                singleLine = true,
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                shape = RoundedCornerShape(12.dp),
+                                                                colors = OutlinedTextFieldDefaults.colors(
+                                                                    focusedBorderColor = BrandPurple,
+                                                                    unfocusedBorderColor = AppCardBorderColor,
+                                                                    focusedTextColor = AppTextPrimary,
+                                                                    unfocusedTextColor = AppTextPrimary
+                                                                )
+                                                            )
+
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .height(46.dp)
+                                                                    .clip(RoundedCornerShape(12.dp))
+                                                                    .background(if (supabaseUrlInput.isNotBlank() && supabaseAnonKeyInput.isNotBlank()) BrandPurple else AppCardBorderColor)
+                                                                    .clickable(enabled = supabaseUrlInput.isNotBlank() && supabaseAnonKeyInput.isNotBlank()) {
+                                                                        viewModel.connectSupabase(
+                                                                            url = supabaseUrlInput.trim(),
+                                                                            anonKey = supabaseAnonKeyInput.trim(),
+                                                                            name = businessNameInput.ifBlank { "My Merchant Store" }
+                                                                        )
+                                                                    },
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Text(
+                                                                    text = if (isBangla) "সংরক্ষণ ও সংযোগ করুন" else "Save & Connect Database",
+                                                                    color = Color.White,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    fontSize = 13.sp
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }

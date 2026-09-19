@@ -2045,7 +2045,7 @@ object SupabaseClient {
         clientSecret: String = "",
         code: String,
         codeVerifier: String,
-        redirectUri: String = "swapnopay://supabase-oauth-callback",
+        redirectUri: String = "https://api.swapnopay.top/v1/oauth/callback",
         onSuccess: (accessToken: String, refreshToken: String) -> Unit,
         onFailure: (String) -> Unit
     ) {

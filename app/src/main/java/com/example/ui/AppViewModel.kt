@@ -2399,7 +2399,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         isExternalActivityExpected = false
 
         val host = uri.host
-        if (host == "supabase-connected" || uri.path?.contains("supabase-connected") == true) {
+        val path = uri.path ?: ""
+        if (host == "supabase-connected" || path.contains("supabase-connected")) {
             val txId = uri.getQueryParameter("tx_id")
             if (!txId.isNullOrBlank()) {
                 handleControlPlaneOAuthConnected(txId)
@@ -2409,7 +2410,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        if (host == "supabase-oauth-callback" || uri.path?.contains("supabase-oauth-callback") == true) {
+        if (host == "supabase-oauth-callback"
+            || path.contains("supabase-oauth-callback")
+            || path.contains("/v1/oauth/callback")
+            || (host == "api.swapnopay.top" && path.contains("callback"))
+            || (host == "pay.swapnopay.top" && path.contains("callback"))
+            || (host == "swapnopay.top" && path.contains("callback"))
+        ) {
             val code = uri.getQueryParameter("code")
             val error = uri.getQueryParameter("error") ?: uri.getQueryParameter("error_description")
             if (!code.isNullOrBlank()) {
@@ -3841,7 +3848,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         val authUrl = android.net.Uri.parse("https://api.supabase.com/v1/oauth/authorize").buildUpon()
             .appendQueryParameter("client_id", targetClientId)
-            .appendQueryParameter("redirect_uri", "swapnopay://supabase-oauth-callback")
+            .appendQueryParameter("redirect_uri", "https://api.swapnopay.top/v1/oauth/callback")
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("code_challenge", pkce.codeChallenge)
             .appendQueryParameter("code_challenge_method", "S256")
@@ -3874,7 +3881,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 clientSecret = clientSecret,
                 code = code,
                 codeVerifier = verifier,
-                redirectUri = "swapnopay://supabase-oauth-callback",
+                redirectUri = "https://api.swapnopay.top/v1/oauth/callback",
                 onSuccess = { accessToken, _ ->
                     currentManagementToken.value = accessToken
                     try {
