@@ -16,7 +16,8 @@ import {
   Moon,
   PlusCircle,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Megaphone
 } from 'lucide-react'
 
 interface CommandPaletteProps {
@@ -77,6 +78,14 @@ export default function CommandPalette({ isOpen, onClose, onOpenAddMerchant }: C
       category: 'Pages',
       icon: <Users size={16} />,
       action: () => { navigate('/merchants'); onClose(); }
+    },
+    {
+      id: 'page-broadcasts',
+      title: 'Broadcast Notifications',
+      subtitle: 'Dispatch announcements and alerts directly to merchant apps',
+      category: 'Pages',
+      icon: <Megaphone size={16} />,
+      action: () => { navigate('/broadcasts'); onClose(); }
     },
     {
       id: 'page-kyc',

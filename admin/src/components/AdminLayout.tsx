@@ -27,7 +27,8 @@ import {
   ExternalLink,
   ChevronDown,
   Layers,
-  Sparkles
+  Sparkles,
+  Megaphone
 } from 'lucide-react'
 
 interface AdminLayoutProps {
@@ -105,6 +106,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           to: '/merchants',
           label: 'Merchants',
           icon: <Users size={17} />
+        },
+        {
+          to: '/broadcasts',
+          label: 'Broadcast Notifications',
+          icon: <Megaphone size={17} />
         },
         {
           to: '/kyc-reviews',

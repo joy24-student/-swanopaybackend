@@ -39,6 +39,8 @@ import {
   Sliders,
   Sparkles,
   Lock,
+  Megaphone,
+  ArrowRight,
 } from 'lucide-react';
 
 export interface FaqItem {
@@ -1636,6 +1638,50 @@ export default function SystemSettings() {
                   style={{ minHeight: 70 }}
                 />
                 <span className="form-hint">Broadcast banner message displayed on top of the merchant dashboard.</span>
+              </div>
+
+              <div
+                style={{
+                  gridColumn: '1 / -1',
+                  padding: 16,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'linear-gradient(135deg, rgba(245, 197, 24, 0.12), rgba(245, 197, 24, 0.04))',
+                  border: '1px solid rgba(245, 197, 24, 0.3)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: 'rgba(245, 197, 24, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--brand-primary)',
+                    }}
+                  >
+                    <Megaphone size={18} />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Need to dispatch instant push notifications or emergency alerts?
+                    </h4>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+                      Use the Broadcast Center to target all or specific merchant apps with live mobile preview and delivery logs.
+                    </p>
+                  </div>
+                </div>
+                <Link to="/broadcasts" className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Open Broadcast Center
+                  <ArrowRight size={13} />
+                </Link>
               </div>
             </div>
           </div>

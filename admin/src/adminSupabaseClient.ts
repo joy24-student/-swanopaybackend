@@ -637,3 +637,270 @@ export async function forceRequestPinReset(merchantId: string): Promise<void> {
 
   if (error) throw new Error('Failed to set PIN reset flag: ' + error.message)
 }
+
+// ─────────────────────────────────────────────────────────────
+// MERCHANT NOTIFICATIONS BROADCAST (Admin Panel)
+// ─────────────────────────────────────────────────────────────
+
+export type NotificationType = 'ANNOUNCEMENT' | 'ALERT' | 'SYSTEM' | 'PROMOTION' | 'INFO'
+export type NotificationSeverity = 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
+
+export interface BroadcastPayload {
+  title: string
+  message: string
+  type: NotificationType
+  severity: NotificationSeverity
+  target: 'ALL' | 'ACTIVE' | string
+  updateBanner?: boolean
+}
+
+export interface BroadcastResult {
+  ok: boolean
+  batch_id: string
+  recipients_count: number
+  target: string
+  type: string
+  severity: string
+  title: string
+  message: string
+  banner_updated?: boolean
+  created_at: string
+  warning?: string
+}
+
+export interface BroadcastHistoryItem {
+  batch_id: string
+  title: string
+  message: string
+  type: NotificationType
+  severity: NotificationSeverity
+  created_at: string
+  recipients_count: number
+  read_count: number
+}
+
+function getBackendBaseUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_BACKEND_URL
+  if (envUrl && typeof envUrl === 'string') return envUrl.replace(/\/$/, '')
+  return 'https://api.swapnopay.top'
+}
+
+async function getAdminHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+  if (masterSecret) {
+    headers['X-Admin-Secret'] = masterSecret
+  } else {
+    try {
+      const { data: { session } } = await adminSupabase.auth.getSession()
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+    } catch {
+      // Ignore session retrieval failure
+    }
+  }
+  return headers
+}
+
+/**
+ * Broadcast an announcement or alert to merchant apps.
+ * Automatically tries the backend API first, falling back to direct Supabase execution.
+ */
+export async function broadcastMerchantNotification(payload: BroadcastPayload): Promise<BroadcastResult> {
+  const baseUrl = getBackendBaseUrl()
+  const headers = await getAdminHeaders()
+
+  // 1. Attempt Backend API dispatch
+  try {
+    const res = await fetch(`${baseUrl}/v1/admin/notifications/broadcast`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const json = await res.json()
+      if (json && json.ok) return json
+    }
+  } catch (backendErr) {
+    console.warn('[broadcastMerchantNotification] Backend API offline/unreachable, falling back to direct Supabase:', backendErr)
+  }
+
+  // 2. Direct Supabase Fallback (Resilient dispatch)
+  const batchId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const nowIso = new Date().toISOString()
+  const cleanTitle = payload.title.trim().slice(0, 255)
+  const cleanMessage = payload.message.trim()
+  const cleanType = payload.type || 'ANNOUNCEMENT'
+  const cleanSeverity = payload.severity || 'INFO'
+
+  let targetMerchants: Array<{ id: string }> = []
+
+  if (payload.target && payload.target !== 'ALL' && payload.target !== 'ACTIVE') {
+    targetMerchants = [{ id: payload.target }]
+  } else {
+    try {
+      let query = adminSupabase.from('merchants').select('id, status')
+      if (payload.target === 'ACTIVE') {
+        query = query.eq('status', 'ACTIVE')
+      }
+      const { data: list, error: mErr } = await query
+      if (!mErr && Array.isArray(list) && list.length > 0) {
+        targetMerchants = list
+      }
+    } catch (e) {
+      console.warn('[broadcastMerchantNotification] Supabase merchants query notice:', e)
+    }
+  }
+
+  if (targetMerchants.length === 0 && payload.target && payload.target !== 'ALL') {
+    targetMerchants = [{ id: payload.target }]
+  }
+
+  const rows = targetMerchants.map(m => ({
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    merchant_id: m.id,
+    type: cleanType,
+    title: cleanTitle,
+    message: cleanMessage,
+    severity: cleanSeverity,
+    entity_type: 'BROADCAST',
+    entity_id: batchId,
+    created_at: nowIso,
+    read_at: null,
+  }))
+
+  let insertedCount = 0
+  if (rows.length > 0) {
+    const { error: insErr } = await adminSupabase.from('merchant_notifications').insert(rows)
+    if (insErr) {
+      console.warn('[broadcastMerchantNotification] Direct insert error (retrying with minimal payload):', insErr.message)
+      const fallbackRows = rows.map(({ entity_id, entity_type, ...rest }) => rest)
+      const { error: fbErr } = await adminSupabase.from('merchant_notifications').insert(fallbackRows)
+      if (fbErr) throw new Error('Failed to insert notifications into database: ' + fbErr.message)
+      insertedCount = fallbackRows.length
+    } else {
+      insertedCount = rows.length
+    }
+  }
+
+  // Dual delivery: update dashboard banner if requested
+  if (payload.updateBanner) {
+    try {
+      const { data: currentNotice } = await adminSupabase
+        .from('showcase_config')
+        .select('value')
+        .eq('key', 'system_config')
+        .maybeSingle()
+
+      const currentVal = currentNotice?.value || {}
+      await upsertShowcaseConfig('system_config', {
+        ...currentVal,
+        system_notice: cleanMessage,
+        updated_at: nowIso,
+      })
+    } catch (bannerErr) {
+      console.warn('[broadcastMerchantNotification] Notice banner update failed:', bannerErr)
+    }
+  }
+
+  return {
+    ok: true,
+    batch_id: batchId,
+    recipients_count: insertedCount || rows.length,
+    target: payload.target,
+    type: cleanType,
+    severity: cleanSeverity,
+    title: cleanTitle,
+    message: cleanMessage,
+    banner_updated: Boolean(payload.updateBanner),
+    created_at: nowIso,
+  }
+}
+
+/**
+ * Fetch past broadcast notifications history.
+ */
+export async function fetchBroadcastHistory(limit = 50): Promise<BroadcastHistoryItem[]> {
+  const baseUrl = getBackendBaseUrl()
+  const headers = await getAdminHeaders()
+
+  // 1. Attempt Backend API
+  try {
+    const res = await fetch(`${baseUrl}/v1/admin/notifications/broadcasts?limit=${limit}`, {
+      headers,
+    })
+    if (res.ok) {
+      const json = await res.json()
+      if (json && json.ok && Array.isArray(json.broadcasts)) {
+        return json.broadcasts
+      }
+    }
+  } catch (backendErr) {
+    console.warn('[fetchBroadcastHistory] Backend fetch notice (using Supabase query):', backendErr)
+  }
+
+  // 2. Direct Supabase Fallback Query
+  try {
+    const { data, error } = await adminSupabase
+      .from('merchant_notifications')
+      .select('id, merchant_id, type, title, message, severity, entity_type, entity_id, created_at, read_at')
+      .eq('entity_type', 'BROADCAST')
+      .order('created_at', { ascending: false })
+      .limit(Math.min(limit * 25, 400))
+
+    if (error) throw error
+
+    const batchMap = new Map<string, BroadcastHistoryItem>()
+    for (const row of (data || [])) {
+      const key = (row as any).entity_id || (row as any).id
+      if (!batchMap.has(key)) {
+        batchMap.set(key, {
+          batch_id: key,
+          title: (row as any).title,
+          message: (row as any).message,
+          type: (row as any).type as NotificationType,
+          severity: (row as any).severity as NotificationSeverity,
+          created_at: (row as any).created_at,
+          recipients_count: 0,
+          read_count: 0,
+        })
+      }
+      const b = batchMap.get(key)!
+      b.recipients_count++
+      if ((row as any).read_at) b.read_count++
+    }
+
+    return Array.from(batchMap.values()).slice(0, limit)
+  } catch (supaErr) {
+    console.warn('[fetchBroadcastHistory] Supabase direct query notice:', supaErr)
+    return []
+  }
+}
+
+/**
+ * Delete a broadcast batch.
+ */
+export async function deleteBroadcastBatch(batchId: string): Promise<void> {
+  if (!batchId) return
+  const baseUrl = getBackendBaseUrl()
+  const headers = await getAdminHeaders()
+
+  try {
+    const res = await fetch(`${baseUrl}/v1/admin/notifications/broadcasts/${encodeURIComponent(batchId)}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (res.ok) return
+  } catch {
+    // Fall back to direct Supabase delete
+  }
+
+  const { error } = await adminSupabase
+    .from('merchant_notifications')
+    .delete()
+    .eq('entity_id', batchId)
+
+  if (error) throw new Error('Failed to delete broadcast: ' + error.message)
+}
+

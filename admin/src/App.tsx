@@ -14,6 +14,7 @@ import SystemHealth from './pages/SystemHealth'
 import MfsRegexManager from './pages/MfsRegexManager'
 import KycReviews from './pages/KycReviews'
 import LandingPageControl from './pages/LandingPageControl'
+import BroadcastNotifications from './pages/BroadcastNotifications'
 import { AuthProvider, RequireAdmin } from './auth'
 import { ToastProvider } from './components/ToastProvider'
 import AdminLayout from './components/AdminLayout'
@@ -45,6 +46,14 @@ export default function App() {
             <RequireAdmin>
               <AdminLayout>
                 <MerchantDetail />
+              </AdminLayout>
+            </RequireAdmin>
+          } />
+          
+          <Route path="/broadcasts" element={
+            <RequireAdmin>
+              <AdminLayout>
+                <BroadcastNotifications />
               </AdminLayout>
             </RequireAdmin>
           } />

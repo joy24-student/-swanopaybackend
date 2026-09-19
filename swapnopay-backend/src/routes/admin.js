@@ -32,6 +32,9 @@ import {
   reviewMerchantKyc,
   getSubscriptionConfig,
   updateSubscriptionConfig,
+  broadcastNotification,
+  listBroadcastHistory,
+  deleteBroadcastBatch,
 } from '../services/adminSupabase.js'
 
 const router = Router()
@@ -390,6 +393,93 @@ router.post('/subscription-config', async (req, res) => {
   } catch (err) {
     console.error('[admin/subscription-config POST]', err.message)
     res.status(500).json({ error: 'Failed to update subscription configuration: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /v1/admin/notifications/broadcast
+// Broadcast notifications to all or targeted merchant apps
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/notifications/broadcast', async (req, res) => {
+  try {
+    const { title, message, type = 'ANNOUNCEMENT', severity = 'INFO', target = 'ALL', updateBanner = false } = req.body || {}
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Notification title is required' })
+    }
+    if (title.trim().length > 255) {
+      return res.status(400).json({ error: 'Notification title must not exceed 255 characters' })
+    }
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Notification message body is required' })
+    }
+
+    const validTypes = ['ANNOUNCEMENT', 'ALERT', 'SYSTEM', 'PROMOTION', 'INFO']
+    const cleanType = String(type).toUpperCase()
+    if (!validTypes.includes(cleanType)) {
+      return res.status(400).json({ error: `Invalid notification type: ${type}. Allowed: ${validTypes.join(', ')}` })
+    }
+
+    const validSeverities = ['INFO', 'SUCCESS', 'WARNING', 'ERROR']
+    const cleanSeverity = String(severity).toUpperCase()
+    if (!validSeverities.includes(cleanSeverity)) {
+      return res.status(400).json({ error: `Invalid severity: ${severity}. Allowed: ${validSeverities.join(', ')}` })
+    }
+
+    const result = await broadcastNotification({
+      title: title.trim(),
+      message: message.trim(),
+      type: cleanType,
+      severity: cleanSeverity,
+      target,
+      updateBanner: Boolean(updateBanner),
+    })
+
+    // Real-time distribution via Socket.io
+    if (req.io) {
+      req.io.emit('broadcast:notification', result)
+      if (target && target !== 'ALL' && target !== 'ACTIVE') {
+        req.io.to(`merchant:${target}`).emit('merchant:notification', result)
+      }
+    }
+
+    res.json(result)
+  } catch (err) {
+    console.error('[admin/notifications/broadcast POST]', err.message)
+    res.status(500).json({ error: 'Failed to broadcast notification: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /v1/admin/notifications/broadcasts
+// List recent broadcast history with delivery counts
+// ────────────────────────────────────────────────────────────────────────────
+router.get('/notifications/broadcasts', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 100)
+    const broadcasts = await listBroadcastHistory(limit)
+    res.json({ ok: true, broadcasts })
+  } catch (err) {
+    console.error('[admin/notifications/broadcasts GET]', err.message)
+    res.status(500).json({ error: 'Failed to fetch broadcast history: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// DELETE /v1/admin/notifications/broadcasts/:batchId
+// Delete or recall a sent broadcast
+// ────────────────────────────────────────────────────────────────────────────
+router.delete('/notifications/broadcasts/:batchId', async (req, res) => {
+  try {
+    const { batchId } = req.params
+    if (!batchId) {
+      return res.status(400).json({ error: 'Broadcast batch ID is required' })
+    }
+    const result = await deleteBroadcastBatch(batchId)
+    res.json(result)
+  } catch (err) {
+    console.error('[admin/notifications/broadcasts/:batchId DELETE]', err.message)
+    res.status(500).json({ error: 'Failed to delete broadcast: ' + err.message })
   }
 })
 

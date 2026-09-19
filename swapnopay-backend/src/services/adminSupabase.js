@@ -2134,3 +2134,252 @@ export async function requestPinReset(merchantId, userEmail = null, userId = nul
   if (error && !data) throw new Error('PIN reset request failed: ' + error.message)
   return data
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// MERCHANT NOTIFICATIONS BROADCAST (Admin Panel to Merchant App)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Broadcast an announcement, alert, or system notification to merchant apps.
+ * Writes to public.merchant_notifications, optionally pushes to tenant databases,
+ * and optionally updates system_notice marquee banner.
+ */
+export async function broadcastNotification({
+  title,
+  message,
+  type = 'ANNOUNCEMENT',
+  severity = 'INFO',
+  target = 'ALL',
+  updateBanner = false,
+  entityType = 'BROADCAST',
+}) {
+  if (!title || !title.trim()) throw new Error('Notification title is required')
+  if (!message || !message.trim()) throw new Error('Notification message body is required')
+
+  const cleanTitle = title.trim().slice(0, 255)
+  const cleanMessage = message.trim()
+  const cleanType = (type || 'ANNOUNCEMENT').toUpperCase()
+  const cleanSeverity = ['INFO', 'SUCCESS', 'WARNING', 'ERROR'].includes((severity || '').toUpperCase())
+    ? severity.toUpperCase()
+    : 'INFO'
+  const batchId = randomUUID()
+  const nowIso = new Date().toISOString()
+
+  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('[broadcastNotification] DB notice: ADMIN_SUPABASE_URL and ADMIN_SUPABASE_SERVICE_ROLE_KEY are required.')
+    return {
+      ok: true,
+      batch_id: batchId,
+      recipients_count: 0,
+      target,
+      type: cleanType,
+      severity: cleanSeverity,
+      title: cleanTitle,
+      message: cleanMessage,
+      banner_updated: Boolean(updateBanner),
+      created_at: nowIso,
+      warning: 'Admin Supabase credentials not configured',
+    }
+  }
+
+  const admin = getAdminClient()
+
+  // 1. Resolve recipient merchants
+  let recipientList = []
+
+  if (target && target !== 'ALL' && target !== 'ACTIVE') {
+    // Single targeted merchant ID
+    recipientList = [{ id: target }]
+  } else {
+    // Multi-merchant broadcast: query all registered merchants
+    try {
+      let query = admin.from('merchants').select('id, business_name, status, email')
+      if (target === 'ACTIVE') {
+        query = query.eq('status', 'ACTIVE')
+      }
+      const { data: merchants, error: mErr } = await query
+      if (!mErr && Array.isArray(merchants) && merchants.length > 0) {
+        recipientList = merchants
+      }
+    } catch (e) {
+      console.warn('[broadcastNotification] Querying merchants table notice:', e.message)
+    }
+
+    // Fallback: check merchant_gateway_settings if merchants table was empty
+    if (recipientList.length === 0) {
+      try {
+        const { data: gwMerchants } = await admin
+          .from('merchant_gateway_settings')
+          .select('merchant_id, merchant_name, status')
+        if (Array.isArray(gwMerchants) && gwMerchants.length > 0) {
+          recipientList = gwMerchants
+            .filter(m => target !== 'ACTIVE' || m.status === 'ACTIVE' || !m.status)
+            .map(m => ({ id: m.merchant_id, business_name: m.merchant_name }))
+        }
+      } catch (gwErr) {
+        console.warn('[broadcastNotification] Querying merchant_gateway_settings notice:', gwErr.message)
+      }
+    }
+  }
+
+  // If still no merchants found and target is a specific ID, use it directly
+  if (recipientList.length === 0 && target && target !== 'ALL') {
+    recipientList = [{ id: target }]
+  }
+
+  // 2. Prepare notification rows
+  const rows = recipientList.map(m => ({
+    id: randomUUID(),
+    merchant_id: m.id || m.merchant_id,
+    type: cleanType,
+    title: cleanTitle,
+    message: cleanMessage,
+    severity: cleanSeverity,
+    entity_type: entityType,
+    entity_id: batchId,
+    created_at: nowIso,
+    read_at: null,
+  }))
+
+  // 3. Bulk insert rows into public.merchant_notifications
+  let insertedCount = 0
+  if (rows.length > 0) {
+    const CHUNK_SIZE = 50
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE)
+      const { error: insErr } = await admin.from('merchant_notifications').insert(chunk)
+      if (insErr) {
+        console.error('[broadcastNotification] Bulk insert chunk error:', insErr.message)
+        // If entity_type/entity_id column issue or uuid mismatch, retry without entity_id
+        if (insErr.message?.includes('entity_id') || insErr.message?.includes('invalid input syntax for type uuid')) {
+          const fallbackChunk = chunk.map(({ entity_id, ...rest }) => rest)
+          const { error: fbErr } = await admin.from('merchant_notifications').insert(fallbackChunk)
+          if (!fbErr) insertedCount += fallbackChunk.length
+        }
+      } else {
+        insertedCount += chunk.length
+      }
+    }
+  }
+
+  // 4. Also replicate to merchant's custom connected Supabase database if configured
+  for (const m of recipientList) {
+    const mId = m.id || m.merchant_id
+    if (!mId) continue
+    getMerchantCredentials(mId).then(async (creds) => {
+      if (creds?.supabase_url && creds?.supabase_anon_key) {
+        try {
+          const tenantDb = createMerchantClient(creds.supabase_url, creds.supabase_anon_key)
+          await tenantDb.from('merchant_notifications').insert([{
+            id: randomUUID(),
+            merchant_id: mId,
+            type: cleanType,
+            title: cleanTitle,
+            message: cleanMessage,
+            severity: cleanSeverity,
+            entity_type: entityType,
+            entity_id: batchId,
+            created_at: nowIso,
+          }])
+        } catch {
+          // Non-critical: standalone DB may not have table installed
+        }
+      }
+    }).catch(() => {})
+  }
+
+  // 5. Optionally update live dashboard announcement banner (system_notice)
+  if (updateBanner) {
+    try {
+      const current = await getShowcaseConfig('system_config') || {}
+      await upsertShowcaseConfig('system_config', {
+        ...current,
+        system_notice: cleanMessage,
+        updated_at: nowIso,
+      })
+    } catch (bannerErr) {
+      console.warn('[broadcastNotification] Could not update system_notice banner:', bannerErr.message)
+    }
+  }
+
+  return {
+    ok: true,
+    batch_id: batchId,
+    recipients_count: insertedCount || rows.length,
+    target,
+    type: cleanType,
+    severity: cleanSeverity,
+    title: cleanTitle,
+    message: cleanMessage,
+    banner_updated: Boolean(updateBanner),
+    created_at: nowIso,
+  }
+}
+
+/**
+ * List broadcast history grouped by batchId.
+ */
+export async function listBroadcastHistory(limit = 50) {
+  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    return []
+  }
+  const admin = getAdminClient()
+  try {
+    const { data, error } = await admin
+      .from('merchant_notifications')
+      .select('id, merchant_id, type, title, message, severity, entity_type, entity_id, created_at, read_at')
+      .eq('entity_type', 'BROADCAST')
+      .order('created_at', { ascending: false })
+      .limit(Math.min(limit * 25, 500))
+
+    if (error) {
+      console.warn('[listBroadcastHistory] Notice:', error.message)
+      return []
+    }
+
+    // Group by entity_id (batchId)
+    const batchMap = new Map()
+    for (const row of (data || [])) {
+      const key = row.entity_id || row.id
+      if (!batchMap.has(key)) {
+        batchMap.set(key, {
+          batch_id: key,
+          title: row.title,
+          message: row.message,
+          type: row.type,
+          severity: row.severity,
+          created_at: row.created_at,
+          recipients_count: 0,
+          read_count: 0,
+        })
+      }
+      const b = batchMap.get(key)
+      b.recipients_count++
+      if (row.read_at) b.read_count++
+    }
+
+    return Array.from(batchMap.values()).slice(0, limit)
+  } catch (err) {
+    console.warn('[listBroadcastHistory] Error:', err.message)
+    return []
+  }
+}
+
+/**
+ * Delete / Recall a broadcast by its batch ID.
+ */
+export async function deleteBroadcastBatch(batchId) {
+  if (!batchId) throw new Error('batchId is required')
+  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: true, batch_id: batchId, deleted: false, warning: 'Admin Supabase credentials not configured' }
+  }
+  const admin = getAdminClient()
+  const { error } = await admin
+    .from('merchant_notifications')
+    .delete()
+    .eq('entity_id', batchId)
+
+  if (error) throw new Error('Failed to delete broadcast: ' + error.message)
+  return { ok: true, batch_id: batchId }
+}
+
