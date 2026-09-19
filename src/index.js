@@ -296,9 +296,10 @@ app.get(['/f/:slug', '/forms/:slug', '/form/:slug'], (req, res) => {
 })
 
 // Public health check
-app.get('/healthz', (_req, res) => {
+const healthCheckHandler = (_req, res) => {
   res.json({
     ok: true,
+    status: 'healthy',
     service: 'swapnopay-backend',
     version: '3.0.0',
     database: 'admin-supabase',
@@ -306,7 +307,9 @@ app.get('/healthz', (_req, res) => {
     merchant_online_count: merchantHeartbeatMap.size,
     timestamp: new Date().toISOString(),
   })
-})
+}
+app.get('/healthz', healthCheckHandler)
+app.get('/health', healthCheckHandler)
 
 // Payment routes (pass both io + heartbeatMap)
 app.use('/v1/payment', webhookLimiter, paymentRouter(io, merchantHeartbeatMap))

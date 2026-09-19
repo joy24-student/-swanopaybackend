@@ -1028,21 +1028,52 @@ export async function getShowcaseConfig() {
   }
 }
 
-export async function setShowcaseConfig(valueData) {
-  const row = {
-    key: 'main_showcase',
-    value: valueData,
-    updated_at: new Date().toISOString()
+export async function upsertShowcaseConfig(key, valueData) {
+  const admin = getAdminClient()
+  const now = new Date().toISOString()
+
+  try {
+    const { data: existing } = await admin
+      .from('showcase_config')
+      .select('id, key')
+      .eq('key', key)
+      .maybeSingle()
+
+    if (existing) {
+      const { data, error } = await admin
+        .from('showcase_config')
+        .update({ value: valueData, updated_at: now })
+        .eq('key', key)
+        .select('*')
+        .single()
+      if (!error) return data.value
+      if (error && error.code !== 'PGRST116') throw error
+    }
+
+    const { data, error } = await admin
+      .from('showcase_config')
+      .upsert({ key, value: valueData, updated_at: now }, { onConflict: 'key' })
+      .select('*')
+      .single()
+
+    if (!error) return data.value
+
+    const { data: updateData, error: updateError } = await admin
+      .from('showcase_config')
+      .update({ value: valueData, updated_at: now })
+      .eq('key', key)
+      .select('*')
+      .single()
+
+    if (updateError) throw updateError
+    return updateData.value
+  } catch (err) {
+    throw new Error(`Failed to save showcase config '${key}': ${err.message}`)
   }
+}
 
-  const { data, error } = await getAdminClient()
-    .from('showcase_config')
-    .upsert(row, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (error) throw new Error('Failed to save showcase config: ' + error.message)
-  return data.value
+export async function setShowcaseConfig(valueData) {
+  return upsertShowcaseConfig('main_showcase', valueData)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1185,20 +1216,7 @@ export async function getMfsPatterns() {
 }
 
 export async function setMfsPatterns(patterns) {
-  const admin = getAdminClient()
-  const row = {
-    key: 'mfs_sms_patterns',
-    value: patterns,
-    updated_at: new Date().toISOString(),
-  }
-  const { data, error } = await admin
-    .from('showcase_config')
-    .upsert(row, { onConflict: 'key' })
-    .select('*')
-    .single()
-
-  if (error) throw new Error('Failed to save MFS patterns: ' + error.message)
-  return data.value
+  return upsertShowcaseConfig('mfs_sms_patterns', patterns)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
