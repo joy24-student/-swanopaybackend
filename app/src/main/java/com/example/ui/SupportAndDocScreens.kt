@@ -748,7 +748,12 @@ fun SupportScreen(viewModel: AppViewModel) {
                                     Button(
                                         onClick = {
                                             try {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(systemConfig.developerDocsUrl)).apply {
+                                                val docsUrl = if (systemConfig.developerDocsUrl.isBlank() || systemConfig.developerDocsUrl.contains("swapnopay.app")) {
+                                                    "https://pay.swapnopay.top/docs.html"
+                                                } else {
+                                                    systemConfig.developerDocsUrl
+                                                }
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(docsUrl)).apply {
                                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                 }
                                                 context.startActivity(intent)
@@ -3236,9 +3241,17 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 Button(
                                     onClick = {
                                         try {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(systemConfig.developerPortalUrl)))
+                                            val portalUrl = if (systemConfig.developerPortalUrl.isBlank() || systemConfig.developerPortalUrl.contains("swapnopay.app") || systemConfig.developerPortalUrl.endsWith("/docs") || systemConfig.developerPortalUrl.endsWith("/docs.html")) {
+                                                "https://pay.swapnopay.top/portal.html"
+                                            } else {
+                                                systemConfig.developerPortalUrl
+                                            }
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(portalUrl)).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(intent)
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
@@ -3250,9 +3263,17 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 Button(
                                     onClick = {
                                         try {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(systemConfig.developerDocsUrl)))
+                                            val docsUrl = if (systemConfig.developerDocsUrl.isBlank() || systemConfig.developerDocsUrl.contains("swapnopay.app")) {
+                                                "https://pay.swapnopay.top/docs.html"
+                                            } else {
+                                                systemConfig.developerDocsUrl
+                                            }
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(docsUrl)).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(intent)
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),

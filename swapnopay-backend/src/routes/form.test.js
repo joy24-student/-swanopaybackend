@@ -89,7 +89,9 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
     assert.equal(data.payment_required, true)
     assert.equal(data.amount, 3000.00)
     assert.ok(data.order_id)
+    assert.match(data.order_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
     assert.ok(data.redirect_url.includes('widget.html'))
+    assert.ok(data.redirect_url.includes('merchant_id=merchant-test-123'))
   })
 
   await t.test('4. Register & Submit non-payment form (contact / feedback)', async () => {

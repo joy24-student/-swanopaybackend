@@ -12286,8 +12286,10 @@ fun MoreScreen(viewModel: AppViewModel) {
                             }
                         }
 
+                        val effectivePortalUrl = if (systemConfig.developerPortalUrl.isBlank() || systemConfig.developerPortalUrl.contains("swapnopay.app") || systemConfig.developerPortalUrl.endsWith("/docs") || systemConfig.developerPortalUrl.endsWith("/docs.html")) "https://pay.swapnopay.top/portal.html" else systemConfig.developerPortalUrl
+
                         Text(
-                            text = systemConfig.developerPortalUrl,
+                            text = effectivePortalUrl,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF6366F1),
@@ -12310,7 +12312,7 @@ fun MoreScreen(viewModel: AppViewModel) {
                 Button(
                     onClick = {
                         try {
-                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(systemConfig.developerPortalUrl))
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(effectivePortalUrl))
                             browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(browserIntent)
                         } catch (e: Exception) {
@@ -12345,7 +12347,7 @@ fun MoreScreen(viewModel: AppViewModel) {
                 TextButton(
                     onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("Developer Portal URL", systemConfig.developerPortalUrl)
+                        val clip = android.content.ClipData.newPlainText("Developer Portal URL", effectivePortalUrl)
                         clipboard?.setPrimaryClip(clip)
                         Toast.makeText(context, "Developer Portal link copied to clipboard!", Toast.LENGTH_SHORT).show()
                     },

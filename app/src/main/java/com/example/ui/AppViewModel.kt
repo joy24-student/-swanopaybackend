@@ -1145,12 +1145,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     data class SystemRemoteConfig(
-        val developerPortalUrl: String = "https://developer.swapnopay.app",
-        val developerDocsUrl: String = "https://docs.swapnopay.app/api",
-        val apiPortalUrl: String = "https://developer.swapnopay.app/keys",
-        val webhookDocsUrl: String = "https://docs.swapnopay.app/webhooks",
+        val developerPortalUrl: String = "https://pay.swapnopay.top/portal.html",
+        val developerDocsUrl: String = "https://pay.swapnopay.top/docs.html",
+        val apiPortalUrl: String = "https://pay.swapnopay.top/portal.html#credentials",
+        val webhookDocsUrl: String = "https://pay.swapnopay.top/docs.html#webhooks",
         val supportHotline: String = "+880 1794 827103",
-        val supportEmail: String = "support@swapnopay.io",
+        val supportEmail: String = "support@swapnopay.top",
         val supportWhatsapp: String = "+8801712963652",
         val supportAddress: String = "Level 14, Banani Tower, Dhaka, Bangladesh",
         val supportHours: String = "24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)",
@@ -1267,10 +1267,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun parseAndApplySystemConfigJson(json: org.json.JSONObject) {
         try {
             val current = _systemRemoteConfig.value
-            val devPortal = json.optString("developer_portal_url", current.developerPortalUrl)
-            val devDocs = json.optString("developer_docs_url", current.developerDocsUrl)
-            val apiPortal = json.optString("api_portal_url", current.apiPortalUrl)
-            val webhookDocs = json.optString("webhook_docs_url", current.webhookDocsUrl)
+            val rawDevPortal = json.optString("developer_portal_url", current.developerPortalUrl).trim()
+            val devPortal = if (rawDevPortal.isBlank() || rawDevPortal.contains("swapnopay.app") || rawDevPortal.endsWith("/docs") || rawDevPortal.endsWith("/docs.html")) {
+                "https://pay.swapnopay.top/portal.html"
+            } else {
+                rawDevPortal
+            }
+
+            val rawDevDocs = json.optString("developer_docs_url", current.developerDocsUrl).trim()
+            val devDocs = if (rawDevDocs.isBlank() || rawDevDocs.contains("swapnopay.app")) {
+                "https://pay.swapnopay.top/docs.html"
+            } else {
+                rawDevDocs
+            }
+
+            val rawApiPortal = json.optString("api_portal_url", current.apiPortalUrl).trim()
+            val apiPortal = if (rawApiPortal.isBlank() || rawApiPortal.contains("swapnopay.app")) {
+                "https://pay.swapnopay.top/portal.html#credentials"
+            } else {
+                rawApiPortal
+            }
+
+            val rawWebhookDocs = json.optString("webhook_docs_url", current.webhookDocsUrl).trim()
+            val webhookDocs = if (rawWebhookDocs.isBlank() || rawWebhookDocs.contains("swapnopay.app")) {
+                "https://pay.swapnopay.top/docs.html#webhooks"
+            } else {
+                rawWebhookDocs
+            }
             val hotline = json.optString("support_hotline", current.supportHotline)
             val email = json.optString("support_email", current.supportEmail)
             val whatsapp = json.optString("support_whatsapp", current.supportWhatsapp)
@@ -6514,9 +6537,7 @@ function executePayment() {
                     FormFieldItem(type = FormFieldType.SHIPPING, label = "Delivery Option", options = listOf("Inside Dhaka (৳60)", "Outside Dhaka (৳120)")),
                     FormFieldItem(type = FormFieldType.COUPON, label = "Promo Code", isRequired = false)
                 )
-                formProductsList.value = listOf(
-                    FormProductItem(title = "Wireless Smart POS Terminal", description = "High speed thermal printer + battery", price = 6500.0, salePrice = 5500.0, sku = "POS-W1")
-                )
+                formProductsList.value = emptyList()
                 formThemeConfig.value = FormThemeConfig(primaryColorHex = "#7C3AED", buttonShape = "ROUNDED")
             }
             "MULTI_PRODUCT" -> {
@@ -6530,11 +6551,7 @@ function executePayment() {
                     FormFieldItem(type = FormFieldType.DISCOUNT, label = "Subtotal & Discounts"),
                     FormFieldItem(type = FormFieldType.COUPON, label = "Coupon Code")
                 )
-                formProductsList.value = listOf(
-                    FormProductItem(title = "Product A - Premium Pack", price = 1200.0, salePrice = 999.0, sku = "PROD-A"),
-                    FormProductItem(title = "Product B - Standard Kit", price = 800.0, salePrice = 650.0, sku = "PROD-B"),
-                    FormProductItem(title = "Product C - Basic Accessory", price = 350.0, salePrice = 299.0, sku = "PROD-C")
-                )
+                formProductsList.value = emptyList()
                 formThemeConfig.value = FormThemeConfig(primaryColorHex = "#2563EB", buttonShape = "PILL")
             }
             "CART" -> {
@@ -6550,6 +6567,7 @@ function executePayment() {
                     FormFieldItem(type = FormFieldType.SHIPPING, label = "Shipping Speed", options = listOf("Express (1 Day) - ৳150", "Standard (3 Days) - ৳70")),
                     FormFieldItem(type = FormFieldType.TAX, label = "VAT & Tax (5%)")
                 )
+                formProductsList.value = emptyList()
                 formThemeConfig.value = FormThemeConfig(primaryColorHex = "#059669", buttonShape = "ROUNDED")
             }
             "DIGITAL", "DIGITAL_PRODUCT" -> {
@@ -6562,9 +6580,7 @@ function executePayment() {
                     FormFieldItem(type = FormFieldType.PRODUCT, label = "Digital File Package"),
                     FormFieldItem(type = FormFieldType.COUPON, label = "Discount Coupon")
                 )
-                formProductsList.value = listOf(
-                    FormProductItem(title = "Full Software Source Code & License Key", description = "Instant zip download link", price = 3000.0, salePrice = 2499.0, isDigital = true, digitalDownloadUrl = "https://swapnopay.app/download/v1-source.zip")
-                )
+                formProductsList.value = emptyList()
                 formThemeConfig.value = FormThemeConfig(primaryColorHex = "#D97706", buttonShape = "ROUNDED")
             }
             "DONATION" -> {

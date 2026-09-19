@@ -1009,12 +1009,12 @@ export async function updateMerchantStatus(merchantId, status) {
 // Showcase Config
 // ──────────────────────────────────────────────────────────────────────────────
 
-export async function getShowcaseConfig() {
+export async function getShowcaseConfig(key = 'main_showcase') {
   try {
     const { data, error } = await getAdminClient()
       .from('showcase_config')
       .select('*')
-      .eq('key', 'main_showcase')
+      .eq('key', key)
       .maybeSingle()
 
     if (error) {
@@ -1085,8 +1085,15 @@ export async function createDisputeAppeal(merchantId, { order_id, trx_id, cus_ph
     throw new Error('order_id and trx_id are required for dispute appeal')
   }
 
+  // Normalize order_id: ensure standard UUID format if hex
+  let cleanOrderId = String(order_id).trim()
+  const rawClean = cleanOrderId.replace(/[^0-9a-f]/gi, '')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanOrderId) && rawClean.length === 32) {
+    cleanOrderId = `${rawClean.slice(0, 8)}-${rawClean.slice(8, 12)}-${rawClean.slice(12, 16)}-${rawClean.slice(16, 20)}-${rawClean.slice(20, 32)}`
+  }
+
   const appealRecord = {
-    order_id,
+    order_id: cleanOrderId,
     trx_id: String(trx_id).trim().toUpperCase(),
     cus_phone: cus_phone ? String(cus_phone).trim() : null,
     note: note ? String(note).slice(0, 500) : 'Customer initiated payment appeal',
@@ -1095,31 +1102,69 @@ export async function createDisputeAppeal(merchantId, { order_id, trx_id, cus_ph
     created_at: new Date().toISOString(),
   }
 
+  let savedAppeal = null
+
+  // 1. Insert into platform admin DB appeals table if it exists (bypasses RLS)
+  try {
+    const admin = getAdminClient()
+    const { data: adminAppeal, error: adminErr } = await admin
+      .from('appeals')
+      .insert({
+        ...appealRecord,
+        id: randomUUID()
+      })
+      .select()
+      .maybeSingle()
+
+    if (!adminErr && adminAppeal) {
+      console.log(`[appeals] Created appeal ${adminAppeal.id} in platform admin DB`)
+      savedAppeal = adminAppeal
+    }
+  } catch (adminErr) {
+    // Admin DB appeals table may not be configured in some environments
+  }
+
+  // 2. Insert into merchant's own Supabase DB
   try {
     const creds = await getMerchantCredentials(merchantId)
-    if (creds?.supabase_url && creds?.supabase_anon_key) {
-      const merchantClient = createMerchantClient(creds.supabase_url, creds.supabase_anon_key)
-      const { data, error } = await merchantClient
-        .from('appeals')
-        .insert(appealRecord)
-        .select()
-        .single()
+    if (creds?.supabase_url) {
+      // If merchant uses the same project as platform admin, use admin client with service_role to bypass RLS
+      if (creds.supabase_url === process.env.ADMIN_SUPABASE_URL) {
+        const admin = getAdminClient()
+        const { data, error } = await admin
+          .from('appeals')
+          .insert(appealRecord)
+          .select()
+          .single()
 
-      if (!error && data) {
-        console.log(`[appeals] Created appeal ${data.id} in merchant ${merchantId} DB`)
-        return data
-      }
-      if (error) {
-        console.warn(`[appeals] Merchant DB insert notice:`, error.message)
+        if (!error && data) {
+          console.log(`[appeals] Created appeal ${data.id} in merchant ${merchantId} DB via service role`)
+          return data
+        }
+      } else if (creds.supabase_anon_key) {
+        const merchantClient = createMerchantClient(creds.supabase_url, creds.supabase_anon_key)
+        const { data, error } = await merchantClient
+          .from('appeals')
+          .insert(appealRecord)
+          .select()
+          .single()
+
+        if (!error && data) {
+          console.log(`[appeals] Created appeal ${data.id} in merchant ${merchantId} DB`)
+          return data
+        }
+        if (error) {
+          console.warn(`[appeals] Merchant DB insert notice:`, error.message)
+        }
       }
     }
   } catch (err) {
-    console.warn(`[appeals] Merchant DB appeal write failed:`, err.message)
+    console.warn(`[appeals] Merchant DB appeal write notice:`, err.message)
   }
 
-  // Fallback: log payment event in admin DB
-  await recordPaymentEvent(order_id, {
-    tran_id: order_id,
+  // 3. Fallback: log payment event in admin DB
+  await recordPaymentEvent(cleanOrderId, {
+    tran_id: cleanOrderId,
     trx_id,
     payment_method: payment_method || 'MFS',
     status: 'PENDING',
@@ -1128,9 +1173,9 @@ export async function createDisputeAppeal(merchantId, { order_id, trx_id, cus_ph
     product_name: `Appeal submitted: ${note || 'Disputed payment'}`,
   })
 
-  return {
+  return savedAppeal || {
     id: 'app_' + Date.now(),
-    order_id,
+    order_id: cleanOrderId,
     trx_id,
     cus_phone,
     status: 'PENDING_REVIEW',

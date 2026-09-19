@@ -169,7 +169,7 @@ window.onload = function () {
   orderId         = params.get("order_id")        || "demo_order_id";
   supabaseUrl     = params.get("supabase_url")    || "";
   supabaseAnonKey = params.get("supabase_anon_key") || "demo_anon_key";
-  backendUrl      = params.get("backend_url")     || "https://api.swapnopay.top";
+  backendUrl      = params.get("backend_url")     || (window.location.hostname.includes("swapnopay.top") ? "https://api.swapnopay.top" : window.location.origin);
   successUrl      = params.get("success_url")     || "/";
   failUrl         = params.get("fail_url")        || params.get("failure_url") || "/";
   cancelUrl       = params.get("cancel_url")      || "/";
@@ -179,6 +179,14 @@ window.onload = function () {
   const receiverNumber = params.get("merchant_number") || "017XXXXXXXX";
   merchantDefaultNumber = receiverNumber;
 
+  const urlMerchantId = params.get("merchant_id") || null;
+  if (urlMerchantId) {
+    merchantId = urlMerchantId;
+  }
+
+  const initialMethod = params.get("method") || "bKash";
+  const methodColorMap = { bKash: "#E2125A", Nagad: "#EC5A24", Rocket: "#8C3494", Upay: "#10B981" };
+
   setAmountDisplay(amount);
   setMerchantNameDisplay(merchantName);
   document.getElementById("merchant-num-display").value = receiverNumber;
@@ -187,19 +195,12 @@ window.onload = function () {
 
   updateQrCode(receiverNumber);
   setLanguage("en");
-  selectMFS("bKash", "#E2125A");
+  selectMFS(initialMethod, methodColorMap[initialMethod] || "#E2125A");
   goToStep(1);
 
   // ── Step 1: Load gateway config (includes device_active + merchant_logo_url)
   //    Pass merchant_id from URL if available, otherwise fetch order first
-  const urlMerchantId = params.get("merchant_id") || null;
-  if (urlMerchantId) {
-    merchantId = urlMerchantId;
-    loadGatewayConfig(urlMerchantId);
-  } else {
-    // Config without merchant_id first, then re-load after fetching order
-    loadGatewayConfig(null);
-  }
+  loadGatewayConfig(merchantId || null);
 
   // ── Step 2: If real order, fetch from merchant's Supabase
   const isRealOrder = orderId !== "demo_order_id"
@@ -346,7 +347,9 @@ function loadGatewayConfig(merchantIdParam) {
 
       if (firstEnabled) {
         const colors = { bKash: '#E2125A', Nagad: '#EC5A24', Rocket: '#8C3494', Upay: '#10B981' };
-        selectMFS(firstEnabled, colors[firstEnabled]);
+        const reqMethod = new URLSearchParams(window.location.search).get("method");
+        const methodToSelect = (reqMethod && methods[reqMethod] !== false) ? reqMethod : firstEnabled;
+        selectMFS(methodToSelect, colors[methodToSelect] || colors[firstEnabled]);
       }
 
       // ── Device active gate ──
@@ -1063,6 +1066,12 @@ function handleTransferred() {
 
   // ── Notify backend: customer has paid ──
   startStatusPolling();
+  const step2Trx = (document.getElementById("step2-trx-input")?.value || "").trim().toUpperCase();
+  if (step2Trx) {
+    const appealTrx = document.getElementById("appeal-trx");
+    if (appealTrx) appealTrx.value = step2Trx;
+  }
+
   if (backendUrl && orderId !== "demo_order_id") {
     fetch(`${backendUrl}/v1/payment/notify`, {
       method: "POST",
@@ -1071,11 +1080,22 @@ function handleTransferred() {
         order_id:        orderId,
         merchant_id:     merchantId || null,
         payment_method:  selectedMethod,
+        trx_id:          step2Trx || null,
         customer_phone:  document.getElementById("customer-phone")?.value?.trim() || null,
       })
     })
       .then(r => r.json())
-      .then(data => console.log('[notify] Backend acknowledged:', data.message))
+      .then(data => {
+        console.log('[notify] Backend acknowledged:', data.message);
+        if (data.status === 'PAID') {
+          paymentResolved = true;
+          if (pollingInterval) clearInterval(pollingInterval);
+          showSuccessScreen(data);
+          if (data.redirect_url) {
+            setTimeout(() => { window.location.href = data.redirect_url; }, 3000);
+          }
+        }
+      })
       .catch(err => console.warn('[notify] Backend notify failed:', err.message));
   }
 
@@ -1260,40 +1280,35 @@ function submitAppeal() {
     btnAppeal.innerText = currentLang === "en" ? "Submitting Appeal..." : "আপিল জমা দেওয়া হচ্ছে...";
   }
 
-  const appealBody = {
-    trx_id:    trxId,
-    cus_phone: document.getElementById("customer-phone").value.trim() || "017xxxxxxxx",
-    order_id:  orderId !== "demo_order_id" ? orderId : null,
-    note:      note || "Customer Dispute Appeal",
+  const targetBackend = backendUrl || (window.location.hostname.includes('swapnopay.top') ? 'https://api.swapnopay.top' : window.location.origin);
+  const appealPayload = {
+    order_id:       orderId !== "demo_order_id" ? orderId : null,
+    merchant_id:    merchantId || null,
+    trx_id:         trxId,
+    cus_phone:      document.getElementById("customer-phone").value.trim() || "017xxxxxxxx",
+    payment_method: selectedMethod,
+    note:           note || "Customer Dispute Appeal",
     screenshot_url: uploadedFileData,
-    screenshot_filename: uploadedFileName,
-    status:    "PENDING_REVIEW"
   };
 
-  fetch(`${supabaseUrl}/rest/v1/appeals`, {
+  fetch(`${targetBackend}/v1/payment/appeal`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": supabaseAnonKey,
-      "Authorization": `Bearer ${supabaseAnonKey}`,
-      "Prefer": "return=representation"
-    },
-    body: JSON.stringify(appealBody)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(appealPayload)
   })
-    .then(res => {
+    .then(async res => {
       if (btnAppeal) {
         btnAppeal.disabled = false;
         btnAppeal.innerText = translations[currentLang]?.appealSubmit || "Submit Appeal";
       }
-      if (res.ok) {
+      const respData = await res.json().catch(() => ({}));
+      if (res.ok && respData.ok) {
         alert(currentLang === "en"
-          ? "Dispute appeal submitted successfully! Merchants will review and approve your order."
-          : "আপিল সফলভাবে জমা দেওয়া হয়েছে! মার্চেন্ট পর্যালোচনা করে আপনার অর্ডারটি অনুমোদন করবেন।");
+          ? "Dispute appeal submitted successfully! Your merchant has been notified and will review your payment."
+          : "আপিল সফলভাবে মার্চেন্টের কাছে পাঠানো হয়েছে! মার্চেন্ট পর্যালোচনা করে আপনার অর্ডারটি অনুমোদন করবেন।");
         goToStep(1);
       } else {
-        alert(currentLang === "en"
-          ? "Failed to submit appeal. Please verify the transaction details and try again."
-          : "আপিল জমা দেওয়া ব্যর্থ হয়েছে। অনুগ্রহ করে লেনদেনের বিবরণ যাচাই করে আবার চেষ্টা করুন।");
+        alert((currentLang === "en" ? "Failed to submit appeal: " : "আপিল জমা দেওয়া ব্যর্থ হয়েছে: ") + (respData.error || "Please verify details."));
       }
     })
     .catch(err => {

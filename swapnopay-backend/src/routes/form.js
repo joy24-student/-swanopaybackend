@@ -11,7 +11,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
-import { getAdminClient, getMerchantCredentials } from '../services/adminSupabase.js'
+import { getAdminClient, getMerchantCredentials, getMerchantGatewayConfig, recordPaymentEvent } from '../services/adminSupabase.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -131,6 +131,9 @@ export function formRouter(io = null) {
       }
 
       const formSnapshot = payload || form_data || null
+      if (formSnapshot && typeof formSnapshot === 'object' && merchant_id && !formSnapshot.merchant_id) {
+        formSnapshot.merchant_id = merchant_id
+      }
 
       const routeRecord = {
         form_id: cleanFormId,
@@ -264,7 +267,7 @@ export function formRouter(io = null) {
     }
 
     if (route && route.payload) {
-      form = { ...route.payload }
+      form = { ...route.payload, merchant_id: route.payload.merchant_id || route.merchant_id || null }
     }
 
     // 2. Query Admin DB payment_forms if not found in cache or payload missing
@@ -318,6 +321,10 @@ export function formRouter(io = null) {
       }
     }
 
+    if (form) {
+      form.merchant_id = form.merchant_id || route?.merchant_id || null
+    }
+
     if (!form) {
       return res.status(404).json({ ok: false, error: 'Payment form not found or inactive.' })
     }
@@ -361,10 +368,21 @@ export function formRouter(io = null) {
         .catch(() => {})
     } catch {}
 
+    // Fetch live merchant payment gateway settings (allowed methods, receiving numbers)
+    let gatewayConfig = null
+    try {
+      if (form.merchant_id) {
+        gatewayConfig = await getMerchantGatewayConfig(form.merchant_id)
+      }
+    } catch (gwErr) {
+      console.warn(`[form-router] Gateway config lookup notice for merchant ${form.merchant_id}:`, gwErr.message)
+    }
+
     return res.json({
       ok: true,
       form: {
         id: form.id,
+        merchant_id: form.merchant_id || null,
         title: form.title || 'Hosted Payment Form',
         description: form.description || '',
         slug: form.slug,
@@ -378,6 +396,13 @@ export function formRouter(io = null) {
         banner_url: form.banner_url || theme.banner_url || null,
         submissions_count: form.submissions_count || 0,
         views_count: form.views_count || 0,
+        gateway_config: gatewayConfig ? {
+          enabled_methods: gatewayConfig.enabled_methods || { bKash: true, Nagad: true, Rocket: true, Upay: true },
+          receiving_numbers: gatewayConfig.receiving_numbers || {},
+          qr_codes: gatewayConfig.qr_codes || {},
+          merchant_name: gatewayConfig.merchant_name || form.title,
+          merchant_logo_url: gatewayConfig.merchant_logo_url || form.logo_url
+        } : null,
         closing_status: {
           closed: isClosed,
           message: closedMessage,
@@ -419,7 +444,7 @@ export function formRouter(io = null) {
       // 2. Resolve form
       let form = null
       const route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
-      if (route && route.payload) form = { ...route.payload }
+      if (route && route.payload) form = { ...route.payload, merchant_id: route.payload.merchant_id || route.merchant_id || null }
 
       if (!form) {
         const admin = getAdminClient()
@@ -429,6 +454,10 @@ export function formRouter(io = null) {
         else query = query.eq('slug', identifier)
         const { data } = await query.maybeSingle()
         if (data) form = data
+      }
+
+      if (form) {
+        form.merchant_id = form.merchant_id || route?.merchant_id || null
       }
 
       if (!form) {
@@ -622,36 +651,74 @@ export function formRouter(io = null) {
 
       // 6. Handle Payment Order Creation if required
       if (paymentRequired) {
-        const orderId = 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()
+        const orderUuid = crypto.randomUUID()
         const tranId = 'TRX-' + Date.now()
 
-        // Create order in admin or merchant DB
+        const orderRecord = {
+          id: orderUuid,
+          tran_id: tranId,
+          merchant_id: form.merchant_id,
+          amount: calculatedAmount,
+          status: 'PENDING',
+          cus_name: clientName,
+          cus_phone: clientPhone,
+          cus_email: clientEmail,
+          product_name: productName,
+          payment_method: payment_method,
+          created_at: new Date().toISOString()
+        }
+
+        // Create order in platform admin DB
         try {
           const admin = getAdminClient()
-          await admin.from('orders').insert({
-            id: normalizeUuid(orderId) || undefined,
+          await admin.from('orders').insert(orderRecord)
+        } catch (ordErr) {
+          console.warn('[form-router] Admin order insert notice:', ordErr.message)
+        }
+
+        // Record pending payment event in admin DB
+        try {
+          await recordPaymentEvent(orderUuid, {
             tran_id: tranId,
-            merchant_id: form.merchant_id,
-            amount: calculatedAmount,
             status: 'PENDING',
+            amount: calculatedAmount,
+            merchant_id: form.merchant_id,
             cus_name: clientName,
-            cus_phone: clientPhone,
+            sender_number: clientPhone,
             cus_email: clientEmail,
             product_name: productName,
-            payment_method: payment_method,
-            created_at: new Date().toISOString()
+            payment_method: payment_method
           })
-        } catch (ordErr) {
-          console.warn('[form-router] Order insert warning (continuing with widget redirect):', ordErr.message)
+        } catch (evtErr) {
+          console.warn('[form-router] Payment event record notice:', evtErr.message)
+        }
+
+        // Mirror order into merchant's own Supabase DB so foreign keys for appeals succeed
+        try {
+          if (form.merchant_id) {
+            const creds = await getMerchantCredentials(form.merchant_id)
+            if (creds?.supabase_url && creds?.supabase_anon_key) {
+              const { createClient } = await import('@supabase/supabase-js')
+              const mClient = createClient(creds.supabase_url, creds.supabase_anon_key, {
+                auth: { persistSession: false, autoRefreshToken: false }
+              })
+              await mClient.from('orders').insert(orderRecord)
+            }
+          }
+        } catch (mOrdErr) {
+          console.warn('[form-router] Merchant DB order mirror notice:', mOrdErr.message)
         }
 
         const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || 'https://pay.swapnopay.top'
-        const redirectUrl = `/widget.html?order_id=${encodeURIComponent(orderId)}&amount=${calculatedAmount}&merchant_name=${encodeURIComponent(form.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(clientName)}&cus_phone=${encodeURIComponent(clientPhone)}`
+        const merchantParam = form.merchant_id ? `&merchant_id=${encodeURIComponent(form.merchant_id)}` : ''
+        const methodParam = payment_method ? `&method=${encodeURIComponent(payment_method)}` : ''
+        const redirectUrl = `/widget.html?order_id=${encodeURIComponent(orderUuid)}&amount=${calculatedAmount}&merchant_name=${encodeURIComponent(form.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(clientName)}&cus_phone=${encodeURIComponent(clientPhone)}${merchantParam}${methodParam}`
 
         return res.json({
           ok: true,
           payment_required: true,
-          order_id: orderId,
+          order_id: orderUuid,
+          merchant_id: form.merchant_id || null,
           transaction_id: tranId,
           amount: calculatedAmount,
           merchant_name: form.title,

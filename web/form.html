@@ -911,6 +911,37 @@
       isPaymentEnabled = theme.enable_payment !== false && theme.enablePayment !== false;
       baseFormAmount = parseFloat(config.amount || 0);
 
+      // Configure Dynamic Payment Methods from Merchant Gateway Config
+      const gwConfig = config.gateway_config || {};
+      const enabledMethods = gwConfig.enabled_methods || { bKash: true, Nagad: true, Rocket: true, Upay: true };
+      const receivingNums = gwConfig.receiving_numbers || {};
+      const selectorEl = document.getElementById("method-selector");
+
+      if (selectorEl) {
+        selectorEl.innerHTML = "";
+        const allMethods = ["bKash", "Nagad", "Rocket", "Upay"];
+        const activeMethods = allMethods.filter(m => enabledMethods[m] !== false);
+        const methodsToRender = activeMethods.length > 0 ? activeMethods : ["bKash"];
+
+        methodsToRender.forEach((m, idx) => {
+          const card = document.createElement("div");
+          card.className = `method-card ${idx === 0 ? 'active' : ''}`;
+          card.setAttribute("data-method", m);
+          card.onclick = () => selectPaymentMethod(m);
+
+          const num = receivingNums[m];
+          if (num) {
+            card.innerHTML = `<div>${m}</div><div style="font-size:10px;font-weight:normal;opacity:0.75;margin-top:2px;">${num}</div>`;
+          } else {
+            card.innerText = m;
+          }
+          selectorEl.appendChild(card);
+        });
+
+        // Auto-select first active method
+        selectedMethod = methodsToRender[0];
+      }
+
       const container = document.getElementById("fields-container");
       container.innerHTML = "";
 
@@ -1388,20 +1419,18 @@
     }
 
     function renderDemoFields() {
-      const mockConfig = {
-        title: "Conference Registration & Kit",
-        description: "Submit your details and optionally select conference packages.",
+      const cleanConfig = {
+        title: "Payment Form",
+        description: "Please fill out the form below to proceed.",
         amount: 0,
-        fields: [
-          { id: "p1", type: "PRODUCT", label: "Delegate Access Pass", minValue: 1200.00, placeholder: "Standard access kit", isRequired: true },
-          { id: "dept", type: "DROPDOWN", label: "Department / Field", options: ["Technology", "Business", "Design"], isRequired: true }
-        ],
+        fields: [],
+        products: [],
         theme: {
           primary_color: "#5d45ff",
           enable_payment: true
         }
       };
-      renderConfiguredFields(mockConfig);
+      renderConfiguredFields(cleanConfig);
     }
 
     async function handleFormSubmit(e) {
@@ -1522,7 +1551,9 @@
         if (response.ok && data.ok) {
           // If payment is required and order created -> redirect to payment widget
           if (data.payment_required && data.order_id) {
-            window.location.href = data.redirect_url || `/widget.html?order_id=${encodeURIComponent(data.order_id)}&amount=${data.amount}&merchant_name=${encodeURIComponent(data.merchant_name || formConfig?.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(cusName)}&cus_phone=${encodeURIComponent(cusPhone)}`;
+            const mid = encodeURIComponent(data.merchant_id || formConfig?.merchant_id || '');
+            const mMethod = encodeURIComponent(selectedMethod || 'bKash');
+            window.location.href = data.redirect_url || `/widget.html?order_id=${encodeURIComponent(data.order_id)}&amount=${data.amount}&merchant_id=${mid}&merchant_name=${encodeURIComponent(data.merchant_name || formConfig?.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(cusName)}&cus_phone=${encodeURIComponent(cusPhone)}&method=${mMethod}`;
             return;
           }
 

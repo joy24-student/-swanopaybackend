@@ -642,10 +642,10 @@ VALUES
 (
   'system_config',
   '{
-    "developer_portal_url": "https://pay.swapnopay.top/docs",
-    "developer_docs_url": "https://pay.swapnopay.top/docs",
-    "api_portal_url": "https://admin.swapnopay.top",
-    "webhook_docs_url": "https://pay.swapnopay.top/docs#webhooks",
+    "developer_portal_url": "https://pay.swapnopay.top/portal.html",
+    "developer_docs_url": "https://pay.swapnopay.top/docs.html",
+    "api_portal_url": "https://pay.swapnopay.top/portal.html#credentials",
+    "webhook_docs_url": "https://pay.swapnopay.top/docs.html#webhooks",
     "support_hotline": "+8801700000000",
     "support_email": "support@swapnopay.top",
     "support_whatsapp": "+8801700000000"
