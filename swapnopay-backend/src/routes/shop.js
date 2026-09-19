@@ -28,7 +28,10 @@ export function createShopRouter({ service = getShopService, authenticate = requ
   // never authorize one merchant and execute a request for a different merchant.
   router.use((req, res, next) => {
     try {
-      const target = merchantId(['GET','DELETE'].includes(req.method) ? req.query.merchant_id : req.body?.merchant_id)
+      const rawParam = ['GET','DELETE'].includes(req.method)
+        ? (req.query.merchant_id || req.headers['x-merchant-id'])
+        : (req.body?.merchant_id || req.headers['x-merchant-id'] || req.query.merchant_id)
+      const target = merchantId(rawParam)
       if (req.query.merchant_id && req.query.merchant_id !== target || req.body?.merchant_id && req.body.merchant_id !== target) throw new ShopError(400,'MERCHANT_MISMATCH','Conflicting merchant identifiers.')
       req.shopMerchantId = target
       next()

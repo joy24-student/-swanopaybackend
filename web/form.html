@@ -727,6 +727,26 @@
         console.warn("[form] Backend endpoint direct resolve error, falling back to Supabase:", backendErr.message);
       }
 
+      // 1b. Try production gateway domains if running on alternate host/port
+      const fallbackGateways = ["https://swapnopay.top", "https://api.swapnopay.top", "https://pay.swapnopay.top"];
+      for (const origin of fallbackGateways) {
+        if (!window.location.origin.includes(origin.replace("https://", ""))) {
+          try {
+            const res = await fetch(`${origin}/v1/forms/${encodeURIComponent(formIdentifier)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.ok && data.form) {
+                formConfig = data.form;
+                renderConfiguredFields(formConfig);
+                return;
+              }
+            }
+          } catch (absErr) {
+            console.warn(`[form] Router lookup notice for ${origin}:`, absErr.message);
+          }
+        }
+      }
+
       // 2. Fallback to Supabase direct query
       const parsedUuid = normalizeToUuid(formIdentifier);
       const encodedSlug = encodeURIComponent(formIdentifier);
@@ -1468,24 +1488,34 @@
 
       // 1. Submit to Backend /v1/forms/:slugOrId/submit
       try {
-        const response = await fetch(`/v1/forms/${encodeURIComponent(formConfig?.slug || formIdentifier)}/submit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            customer_name: cusName,
-            customer_phone: cusPhone,
-            customer_email: cusEmail,
-            selected_product_id: selectedProdId,
-            quantity: selectedQty,
-            selected_products: selectedProductsList,
-            payment_method: selectedMethod,
-            answers: answersMap,
-            _hp_check: hp,
-            request_id: requestId
-          })
-        });
+        const submitPayload = {
+          customer_name: cusName,
+          customer_phone: cusPhone,
+          customer_email: cusEmail,
+          selected_product_id: selectedProdId,
+          quantity: selectedQty,
+          selected_products: selectedProductsList,
+          payment_method: selectedMethod,
+          answers: answersMap,
+          _hp_check: hp,
+          request_id: requestId
+        };
+
+        const formSlugTarget = encodeURIComponent(formConfig?.slug || formIdentifier);
+        let response;
+        try {
+          response = await fetch(`/v1/forms/${formSlugTarget}/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(submitPayload)
+          });
+        } catch (fetchErr) {
+          response = await fetch(`https://pay.swapnopay.top/v1/forms/${formSlugTarget}/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(submitPayload)
+          });
+        }
 
         const data = await response.json();
 

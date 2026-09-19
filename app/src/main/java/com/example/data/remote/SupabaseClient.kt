@@ -1535,12 +1535,14 @@ object SupabaseClient {
             }
         }.toString()
         val request = runCatching {
-            Request.Builder()
+            val builder = Request.Builder()
                 .url(endpoint)
-                .addHeader("Authorization", "Bearer $token")
                 .addHeader("Content-Type", "application/json")
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-                .build()
+            if (token.isNotBlank()) {
+                builder.addHeader("Authorization", "Bearer $token")
+            }
+            builder.build()
         }.getOrElse {
             onFailure("Invalid branded form router URL.")
             return
@@ -1550,8 +1552,16 @@ object SupabaseClient {
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
                     if (response.isSuccessful) {
-                        val publicUrl = runCatching { JSONObject(body).optString("public_url") }.getOrDefault("")
-                        if (publicUrl.startsWith("https://")) onSuccess(publicUrl)
+                        val json = runCatching { JSONObject(body) }.getOrNull()
+                        val rawUrl = json?.optString("public_url")?.ifBlank {
+                            json.optString("slug_url")
+                        } ?: "${routerBaseUrl.trimEnd('/')}/f/$formSlug"
+                        val publicUrl = if (rawUrl.contains("pay.swapnopay.top")) {
+                            rawUrl.replace("pay.swapnopay.top", "swapnopay.top")
+                        } else {
+                            rawUrl
+                        }
+                        if (publicUrl.startsWith("http://") || publicUrl.startsWith("https://")) onSuccess(publicUrl)
                         else onFailure("The branded form router returned an invalid URL.")
                     } else {
                         onFailure("Route registration failed (HTTP ${response.code}): ${response.parseError(body)}")

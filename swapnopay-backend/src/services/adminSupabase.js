@@ -1708,7 +1708,14 @@ export function setMerchantMemorySubscription(merchantId, data) {
  * Create a new subscription checkout order.
  * Validates that the account has an associated NID before allowing order generation.
  */
-export async function createSubscriptionOrder({ merchantId, planType, method = 'bKash' }) {
+export async function createSubscriptionOrder({
+  merchantId,
+  planType,
+  method = 'bKash',
+  successUrl: customSuccessUrl,
+  failUrl: customFailUrl,
+  cancelUrl: customCancelUrl
+}) {
   const config = await getSubscriptionConfig()
   const cleanPlan = String(planType || '').toUpperCase()
 
@@ -1756,11 +1763,24 @@ export async function createSubscriptionOrder({ merchantId, planType, method = '
   const orderId = 'sub_' + randomUUID().slice(0, 8)
 
   // Receiving accounts for SwapnoPay platform payment gateway
+  let platformGatewayConfig = null
+  try {
+    platformGatewayConfig = await getGatewayConfig()
+  } catch (_) {}
+
   const receivingAccounts = {
-    bKash: process.env.SWAPNOPAY_BKASH_NUMBER || '01711223344',
-    Nagad: process.env.SWAPNOPAY_NAGAD_NUMBER || '01811223344',
-    Rocket: process.env.SWAPNOPAY_ROCKET_NUMBER || '019112233441',
+    bKash:  process.env.SWAPNOPAY_BKASH_NUMBER  || platformGatewayConfig?.receiving_numbers?.bKash  || '01711223344',
+    Nagad:  process.env.SWAPNOPAY_NAGAD_NUMBER  || platformGatewayConfig?.receiving_numbers?.Nagad  || '01811223344',
+    Rocket: process.env.SWAPNOPAY_ROCKET_NUMBER || platformGatewayConfig?.receiving_numbers?.Rocket || '019112233441',
+    Upay:   process.env.SWAPNOPAY_UPAY_NUMBER   || platformGatewayConfig?.receiving_numbers?.Upay   || '01711223344',
   }
+
+  const gatewayBaseUrl = (process.env.SWAPNOPAY_GATEWAY_URL || 'https://pay.swapnopay.top').replace(/\/$/, '')
+  const successUrl = customSuccessUrl || process.env.SWAPNOPAY_SUBSCRIPTION_SUCCESS_URL || platformGatewayConfig?.default_success_url || `${gatewayBaseUrl}/success?order_id=${orderId}&type=subscription`
+  const failUrl    = customFailUrl    || process.env.SWAPNOPAY_SUBSCRIPTION_FAIL_URL    || platformGatewayConfig?.default_fail_url    || `${gatewayBaseUrl}/failed?order_id=${orderId}&type=subscription`
+  const cancelUrl  = customCancelUrl  || process.env.SWAPNOPAY_SUBSCRIPTION_CANCEL_URL  || platformGatewayConfig?.default_cancel_url  || `${gatewayBaseUrl}/cancelled?order_id=${orderId}&type=subscription`
+
+  const checkoutUrl = `${gatewayBaseUrl}/widget.html?order_id=${encodeURIComponent(orderId)}&amount=${amount}&merchant_name=${encodeURIComponent('SwapnoPay Subscription')}&plan_type=${encodeURIComponent(cleanPlan)}&merchant_number=${encodeURIComponent(receivingAccounts[method] || receivingAccounts.bKash)}&merchant_id=${encodeURIComponent(merchantId)}&success_url=${encodeURIComponent(successUrl)}&fail_url=${encodeURIComponent(failUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`
 
   const orderRecord = {
     id: orderId,
@@ -1772,6 +1792,10 @@ export async function createSubscriptionOrder({ merchantId, planType, method = '
     days,
     payment_method: method,
     receiving_number: receivingAccounts[method] || receivingAccounts.bKash,
+    checkout_url: checkoutUrl,
+    success_url: successUrl,
+    fail_url: failUrl,
+    cancel_url: cancelUrl,
     status: 'PENDING',
     created_at: new Date().toISOString()
   }
@@ -1805,7 +1829,11 @@ export async function createSubscriptionOrder({ merchantId, planType, method = '
     payment_method: method,
     receiving_account: orderRecord.receiving_number,
     nid_associated: nidNumber ? (nidNumber.slice(0, 3) + '••••' + nidNumber.slice(-3)) : null,
-    instructions: `${method} অ্যাপ থেকে "Send Money" বা "Payment" করে ${orderRecord.receiving_number} নম্বরে ৳${amount} পাঠান এবং Transaction ID (TrxID) দিয়ে কনফার্ম করুন।`
+    checkout_url: checkoutUrl,
+    success_url: successUrl,
+    fail_url: failUrl,
+    cancel_url: cancelUrl,
+    instructions: `${method} অ্যাপ থেকে "Send Money" বা "Payment" করে ${orderRecord.receiving_number} নম্বরে ৳${amount} পাঠান এবং Transaction ID (TrxID) দিয়ে কনফার্ম করুন। অথবা সরাসরি নিচের ওয়েব গেটওয়ে লিংকে গিয়ে পেমেন্ট সম্পন্ন করুন: ${checkoutUrl}`
   }
 }
 
@@ -1943,6 +1971,60 @@ export async function verifyAndActivateSubscription({ merchantId, orderId, trxId
     subscription_expires_at: newExpiryIso,
     nid_number: nidNumber ? (nidNumber.slice(0, 3) + '••••' + nidNumber.slice(-3)) : null,
     trx_id: cleanTrx,
+  }
+}
+
+/**
+ * Retrieve past subscription payments and order history for a merchant.
+ */
+export async function getMerchantSubscriptionHistory(merchantId) {
+  if (!merchantId) return []
+  let admin = null
+  try {
+    admin = getAdminClient()
+  } catch (_) {}
+  if (!admin) {
+    return []
+  }
+
+  const cleanId = String(merchantId).trim()
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)
+
+  try {
+    let query = admin
+      .from('merchant_subscriptions')
+      .select('id, merchant_id, nid_number, plan_type, amount, trx_id, payment_method, status, verified_at, created_at')
+
+    if (isUuid) {
+      query = query.or(`merchant_id.eq.${cleanId},id.eq.${cleanId}`)
+    } else {
+      query = query.eq('merchant_id', cleanId)
+    }
+
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.warn('[getMerchantSubscriptionHistory] DB query notice:', error.message)
+      return []
+    }
+
+    return (data || []).map(row => ({
+      id: row.id,
+      merchant_id: row.merchant_id,
+      nid_number: row.nid_number ? (String(row.nid_number).slice(0, 3) + '••••' + String(row.nid_number).slice(-3)) : null,
+      plan_type: row.plan_type || 'MONTHLY',
+      amount: Number(row.amount) || 0,
+      trx_id: row.trx_id || null,
+      payment_method: row.payment_method || 'bKash',
+      status: row.status || 'COMPLETED',
+      created_at: row.created_at || new Date().toISOString(),
+      verified_at: row.verified_at || null,
+    }))
+  } catch (err) {
+    console.warn('[getMerchantSubscriptionHistory] Error:', err.message)
+    return []
   }
 }
 

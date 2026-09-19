@@ -8,7 +8,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -31,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import android.content.Intent
+import android.net.Uri
 
 // ── Models for Subscription, Dynamic Pricing & Billing ──
 
@@ -76,7 +81,31 @@ data class SubscriptionCheckoutState(
     val paymentMethod: String = "bKash",
     val receivingAccount: String = "01711223344",
     val nidAssociated: String? = null,
-    val instructions: String = ""
+    val instructions: String = "",
+    val checkoutUrl: String? = null
+)
+
+data class SubscriptionPaymentHistoryItem(
+    val id: String = "",
+    val merchantId: String = "",
+    val nidNumber: String? = null,
+    val planType: String = "MONTHLY",
+    val amount: Double = 0.0,
+    val trxId: String? = null,
+    val paymentMethod: String = "bKash",
+    val status: String = "COMPLETED",
+    val createdAt: String = "",
+    val verifiedAt: String? = null
+)
+
+data class AdminNoticePopup(
+    val id: String = "",
+    val title: String = "",
+    val message: String = "",
+    val severity: String = "INFO", // "INFO", "WARNING", "ERROR", "SUCCESS"
+    val type: String = "ANNOUNCEMENT", // "ANNOUNCEMENT", "ALERT", "SYSTEM", "PROMOTION"
+    val timestamp: Long = System.currentTimeMillis(),
+    val isDismissible: Boolean = true
 )
 
 /**
@@ -93,6 +122,8 @@ fun SubscriptionScreen(
 
     val subStatus by viewModel.subscriptionStatus.collectAsState()
     val isLoading by viewModel.isSubscriptionLoading.collectAsState()
+    val subHistory by viewModel.subscriptionHistory.collectAsState()
+    val isHistoryLoading by viewModel.isSubscriptionHistoryLoading.collectAsState()
 
     var selectedPlanForCheckout by remember { mutableStateOf<SubscriptionPlanUi?>(null) }
     var activeCheckoutOrder by remember { mutableStateOf<SubscriptionCheckoutState?>(null) }
@@ -104,6 +135,7 @@ fun SubscriptionScreen(
 
     LaunchedEffect(Unit) {
         viewModel.fetchSubscriptionStatus()
+        viewModel.fetchSubscriptionHistory()
     }
 
     val plans = remember(subStatus) {
@@ -375,192 +407,245 @@ fun SubscriptionScreen(
                 }
             }
 
-            // ── Section Title: Choose Your Plan ──
+            // ── Section Title: Choose Your Plan (3D Gallery Carousel) ──
             item {
-                Column(modifier = Modifier.padding(top = 4.dp)) {
-                    Text(
-                        text = "সাবস্ক্রিপশন প্ল্যান সমূহ",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else Color(0xFF0F172A)
-                    )
-                    Text(
-                        text = "স্বপ্নপে-এর নিজস্ব পেমেন্ট গেটওয়ে দিয়ে নিরাপদ ও সরাসরি বিকাশ, নগদ বা রকেটে পেমেন্ট করুন",
-                        fontSize = 13.sp,
-                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.ViewCarousel,
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "সাবস্ক্রিপশন প্ল্যান সমূহ",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF0F172A)
+                            )
+                        }
+                        Text(
+                            text = "ডানে ও বাঁয়ে সোয়াইপ করে পছন্দের প্ল্যান বেছে নিন",
+                            fontSize = 12.5.sp,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                        )
+                    }
+
+                    Surface(
+                        color = if (isDark) Color(0xFF1E293B) else Color(0xFFEEF2FF),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "৩টি প্ল্যান ➔",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
-            // ── Plan Selection Cards ──
-            items(plans) { plan ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            selectedPlanForCheckout = plan
-                            viewModel.checkoutSubscription(
-                                planType = plan.planKey,
-                                paymentMethod = selectedMethod
-                            ) { success, checkoutState, error ->
-                                if (success && checkoutState != null) {
-                                    activeCheckoutOrder = checkoutState
-                                    showCheckoutDialog = true
-                                } else {
-                                    Toast.makeText(context, error ?: "চেকআউট শুরু করতে ব্যর্থ হয়েছে", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isDark) Color(0xFF1E293B) else Color.White
-                    ),
-                    border = BorderStroke(
-                        width = if (plan.isPopular || plan.isBestValue) 2.dp else 1.dp,
-                        color = if (plan.isPopular) Color(0xFF10B981) else if (plan.isBestValue) Color(0xFFF59E0B) else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = if (plan.isPopular) 4.dp else 1.dp)
+            // ── Modern 3D Gallery Style Horizontal Carousel ──
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    items(plans) { plan ->
+                        Card(
+                            modifier = Modifier
+                                .width(295.dp)
+                                .shadow(
+                                    elevation = if (plan.isPopular || plan.isBestValue) 8.dp else 4.dp,
+                                    shape = RoundedCornerShape(22.dp)
+                                )
+                                .clickable {
+                                    selectedPlanForCheckout = plan
+                                    viewModel.checkoutSubscription(
+                                        planType = plan.planKey,
+                                        paymentMethod = selectedMethod
+                                    ) { success, checkoutState, error ->
+                                        if (success && checkoutState != null) {
+                                            activeCheckoutOrder = checkoutState
+                                            showCheckoutDialog = true
+                                        } else {
+                                            Toast.makeText(context, error ?: "চেকআউট শুরু করতে ব্যর্থ হয়েছে", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                            ),
+                            border = BorderStroke(
+                                width = if (plan.isPopular || plan.isBestValue) 2.dp else 1.dp,
+                                color = if (plan.isPopular) Color(0xFF10B981) else if (plan.isBestValue) Color(0xFFF59E0B) else if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                            )
                         ) {
                             Column {
-                                Text(
-                                    text = plan.titleBn,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = plan.durationTextBn,
-                                    fontSize = 12.sp,
-                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                                )
-                            }
-
-                            if (plan.discountBadge != null) {
-                                Surface(
-                                    color = if (plan.isPopular) Color(0xFF10B981) else Color(0xFFF59E0B),
-                                    shape = RoundedCornerShape(12.dp)
+                                // 3D Card Header Top Banner
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Brush.horizontalGradient(plan.gradientColors))
+                                        .padding(horizontal = 16.dp, vertical = 14.dp)
                                 ) {
-                                    Text(
-                                        text = plan.discountBadge,
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "৳${plan.priceBdt}",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            if (plan.originalPriceBdt != null) {
-                                Text(
-                                    text = "৳${plan.originalPriceBdt}",
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF94A3B8),
-                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "/ ${plan.durationTextBn}",
-                                fontSize = 13.sp,
-                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9))
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Features List
-                        val features = when (plan.planKey) {
-                            "MONTHLY" -> listOf(
-                                "স্বয়ংক্রিয় SMS ম্যাচিং (bKash, Nagad, Rocket)",
-                                "আনলিমিটেড কাস্টমার ও বাকি খাতা লেজার",
-                                "AI ভয়েস কল ও ইনস্ট্যান্ট গ্রাহক ইনকোয়ারি",
-                                "ক্লাউড অটো ব্যাকআপ ও মাল্টি-ডিভাইস সিঙ্ক"
-                            )
-                            "QUARTERLY" -> listOf(
-                                "মাসিক প্ল্যানের সকল ফিচার অন্তর্ভুক্ত",
-                                "৫০ টাকা নিশ্চিত ক্যাশ সেভিংস",
-                                "উন্নত AI ভয়েস ক্যাম্পেইন ও স্প্রেডশীট এক্সপোর্ট",
-                                "অগ্রাধিকারপ্রাপ্ত মার্চেন্ট টেক সাপোর্ট"
-                            )
-                            else -> listOf(
-                                "সকল প্রিমিয়াম ফিচার পুরো ১ বছরের জন্য",
-                                "সর্বোচ্চ ৪৫% ছাড় (মাত্র ৫৪ ৳/মাস!)",
-                                "ভিআইপি অ্যাকাউন্ট ম্যানেজার ও ডেডিকেটেড হেল্পলাইন",
-                                "ফ্রি কাস্টম ব্র্যান্ডিং ও ডোমেন কানেকশন"
-                            )
-                        }
-
-                        features.forEach { feat ->
-                            Row(
-                                modifier = Modifier.padding(vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = if (plan.isPopular) Color(0xFF10B981) else Color(0xFF3B82F6),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = feat,
-                                    fontSize = 12.5.sp,
-                                    color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Button(
-                            onClick = {
-                                selectedPlanForCheckout = plan
-                                viewModel.checkoutSubscription(
-                                    planType = plan.planKey,
-                                    paymentMethod = selectedMethod
-                                ) { success, checkoutState, error ->
-                                    if (success && checkoutState != null) {
-                                        activeCheckoutOrder = checkoutState
-                                        showCheckoutDialog = true
-                                    } else {
-                                        Toast.makeText(context, error ?: "চেকআউট শুরু করতে ব্যর্থ হয়েছে", Toast.LENGTH_LONG).show()
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = plan.titleBn,
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            if (plan.discountBadge != null) {
+                                                Surface(
+                                                    color = Color.Black.copy(alpha = 0.25f),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                ) {
+                                                    Text(
+                                                        text = plan.discountBadge,
+                                                        color = Color.White,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = plan.titleEn,
+                                            fontSize = 11.sp,
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                 }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (plan.isPopular) Color(0xFF059669) else if (plan.isBestValue) Color(0xFFD97706) else Color(0xFF4F46E5)
-                            )
-                        ) {
-                            Text(
-                                text = "এই প্ল্যানটি নির্বাচন করুন (৳${plan.priceBdt})",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
+
+                                // Card Content Body
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    // Price Row
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(
+                                            text = "৳${plan.priceBdt}",
+                                            fontSize = 30.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        if (plan.originalPriceBdt != null) {
+                                            Text(
+                                                text = "৳${plan.originalPriceBdt}",
+                                                fontSize = 14.sp,
+                                                color = Color(0xFF94A3B8),
+                                                textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "/ ${plan.durationTextBn}",
+                                            fontSize = 12.sp,
+                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                            modifier = Modifier.padding(bottom = 4.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    HorizontalDivider(color = if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9))
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Features List
+                                    val features = when (plan.planKey) {
+                                        "MONTHLY" -> listOf(
+                                            "স্বয়ংক্রিয় SMS ম্যাচিং (bKash/Nagad/Rocket)",
+                                            "আনলিমিটেড কাস্টমার ও বাকি খাতা লেজার",
+                                            "AI ভয়েস কল ও ইনস্ট্যান্ট ইনকোয়ারি",
+                                            "ক্লাউড অটো ব্যাকআপ ও মাল্টি-ডিভাইস"
+                                        )
+                                        "QUARTERLY" -> listOf(
+                                            "মাসিক প্ল্যানের সকল ফিচার অন্তর্ভুক্ত",
+                                            "৫০ টাকা নিশ্চিত ক্যাশ সেভিংস",
+                                            "উন্নত AI ভয়েস ক্যাম্পেইন ও স্প্রেডশীট এক্সপোর্ট",
+                                            "অগ্রাধিকারপ্রাপ্ত মার্চেন্ট টেক সাপোর্ট"
+                                        )
+                                        else -> listOf(
+                                            "সকল প্রিমিয়াম ফিচার পুরো ১ বছরের জন্য",
+                                            "সর্বোচ্চ ৪৫% সাশ্রয় (বেস্ট ভ্যালু)",
+                                            "ভিআইপি অ্যাকাউন্ট ম্যানেজার ও হেল্পলাইন",
+                                            "ফ্রি কাস্টম ব্র্যান্ডিং ও ডোমেন কানেকশন"
+                                        )
+                                    }
+
+                                    features.forEach { feat ->
+                                        Row(
+                                            modifier = Modifier.padding(vertical = 2.5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = if (plan.isPopular) Color(0xFF10B981) else Color(0xFF3B82F6),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(7.dp))
+                                            Text(
+                                                text = feat,
+                                                fontSize = 11.5.sp,
+                                                color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Button(
+                                        onClick = {
+                                            selectedPlanForCheckout = plan
+                                            viewModel.checkoutSubscription(
+                                                planType = plan.planKey,
+                                                paymentMethod = selectedMethod
+                                            ) { success, checkoutState, error ->
+                                                if (success && checkoutState != null) {
+                                                    activeCheckoutOrder = checkoutState
+                                                    showCheckoutDialog = true
+                                                } else {
+                                                    Toast.makeText(context, error ?: "চেকআউট শুরু করতে ব্যর্থ হয়েছে", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(44.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (plan.isPopular) Color(0xFF059669) else if (plan.isBestValue) Color(0xFFD97706) else Color(0xFF4F46E5)
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "আপগ্রেড করুন (৳${plan.priceBdt})",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -575,32 +660,273 @@ fun SubscriptionScreen(
                         containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.Security,
                                 contentDescription = null,
                                 tint = Color(0xFF10B981),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "স্বপ্নপে এর নিরাপদ পেমেন্ট গ্যারান্টি",
+                                text = "স্বপ্নপে নিরাপদ পেমেন্ট ও এনআইডি সুরক্ষা",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 13.5.sp,
                                 color = if (isDark) Color.White else Color(0xFF0F172A)
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "সকল পেমেন্ট সরাসরি SwapnoPay এর সেন্ট্রাল গেটওয়েতে প্রসেস হয়। পেমেন্ট সম্পন্ন হওয়ার সাথে সাথেই আপনার অ্যাকাউন্টে মেয়াদ বৃদ্ধি পায়। ১টি এনআইডি শুধুমাত্র একটি অ্যাকাউন্টের সাথে সুরক্ষিতভাবে আবদ্ধ থাকে।",
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
+                            text = "সকল পেমেন্ট সরাসরি SwapnoPay সেন্ট্রাল মার্চেন্ট গেটওয়েতে যাচাই ও সংরক্ষিত হয়। ১টি জাতীয় পরিচয়পত্র ১টি মাত্র অ্যাকাউন্টের সাথে সুরক্ষিত থাকে।",
+                            fontSize = 11.5.sp,
+                            lineHeight = 15.sp,
                             color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                         )
                     }
                 }
             }
+
+            // ── Section Title: Subscription Payment History ──
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.ReceiptLong,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "সাবস্ক্রিপশন পেমেন্ট হিস্ট্রি",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "পূর্বে পরিশোধিত সকল সাবস্ক্রিপশন লেনদেন ও ট্রানজেকশন",
+                                fontSize = 11.5.sp,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.fetchSubscriptionHistory() },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh History",
+                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── Subscription Payment History Content ──
+            if (isHistoryLoading && subHistory.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = Color(0xFF4F46E5)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "পেমেন্ট হিস্ট্রি লোড হচ্ছে...",
+                                fontSize = 13.sp,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                            )
+                        }
+                    }
+                }
+            } else if (subHistory.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(38.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "এখনও কোনো সাবস্ক্রিপশন পেমেন্ট রেকর্ড নেই",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = if (isDark) Color.White else Color(0xFF0F172A)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "আপনার সম্পন্নকৃত সাবস্ক্রিপশন পেমেন্ট ও ট্রানজেকশন আইডি এখানে প্রদর্শিত হবে।",
+                                fontSize = 12.sp,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(subHistory) { hist ->
+                    val methodBrandColor = when (hist.paymentMethod.lowercase()) {
+                        "bkash" -> Color(0xFFE2136E)
+                        "nagad" -> Color(0xFFF7941D)
+                        "rocket" -> Color(0xFF8C3494)
+                        else -> Color(0xFF4F46E5)
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                // Payment Method Badge
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(methodBrandColor.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = hist.paymentMethod.take(1).uppercase(),
+                                        color = methodBrandColor,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 17.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "৳${hist.amount.toInt()}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = if (isDark) Color.White else Color(0xFF0F172A)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            color = if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = hist.planType,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                    // TrxID with copy
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "TrxID: ${hist.trxId ?: "N/A"}",
+                                            fontSize = 11.5.sp,
+                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                        )
+                                        if (!hist.trxId.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Copy TrxID",
+                                                modifier = Modifier
+                                                    .size(12.dp)
+                                                    .clickable {
+                                                        clipboardManager.setText(AnnotatedString(hist.trxId))
+                                                        Toast.makeText(context, "TrxID কপি হয়েছে!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                tint = Color(0xFF38BDF8)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = hist.createdAt.replace("T", " ").take(16),
+                                        fontSize = 10.5.sp,
+                                        color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
+
+                            // Status Pill
+                            Surface(
+                                color = if (hist.status.uppercase() == "COMPLETED") Color(0xFF059669).copy(alpha = 0.15f) else Color(0xFFD97706).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, if (hist.status.uppercase() == "COMPLETED") Color(0xFF10B981) else Color(0xFFF59E0B))
+                            ) {
+                                Text(
+                                    text = if (hist.status.uppercase() == "COMPLETED") "✓ সফল" else "⏳ অপেক্ষমান",
+                                    color = if (hist.status.uppercase() == "COMPLETED") Color(0xFF10B981) else Color(0xFFF59E0B),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(24.dp)) }
 
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
@@ -735,6 +1061,37 @@ fun SubscriptionScreen(
                         lineHeight = 16.sp,
                         color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
                     )
+
+                    if (!order.checkoutUrl.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(order.checkoutUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "ওয়েব গেটওয়ে খোলা সম্ভব হয়নি", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF4F46E5))
+                        ) {
+                            Icon(
+                                Icons.Outlined.OpenInBrowser,
+                                contentDescription = null,
+                                tint = Color(0xFF4F46E5),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "ওয়েব গেটওয়েতে পে করুন (Web Checkout)",
+                                color = Color(0xFF4F46E5),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 

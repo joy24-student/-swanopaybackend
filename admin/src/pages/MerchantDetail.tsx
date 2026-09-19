@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, getMerchantPinStatus, clearMerchantPin, forceRequestPinReset } from '../adminSupabaseClient';
+import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, getMerchantPinStatus, clearMerchantPin, forceRequestPinReset, generateMerchantApiKey, revokeMerchantApiKey } from '../adminSupabaseClient';
 import { useParams, Link } from 'react-router-dom';
 import {
   User,
@@ -225,17 +225,8 @@ export default function MerchantDetail() {
     setKeyActionResult(null);
     setNewlyGeneratedKey(null);
     try {
-      const res = await fetch(`https://api.swapnopay.top/v1/admin/keys/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          merchant_id: id,
-          merchant_name: merchant?.business_name || 'Merchant',
-          label: 'Admin Generated Dynamic Key'
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
+      const data = await generateMerchantApiKey(id, merchant?.business_name || 'Merchant', 'Admin Generated Dynamic Key');
+      if (data && (data.ok || data.api_key)) {
         setNewlyGeneratedKey(data.api_key);
         setKeyActionResult('✅ Dynamic API key generated successfully!');
         const { data: keys } = await adminSupabase
@@ -257,19 +248,13 @@ export default function MerchantDetail() {
     if (!window.confirm('Are you sure you want to revoke this API key? Services using it will lose access immediately.')) return;
     setKeyActionLoading(true);
     try {
-      const res = await fetch(`https://api.swapnopay.top/v1/admin/keys/revoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key_id: keyId })
-      });
-      if (res.ok) {
-        setKeyActionResult('✅ API key revoked successfully');
-        const { data: keys } = await adminSupabase
-          .from('platform_api_keys')
-          .select('*')
-          .eq('merchant_id', id);
-        if (keys) setApiKeys(keys);
-      }
+      await revokeMerchantApiKey(keyId);
+      setKeyActionResult('✅ API key revoked successfully');
+      const { data: keys } = await adminSupabase
+        .from('platform_api_keys')
+        .select('*')
+        .eq('merchant_id', id);
+      if (keys) setApiKeys(keys);
     } catch (e: any) {
       setKeyActionResult('❌ ' + e.message);
     } finally {

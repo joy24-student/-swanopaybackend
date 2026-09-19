@@ -325,6 +325,26 @@ app.get('/v1/showcase', async (_req, res) => {
   }
 })
 
+// Public System Notice / Announcement route (accessible by mobile apps without requiring user token)
+app.get('/v1/system-notice', async (_req, res) => {
+  try {
+    const { getShowcaseConfig } = await import('./services/adminSupabase.js')
+    const config = await getShowcaseConfig('system_config') || {}
+    res.json({
+      ok: true,
+      system_notice: config.system_notice || '',
+      maintenance_mode: Boolean(config.maintenance_mode),
+      maintenance_message: config.maintenance_message || '',
+      support_hotline: config.support_hotline || '',
+      support_email: config.support_email || '',
+      support_whatsapp: config.support_whatsapp || '',
+      updated_at: config.updated_at || new Date().toISOString(),
+    })
+  } catch (err) {
+    res.json({ ok: true, system_notice: '', maintenance_mode: false })
+  }
+})
+
 // Admin routes (protected by ADMIN_SECRET)
 app.use('/v1/admin', adminRouter)
 app.use('/v1/admin/keys', keysRouter)

@@ -7,6 +7,8 @@ import {
   saveRadymateGalleryConfig,
   uploadRadymateGalleryImage,
   upsertShowcaseConfig,
+  fetchSubscriptionConfig,
+  saveSubscriptionConfig,
 } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 import {
@@ -404,22 +406,15 @@ export default function SystemSettings() {
       }
 
       try {
-        const { data: subData } = await adminSupabase
-          .from('platform_subscription_config')
-          .select('*')
-          .eq('id', 'default_config')
-          .maybeSingle();
-
-        if (subData) {
-          setSubConfig({
-            monthly_fee: Number(subData.monthly_fee) || 100,
-            quarterly_fee: Number(subData.quarterly_fee) || 250,
-            yearly_fee: Number(subData.yearly_fee) || 650,
-            trial_days: Number(subData.trial_days) || 90,
-            is_trial_enabled: subData.is_trial_enabled ?? true,
-            enforce_nid_verification: subData.enforce_nid_verification ?? true,
-          });
-        }
+        const loadedSub = await fetchSubscriptionConfig();
+        setSubConfig({
+          monthly_fee: Number(loadedSub.monthly_fee) || 100,
+          quarterly_fee: Number(loadedSub.quarterly_fee) || 250,
+          yearly_fee: Number(loadedSub.yearly_fee) || 650,
+          trial_days: Number(loadedSub.trial_days) || 90,
+          is_trial_enabled: loadedSub.is_trial_enabled ?? true,
+          enforce_nid_verification: loadedSub.enforce_nid_verification ?? true,
+        });
       } catch (e) {
         console.warn('Subscription config read notice:', e);
       } finally {
@@ -443,22 +438,10 @@ export default function SystemSettings() {
 
   const handleSaveSubscriptionConfig = async () => {
     setSubSaving(true);
-    setStatusMsg('Saving subscription & pricing settings...');
+    setStatusMsg('Saving subscription & pricing settings across backend, web & Android app...');
     try {
-      const { error } = await adminSupabase
-        .from('platform_subscription_config')
-        .upsert({
-          id: 'default_config',
-          monthly_fee: Number(subConfig.monthly_fee),
-          quarterly_fee: Number(subConfig.quarterly_fee),
-          yearly_fee: Number(subConfig.yearly_fee),
-          trial_days: Number(subConfig.trial_days),
-          is_trial_enabled: subConfig.is_trial_enabled,
-          enforce_nid_verification: subConfig.enforce_nid_verification,
-          updated_at: new Date().toISOString(),
-        });
-      if (error) throw error;
-      setStatusMsg('SUCCESS: Subscription pricing and trial period updated successfully!');
+      await saveSubscriptionConfig(subConfig);
+      setStatusMsg('SUCCESS: Subscription pricing and trial settings updated live across Web and Mobile App!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save subscription config: ' + err.message);
@@ -950,6 +933,32 @@ export default function SystemSettings() {
                     <li><strong>Dynamic Paywall:</strong> When free trials and subscriptions expire, the mobile app automatically locks access with an un-bypassable billing paywall.</li>
                     <li><strong>Native Gateway Flow:</strong> All subscription payments are processed directly through SwapnoPay's own automated receiving gateway (bKash, Nagad, Rocket).</li>
                   </ul>
+                </div>
+
+                {/* Real-time Web & Mobile App Synchronization Badge */}
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <Sparkles size={20} color="var(--brand-primary)" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Live Synchronization: Web Portal & Android Merchant App
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Amounts configured below instantly update the public landing website pricing, the native SwapnoPay gateway checkout, and the Merchant Android App's modern 3D subscription gallery in real-time.
+                    </div>
+                  </div>
+                  <span className="status-pill success" style={{ fontSize: 11 }}>
+                    Live Synchronized
+                  </span>
                 </div>
 
                 {/* 3 Pricing Plans */}

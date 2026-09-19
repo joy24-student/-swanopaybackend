@@ -229,6 +229,58 @@ export async function fetchApiKeys() {
   return data || []
 }
 
+/** Generate a dynamic API key via backend API (attaches session or master secret) */
+export async function generateMerchantApiKey(merchantId: string, merchantName = 'Merchant', label = 'Admin Generated Dynamic Key') {
+  const { data: { session } } = await adminSupabase.auth.getSession()
+  const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+  const base = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+  if (masterSecret) {
+    headers['X-Admin-Secret'] = masterSecret
+  } else if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const res = await fetch(`${base.replace(/\/$/, '')}/v1/admin/keys/generate`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      merchant_id: merchantId,
+      merchant_name: merchantName,
+      label,
+    }),
+  })
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to generate API key')
+  return data
+}
+
+/** Revoke an API key via backend API */
+export async function revokeMerchantApiKey(keyId: string) {
+  const { data: { session } } = await adminSupabase.auth.getSession()
+  const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+  const base = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+  if (masterSecret) {
+    headers['X-Admin-Secret'] = masterSecret
+  } else if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const res = await fetch(`${base.replace(/\/$/, '')}/v1/admin/keys/revoke`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ key_id: keyId }),
+  })
+
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to revoke API key')
+  return data
+}
+
 export async function fetchRadymateGalleryConfig(): Promise<RadymateGalleryConfig> {
   const { data, error } = await adminSupabase
     .from('showcase_config')
@@ -903,4 +955,142 @@ export async function deleteBroadcastBatch(batchId: string): Promise<void> {
 
   if (error) throw new Error('Failed to delete broadcast: ' + error.message)
 }
+
+// ─────────────────────────────────────────────────────────────
+// SUBSCRIPTION & DYNAMIC PRICING CONFIGURATION (Admin Panel)
+// ─────────────────────────────────────────────────────────────
+
+export interface AdminSubscriptionConfig {
+  monthly_fee: number
+  quarterly_fee: number
+  yearly_fee: number
+  trial_days: number
+  is_trial_enabled: boolean
+  enforce_nid_verification: boolean
+  updated_at?: string
+}
+
+export async function fetchSubscriptionConfig(): Promise<AdminSubscriptionConfig> {
+  const baseUrl = getBackendBaseUrl()
+  const headers = await getAdminHeaders()
+
+  try {
+    const res = await fetch(`${baseUrl}/v1/admin/subscription-config`, { headers })
+    if (res.ok) {
+      const json = await res.json()
+      if (json.config) {
+        return {
+          monthly_fee: Number(json.config.monthly_fee) || 100,
+          quarterly_fee: Number(json.config.quarterly_fee) || 250,
+          yearly_fee: Number(json.config.yearly_fee) || 650,
+          trial_days: Number(json.config.trial_days) || 90,
+          is_trial_enabled: json.config.is_trial_enabled ?? true,
+          enforce_nid_verification: json.config.enforce_nid_verification ?? true,
+          updated_at: json.config.updated_at,
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchSubscriptionConfig] Backend notice:', err)
+  }
+
+  // Fallback 1: platform_subscription_config table
+  try {
+    const { data } = await adminSupabase
+      .from('platform_subscription_config')
+      .select('*')
+      .eq('id', 'default_config')
+      .maybeSingle()
+
+    if (data) {
+      return {
+        monthly_fee: Number(data.monthly_fee) || 100,
+        quarterly_fee: Number(data.quarterly_fee) || 250,
+        yearly_fee: Number(data.yearly_fee) || 650,
+        trial_days: Number(data.trial_days) || 90,
+        is_trial_enabled: data.is_trial_enabled ?? true,
+        enforce_nid_verification: data.enforce_nid_verification ?? true,
+        updated_at: data.updated_at,
+      }
+    }
+  } catch (e) {}
+
+  // Fallback 2: showcase_config table
+  try {
+    const { data } = await adminSupabase
+      .from('showcase_config')
+      .select('value')
+      .eq('key', 'subscription_config')
+      .maybeSingle()
+
+    if (data?.value) {
+      const v = data.value
+      return {
+        monthly_fee: Number(v.monthly_fee) || 100,
+        quarterly_fee: Number(v.quarterly_fee) || 250,
+        yearly_fee: Number(v.yearly_fee) || 650,
+        trial_days: Number(v.trial_days) || 90,
+        is_trial_enabled: v.is_trial_enabled ?? true,
+        enforce_nid_verification: v.enforce_nid_verification ?? true,
+        updated_at: v.updated_at,
+      }
+    }
+  } catch (e) {}
+
+  return {
+    monthly_fee: 100,
+    quarterly_fee: 250,
+    yearly_fee: 650,
+    trial_days: 90,
+    is_trial_enabled: true,
+    enforce_nid_verification: true,
+  }
+}
+
+export async function saveSubscriptionConfig(config: AdminSubscriptionConfig): Promise<AdminSubscriptionConfig> {
+  const baseUrl = getBackendBaseUrl()
+  const headers = await getAdminHeaders()
+  const payload: AdminSubscriptionConfig = {
+    monthly_fee: Number(config.monthly_fee),
+    quarterly_fee: Number(config.quarterly_fee),
+    yearly_fee: Number(config.yearly_fee),
+    trial_days: Number(config.trial_days),
+    is_trial_enabled: Boolean(config.is_trial_enabled),
+    enforce_nid_verification: Boolean(config.enforce_nid_verification),
+    updated_at: new Date().toISOString(),
+  }
+
+  // 1. Try Backend POST
+  try {
+    await fetch(`${baseUrl}/v1/admin/subscription-config`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (err) {
+    console.warn('[saveSubscriptionConfig] Backend save notice:', err)
+  }
+
+  // 2. Direct Supabase platform_subscription_config
+  try {
+    await adminSupabase
+      .from('platform_subscription_config')
+      .upsert({
+        id: 'default_config',
+        ...payload,
+      })
+  } catch (err) {
+    console.warn('[saveSubscriptionConfig] platform_subscription_config notice:', err)
+  }
+
+  // 3. Direct Supabase showcase_config
+  try {
+    await upsertShowcaseConfig('subscription_config', payload)
+  } catch (err) {
+    console.warn('[saveSubscriptionConfig] showcase_config notice:', err)
+  }
+
+  return payload
+}
+
 

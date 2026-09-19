@@ -1,4 +1,5 @@
 import { Pool } from 'pg'
+import { PGlite } from '@electric-sql/pglite'
 import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
@@ -29,30 +30,36 @@ export function shopConfiguration(env = process.env) {
   const template = path.resolve(env.SHOP_TEMPLATE_DIR || defaultTemplate)
 
   const rawDbUrl = env.SHOP_DATABASE_URL || env.DATABASE_URL || env.POSTGRES_URL || ''
-  if (!rawDbUrl) {
+  const isServerRuntime = Boolean(env.PORT || env.ADMIN_SUPABASE_URL || env.ADMIN_SECRET)
+  const allowEmbedded = env.ALLOW_EMBEDDED_SHOP_DB === 'true' || (isServerRuntime && env.NODE_ENV !== 'test')
+  if (!rawDbUrl && !allowEmbedded) {
     throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting is not configured yet. The platform operator must complete the storefront setup.')
   }
 
   let connectionString = ''
   let dbHost = '127.0.0.1', dbPort = 5432, dbName = 'swapnopay_shop'
 
-  try {
-    const url = new URL(rawDbUrl)
-    if (['postgres:', 'postgresql:'].includes(url.protocol)) {
-      connectionString = url.href
-      dbHost = env.SHOP_PHP_DB_HOST || url.hostname
-      dbPort = Number(env.SHOP_PHP_DB_PORT || url.port || 5432)
-      dbName = decodeURIComponent(url.pathname.slice(1)) || 'swapnopay_shop'
-    } else {
-      throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured: must be PostgreSQL')
+  if (rawDbUrl) {
+    try {
+      const url = new URL(rawDbUrl)
+      if (['postgres:', 'postgresql:'].includes(url.protocol)) {
+        connectionString = url.href
+        dbHost = env.SHOP_PHP_DB_HOST || url.hostname
+        dbPort = Number(env.SHOP_PHP_DB_PORT || url.port || 5432)
+        dbName = decodeURIComponent(url.pathname.slice(1)) || 'swapnopay_shop'
+      } else {
+        throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured: must be PostgreSQL')
+      }
+    } catch (err) {
+      if (err instanceof ShopError) throw err
+      throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured correctly: ' + err.message)
     }
-  } catch (err) {
-    if (err instanceof ShopError) throw err
-    throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured correctly: ' + err.message)
   }
 
   return {
-    connectionString, key, addresses,
+    connectionString,
+    useEmbedded: !rawDbUrl,
+    key, addresses,
     baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shop.swapnopay.top'),
     runtime, sites, template,
     dbHost, dbPort, dbName,
@@ -66,11 +73,51 @@ export function shopConfiguration(env = process.env) {
 export class ShopService {
   constructor(config, dependencies = {}) {
     this.config = config
-    this.pool = dependencies.pool || (config.connectionString ? new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 }) : null)
     this.dns = dependencies.dns || ((host, addresses, lookup) => checkShopDns(host, addresses, lookup, config.baseDomain))
     this.probe = dependencies.probe || probeStore
     this.initialized = null
     this.processing = false
+
+    if (dependencies.pool) {
+      this.pool = dependencies.pool
+    } else if (config.connectionString) {
+      this.pool = new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 })
+    } else if (config.useEmbedded) {
+      const dbPath = path.resolve(config.runtime, 'shop-db')
+      let dbInstance = null
+      const getDb = async () => {
+        if (!dbInstance) {
+          await fs.mkdir(dbPath, { recursive: true })
+          dbInstance = new PGlite(dbPath)
+        }
+        return dbInstance
+      }
+      const query = async (sql, params = []) => {
+        const db = await getDb()
+        if (sql.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }], rowCount: 1 }
+        if (sql.includes('pg_advisory_')) return { rows: [], rowCount: 1 }
+        if (sql.includes('CREATE ROLE') || sql.includes('ALTER ROLE')) return { rows: [], rowCount: 1 }
+        if (!params.length && sql.includes(';')) {
+          let result
+          try {
+            result = await db.exec(sql)
+          } catch (error) {
+            if (error.message && (error.message.includes('role') || error.message.includes('permission denied'))) {
+              return { rows: [], rowCount: 1 }
+            }
+            throw error
+          }
+          const last = Array.isArray(result) ? result.at(-1) : result
+          return { ...last, rowCount: last?.affectedRows ?? last?.rows?.length ?? 0 }
+        }
+        const result = await db.query(sql, params)
+        return { ...result, rowCount: result.affectedRows ?? result.rows.length }
+      }
+      const client = { query, release() {} }
+      this.pool = { query, connect: async () => client }
+    } else {
+      this.pool = null
+    }
   }
   async initialize() {
     if (!this.pool) return
@@ -246,12 +293,16 @@ export class ShopService {
         await client.query(`CREATE SCHEMA IF NOT EXISTS ${quoted}; REVOKE ALL ON SCHEMA ${quoted} FROM PUBLIC`)
         await client.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
         await client.query(await fs.readFile(schemaFile,'utf8'))
-        const role = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
-        if (!role.rowCount) await client.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
-        await client.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
-          GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};
-          GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};
-          GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`)
+        try {
+          const role = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
+          if (!role.rowCount) await client.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
+          await client.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
+            GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};
+            GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};
+            GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`)
+        } catch (roleErr) {
+          console.warn('[shop/provision] Role creation notice:', roleErr.message)
+        }
       }
       await client.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
       await client.query(`UPDATE tbl_settings SET meta_title_home=$1,meta_description_home=$2,contact_email=$3,receive_email=$3,"BASE_URL"=$4,theme_color=$5,currency_code=$6 WHERE id=1`,
@@ -263,6 +314,21 @@ export class ShopService {
       await client.query('COMMIT')
     } catch(error) { await client.query('ROLLBACK'); throw error }
     await this.publishFiles(row,secrets)
+
+    // Sync storefront website URL to Supabase merchants record
+    try {
+      const { getAdminClient } = await import('./adminSupabase.js')
+      const adminClient = getAdminClient()
+      if (adminClient) {
+        const storeUrl = `https://${row.custom_domain || `${row.shop_slug}.${this.config.baseDomain}`}`
+        await adminClient
+          .from('merchants')
+          .update({ website: storeUrl })
+          .eq('id', row.merchant_id)
+      }
+    } catch (syncErr) {
+      console.warn('[shop/provision] Supabase merchant website sync notice:', syncErr.message)
+    }
   }
   async tick() {
     if (this.processing) return
@@ -347,7 +413,7 @@ export function getShopService() { return service ||= new ShopService(shopConfig
 export function startShopWorker() {
   try {
     const cfg = shopConfiguration()
-    if (!cfg.connectionString) return null
+    if (!cfg.connectionString && !cfg.useEmbedded) return null
     const poll=()=>{ try { getShopService().tick().catch(error=>console.error('[shop/worker]',error.code || 'Hosting configuration error')) } catch(error) { console.error('[shop/worker]',error.code || 'Hosting configuration error') } }
     const timer=setInterval(poll,5000)
     timer.unref()

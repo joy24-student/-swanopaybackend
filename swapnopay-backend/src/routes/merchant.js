@@ -3,7 +3,8 @@ import { getAdminClient } from '../services/adminSupabase.js'
 import { requireData, requirePlatformUser, requirePlatformMerchant } from '../services/merchantAccount.js'
 
 export const merchantRouter = Router()
-merchantRouter.use(requirePlatformUser)
+
+// Public system config & notices — accessible to all app clients without requiring active session
 merchantRouter.get('/system-config', async (_req, res) => {
   try {
     const row = requireData(await getAdminClient().from('showcase_config').select('value')
@@ -12,6 +13,8 @@ merchantRouter.get('/system-config', async (_req, res) => {
     res.json({ ok: true, config: row.value })
   } catch (error) { res.status(503).json({ error: error.message }) }
 })
+
+merchantRouter.use(requirePlatformUser)
 merchantRouter.use(requirePlatformMerchant)
 merchantRouter.get('/support', async (req, res) => {
   try {

@@ -844,6 +844,107 @@ fun AppNavigation(viewModel: AppViewModel) {
         }
     }
 
+    // Global Admin Notice & Broadcast Popup Modal (Connected to Admin Panel)
+    val adminNoticePopup by viewModel.adminNoticePopup.collectAsState()
+    adminNoticePopup?.let { notice ->
+        val isDark = viewModel.isDarkMode.value
+        val severityColor = when (notice.severity.uppercase()) {
+            "WARNING" -> Color(0xFFF59E0B)
+            "ERROR" -> Color(0xFFEF4444)
+            "SUCCESS" -> Color(0xFF10B981)
+            else -> Color(0xFF4F46E5)
+        }
+        val noticeIcon = when (notice.type.uppercase()) {
+            "ALERT" -> Icons.Default.Warning
+            "SYSTEM" -> Icons.Default.Build
+            "PROMOTION" -> Icons.Default.Campaign
+            else -> Icons.Default.Campaign
+        }
+
+        EnterpriseGestureModal(
+            onDismissRequest = { viewModel.dismissAdminNotice(notice.id) },
+            title = notice.title.ifBlank { "অ্যাডমিন নোটিশ" },
+            subtitle = "SwapnoPay প্ল্যাটফর্ম অ্যাডমিন বার্তা",
+            icon = noticeIcon
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp)
+            ) {
+                // Severity Tag
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    Surface(
+                        color = severityColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, severityColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = notice.type,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = severityColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    Surface(
+                        color = if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "Admin Broadcast",
+                            fontSize = 11.sp,
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                // Message Body Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+                    ),
+                    border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = notice.message,
+                        color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B),
+                        fontSize = 14.5.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Got It Dismiss Button
+                Button(
+                    onClick = { viewModel.dismissAdminNotice(notice.id) },
+                    colors = ButtonDefaults.buttonColors(containerColor = severityColor),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text(
+                        text = if (viewModel.language.value == "Bangla") "বুঝেছি / ঠিক আছে" else "Got It",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+            }
+        }
+    }
+
     when (currentScreen) {
         "Splash" -> SplashScreen(viewModel)
         "Onboarding" -> OnboardingScreen(viewModel)
@@ -15932,6 +16033,37 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                                     modifier = Modifier.padding(10.dp)
                                 )
                             }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val merchantNameParam = java.net.URLEncoder.encode(gatewayProfile.businessName.ifBlank { "Store Merchant" }, "UTF-8")
+                                    val testOrderId = "TEST-" + System.currentTimeMillis().toString().takeLast(6)
+                                    val testCheckoutUrl = "https://pay.swapnopay.top/widget.html?merchant_id=${gatewayProfile.id}&merchant_name=$merchantNameParam&amount=100.00&order_id=$testOrderId"
+                                    try {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(testCheckoutUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "ওয়েব গেটওয়ে খোলা সম্ভব হয়নি", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.2.dp, goldColor)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.OpenInBrowser,
+                                    contentDescription = null,
+                                    tint = goldColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "🌐 Preview Web Gateway (ওয়েব চেকআউট টেস্ট করুন)",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = goldColor
+                                )
+                            }
                         }
                     }
                 }
@@ -17589,6 +17721,8 @@ fun DashboardScreen(viewModel: AppViewModel) {
                 }
             }
 
+            val marqueeText by viewModel.marqueeNotice.collectAsState()
+
             // MAIN SCROLLABLE CONTENT
             LazyColumn(
                 state = listState,
@@ -17598,6 +17732,71 @@ fun DashboardScreen(viewModel: AppViewModel) {
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // 0. ADMIN ANNOUNCEMENT MARQUEE BANNER
+                if (!marqueeText.isNullOrBlank()) {
+                    item {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDarkMode) Color(0xFF1E1B4B) else Color(0xFFEEF2FF)
+                            ),
+                            border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF4338CA) else Color(0xFFC7D2FE)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.showAdminNoticeManual() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF4F46E5).copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Campaign,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F46E5),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "📢 অ্যাডমিন নোটিশ",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF4F46E5)
+                                    )
+                                    Text(
+                                        text = marqueeText!!,
+                                        fontSize = 12.5.sp,
+                                        color = if (isDarkMode) Color(0xFFE0E7FF) else Color(0xFF1E293B),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    color = Color(0xFF4F46E5),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = "বিস্তারিত",
+                                        color = Color.White,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // 1. TOTAL SALES CHART CARD ("মোট ব্যালেন্স")
                 item {
                     var chartFilter by remember { mutableStateOf("7_DAYS") }

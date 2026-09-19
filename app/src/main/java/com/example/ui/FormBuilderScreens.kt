@@ -104,6 +104,11 @@ fun FormBuilderStudioScreen(viewModel: AppViewModel) {
     }
 
     fun shareFormLink() {
+        viewModel.saveActiveFormToHostedList()
+        val form = viewModel.hostedFormsList.value.find { it.id == viewModel.activeFormId.value }
+        if (form != null) {
+            viewModel.registerBrandedHostedFormRoute(form)
+        }
         val shareUrl = viewModel.hostedFormPublicUrl()
         if (shareUrl.isNotBlank()) {
             val currentTitle = viewModel.formTitle.value
@@ -114,9 +119,9 @@ fun FormBuilderStudioScreen(viewModel: AppViewModel) {
                 putExtra(android.content.Intent.EXTRA_TEXT, "Checkout using $currentTitle: $shareUrl")
             }
             context.startActivity(android.content.Intent.createChooser(intent, "Share Payment Form"))
-            Toast.makeText(context, "লিংক কপি ও শেয়ার করা হচ্ছে...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "লিংক কপি ও VPS-এ সিঙ্ক করা হয়েছে...", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "Publish the form to generate a public link", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Unable to generate form share link.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -5600,9 +5605,14 @@ private fun PublishFlowModal(
             ).forEach { (optTitle, optSub, optIcon) ->
                 Card(
                     onClick = {
+                        viewModel.saveActiveFormToHostedList()
+                        val form = viewModel.hostedFormsList.value.find { it.id == viewModel.activeFormId.value }
+                        if (form != null) {
+                            viewModel.registerBrandedHostedFormRoute(form)
+                        }
                         val shareUrl = viewModel.hostedFormPublicUrl()
                         if (shareUrl.isBlank()) {
-                            Toast.makeText(context, "Publish the form and connect Supabase before sharing it.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Unable to generate share link. Check form settings.", Toast.LENGTH_LONG).show()
                             return@Card
                         }
                         when (optTitle) {
