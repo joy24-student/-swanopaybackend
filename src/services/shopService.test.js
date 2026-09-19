@@ -24,8 +24,11 @@ test('encrypted provisioning secrets cannot be read or tampered with',()=>{
   assert.deepEqual(decryptConfig(value,key),{password:'private'})
   assert.throws(()=>decryptConfig(value,'cd'.repeat(32)))
 })
-test('DNS verification rejects missing or unexpected addresses',async()=>{
+test('DNS verification validates custom and platform domains correctly',async()=>{
   assert.equal(await checkShopDns('example.com',['203.0.113.1'],async()=>[{address:'203.0.113.2'}]),false)
+  assert.equal(await checkShopDns('example.com',['203.0.113.1'],async()=>[{address:'203.0.113.1'}]),true)
+  assert.equal(await checkShopDns('mystore.shop.swapnopay.top',['127.0.0.1'],async()=>[{address:'159.65.132.88'}]),true)
+  assert.equal(await checkShopDns('mystore.shop.swapnopay.top',['127.0.0.1'],async()=>{throw new Error('NXDOMAIN')}),false)
 })
 test('clean PostgreSQL schema, real provisioning, retries, tenant privileges and idempotent catalog',async()=>{
   const db=new PGlite()
