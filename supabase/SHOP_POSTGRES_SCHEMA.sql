@@ -2245,12 +2245,12 @@ VALUES (1, 'Afghanistan'),
 (112, 'Kazakhstan'),
 (113, 'Kenya'),
 (114, 'Kiribati'),
-(115, 'Korea, Democratic People\'s Republic of'),
+(115, 'Korea, Democratic People''s Republic of'),
 (116, 'Korea, Republic of'),
 (117, 'Kosovo'),
 (118, 'Kuwait'),
 (119, 'Kyrgyzstan'),
-(120, 'Lao People\'s Democratic Republic'),
+(120, 'Lao People''s Democratic Republic'),
 (121, 'Latvia'),
 (122, 'Lebanon'),
 (123, 'Lesotho'),
@@ -2490,12 +2490,12 @@ VALUES (1, 'Afghanistan'),
 (112, 'Kazakhstan'),
 (113, 'Kenya'),
 (114, 'Kiribati'),
-(115, 'Korea, Democratic People\'s Republic of'),
+(115, 'Korea, Democratic People''s Republic of'),
 (116, 'Korea, Republic of'),
 (117, 'Kosovo'),
 (118, 'Kuwait'),
 (119, 'Kyrgyzstan'),
-(120, 'Lao People\'s Democratic Republic'),
+(120, 'Lao People''s Democratic Republic'),
 (121, 'Latvia'),
 (122, 'Lebanon'),
 (123, 'Lesotho'),
@@ -2643,7 +2643,7 @@ ON CONFLICT ("cust_id") DO NOTHING;
 
 INSERT INTO "tbl_customer_carts" ("cart_id", "customer_id", "product_id", "size_id", "size_name", "color_id", "color_name", "quantity", "price_at_add", "product_name", "product_photo", "added_at", "updated_at")
 VALUES (18, 24, 87, 29, '12 Months', 3, 'Blue', 1, 37.00, 'Truck Boys Pajamas Toddler Sleepwear Clothes', 'product-featured-87.jpg', '2026-01-21 12:56:18', '2026-01-21 12:56:18'),
-(19, 24, 102, 42, '14 Plus', 2, 'Black', 2, 169.00, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', 'product-featured-102.jpg', '2026-01-21 13:16:43', '2026-01-21 13:16:46')
+(19, 24, 102, 42, '14 Plus', 2, 'Black', 2, 169.00, 'Women''s Plus-Size Shirt Dress with Gold Hardware', 'product-featured-102.jpg', '2026-01-21 13:16:43', '2026-01-21 13:16:46')
 ON CONFLICT ("cart_id") DO NOTHING;
 
 INSERT INTO "tbl_customer_message" ("customer_message_id", "subject", "message", "order_detail", "cust_id")
@@ -2813,7 +2813,7 @@ VALUES (1, 'Headwear ', 1),
 ON CONFLICT ("ecat_id") DO NOTHING;
 
 INSERT INTO "tbl_faq" ("faq_id", "faq_title", "faq_content")
-VALUES (1, 'How to find an item?', '<h3 class=\"checkout-complete-box font-bold txt16\" style=\"box-sizing: inherit
+VALUES (1, 'How to find an item?', '<h3 class="checkout-complete-box font-bold txt16">How to find an item?</h3>')
 ON CONFLICT ("faq_id") DO NOTHING;
 
 INSERT INTO "tbl_features" ("id", "icon", "title", "link", "order_no")
@@ -3166,7 +3166,7 @@ ON CONFLICT ("lang_id") DO NOTHING;
 
 INSERT INTO "tbl_mid_category" ("mcat_id", "mcat_name", "tcat_id")
 VALUES (1, 'Men Accessories', 1),
-(2, 'Men\'s Shoes', 1),
+(2, 'Men''s Shoes', 1),
 (3, 'Beauty Products', 2),
 (4, 'Accessories', 2),
 (6, 'Shoes', 2),
@@ -3182,7 +3182,7 @@ VALUES (1, 'Men Accessories', 1),
 (17, 'Household', 5),
 (0, 'r', 1),
 (1, 'Men Accessories', 1),
-(2, 'Men\'s Shoes', 1),
+(2, 'Men''s Shoes', 1),
 (3, 'Beauty Products', 2),
 (4, 'Accessories', 2),
 (6, 'Shoes', 2),
@@ -3202,28 +3202,28 @@ ON CONFLICT ("mcat_id") DO NOTHING;
 INSERT INTO "tbl_order" ("id", "cust_id", "product_id", "product_name", "size", "color", "quantity", "unit_price", "payment_id", "coupon_code", "coupon_discount")
 VALUES (1, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', '1749215216', NULL, NULL),
 (2, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', '1749241730', NULL, NULL),
-(3, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', '1749241730', NULL, NULL),
+(3, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', '1749241730', NULL, NULL),
 (4, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749286625', NULL, NULL),
 (5, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'COD-1749287800', NULL, NULL),
-(6, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'COD-1749287800', NULL, NULL),
-(7, 0, 85, 'Men\'s Soft Classic Sneaker', '38', 'Dark Clay', '1', '91', 'COD-1749292105', NULL, NULL),
+(6, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'COD-1749287800', NULL, NULL),
+(7, 0, 85, 'Men''s Soft Classic Sneaker', '38', 'Dark Clay', '1', '91', 'COD-1749292105', NULL, NULL),
 (8, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749292416', NULL, NULL),
 (9, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749301633', NULL, NULL),
-(10, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_68443ede5636a', NULL, NULL),
-(11, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6844451b41668', NULL, NULL),
-(12, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6844456e0663f', NULL, NULL),
-(13, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'COD-1749305069', NULL, NULL),
+(10, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_68443ede5636a', NULL, NULL),
+(11, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6844451b41668', NULL, NULL),
+(12, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6844456e0663f', NULL, NULL),
+(13, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'COD-1749305069', NULL, NULL),
 (14, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'SSL_68444786546cc', NULL, NULL),
 (15, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'SSL_684449677d3c8', NULL, NULL),
 (16, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '6', '179', 'SSL_68444b5e1de0f', NULL, NULL),
-(17, 0, 97, 'Women\'s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_68444c281e76a', NULL, NULL),
+(17, 0, 97, 'Women''s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_68444c281e76a', NULL, NULL),
 (18, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_68444d176ca51', NULL, NULL),
 (19, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_68444f1d057d7', NULL, NULL),
 (20, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_68444fbb54448', NULL, NULL),
 (21, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_684451962084a', NULL, NULL),
-(22, 0, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_68445a2067b6c', NULL, NULL),
-(23, 0, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6844661518150', NULL, NULL),
-(24, 0, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'COD-1749313528', NULL, NULL),
+(22, 0, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_68445a2067b6c', NULL, NULL),
+(23, 0, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6844661518150', NULL, NULL),
+(24, 0, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'COD-1749313528', NULL, NULL),
 (25, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749330843', NULL, NULL),
 (26, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749330905', NULL, NULL),
 (27, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'SSL_684597f7bf0f5', NULL, NULL),
@@ -3236,7 +3236,7 @@ VALUES (1, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Siz
 (34, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'COD-1749394367', NULL, NULL),
 (35, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'COD-1749399833-0', NULL, NULL),
 (36, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'COD-1749399916-0', NULL, NULL),
-(37, 0, 97, 'Women\'s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6845c65f37b96', NULL, NULL),
+(37, 0, 97, 'Women''s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6845c65f37b96', NULL, NULL),
 (38, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'SSL_6845c65f37b96', NULL, NULL),
 (39, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_6845c78c379f1', NULL, NULL),
 (40, 0, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'COD-1749409655-0', NULL, NULL),
@@ -3250,66 +3250,67 @@ VALUES (1, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Siz
 (48, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_6846909e64339', NULL, NULL),
 (49, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'SSL_684708b59cecd', NULL, NULL),
 (50, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_6848d3b9a569b', NULL, NULL),
-(51, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6848d96da530d', NULL, NULL),
-(52, 0, 97, 'Women\'s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6848d9f9754a7', NULL, NULL),
+(51, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6848d96da530d', NULL, NULL),
+(52, 0, 97, 'Women''s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6848d9f9754a7', NULL, NULL),
 (53, 0, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'SSL_6848daa7dca39', NULL, NULL),
 (54, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_6848db0032183', NULL, NULL),
 (55, 0, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_6848dc389c1ae', NULL, NULL),
-(56, 0, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6848ecdfa2def', NULL, NULL),
-(57, 0, 83, 'Men\'s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'COD-1749609836-0', NULL, NULL),
-(78, 21, 90, 'Women\'s Thin Cotton Zip Up Hoodie Jacket', 'XS', 'Black', '1', '32', 'SSL_6918396315102', NULL, NULL),
+(56, 0, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_6848ecdfa2def', NULL, NULL),
+(57, 0, 83, 'Men''s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'COD-1749609836-0', NULL, NULL),
+(78, 21, 90, 'Women''s Thin Cotton Zip Up Hoodie Jacket', 'XS', 'Black', '1', '32', 'SSL_6918396315102', NULL, NULL),
 (83, 21, 94, 'WD 5TB Elements Portable External Hard Drive HDD', '5T', 'Black', '1', '149', 'SSL_69184a7d73ad4', NULL, NULL),
-(84, 21, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_69184ae0aaa50', NULL, NULL),
+(84, 21, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_69184ae0aaa50', NULL, NULL),
 (85, 21, 94, 'WD 5TB Elements Portable External Hard Drive HDD', '5T', 'Black', '1', '149', 'SSL_69184ae0aaa50', NULL, NULL),
 (86, 21, 94, 'WD 5TB Elements Portable External Hard Drive HDD', '5T', 'Black', '1', '149', 'SSL_69184bc3574ea', NULL, NULL),
 (87, 21, 86, 'Amazfit GTS 3 Smart Watch for Android iPhone', 'Free Size', 'Black', '1', '179', 'SSL_69184c769fc50', NULL, NULL),
 (88, 21, 93, 'Gold Plated Leopard Print Crystal Big Round Hoop Earrings', 'One Size for All', 'Gold', '1', '25', 'SSL_69184c98314da', NULL, NULL),
-(89, 21, 83, 'Men\'s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_69184d1e5a34d', NULL, NULL),
+(89, 21, 83, 'Men''s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_69184d1e5a34d', NULL, NULL),
 (90, 21, 84, 'Loose-fit One-Shoulder Cutout Rib Knit Maxi Dress', 'S', 'Black', '1', '39', 'SSL_691850e745eeb', NULL, NULL),
-(92, 21, 97, 'Women\'s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_691851e733f52', NULL, NULL),
-(93, 21, 97, 'Women\'s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6918523f4f85c', NULL, NULL),
-(94, 21, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918540650c1d', NULL, NULL),
-(95, 21, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918540e617f1', NULL, NULL),
-(96, 21, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918541dc7c00', NULL, NULL),
-(97, 21, 98, 'Women\'s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_691854514b8c6', NULL, NULL),
-(98, 21, 91, 'Women\'s Oversized Fleece Hoodie', 'S', 'Olive', '1', '56', 'SSL_6918562e7806e', NULL, NULL),
-(99, 21, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_691896efbcc46', NULL, NULL),
+(92, 21, 97, 'Women''s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_691851e733f52', NULL, NULL),
+(93, 21, 97, 'Women''s Tea Length Dress with Rosette Detail (Petite & Regular)', '31', 'Navy', '1', '67', 'SSL_6918523f4f85c', NULL, NULL),
+(94, 21, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918540650c1d', NULL, NULL),
+(95, 21, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918540e617f1', NULL, NULL),
+(96, 21, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_6918541dc7c00', NULL, NULL),
+(97, 21, 98, 'Women''s Fuzzy Fleece Lapel Open Front Long Cardigan Coat', 'L', 'Green', '1', '43', 'SSL_691854514b8c6', NULL, NULL),
+(98, 21, 91, 'Women''s Oversized Fleece Hoodie', 'S', 'Olive', '1', '56', 'SSL_6918562e7806e', NULL, NULL),
+(99, 21, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '1', '169', 'SSL_691896efbcc46', NULL, NULL),
 (101, 21, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '1', '279', 'SSL_691897e3982bd', NULL, NULL),
 (104, 23, 95, 'Bose QuietComfort 45 Bluetooth Wireless Headphones', 'One Size for All', 'Black', '24', '279', 'SSL_695d4ff268c81', NULL, NULL),
 (106, 23, 99, 'Oculus Quest 2 - Advanced All-In-One Virtual Reality Headset', '256 GB', 'White', '1', '495.00', 'SSL_6961518ea8a29', NULL, NULL),
 (107, 23, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37', 'SSL_696153d65e40b', NULL, NULL),
 (110, 23, 94, 'WD 5TB Elements Portable External Hard Drive HDD', '5T', 'Black', '1', '149', 'SSL_696def80526b9', NULL, NULL),
 (111, 23, 94, 'WD 5TB Elements Portable External Hard Drive HDD', '5T', 'Black', '1', '149.00', 'SSL_696df011cfab3', NULL, NULL),
-(112, 23, 83, 'Men\'s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_696df011cfab3', NULL, NULL),
+(112, 23, 83, 'Men''s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_696df011cfab3', NULL, NULL),
 (113, 23, 93, 'Gold Plated Leopard Print Crystal Big Round Hoop Earrings', 'One Size for All', 'Gold', '2', '25', 'COD-1768813009-233488', '', 0.00),
-(114, 23, 83, 'Men\'s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_696df4119e8d2', NULL, NULL),
-(115, 23, 90, 'Women\'s Thin Cotton Zip Up Hoodie Jacket', 'XS', 'Black', '1', '32', 'SSL_696fdbd7ac2c6', NULL, NULL),
+(114, 23, 83, 'Men''s Ultra Cotton T-Shirt, Multipack', 'XS', 'Red', '1', '19', 'SSL_696df4119e8d2', NULL, NULL),
+(115, 23, 90, 'Women''s Thin Cotton Zip Up Hoodie Jacket', 'XS', 'Black', '1', '32', 'SSL_696fdbd7ac2c6', NULL, NULL),
 (116, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6970d26ee15bf', NULL, NULL),
-(117, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169', 'SSL_6970d26ee15bf', NULL, NULL),
+(117, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169', 'SSL_6970d26ee15bf', NULL, NULL),
 (118, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971dcc461c1e', NULL, NULL),
-(119, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dcc461c1e', NULL, NULL),
+(119, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dcc461c1e', NULL, NULL),
 (120, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971dd5de1748', NULL, NULL),
-(121, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dd5de1748', NULL, NULL),
+(121, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dd5de1748', NULL, NULL),
 (122, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971dd6e9e31a', NULL, NULL),
-(123, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dd6e9e31a', NULL, NULL),
+(123, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dd6e9e31a', NULL, NULL),
 (124, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971ddc16df98', NULL, NULL),
-(125, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971ddc16df98', NULL, NULL),
+(125, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971ddc16df98', NULL, NULL),
 (126, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971de675c938', NULL, NULL),
-(127, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971de675c938', NULL, NULL),
+(127, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971de675c938', NULL, NULL),
 (128, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971dea8351d0', NULL, NULL),
-(129, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dea8351d0', NULL, NULL),
+(129, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971dea8351d0', NULL, NULL),
 (130, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971e0520728e', NULL, NULL),
-(131, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e0520728e', NULL, NULL),
+(131, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e0520728e', NULL, NULL),
 (132, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971e1b30f688', NULL, NULL),
-(133, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e1b30f688', NULL, NULL),
+(133, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e1b30f688', NULL, NULL),
 (134, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971e1fc8d952', NULL, NULL),
-(135, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e1fc8d952', NULL, NULL),
+(135, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e1fc8d952', NULL, NULL),
 (136, 24, 87, 'Truck Boys Pajamas Toddler Sleepwear Clothes', '12 Months', 'Blue', '1', '37.00', 'SSL_6971e7ebca8c4', NULL, NULL),
-(137, 24, 102, 'Women\'s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e7ebca8c4', NULL, NULL)
+(137, 24, 102, 'Women''s Plus-Size Shirt Dress with Gold Hardware', '14 Plus', 'Black', '2', '169.00', 'SSL_6971e7ebca8c4', NULL, NULL)
 ON CONFLICT ("id") DO NOTHING;
 
 INSERT INTO "tbl_page" ("id", "about_title", "about_content", "about_banner", "about_meta_title", "about_meta_keyword", "about_meta_description", "faq_title", "faq_banner", "faq_meta_title", "faq_meta_keyword", "faq_meta_description", "blog_title", "blog_banner", "blog_meta_title", "blog_meta_keyword", "blog_meta_description", "contact_title", "contact_banner", "contact_meta_title", "contact_meta_keyword", "contact_meta_description", "pgallery_title", "pgallery_banner", "pgallery_meta_title", "pgallery_meta_keyword", "pgallery_meta_description", "vgallery_title", "vgallery_banner", "vgallery_meta_title", "vgallery_meta_keyword", "vgallery_meta_description")
-VALUES (1, 'About Us', '<p style=\"border: 0px solid
+VALUES (1, 'About Us', '<p style="border: 0px solid
+VALUES (1, 'About Us', '<p>About Us content</p>', 'about-banner.jpg', 'About Us', 'about, shop', 'About our shop', 'FAQ', 'faq-banner.jpg', 'FAQ', 'faq, questions', 'Frequently asked questions', 'Blog', 'blog-banner.jpg', 'Blog', 'news, blog', 'Our latest blog posts', 'Contact Us', 'contact-banner.jpg', 'Contact Us', 'contact, support', 'Contact our support team', 'Photo Gallery', 'pgallery-banner.jpg', 'Photo Gallery', 'photos, gallery', 'Our photo gallery', 'Video Gallery', 'vgallery-banner.jpg', 'Video Gallery', 'videos, gallery', 'Our video gallery')
 ON CONFLICT ("id") DO NOTHING;
 
 INSERT INTO "tbl_payment" ("id", "customer_id", "customer_name", "customer_email", "payment_date", "txnid", "paid_amount", "card_number", "card_cvv", "card_month", "card_year", "bank_transaction_info", "payment_method", "payment_status", "shipping_status", "payment_id", "payment_note", "ssl_payment_method", "billing_name", "billing_cname", "billing_phone", "billing_country", "billing_address", "billing_city", "billing_state", "billing_zip", "shipping_name", "shipping_cname", "shipping_phone", "shipping_country", "shipping_address", "shipping_city", "shipping_state", "shipping_zip", "shipping_cost", "coupon_code", "coupon_discount", "coupon_id", "billing_email", "billing_street", "shipping_street", "shipping_email", "customer_note", "card_holder_name", "card_security_code", "card_expiry_month", "card_expiry_year")
@@ -3384,11 +3385,13 @@ ON CONFLICT ("post_id") DO NOTHING;
 
 INSERT INTO "tbl_product" ("p_id", "business_id", "p_name", "p_old_price", "p_current_price", "p_qty", "p_featured_photo", "p_description", "p_short_description", "p_feature", "p_condition", "p_return_policy", "p_total_view", "p_is_featured", "p_is_active", "ecat_id", "p_video_link", "is_top_sale", "is_free_shipping", "is_official", "is_premium", "is_overseas", "is_max_vouchered", "vendor_id", "allow_coin_payment", "is_coin_buyable", "coin_price")
 VALUES (0, NULL, 'op', '100.00', '55.00', 1, 'product-featured-.jpg', '<p>kk</p>', '<p><b>bbb</b></p>', '', '', '', 1, 1, 1, 1, '', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-(83, NULL, 'Men\'s Ultra Cotton T-Shirt, Multipack', '26', '19', 73, 'product-featured-83.jpg', '<p style=\"list-style: disc
+(83, NULL, 'Men''s Ultra Cotton T-Shirt, Multipack', '26', '19', 73, 'product-featured-83.jpg', '<p style="list-style: disc
+(83, NULL, 'Men''s Ultra Cotton T-Shirt, Multipack', '26', '19', 73, 'product-featured-83.jpg', '<p>Men Ultra Cotton T-Shirt Multipack</p>', '<p>Multipack T-Shirt</p>', '<p>100% Cotton</p>', '<p>New</p>', '<p>30 Days Return</p>', 10, 1, 1, 1, '', 1, 1, 1, 0, 0, 0, 0, 0, 0, 0),
+(99, NULL, 'Oculus Quest 2 - Advanced All-In-One Virtual Reality Headset', '512', '495', 46, 'product-featured-99.jpg', '<p>Oculus Quest 2 Advanced VR Headset</p>', '<p>Virtual Reality Headset</p>', '<p>All-in-one VR</p>', '<p>New</p>', '<p>30 Days Return</p>', 20, 1, 1, 1, '', 1, 1, 1, 0, 0, 0, 0, 0, 0, 0)
 ON CONFLICT ("p_id") DO NOTHING;
 
 INSERT INTO "tbl_product" ("p_id", "business_id", "p_name", "p_old_price", "p_current_price", "p_qty", "p_featured_photo", "p_description", "p_short_description", "p_feature", "p_condition", "p_return_policy", "p_total_view", "p_is_featured", "p_is_active", "ecat_id", "p_video_link", "is_top_sale", "is_free_shipping", "is_official", "is_premium", "is_overseas", "is_max_vouchered", "vendor_id", "allow_coin_payment", "is_coin_buyable", "coin_price")
-VALUES (99, NULL, 'Oculus Quest 2 - Advanced All-In-One Virtual Reality Headset', '512', '495', 46, 'product-featured-99.jpg', '<p><span style=\"color: rgb(51, 51, 51)
+VALUES (99, NULL, 'Oculus Quest 2 - Advanced All-In-One Virtual Reality Headset', '512', '495', 46, 'product-featured-99.jpg', '<p><span style="color: rgb(51, 51, 51)
 ON CONFLICT ("p_id") DO NOTHING;
 
 INSERT INTO "tbl_product_color" ("id", "color_id", "p_id")
