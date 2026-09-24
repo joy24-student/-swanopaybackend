@@ -77,37 +77,45 @@ if ($runtimeRoot) {
         if (str_starts_with(trim($line), '#') || !str_contains($line, '=')) continue;
         [$name,$value] = explode('=', $line, 2);
         $name = trim($name);
-        if (preg_match('/\A[A-Z_][A-Z0-9_]*\z/', $name) && getenv($name) === false) putenv($name . '=' . trim($value, " \t\n\r\0\x0B\"'"));
+        if (preg_match('/\A[A-Z_][A-Z0-9_]*\z/', $name)) {
+            $cleanVal = trim($value, " \t\n\r\0\x0B\"'");
+            putenv($name . '=' . $cleanVal);
+            $_ENV[$name] = $cleanVal;
+            $_SERVER[$name] = $cleanVal;
+        }
     }
 }
 
-$db_driver = $runtime ? 'pgsql' : (getenv('DB_DRIVER') ?: 'mysql');
+$db_driver = 'pgsql';
 $db = $runtime['db'] ?? [
-    'host' => getenv('DB_HOST') ?: getenv('SUPABASE_DB_HOST') ?: 'localhost',
-    'port' => getenv('DB_PORT') ?: getenv('SUPABASE_DB_PORT') ?: ($db_driver === 'pgsql' ? 5432 : 3306),
-    'database' => getenv('DB_NAME') ?: getenv('SUPABASE_DB_NAME') ?: 'ecommerceweb',
-    'user' => getenv('DB_USER') ?: getenv('SUPABASE_DB_USER') ?: '',
-    'password' => getenv('DB_PASS') ?: getenv('SUPABASE_DB_PASSWORD') ?: '',
+    'host' => getenv('DB_HOST') ?: getenv('SUPABASE_DB_HOST') ?: 'aws-0-ap-southeast-1.pooler.supabase.com',
+    'port' => getenv('DB_PORT') ?: getenv('SUPABASE_DB_PORT') ?: 6543,
+    'database' => getenv('DB_NAME') ?: getenv('SUPABASE_DB_NAME') ?: 'postgres',
+    'user' => getenv('DB_USER') ?: getenv('SUPABASE_DB_USER') ?: 'postgres.oaudxkhxwdrdsybyaheb',
+    'password' => getenv('DB_PASS') ?: getenv('SUPABASE_DB_PASSWORD') ?: 'BVlsJxoubjhsny9M',
     'sslmode' => getenv('DB_SSLMODE') ?: 'require'
 ];
 if (!$runtime && getenv('DATABASE_URL')) {
     $parts = parse_url(getenv('DATABASE_URL'));
-    if (!$parts || !in_array($parts['scheme'] ?? '', ['postgres','postgresql','mysql'], true)) { http_response_code(503); exit('Invalid database configuration.'); }
-    $db_driver = $parts['scheme'] === 'mysql' ? 'mysql' : 'pgsql';
+    if (!$parts || !in_array($parts['scheme'] ?? '', ['postgres','postgresql'], true)) { http_response_code(503); exit('Invalid database configuration.'); }
     parse_str($parts['query'] ?? '', $query);
-    $db = ['host'=>$parts['host'], 'port'=>$parts['port'] ?? ($db_driver === 'pgsql' ? 5432 : 3306),
-        'database'=>rawurldecode(ltrim($parts['path'] ?? '', '/')), 'user'=>rawurldecode($parts['user'] ?? ''),
-        'password'=>rawurldecode($parts['pass'] ?? ''), 'sslmode'=>$query['sslmode'] ?? $db['sslmode']];
+    $db = [
+        'host' => $parts['host'],
+        'port' => $parts['port'] ?? 6543,
+        'database' => rawurldecode(ltrim($parts['path'] ?? '', '/')),
+        'user' => rawurldecode($parts['user'] ?? ''),
+        'password' => rawurldecode($parts['pass'] ?? ''),
+        'sslmode' => $query['sslmode'] ?? $db['sslmode']
+    ];
 }
 try {
-    if (!$db['user'] || !$db['database'] || !in_array($db_driver,['pgsql','mysql'],true)) throw new RuntimeException('Database credentials missing');
+    if (!$db['user'] || !$db['database']) throw new RuntimeException('Database credentials missing');
     foreach (['host','port','database','sslmode'] as $part) if (strpbrk((string)$db[$part], ";\r\n") !== false) throw new RuntimeException('Invalid database configuration');
-    $dsn = $db_driver . ':host=' . $db['host'] . ';port=' . $db['port'] . ';dbname=' . $db['database'];
-    $dsn .= $db_driver === 'pgsql' ? ';sslmode=' . $db['sslmode'] : ';charset=utf8mb4';
+    $dsn = 'pgsql:host=' . $db['host'] . ';port=' . $db['port'] . ';dbname=' . $db['database'] . ';sslmode=' . $db['sslmode'];
     $pdo = new PDO($dsn,$db['user'],$db['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
 } catch (Throwable $error) {
-    error_log('Store database unavailable: ' . $error->getCode());
-    http_response_code(503); header('Retry-After: 30'); exit('The store is temporarily unavailable. Please try again shortly.');
+    error_log('Store database unavailable: ' . $error->getMessage());
+    http_response_code(503); header('Retry-After: 30'); exit('The store is temporarily unavailable. Please try again shortly. (Database error: ' . htmlspecialchars($error->getMessage()) . ')');
 }
 define('DB_DRIVER_NAME',$db_driver);
 define('SQL_RAND',$db_driver === 'pgsql' ? 'RANDOM()' : 'RAND()');
