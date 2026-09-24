@@ -1,19 +1,19 @@
 <?php
-$statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-$statement->execute();
-$result = $statement->fetchAll(PDO::FETCH_ASSOC);
-foreach ($result as $row)
-{
-	$footer_about = $row['footer_about'];
-	$contact_email = $row['contact_email'];
-	$contact_phone = $row['contact_phone'];
-	$contact_address = $row['contact_address'];
-	$footer_copyright = $row['footer_copyright'];
-	$total_recent_post_footer = $row['total_recent_post_footer'];
-    $total_popular_post_footer = $row['total_popular_post_footer'];
-    $newsletter_on_off = $row['newsletter_on_off'];
-    $before_body = $row['before_body'];
+if (empty($settings)) {
+    $statement = $pdo->query("SELECT * FROM tbl_settings WHERE id=1");
+    $settings = $statement->fetch(PDO::FETCH_ASSOC) ?: [];
 }
+$footer_about = $settings['footer_about'] ?? '';
+$contact_email = $settings['contact_email'] ?? '';
+$contact_phone = $settings['contact_phone'] ?? '';
+$contact_address = $settings['contact_address'] ?? '';
+$footer_copyright = $settings['footer_copyright'] ?? '';
+$total_recent_post_footer = $settings['total_recent_post_footer'] ?? 0;
+$total_popular_post_footer = $settings['total_popular_post_footer'] ?? 0;
+$newsletter_on_off = $settings['newsletter_on_off'] ?? 0;
+$before_body = $settings['before_body'] ?? '';
+$stripe_public_key = $settings['stripe_public_key'] ?? '';
+$stripe_secret_key = $settings['stripe_secret_key'] ?? '';
 ?>
 
 
@@ -135,15 +135,7 @@ This link will be active only for 24 hours.
 	<i class="fa fa-angle-up"></i>
 </a>
 
-<?php
-$statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-$statement->execute();
-$result = $statement->fetchAll(PDO::FETCH_ASSOC);                            
-foreach ($result as $row) {
-    $stripe_public_key = $row['stripe_public_key'];
-    $stripe_secret_key = $row['stripe_secret_key'];
-}
-?>
+
 
 <script src="assets/js/jquery-2.2.4.min.js"></script>
 <script src="assets/js/bootstrap.min.js"></script>

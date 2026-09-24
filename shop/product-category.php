@@ -3,12 +3,7 @@
 <?php
 require_once('admin/inc/seo_helpers.php');
 
-$statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-$statement->execute();
-$result = $statement->fetchAll(PDO::FETCH_ASSOC);                            
-foreach ($result as $row) {
-    $banner_product_category = $row['banner_product_category'];
-}
+$banner_product_category = $settings['banner_product_category'] ?? '';
 ?>
 
 <?php
@@ -45,129 +40,68 @@ $final_ecat_ids=array_map('intval',$final_ecat_ids);
 
                     <div class="row">
                         <?php
-                        // Checking if any product is available or not
-                        $prod_count = 0;
-                        $statement = $pdo->prepare("SELECT * FROM tbl_product");
-                        $statement->execute();
-                        $result = $statement->fetchAll(PDO::FETCH_ASSOC);
-                        foreach ($result as $row) {
-                            $prod_table_ecat_ids[] = $row['ecat_id'];
+                        $products = [];
+                        if (!empty($final_ecat_ids)) {
+                            $placeholders = implode(',', array_fill(0, count($final_ecat_ids), '?'));
+                            $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE ecat_id IN ($placeholders) AND p_is_active = 1 ORDER BY p_id DESC");
+                            $statement->execute($final_ecat_ids);
+                            $products = $statement->fetchAll(PDO::FETCH_ASSOC);
                         }
 
-                        for($ii=0;$ii<count($final_ecat_ids);$ii++):
-                            if(in_array($final_ecat_ids[$ii],$prod_table_ecat_ids)) {
-                                $prod_count++;
-                            }
-                        endfor;
-
-                        if($prod_count==0) {
+                        if (empty($products)) {
                             echo '<div class="pl_15">'.LANG_VALUE_153.'</div>';
                         } else {
-                            for($ii=0;$ii<count($final_ecat_ids);$ii++) {
-                                $statement = $pdo->prepare("SELECT * FROM tbl_product WHERE ecat_id=? AND p_is_active=?");
-                                $statement->execute(array($final_ecat_ids[$ii],1));
-                                $result = $statement->fetchAll(PDO::FETCH_ASSOC);
-                                foreach ($result as $row) {
-                                    ?>
-                                    <div class="col-md-4 item item-product-cat">
-                                        <div class="inner">
-                                            <div class="thumb">
-                                                <div class="photo" style="background-image:url(assets/uploads/<?php echo $row['p_featured_photo']; ?>);"></div>
-                                                <div class="overlay"></div>
-                                            </div>
-                                            <div class="text">
-                                                <h3><a href="product.php?id=<?php echo $row['p_id']; ?>"><?php echo $row['p_name']; ?></a></h3>
-                                                <h4>
-                                                    <?php echo LANG_VALUE_1; ?><?php echo $row['p_current_price']; ?> 
-                                                    <?php if($row['p_old_price'] != ''): ?>
-                                                    <del>
-                                                        <?php echo LANG_VALUE_1; ?><?php echo $row['p_old_price']; ?>
-                                                    </del>
-                                                    <?php endif; ?>
-                                                </h4>
-                                                <div class="rating">
-                                                    <?php
-                                                    $t_rating = 0;
-                                                    $statement1 = $pdo->prepare("SELECT * FROM tbl_rating WHERE p_id=?");
-                                                    $statement1->execute(array($row['p_id']));
-                                                    $tot_rating = $statement1->rowCount();
-                                                    if($tot_rating == 0) {
-                                                        $avg_rating = 0;
-                                                    } else {
-                                                        $result1 = $statement1->fetchAll(PDO::FETCH_ASSOC);
-                                                        foreach ($result1 as $row1) {
-                                                            $t_rating = $t_rating + $row1['rating'];
-                                                        }
-                                                        $avg_rating = $t_rating / $tot_rating;
-                                                    }
-                                                    ?>
-                                                    <?php
-                                                    if($avg_rating == 0) {
-                                                        echo '';
-                                                    }
-                                                    elseif($avg_rating == 1.5) {
-                                                        echo '
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star-half-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                        ';
-                                                    } 
-                                                    elseif($avg_rating == 2.5) {
-                                                        echo '
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star-half-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                        ';
-                                                    }
-                                                    elseif($avg_rating == 3.5) {
-                                                        echo '
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star-half-o"></i>
-                                                            <i class="fa fa-star-o"></i>
-                                                        ';
-                                                    }
-                                                    elseif($avg_rating == 4.5) {
-                                                        echo '
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star"></i>
-                                                            <i class="fa fa-star-half-o"></i>
-                                                        ';
-                                                    }
-                                                    else {
-                                                        for($i=1;$i<=5;$i++) {
-                                                            ?>
-                                                            <?php if($i>$avg_rating): ?>
-                                                                <i class="fa fa-star-o"></i>
-                                                            <?php else: ?>
-                                                                <i class="fa fa-star"></i>
-                                                            <?php endif; ?>
-                                                            <?php
-                                                        }
-                                                    }
-                                                    ?>
-                                                </div>
-                                                <?php if($row['p_qty'] == 0): ?>
-                                                    <div class="out-of-stock">
-                                                        <div class="inner">
-                                                            Out Of Stock
-                                                        </div>
-                                                    </div>
-                                                <?php else: ?>
-                                                    <p><a href="product.php?id=<?php echo $row['p_id']; ?>"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_154; ?></a></p>
+                            $ratingMap = [];
+                            try {
+                                $stmtR = $pdo->query("SELECT p_id, AVG(rating) as avg_rating FROM tbl_rating GROUP BY p_id");
+                                while ($rRow = $stmtR->fetch(PDO::FETCH_ASSOC)) {
+                                    $ratingMap[$rRow['p_id']] = (float)$rRow['avg_rating'];
+                                }
+                            } catch (Throwable $e) {}
+
+                            foreach ($products as $row) {
+                                ?>
+                                <div class="col-md-4 item item-product-cat">
+                                    <div class="inner">
+                                        <div class="thumb">
+                                            <div class="photo" style="background-image:url(assets/uploads/<?php echo $row['p_featured_photo']; ?>);"></div>
+                                            <div class="overlay"></div>
+                                        </div>
+                                        <div class="text">
+                                            <h3><a href="product.php?id=<?php echo $row['p_id']; ?>"><?php echo $row['p_name']; ?></a></h3>
+                                            <h4>
+                                                <?php echo LANG_VALUE_1; ?><?php echo $row['p_current_price']; ?> 
+                                                <?php if($row['p_old_price'] != ''): ?>
+                                                <del>
+                                                    <?php echo LANG_VALUE_1; ?><?php echo $row['p_old_price']; ?>
+                                                </del>
                                                 <?php endif; ?>
+                                            </h4>
+                                            <div class="rating">
+                                                <?php
+                                                $avg_rating = $ratingMap[$row['p_id']] ?? 0;
+                                                for($i=1;$i<=5;$i++) {
+                                                    if($i>$avg_rating) {
+                                                        echo '<i class="fa fa-star-o"></i>';
+                                                    } else {
+                                                        echo '<i class="fa fa-star"></i>';
+                                                    }
+                                                }
+                                                ?>
                                             </div>
+                                            <?php if($row['p_qty'] == 0): ?>
+                                                <div class="out-of-stock">
+                                                    <div class="inner">
+                                                        Out Of Stock
+                                                    </div>
+                                                </div>
+                                            <?php else: ?>
+                                                <p><a href="product.php?id=<?php echo $row['p_id']; ?>"><i class="fa fa-shopping-cart"></i> <?php echo LANG_VALUE_154; ?></a></p>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
-                                    <?php
-                                }
+                                </div>
+                                <?php
                             }
                         }
                         ?>

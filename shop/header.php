@@ -15,20 +15,34 @@ $success_message = '';
 $error_message1 = '';
 $success_message1 = '';
 
-// Getting all language variables
-$i=1;
-$statement = $pdo->prepare("SELECT * FROM tbl_language ORDER BY lang_id");
-$statement->execute();
-$result = $statement->fetchAll(PDO::FETCH_ASSOC);                           
-foreach ($result as $row) {
-    define('LANG_VALUE_'.$i,$row['lang_value']);
+// Getting all language variables (cached for performance)
+$langCacheFile = __DIR__ . '/admin/inc/cache_lang.json';
+$langValues = null;
+if (file_exists($langCacheFile) && (time() - filemtime($langCacheFile) < 86400)) {
+    $langValues = json_decode(file_get_contents($langCacheFile), true);
+}
+if (!$langValues) {
+    $langValues = $pdo->query("SELECT lang_value FROM tbl_language ORDER BY lang_id")->fetchAll(PDO::FETCH_COLUMN);
+    @file_put_contents($langCacheFile, json_encode($langValues));
+}
+$i = 1;
+foreach ($langValues as $lv) {
+    if (!defined('LANG_VALUE_'.$i)) {
+        define('LANG_VALUE_'.$i, $lv);
+    }
     $i++;
 }
 
-// Fetch general website settings
-$statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-$statement->execute();
-$settings = $statement->fetch(PDO::FETCH_ASSOC); 
+// Fetch general website settings (cached for 60 seconds)
+$settingsCacheFile = __DIR__ . '/admin/inc/cache_settings.json';
+$settings = null;
+if (file_exists($settingsCacheFile) && (time() - filemtime($settingsCacheFile) < 60)) {
+    $settings = json_decode(file_get_contents($settingsCacheFile), true);
+}
+if (!$settings) {
+    $settings = $pdo->query("SELECT * FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: [];
+    @file_put_contents($settingsCacheFile, json_encode($settings));
+} 
 
 // Assign settings variables
 $logo = $settings['logo'] ?? 'default_logo.png';
@@ -976,47 +990,53 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
             <a href="#"><i class="fas fa-th-list"></i> Categories <i class="fas fa-chevron-down submenu-arrow"></i></a>
             <ul class="submenu">
                 <?php
-                $statement_tcat = $pdo->prepare("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC");
-                $statement_tcat->execute();
-                $result_tcat = $statement_tcat->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($result_tcat as $row_tcat) {
+                $menuCacheFile = __DIR__ . '/admin/inc/cache_menu.json';
+                $menuData = null;
+                if (file_exists($menuCacheFile) && (time() - filemtime($menuCacheFile) < 60)) {
+                    $menuData = json_decode(file_get_contents($menuCacheFile), true);
+                }
+                if (!$menuData) {
+                    $all_tcat = $pdo->query("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+                    $all_mcat_raw = $pdo->query("SELECT * FROM tbl_mid_category ORDER BY mcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+                    $all_ecat_raw = $pdo->query("SELECT * FROM tbl_end_category ORDER BY ecat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+                    $mcat_by_tcat = [];
+                    foreach ($all_mcat_raw as $m) { $mcat_by_tcat[$m['tcat_id']][] = $m; }
+                    $ecat_by_mcat = [];
+                    foreach ($all_ecat_raw as $e) { $ecat_by_mcat[$e['mcat_id']][] = $e; }
+                    $menuData = ['tcat' => $all_tcat, 'mcat' => $mcat_by_tcat, 'ecat' => $ecat_by_mcat];
+                    @file_put_contents($menuCacheFile, json_encode($menuData));
+                }
+                $all_tcat = $menuData['tcat'];
+                $mcat_by_tcat = $menuData['mcat'];
+                $ecat_by_mcat = $menuData['ecat'];
+                $GLOBALS['all_tcat'] = $all_tcat;
+                foreach ($all_tcat as $row_tcat) {
+                    $mid_cats = $mcat_by_tcat[$row_tcat['tcat_id']] ?? [];
+                    $has_mid_categories = !empty($mid_cats);
                     ?>
                     <li class="has-submenu-level-1">
                         <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $row_tcat['tcat_id']; ?>&type=top-category">
                             <span class="lbl"><?php echo htmlspecialchars($row_tcat['tcat_name']); ?></span>
-                            <?php
-                            $statement_mcat_check = $pdo->prepare("SELECT COUNT(*) FROM tbl_mid_category WHERE tcat_id=?");
-                            $statement_mcat_check->execute(array($row_tcat['tcat_id']));
-                            $has_mid_categories = $statement_mcat_check->fetchColumn() > 0;
-                            if ($has_mid_categories): ?>
+                            <?php if ($has_mid_categories): ?>
                                 <i class="fas fa-chevron-right submenu-arrow-level-1"></i>
                             <?php endif; ?>
                         </a>
-                        <?php
-                        $statement_mcat = $pdo->prepare("SELECT * FROM tbl_mid_category WHERE tcat_id=? ORDER BY mcat_id ASC");
-                        $statement_mcat->execute(array($row_tcat['tcat_id']));
-                        $result_mcat = $statement_mcat->fetchAll(PDO::FETCH_ASSOC);
-                        if (!empty($result_mcat)): ?>
+                        <?php if ($has_mid_categories): ?>
                             <ul class="submenu-level-2">
-                                <?php foreach ($result_mcat as $row_mcat): ?>
+                                <?php foreach ($mid_cats as $row_mcat):
+                                    $end_cats = $ecat_by_mcat[$row_mcat['mcat_id']] ?? [];
+                                    $has_end_categories = !empty($end_cats);
+                                ?>
                                     <li class="has-submenu-level-2">
                                         <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $row_mcat['mcat_id']; ?>&type=mid-category">
                                             <span class="lbl lbl1"><?php echo htmlspecialchars($row_mcat['mcat_name']); ?></span>
-                                            <?php
-                                            $statement_ecat_check = $pdo->prepare("SELECT COUNT(*) FROM tbl_end_category WHERE mcat_id=?");
-                                            $statement_ecat_check->execute(array($row_mcat['mcat_id']));
-                                            $has_end_categories = $statement_ecat_check->fetchColumn() > 0;
-                                            if ($has_end_categories): ?>
+                                            <?php if ($has_end_categories): ?>
                                                 <i class="fas fa-chevron-right submenu-arrow-level-2"></i>
                                             <?php endif; ?>
                                         </a>
-                                        <?php
-                                        $statement_ecat = $pdo->prepare("SELECT * FROM tbl_end_category WHERE mcat_id=? ORDER BY ecat_id ASC");
-                                        $statement_ecat->execute(array($row_mcat['mcat_id']));
-                                        $result_ecat = $statement_ecat->fetchAll(PDO::FETCH_ASSOC);
-                                        if (!empty($result_ecat)): ?>
+                                        <?php if ($has_end_categories): ?>
                                             <ul class="submenu-level-3">
-                                                <?php foreach ($result_ecat as $row_ecat): ?>
+                                                <?php foreach ($end_cats as $row_ecat): ?>
                                                     <li>
                                                         <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $row_ecat['ecat_id']; ?>&type=end-category">
                                                             <span class="lbl lbl1"><?php echo htmlspecialchars($row_ecat['ecat_name']); ?></span>

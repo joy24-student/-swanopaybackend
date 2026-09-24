@@ -4,11 +4,7 @@
 // -------------------------------------------------------------------------
 // 1. FETCH GLOBAL SETTINGS SAFELY
 // -------------------------------------------------------------------------
-$statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
-$statement->execute();
-$settings_data = $statement->fetch(PDO::FETCH_ASSOC);
-
-if (!$settings_data) { $settings_data = []; }
+$settings_data = !empty($settings) ? $settings : ($pdo->query("SELECT * FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: []);
 
 function get_safe_setting($data, $key, $default) {
     return (isset($data[$key]) && $data[$key] !== '') ? $data[$key] : $default;
@@ -1524,9 +1520,8 @@ if ($category_on == 1) {
         </div>
         <div class="horizontal-scroll-wrapper" style="padding: 0 20px 20px 20px;">
             <?php
-            $stmt = $pdo->prepare("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC");
-            $stmt->execute();
-            foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $cat): 
+            $cats = $GLOBALS['all_tcat'] ?? $pdo->query("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+            foreach($cats as $cat): 
                 $cat_img = (isset($cat['photo']) && !empty($cat['photo'])) ? 'assets/uploads/'.$cat['photo'] : '';
             ?>
                 <a href="product-category.php?id=<?php echo $cat['tcat_id']; ?>&type=top-category" class="cat-item round-style">
@@ -1553,16 +1548,22 @@ if ($category_on == 1) {
 
     function renderProductCard($row, $currencySymbol) {
         global $pdo;
-        // Get product rating
-        $rating = 0;
-        $review_count = 0;
-        $stmt = $pdo->prepare("SELECT AVG(rating) as avg_rating, COUNT(*) as total FROM tbl_review WHERE product_id = ? AND status = 'Approved'");
-        $stmt->execute([$row['p_id']]);
-        $rating_data = $stmt->fetch();
-        if ($rating_data) {
-            $rating = $rating_data['avg_rating'] !== null ? round($rating_data['avg_rating']) : 0;
-            $review_count = $rating_data['total'];
+        static $ratingCache = null;
+        if ($ratingCache === null) {
+            $ratingCache = [];
+            try {
+                $stmtRatings = $pdo->query("SELECT p_id, AVG(rating) as avg_rating, COUNT(*) as total FROM tbl_rating GROUP BY p_id");
+                while ($rRow = $stmtRatings->fetch()) {
+                    $ratingCache[$rRow['p_id']] = [
+                        'avg_rating' => $rRow['avg_rating'] !== null ? round($rRow['avg_rating']) : 0,
+                        'total' => (int)$rRow['total']
+                    ];
+                }
+            } catch (Throwable $e) {}
         }
+        $rating_data = $ratingCache[$row['p_id']] ?? ['avg_rating' => 0, 'total' => 0];
+        $rating = $rating_data['avg_rating'];
+        $review_count = $rating_data['total'];
         
         // Generate stars HTML
         $stars_html = '';
