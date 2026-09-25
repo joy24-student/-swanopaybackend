@@ -1,744 +1,884 @@
-<?php require_once('header.php'); ?>
-
 <?php
-// Check if the customer is logged in or not
-if(!isset($_SESSION['customer'])) {
-    header('location: '.BASE_URL.'logout.php');
+require_once('header.php');
+
+// Check customer authentication
+if (!isset($_SESSION['customer'])) {
+    header('location: ' . BASE_URL . 'logout.php');
     exit;
 } else {
-    // If customer is logged in, but admin make him inactive, then force logout this user.
-    $statement = $pdo->prepare("SELECT * FROM tbl_customer WHERE cust_id=? AND cust_status=?");
-    $statement->execute(array($_SESSION['customer']['cust_id'],0));
-    $total = $statement->rowCount();
-    if($total) {
-        header('location: '.BASE_URL.'logout.php');
+    $statement = $pdo->prepare("SELECT cust_status FROM tbl_customer WHERE cust_id = ? AND cust_status = ?");
+    $statement->execute([$_SESSION['customer']['cust_id'], 0]);
+    if ($statement->rowCount()) {
+        header('location: ' . BASE_URL . 'logout.php');
         exit;
     }
 }
 
-// Fetch settings for review feature on/off
-$statement_settings = $pdo->prepare("SELECT review_feature_on_off FROM tbl_settings WHERE id=1");
-$statement_settings->execute();
-$settings_data = $statement_settings->fetch(PDO::FETCH_ASSOC);
-$review_feature_on_off = $settings_data['review_feature_on_off'] ?? 1;
+$cust_id = (int)$_SESSION['customer']['cust_id'];
 
-// Function to check if a product has been reviewed by the current customer
-function hasCustomerReviewedProduct($pdo, $customer_id, $product_id) {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM tbl_review WHERE cust_id = ? AND product_id = ?"); // CHANGED FROM tbl_rating
-    $stmt->execute([$customer_id, $product_id]);
-    return $stmt->fetchColumn() > 0;
+// Get filter status & search term
+$filter_status = strtolower(trim($_GET['status'] ?? 'all'));
+$search_query  = trim($_GET['search'] ?? '');
+$time_filter   = trim($_GET['time'] ?? 'all');
+
+// Fetch all orders for this customer
+$all_orders = [];
+try {
+    $stmt_pay = $pdo->prepare("
+        SELECT 
+            p.id,
+            p.payment_id,
+            p.payment_date,
+            p.txnid,
+            p.paid_amount,
+            p.payment_method,
+            COALESCE(p.payment_status, 'Completed') as payment_status,
+            COALESCE(p.shipping_status, 'Pending') as shipping_status
+        FROM tbl_payment p
+        WHERE p.customer_id = ?
+        ORDER BY p.id DESC
+    ");
+    $stmt_pay->execute([$cust_id]);
+    $raw_orders = $stmt_pay->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($raw_orders as $ord) {
+        $pid = $ord['payment_id'];
+        
+        // Fetch order items with product thumbnails
+        $stmt_items = $pdo->prepare("
+            SELECT 
+                o.id,
+                o.product_id,
+                o.product_name,
+                o.size,
+                o.color,
+                o.quantity,
+                o.unit_price,
+                p.p_featured_photo
+            FROM tbl_order o
+            LEFT JOIN tbl_product p ON o.product_id = p.p_id
+            WHERE o.payment_id = ?
+            ORDER BY o.id ASC
+        ");
+        $stmt_items->execute([$pid]);
+        $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+
+        // Normalize status
+        $ship_st = strtolower($ord['shipping_status']);
+        $pay_st  = strtolower($ord['payment_status']);
+        
+        $status_label = 'Processing';
+        $status_category = 'processing';
+        
+        if ($ship_st === 'delivered' || $ship_st === 'completed') {
+            $status_label = 'Delivered';
+            $status_category = 'delivered';
+        } elseif ($ship_st === 'shipped' || $ship_st === 'out for delivery') {
+            $status_label = 'Shipped';
+            $status_category = 'shipped';
+        } elseif ($ship_st === 'cancelled' || $pay_st === 'cancelled') {
+            $status_label = 'Cancelled';
+            $status_category = 'cancelled';
+        } else {
+            $status_label = 'Processing';
+            $status_category = 'processing';
+        }
+
+        $ord['items'] = $items;
+        $ord['item_count'] = count($items);
+        $ord['status_label'] = $status_label;
+        $ord['status_category'] = $status_category;
+        $all_orders[] = $ord;
+    }
+} catch (Throwable $e) {}
+
+// Calculate counts for pills
+$count_all = count($all_orders);
+$count_processing = 0;
+$count_shipped = 0;
+$count_delivered = 0;
+$count_cancelled = 0;
+
+foreach ($all_orders as $o) {
+    if ($o['status_category'] === 'processing') $count_processing++;
+    elseif ($o['status_category'] === 'shipped') $count_shipped++;
+    elseif ($o['status_category'] === 'delivered') $count_delivered++;
+    elseif ($o['status_category'] === 'cancelled') $count_cancelled++;
 }
 
+// Filter orders
+$filtered_orders = array_filter($all_orders, function($o) use ($filter_status, $search_query) {
+    if ($filter_status !== 'all' && $o['status_category'] !== $filter_status) {
+        return false;
+    }
+    if (!empty($search_query)) {
+        $q = strtolower($search_query);
+        $match_id = str_contains(strtolower($o['payment_id']), $q);
+        $match_product = false;
+        foreach ($o['items'] as $it) {
+            if (str_contains(strtolower($it['product_name']), $q)) {
+                $match_product = true;
+                break;
+            }
+        }
+        if (!$match_id && !$match_product) return false;
+    }
+    return true;
+});
 ?>
 
-<div class="page">
-    <div class="container customer-order-container">
-        <div class="row">
-            <div class="col-md-3">
-                <?php require_once('customer-sidebar.php'); ?>
-            </div>
-            <div class="col-md-9">
-                <div class="user-content order-history-content">
-                    <h3 class="order-history-title">
-                        <i class="fas fa-history"></i> <?php echo LANG_VALUE_25; ?>
-                    </h3>
-
-                    <?php
-                    $customer_id = $_SESSION['customer']['cust_id'];
-                    
-                    // Get payment_id from URL if provided (for viewing single order)
-                    $specific_payment_id = isset($_GET['payment_id']) ? htmlspecialchars($_GET['payment_id']) : null;
-                    
-                    if ($specific_payment_id) {
-                        // Show single order detail
-                        $statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE customer_id=? AND payment_id=?");
-                        $statement->execute(array($customer_id, $specific_payment_id));
-                        $payments = $statement->fetchAll(PDO::FETCH_ASSOC);
-                    } else {
-                        // Show all orders
-                        $statement = $pdo->prepare("SELECT * FROM tbl_payment WHERE customer_id=? ORDER BY id DESC");
-                        $statement->execute(array($customer_id));
-                        $payments = $statement->fetchAll(PDO::FETCH_ASSOC);
-                    }
-
-                    if (empty($payments)):
-                    ?>
-                        <div class="alert alert-info text-center" role="alert">
-                            You have no orders yet. Start shopping now!
-                            <br><a href="<?php echo BASE_URL; ?>index.php" class="btn btn-primary mt-3">Go to Shop</a>
-                        </div>
-                    <?php else: ?>
-                        <div class="order-list">
-                            <?php foreach ($payments as $payment): 
-                                $order_date = strtotime($payment['payment_date']);
-                                $can_cancel = ($payment['payment_status'] === 'Pending' && $payment['shipping_status'] === 'Pending' && (time() - $order_date) < 86400);
-                            ?>
-                                <div class="order-card animate__animated animate__fadeInUp">
-                                    <div class="order-header">
-                                        <div class="order-id">
-                                            Order ID: <strong><?php echo htmlspecialchars($payment['payment_id']); ?></strong>
-                                        </div>
-                                        <div class="order-date">
-                                            Placed On: <?php echo date('F j, Y g:i A', $order_date); ?>
-                                        </div>
-                                        <div class="order-status">
-                                            Status: <span class="badge <?php
-                                                if ($payment['payment_status'] == 'Pending') echo 'badge-warning';
-                                                else if ($payment['payment_status'] == 'Completed') echo 'badge-success';
-                                                else if ($payment['payment_status'] == 'Cancelled') echo 'badge-danger';
-                                                else echo 'badge-info';
-                                            ?>"><?php echo htmlspecialchars($payment['payment_status']); ?></span>
-                                            <span class="badge <?php
-                                                if ($payment['shipping_status'] == 'Pending') echo 'badge-warning';
-                                                else if ($payment['shipping_status'] == 'Shipped') echo 'badge-primary';
-                                                else if ($payment['shipping_status'] == 'Delivered') echo 'badge-success';
-                                                else if ($payment['shipping_status'] == 'Cancelled') echo 'badge-danger';
-                                                else echo 'badge-secondary';
-                                            ?>"><?php echo htmlspecialchars($payment['shipping_status']); ?></span>
-                                        </div>
-                                    </div>
-
-                                    <!-- ORDER TRACKER -->
-                                    <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 15px 0;">
-                                        <h5 style="margin-top: 0; margin-bottom: 15px;">Order Status Tracker</h5>
-                                        <div style="display: flex; align-items: center; gap: 0; position: relative;">
-                                            <!-- Step 1: Order Placed -->
-                                            <div style="flex: 1; text-align: center;">
-                                                <div style="width: 40px; height: 40px; background: #ff6a00; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                                    ✓
-                                                </div>
-                                                <div style="font-size: 12px; color: #666;">Order Placed</div>
-                                                <div style="font-size: 11px; color: #999;"><?php echo date('M d, Y', $order_date); ?></div>
-                                            </div>
-                                            
-                                            <!-- Connector 1 -->
-                                            <div style="flex: 1; height: 2px; background: <?php echo ($payment['shipping_status'] !== 'Pending') ? '#ff6a00' : '#ddd'; ?>; position: relative; top: -20px;"></div>
-                                            
-                                            <!-- Step 2: Processing -->
-                                            <div style="flex: 1; text-align: center;">
-                                                <div style="width: 40px; height: 40px; background: <?php echo ($payment['shipping_status'] !== 'Pending') ? '#ff6a00' : '#ddd'; ?>; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                                    <?php echo ($payment['shipping_status'] !== 'Pending') ? '✓' : '2'; ?>
-                                                </div>
-                                                <div style="font-size: 12px; color: #666;">Being Prepared</div>
-                                                <div style="font-size: 11px; color: #999;">By Seller</div>
-                                            </div>
-                                            
-                                            <!-- Connector 2 -->
-                                            <div style="flex: 1; height: 2px; background: <?php echo ($payment['shipping_status'] === 'Shipped' || $payment['shipping_status'] === 'Delivered') ? '#ff6a00' : '#ddd'; ?>; position: relative; top: -20px;"></div>
-                                            
-                                            <!-- Step 3: Shipped -->
-                                            <div style="flex: 1; text-align: center;">
-                                                <div style="width: 40px; height: 40px; background: <?php echo ($payment['shipping_status'] === 'Shipped' || $payment['shipping_status'] === 'Delivered') ? '#ff6a00' : '#ddd'; ?>; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                                    <?php echo ($payment['shipping_status'] === 'Shipped' || $payment['shipping_status'] === 'Delivered') ? '✓' : '3'; ?>
-                                                </div>
-                                                <div style="font-size: 12px; color: #666;">Shipped</div>
-                                                <div style="font-size: 11px; color: #999;">In Transit</div>
-                                            </div>
-                                            
-                                            <!-- Connector 3 -->
-                                            <div style="flex: 1; height: 2px; background: <?php echo ($payment['shipping_status'] === 'Delivered') ? '#ff6a00' : '#ddd'; ?>; position: relative; top: -20px;"></div>
-                                            
-                                            <!-- Step 4: Delivered -->
-                                            <div style="flex: 1; text-align: center;">
-                                                <div style="width: 40px; height: 40px; background: <?php echo ($payment['shipping_status'] === 'Delivered') ? '#ff6a00' : '#ddd'; ?>; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                                    <?php echo ($payment['shipping_status'] === 'Delivered') ? '✓' : '4'; ?>
-                                                </div>
-                                                <div style="font-size: 12px; color: #666;">Delivered</div>
-                                                <div style="font-size: 11px; color: #999;">To You</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- CANCELLATION OPTION -->
-                                    <?php if ($can_cancel): ?>
-                                    <div style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
-                                        <strong style="color: #856404;">⏱ Cancel Window Open</strong><br>
-                                        <small style="color: #856404;">You can cancel this order within 24 hours. Expires in: <?php echo round((86400 - (time() - $order_date)) / 3600); ?> hour(s)</small><br>
-                                        <button type="button" class="btn btn-sm" style="background-color: #ff6a00; color: white; margin-top: 8px; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;" onclick="cancelOrder('<?php echo htmlspecialchars($payment['payment_id']); ?>')">Cancel Order</button>
-                                    </div>
-                                    <?php endif; ?>
-
-                                    <!-- OTP SECTION FOR DELIVERY -->
-                                    <?php if ($payment['shipping_status'] === 'Shipped'): ?>
-                                    <div style="background: #e7f3ff; border: 1px solid #90caf9; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
-                                        <h5 style="margin-top: 0; color: #1976d2;">📦 Delivery OTP</h5>
-                                        <p style="margin: 10px 0; color: #555;">
-                                            Your delivery OTP will be provided when the package arrives at your location. The delivery partner will ask for this OTP to confirm delivery.
-                                        </p>
-                                        <div style="background: white; padding: 10px; border-radius: 4px; border: 2px dashed #90caf9;">
-                                            <strong style="font-size: 14px; color: #666;">OTP:</strong>
-                                            <div style="font-size: 28px; font-weight: bold; color: #1976d2; letter-spacing: 5px; margin-top: 5px; font-family: 'Courier New', monospace;">
-                                                <?php 
-                                                // Generate consistent OTP based on payment_id
-                                                $otp = substr(str_pad(hexdec(substr(md5($payment['payment_id']), 0, 8)) % 1000000, 6, '0', STR_PAD_LEFT), 0, 6);
-                                                echo htmlspecialchars($otp);
-                                                ?>
-                                            </div>
-                                        </div>
-                                        <small style="color: #1976d2; display: block; margin-top: 10px;">
-                                            💡 Keep this OTP confidential and share only with the delivery partner
-                                        </small>
-                                    </div>
-                                    <?php endif; ?>
-
-                                    <div class="order-body">
-                                        <?php
-                                        $statement1 = $pdo->prepare("SELECT T1.*, T2.p_featured_photo FROM tbl_order T1 JOIN tbl_product T2 ON T1.product_id = T2.p_id WHERE T1.payment_id=?");
-                                        $statement1->execute(array($payment['payment_id']));
-                                        $order_products = $statement1->fetchAll(PDO::FETCH_ASSOC);
-
-                                        foreach ($order_products as $product):
-                                            $has_reviewed = hasCustomerReviewedProduct($pdo, $customer_id, $product['product_id']);
-                                        ?>
-                                            <div class="order-item">
-                                                <div class="item-image">
-                                                    <img src="<?php echo BASE_URL; ?>assets/uploads/<?php echo htmlspecialchars($product['p_featured_photo']); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>">
-                                                </div>
-                                                <div class="item-details">
-                                                    <h5 class="item-name"><?php echo htmlspecialchars($product['product_name']); ?></h5>
-                                                    <p class="item-meta">
-                                                        Size: <?php echo htmlspecialchars($product['size']); ?>,
-                                                        Color: <?php echo htmlspecialchars($product['color']); ?>
-                                                    </p>
-                                                    <p class="item-qty-price">
-                                                        Qty: <?php echo htmlspecialchars($product['quantity']); ?> x <?php echo formatCurrency($product['unit_price']); ?>
-                                                    </p>
-                                                </div>
-                                                <div class="item-actions">
-                                                    <?php if ($payment['shipping_status'] == 'Shipped' || $payment['shipping_status'] == 'Delivered'): ?>
-                                                        <?php if ($review_feature_on_off == 1 && !$has_reviewed): ?>
-                                                            <button class="btn btn-sm btn-review" data-product-id="<?php echo htmlspecialchars($product['product_id']); ?>" data-product-name="<?php echo htmlspecialchars($product['product_name']); ?>">
-                                                                <i class="fas fa-star"></i> Write Review
-                                                            </button>
-                                                        <?php elseif ($review_feature_on_off == 1 && $has_reviewed): ?>
-                                                            <button class="btn btn-sm btn-secondary" disabled>
-                                                                <i class="fas fa-check-circle"></i> Reviewed
-                                                            </button>
-                                                        <?php endif; ?>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-
-                                    <div class="order-footer">
-                                        <div class="total-amount">
-                                            Total: <strong><?php echo formatCurrency($payment['paid_amount']); ?></strong>
-                                        </div>
-                                        <div class="payment-method">
-                                            Method: <?php echo htmlspecialchars($payment['payment_method']); ?>
-                                        </div>
-                                        <div class="invoice-link">
-                                            <a href="<?php echo BASE_URL; ?>payment_success.php?method=<?php echo ($payment['payment_method'] == 'Cash on Delivery' ? 'cod' : 'sslcommerz'); ?>&tran_id=<?php echo htmlspecialchars($payment['payment_id']); ?>" target="_blank" class="btn btn-sm btn-info">
-                                                <i class="fas fa-file-invoice"></i> View Invoice
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Review Modal -->
-<div class="modal fade" id="reviewModal" tabindex="-1" role="dialog" aria-labelledby="reviewModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="reviewModalLabel">Write a Review for <span id="reviewProductName"></span></h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form id="reviewForm">
-                    <?php $csrf->echoInputField(); ?>
-                    <input type="hidden" id="reviewProductId" name="product_id">
-                    <div class="form-group rating-input">
-                        <label>Your Rating *</label>
-                        <div class="stars">
-                            <input type="radio" id="modal_star5" name="rating" value="5" /><label for="modal_star5" title="5 stars"></label>
-                            <input type="radio" id="modal_star4" name="rating" value="4" /><label for="modal_star4" title="4 stars"></label>
-                            <input type="radio" id="modal_star3" name="rating" value="3" /><label for="modal_star3" title="3 stars"></label>
-                            <input type="radio" id="modal_star2" name="rating" value="2" /><label for="modal_star2" title="2 stars"></label>
-                            <input type="radio" id="modal_star1" name="rating" value="1" /><label for="modal_star1" title="1 star"></label>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="modal_review_title">Review Title *</label>
-                        <input type="text" name="review_title" id="modal_review_title" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label for="modal_comment">Your Comment *</label>
-                        <textarea name="comment" id="modal_comment" class="form-control" rows="5"></textarea>
-                    </div>
-                    <div id="reviewFormMessage" class="mt-3" style="display:none;"></div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="submitReviewBtn">Submit Review</button>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Portal Modern Stylesheet -->
+<link rel="stylesheet" href="<?= BASE_URL ?>assets/css/customer_portal_modern.css?v=<?= time() ?>">
 
 <style>
-/* Add this CSS to your assets/css/style.css */
-
-.customer-order-container {
-    padding-top: 30px;
-    padding-bottom: 30px;
-}
-
-.order-history-content {
-    background-color: #fff;
-    padding: 30px;
-    border-radius: 8px;
-    box-shadow: 0 0 15px rgba(0,0,0,0.05);
-}
-
-.order-history-title {
-    text-align: center;
-    color: #333;
-    margin-bottom: 40px;
-    font-size: 2em;
-    border-bottom: 2px solid #f14040;
-    padding-bottom: 15px;
-    animation: slideInDown 0.8s ease-out;
-}
-
-.order-history-title i {
-    margin-right: 10px;
-    color: #f14040;
-}
-
-/* Order Card Layout */
-.order-list {
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-}
-
-.order-card {
-    background-color: #fdfdfd;
-    border: 1px solid #eee;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-.order-card:hover {
-    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-    transform: translateY(-3px);
-}
-
-.order-header {
-    display: flex;
-    justify-content: space-between;
+/* Exact styling matching media_1790349123513.png */
+.sn-order-card-detailed {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: 80px 220px 1fr 170px;
     align-items: center;
-    background-color: #f8f8f8;
-    padding: 15px 20px;
-    border-bottom: 1px solid #eee;
-    flex-wrap: wrap;
-    gap: 10px;
+    gap: 24px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    position: relative;
 }
 
-.order-header .order-id,
-.order-header .order-date,
-.order-header .order-status {
-    font-size: 0.95em;
-    color: #555;
-    font-weight: 500;
+.sn-order-card-detailed:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
 }
 
-.order-header .order-id strong {
-    color: #f14040;
-}
-
-.order-header .badge {
-    padding: 5px 10px;
-    border-radius: 5px;
-    font-size: 0.85em;
-    font-weight: bold;
-    margin-left: 5px;
-}
-
-.badge-warning { background-color: #ffc107; color: #343a40; }
-.badge-success { background-color: #28a745; color: #fff; }
-.badge-info { background-color: #17a2b8; color: #fff; }
-.badge-primary { background-color: #007bff; color: #fff; }
-.badge-secondary { background-color: #6c757d; color: #fff; }
-
-.order-body {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.order-item {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    padding: 10px;
-    border: 1px solid #f0f0f0;
-    border-radius: 8px;
-    background-color: #fff;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.02);
-}
-
-.order-item .item-image {
-    flex-shrink: 0;
+.sn-order-thumb-large {
     width: 80px;
     height: 80px;
-    border-radius: 5px;
-    overflow: hidden;
-    background-color: #f8f8f8;
+    border-radius: 12px;
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
 }
 
-.order-item .item-image img {
-    width: 100%;
-    height: 100%;
+.sn-order-thumb-large img {
+    max-width: 90%;
+    max-height: 90%;
     object-fit: contain;
 }
 
-.order-item .item-details {
-    flex-grow: 1;
-}
-
-.order-item .item-name {
-    font-size: 1.1em;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 5px;
-}
-
-.order-item .item-meta {
-    font-size: 0.85em;
-    color: #777;
-    margin-bottom: 5px;
-}
-
-.order-item .item-qty-price {
-    font-size: 0.95em;
-    font-weight: bold;
-    color: #f14040;
-}
-
-.order-item .item-actions {
-    flex-shrink: 0;
-    text-align: right;
-}
-
-.order-item .btn-review {
-    background-color: #007bff;
-    border-color: #007bff;
-    color: #fff;
-    padding: 8px 15px;
-    border-radius: 5px;
-    font-size: 0.9em;
-    transition: all 0.3s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-.order-item .btn-review:hover {
-    background-color: #0056b3;
-    border-color: #0056b3;
-    transform: translateY(-1px);
-}
-.order-item .btn-review i {
-    margin-right: 5px;
-}
-
-.order-footer {
+.sn-order-summary-col {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sn-order-id-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.sn-order-placed-text {
+    font-size: 12px;
+    color: #64748b;
+    margin: 0;
+}
+
+.sn-order-mini-thumbs {
+    display: flex;
     align-items: center;
-    background-color: #f8f8f8;
-    padding: 15px 20px;
-    border-top: 1px solid #eee;
-    flex-wrap: wrap;
-    gap: 10px;
+    gap: 6px;
+    margin-top: 4px;
 }
 
-.order-footer .total-amount,
-.order-footer .payment-method,
-.order-footer .invoice-link {
-    font-size: 0.95em;
-    color: #555;
+.sn-mini-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
 }
 
-.order-footer .total-amount strong {
-    color: #f14040;
-    font-size: 1.1em;
+.sn-mini-thumb img {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
 }
 
-.order-footer .btn-info {
-    background-color: #17a2b8;
-    border-color: #17a2b8;
-    color: #fff;
-    padding: 8px 15px;
-    border-radius: 5px;
-    font-size: 0.9em;
-    transition: all 0.3s ease;
+.sn-mini-more-pill {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 3px 6px;
+    border-radius: 6px;
+}
+
+.sn-order-price-val {
+    font-size: 19px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-top: 6px;
+}
+
+.sn-order-view-details-link {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-}
-.order-footer .btn-info:hover {
-    background-color: #138496;
-    border-color: #117a8b;
-    transform: translateY(-1px);
+    gap: 4px;
+    margin-top: 4px;
+    transition: color 0.15s ease;
 }
 
-/* Review Modal Styling (similar to product.php) */
-.modal-content {
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+.sn-order-view-details-link:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
 }
-.modal-header {
-    background-color: #f14040;
-    color: #fff;
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
+
+/* Middle Stepper Column */
+.sn-order-stepper-col {
+    padding: 0 10px;
 }
-.modal-header .close {
-    color: #fff;
-    opacity: 0.8;
+
+.sn-order-status-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
 }
-.modal-header .close:hover {
-    opacity: 1;
+
+.sn-order-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 999px;
 }
-.modal-title {
+
+.sn-status-pill-delivered { background: #dcfce7; color: #15803d; }
+.sn-status-pill-shipped   { background: #eff6ff; color: #2563eb; }
+.sn-status-pill-processing{ background: #fef3c7; color: #b45309; }
+.sn-status-pill-cancelled { background: #f1f5f9; color: #64748b; }
+
+.sn-order-status-subtext {
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* 4-Step Tracker Bar */
+.sn-timeline-track {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    width: 100%;
+}
+
+.sn-track-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+    min-width: 60px;
+}
+
+.sn-track-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    color: #ffffff;
+    transition: all 0.2s ease;
+}
+
+.sn-track-dot.active-green {
+    background: #10b981;
+    border-color: #10b981;
+    color: #ffffff;
+}
+
+.sn-track-dot.active-blue {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.sn-track-dot.active-orange {
+    background: #f59e0b;
+    border-color: #f59e0b;
+    color: #ffffff;
+}
+
+.sn-track-line {
+    flex: 1;
+    height: 3px;
+    background: #e2e8f0;
+    margin: 0 4px;
+    margin-bottom: 24px;
+    position: relative;
+    z-index: 1;
+}
+
+.sn-track-line.filled-green {
+    background: #10b981;
+}
+
+.sn-track-line.filled-blue {
+    background: #2563eb;
+}
+
+.sn-track-step-label {
+    font-size: 11px;
     font-weight: 600;
+    color: #334155;
+    margin-top: 6px;
+    text-align: center;
 }
-.modal-body .rating-input .stars {
-    display: inline-block;
-    direction: rtl; /* For right-to-left star display */
+
+.sn-track-step-date {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+    text-align: center;
 }
-.modal-body .rating-input .stars input[type="radio"] {
-    display: none;
+
+/* Action Buttons Column */
+.sn-order-actions-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
 }
-.modal-body .rating-input .stars label {
-    color: #aaa;
-    font-size: 2em;
-    padding: 0 5px;
+
+.sn-btn-order-buy-again {
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 12.5px;
+    font-weight: 700;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     cursor: pointer;
-    transition: color 0.2s ease;
-}
-.modal-body .rating-input .stars label:hover,
-.modal-body .rating-input .stars label:hover ~ label,
-.modal-body .rating-input .stars input[type="radio"]:checked ~ label {
-    color: #f1c40f;
-}
-.modal-footer .btn-primary {
-    background-color: #f14040;
-    border-color: #f14040;
-    transition: background-color 0.3s ease;
-}
-.modal-footer .btn-primary:hover {
-    background-color: #d63434;
-    border-color: #d63434;
+    text-decoration: none;
+    transition: all 0.15s ease;
 }
 
-/* Responsive adjustments */
-@media (max-width: 767px) {
-    .order-history-content {
-        padding: 15px;
+.sn-btn-order-buy-again:hover {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.sn-btn-order-track {
+    background: #ffffff;
+    color: #334155;
+    font-size: 12.5px;
+    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.sn-btn-order-track:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.sn-btn-order-cancel {
+    background: #fef2f2;
+    color: #ef4444;
+    font-size: 12.5px;
+    font-weight: 600;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.sn-btn-order-cancel:hover {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+/* Modal styling */
+.sn-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+}
+
+.sn-modal-box {
+    background: #ffffff;
+    border-radius: 20px;
+    max-width: 640px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    position: relative;
+    padding: 28px;
+}
+
+.sn-modal-close-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: #f1f5f9;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    font-size: 14px;
+}
+
+@media (max-width: 1024px) {
+    .sn-order-card-detailed {
+        grid-template-columns: 80px 1fr;
     }
-    .order-history-title {
-        font-size: 1.5em;
-        margin-bottom: 20px;
+    .sn-order-stepper-col {
+        grid-column: 1 / -1;
     }
-    .order-header {
+    .sn-order-actions-col {
+        grid-column: 1 / -1;
+        flex-direction: row;
+    }
+}
+
+@media (max-width: 640px) {
+    .sn-order-card-detailed {
+        grid-template-columns: 1fr;
+    }
+    .sn-order-actions-col {
         flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
     }
-    .order-item {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .order-item .item-details {
-        width: 100%;
-        text-align: left;
-    }
-    .order-item .item-actions {
-        width: 100%;
-        text-align: left;
-        margin-top: 10px;
-    }
-    .order-footer {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
-    }
-    .order-footer .total-amount,
-    .order-footer .payment-method,
-    .order-footer .invoice-link {
-        width: 100%;
-        text-align: left;
-    }
-}
-
-/* Animation for cards */
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translate3d(0, -20px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-.animate__animated.animate__fadeInUp {
-    animation-name: fadeInUp;
-    animation-duration: 1s; /* Adjust duration as needed */
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 20px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
 }
 </style>
 
+<div class="sn-portal-wrapper">
+    <div class="sn-portal-container">
+        <div class="sn-portal-layout">
+            <!-- Left Shared Navigation Sidebar -->
+            <?php require_once('customer-sidebar.php'); ?>
+
+            <!-- Right Main Orders Content -->
+            <main class="sn-portal-main">
+                <!-- Breadcrumbs -->
+                <nav class="sn-breadcrumb">
+                    <a href="index.php">Home</a>
+                    <i class="fa-solid fa-chevron-right"></i>
+                    <span>Orders</span>
+                </nav>
+
+                <!-- Header Row: Title & Search Controls -->
+                <div class="sn-orders-header-row">
+                    <div>
+                        <h1 class="sn-portal-title">My Orders</h1>
+                        <p class="sn-portal-subtitle">Track, view and manage your orders all in one place.</p>
+                    </div>
+                    <div class="sn-orders-controls">
+                        <!-- Search Input -->
+                        <form method="get" action="" class="sn-search-form" style="margin: 0;">
+                            <?php if ($filter_status !== 'all'): ?>
+                                <input type="hidden" name="status" value="<?= htmlspecialchars($filter_status) ?>">
+                            <?php endif; ?>
+                            <div class="sn-search-input-wrap">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input 
+                                    type="text" 
+                                    name="search" 
+                                    placeholder="Search orders..." 
+                                    value="<?= htmlspecialchars($search_query) ?>"
+                                    onchange="this.form.submit()"
+                                >
+                            </div>
+                        </form>
+
+                        <!-- Time Filter Dropdown -->
+                        <div class="sn-filter-dropdown-wrap">
+                            <i class="fa-regular fa-calendar"></i>
+                            <select class="sn-time-select" onchange="window.location.href='customer-order.php?time='+this.value">
+                                <option value="all" <?= ($time_filter === 'all') ? 'selected' : '' ?>>All Time</option>
+                                <option value="30" <?= ($time_filter === '30') ? 'selected' : '' ?>>Last 30 Days</option>
+                                <option value="60" <?= ($time_filter === '60') ? 'selected' : '' ?>>Last 60 Days</option>
+                                <option value="2026" <?= ($time_filter === '2026') ? 'selected' : '' ?>>2026</option>
+                                <option value="2025" <?= ($time_filter === '2025') ? 'selected' : '' ?>>2025</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Filter Pills Bar -->
+                <div class="sn-orders-tabs-row" style="margin-bottom: 24px;">
+                    <div class="sn-status-pills-bar">
+                        <a href="customer-order.php?status=all" class="sn-status-pill-btn <?= ($filter_status === 'all') ? 'active' : '' ?>">
+                            All Orders (<?= $count_all ?>)
+                        </a>
+                        <a href="customer-order.php?status=processing" class="sn-status-pill-btn <?= ($filter_status === 'processing') ? 'active' : '' ?>">
+                            Processing (<?= $count_processing ?>)
+                        </a>
+                        <a href="customer-order.php?status=shipped" class="sn-status-pill-btn <?= ($filter_status === 'shipped') ? 'active' : '' ?>">
+                            Shipped (<?= $count_shipped ?>)
+                        </a>
+                        <a href="customer-order.php?status=delivered" class="sn-status-pill-btn <?= ($filter_status === 'delivered') ? 'active' : '' ?>">
+                            Delivered (<?= $count_delivered ?>)
+                        </a>
+                        <a href="customer-order.php?status=cancelled" class="sn-status-pill-btn <?= ($filter_status === 'cancelled') ? 'active' : '' ?>">
+                            Cancelled (<?= $count_cancelled ?>)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Orders List -->
+                <?php if (empty($filtered_orders)): ?>
+                    <div class="sn-empty-state-box">
+                        <div class="sn-empty-icon-circle">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                        <h3>No orders found</h3>
+                        <p>We couldn't find any orders matching your criteria. Start shopping to create your first order!</p>
+                        <a href="index.php" class="sn-btn-primary" style="display: inline-block; padding: 10px 24px; border-radius: 8px; text-decoration: none;">
+                            Browse Products
+                        </a>
+                    </div>
+                <?php else: ?>
+                    <div class="sn-orders-list">
+                        <?php foreach ($filtered_orders as $ord): 
+                            $first_item = $ord['items'][0] ?? null;
+                            $first_photo = !empty($first_item['p_featured_photo']) 
+                                ? 'assets/uploads/' . $first_item['p_featured_photo'] 
+                                : 'assets/uploads/no-image.jpg';
+                            $order_date_str = date('M d, Y', strtotime($ord['payment_date'] ?? 'now'));
+                            $order_timestamp = strtotime($ord['payment_date'] ?? 'now');
+                            $step2_date = date('M d', $order_timestamp + 86400);
+                            $step3_date = date('M d', $order_timestamp + 172800);
+                            $step4_date = date('M d', $order_timestamp + 259200);
+                            
+                            $cat = $ord['status_category'];
+                        ?>
+                            <div class="sn-order-card-detailed">
+                                <!-- Col 1: Large Product Thumbnail -->
+                                <div class="sn-order-thumb-large">
+                                    <img src="<?= htmlspecialchars($first_photo) ?>" alt="<?= htmlspecialchars($first_item['product_name'] ?? 'Product') ?>">
+                                </div>
+
+                                <!-- Col 2: Order Info Summary -->
+                                <div class="sn-order-summary-col">
+                                    <h3 class="sn-order-id-title">Order #<?= htmlspecialchars($ord['payment_id']) ?></h3>
+                                    <p class="sn-order-placed-text">Placed on <?= $order_date_str ?> • <?= $ord['item_count'] ?> item<?= ($ord['item_count'] > 1) ? 's' : '' ?></p>
+                                    
+                                    <!-- Mini product previews -->
+                                    <div class="sn-order-mini-thumbs">
+                                        <?php 
+                                        $preview_items = array_slice($ord['items'], 0, 3);
+                                        foreach ($preview_items as $p_it): 
+                                            $mini_photo = !empty($p_it['p_featured_photo']) 
+                                                ? 'assets/uploads/' . $p_it['p_featured_photo'] 
+                                                : 'assets/uploads/no-image.jpg';
+                                        ?>
+                                            <div class="sn-mini-thumb" title="<?= htmlspecialchars($p_it['product_name']) ?>">
+                                                <img src="<?= htmlspecialchars($mini_photo) ?>" alt="">
+                                            </div>
+                                        <?php endforeach; ?>
+                                        <?php if ($ord['item_count'] > 3): ?>
+                                            <span class="sn-mini-more-pill">+<?= $ord['item_count'] - 3 ?></span>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <div class="sn-order-price-val">৳ <?= number_format((float)$ord['paid_amount'], 2) ?></div>
+                                    <a href="javascript:void(0)" onclick="openOrderModal('<?= htmlspecialchars($ord['payment_id']) ?>')" class="sn-order-view-details-link">
+                                        View Details &rarr;
+                                    </a>
+                                </div>
+
+                                <!-- Col 3: Stepper Progress Tracker -->
+                                <div class="sn-order-stepper-col">
+                                    <!-- Status Badge Pill & Subtitle -->
+                                    <div class="sn-order-status-badge-row">
+                                        <?php if ($cat === 'delivered'): ?>
+                                            <span class="sn-order-status-pill sn-status-pill-delivered">
+                                                <i class="fa-solid fa-circle-check"></i> Delivered
+                                            </span>
+                                            <span class="sn-order-status-subtext">Delivered on <?= $step4_date ?>, <?= date('Y', $order_timestamp) ?></span>
+                                        <?php elseif ($cat === 'shipped'): ?>
+                                            <span class="sn-order-status-pill sn-status-pill-shipped">
+                                                <i class="fa-solid fa-truck-fast"></i> Shipped
+                                            </span>
+                                            <span class="sn-order-status-subtext">Out for delivery • Expected by <?= $step4_date ?></span>
+                                        <?php elseif ($cat === 'cancelled'): ?>
+                                            <span class="sn-order-status-pill sn-status-pill-cancelled">
+                                                <i class="fa-solid fa-circle-xmark"></i> Cancelled
+                                            </span>
+                                            <span class="sn-order-status-subtext">Order was cancelled on <?= $step2_date ?></span>
+                                        <?php else: ?>
+                                            <span class="sn-order-status-pill sn-status-pill-processing">
+                                                <i class="fa-solid fa-gear"></i> Processing
+                                            </span>
+                                            <span class="sn-order-status-subtext">Preparing your order</span>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- 4-Step Tracker Bar -->
+                                    <div class="sn-timeline-track">
+                                        <!-- Step 1: Placed -->
+                                        <div class="sn-track-step">
+                                            <div class="sn-track-dot active-<?= ($cat === 'delivered') ? 'green' : (($cat === 'shipped') ? 'blue' : 'orange') ?>">✓</div>
+                                            <span class="sn-track-step-label">Placed</span>
+                                            <span class="sn-track-step-date"><?= date('M d', $order_timestamp) ?></span>
+                                        </div>
+
+                                        <!-- Line 1 -->
+                                        <div class="sn-track-line <?= ($cat === 'delivered') ? 'filled-green' : (($cat === 'shipped') ? 'filled-blue' : '') ?>"></div>
+
+                                        <!-- Step 2: Processing / Shipped -->
+                                        <div class="sn-track-step">
+                                            <div class="sn-track-dot <?= ($cat === 'delivered' || $cat === 'shipped') ? (($cat === 'delivered') ? 'active-green' : 'active-blue') : 'active-orange' ?>">
+                                                <?= ($cat === 'delivered' || $cat === 'shipped') ? '✓' : '2' ?>
+                                            </div>
+                                            <span class="sn-track-step-label"><?= ($cat === 'shipped' || $cat === 'delivered') ? 'Shipped' : 'Processing' ?></span>
+                                            <span class="sn-track-step-date"><?= $step2_date ?></span>
+                                        </div>
+
+                                        <!-- Line 2 -->
+                                        <div class="sn-track-line <?= ($cat === 'delivered') ? 'filled-green' : (($cat === 'shipped') ? 'filled-blue' : '') ?>"></div>
+
+                                        <!-- Step 3: Out for delivery -->
+                                        <div class="sn-track-step">
+                                            <div class="sn-track-dot <?= ($cat === 'delivered') ? 'active-green' : (($cat === 'shipped') ? 'active-blue' : '') ?>">
+                                                <?= ($cat === 'delivered') ? '✓' : '3' ?>
+                                            </div>
+                                            <span class="sn-track-step-label">Out for delivery</span>
+                                            <span class="sn-track-step-date"><?= ($cat === 'delivered' || $cat === 'shipped') ? $step3_date : '—' ?></span>
+                                        </div>
+
+                                        <!-- Line 3 -->
+                                        <div class="sn-track-line <?= ($cat === 'delivered') ? 'filled-green' : '' ?>"></div>
+
+                                        <!-- Step 4: Delivered -->
+                                        <div class="sn-track-step">
+                                            <div class="sn-track-dot <?= ($cat === 'delivered') ? 'active-green' : '' ?>">
+                                                <?= ($cat === 'delivered') ? '✓' : '4' ?>
+                                            </div>
+                                            <span class="sn-track-step-label">Delivered</span>
+                                            <span class="sn-track-step-date"><?= ($cat === 'delivered') ? $step4_date : 'Expected' ?></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Col 4: Action Buttons -->
+                                <div class="sn-order-actions-col">
+                                    <?php if ($cat === 'delivered'): ?>
+                                        <button type="button" class="sn-btn-order-buy-again" onclick="buyAgain('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-solid fa-cart-shopping"></i> Buy Again
+                                        </button>
+                                        <button type="button" class="sn-btn-order-track" onclick="openOrderModal('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-solid fa-location-dot"></i> Track Order
+                                        </button>
+                                    <?php elseif ($cat === 'shipped'): ?>
+                                        <button type="button" class="sn-btn-order-track" onclick="openOrderModal('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-solid fa-location-dot"></i> Track Order
+                                        </button>
+                                    <?php elseif ($cat === 'processing'): ?>
+                                        <button type="button" class="sn-btn-order-cancel" onclick="cancelOrder('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-solid fa-xmark"></i> Cancel Order
+                                        </button>
+                                        <button type="button" class="sn-btn-order-track" onclick="openOrderModal('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-solid fa-location-dot"></i> Track Order
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="button" class="sn-btn-order-track" onclick="openOrderModal('<?= htmlspecialchars($ord['payment_id']) ?>')">
+                                            <i class="fa-regular fa-file-lines"></i> View Details
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </main>
+        </div>
+    </div>
+</div>
+
+<!-- Interactive Order Tracking / Details Modal -->
+<div class="sn-modal-backdrop" id="orderModal">
+    <div class="sn-modal-box">
+        <button type="button" class="sn-modal-close-btn" onclick="closeOrderModal()">&times;</button>
+        <div id="modalContent">
+            <div style="text-align: center; padding: 40px 0;">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size: 32px; color: #2563eb;"></i>
+                <p style="margin-top: 12px; color: #64748b; font-size: 14px;">Loading order details...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Cancel order function
-function cancelOrder(paymentId) {
-    if (confirm('Are you sure you want to cancel this order? This action cannot be undone.')) {
-        // AJAX call to cancel order
-        fetch('<?php echo BASE_URL; ?>ajax/cancel-order.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({payment_id: paymentId, _csrf: <?php echo json_encode($csrf->getToken()); ?>}).toString()
-        })
-        .then(response => response.json())
+function openOrderModal(paymentId) {
+    const modal = document.getElementById('orderModal');
+    const content = document.getElementById('modalContent');
+    modal.style.display = 'flex';
+    content.innerHTML = `
+        <div style="text-align: center; padding: 40px 0;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 32px; color: #2563eb;"></i>
+            <p style="margin-top: 12px; color: #64748b; font-size: 14px;">Loading order details...</p>
+        </div>
+    `;
+
+    fetch('ajax/get-order-details.php?payment_id=' + encodeURIComponent(paymentId))
+        .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                alert(data.message);
-                location.reload();
+                const ord = data.order;
+                let itemsHtml = '';
+                (ord.items || []).forEach(it => {
+                    itemsHtml += `
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f1f5f9;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <img src="${it.photo || 'assets/uploads/no-image.jpg'}" style="width: 44px; height: 44px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                <div>
+                                    <div style="font-weight: 600; font-size: 13.5px; color: #0f172a;">${it.name}</div>
+                                    <div style="font-size: 12px; color: #64748b;">Qty: ${it.quantity} • Unit: ৳ ${it.unit_price}</div>
+                                </div>
+                            </div>
+                            <div style="font-weight: 700; font-size: 14px; color: #0f172a;">৳ ${(it.quantity * it.unit_price).toFixed(2)}</div>
+                        </div>
+                    `;
+                });
+
+                content.innerHTML = `
+                    <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: 700; color: #0f172a;">Order #${ord.payment_id}</h3>
+                    <p style="margin: 0 0 16px 0; font-size: 13px; color: #64748b;">Placed on ${ord.payment_date} • Payment Method: ${ord.payment_method}</p>
+                    
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 14px; margin-bottom: 20px;">
+                        <div style="font-size: 13px; color: #334155; margin-bottom: 4px;"><strong>Status:</strong> <span style="font-weight: 700; color: #2563eb;">${ord.shipping_status}</span></div>
+                        <div style="font-size: 13px; color: #334155;"><strong>Transaction ID:</strong> ${ord.txnid || 'N/A'}</div>
+                    </div>
+
+                    <h4 style="margin: 0 0 10px 0; font-size: 14.5px; font-weight: 700; color: #0f172a;">Items in this Order</h4>
+                    <div style="margin-bottom: 20px;">${itemsHtml}</div>
+
+                    <div style="background: #fbfdff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b; margin-bottom: 6px;">
+                            <span>Subtotal</span>
+                            <span>৳ ${parseFloat(ord.paid_amount).toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b; margin-bottom: 8px;">
+                            <span>Shipping</span>
+                            <span style="color: #15803d; font-weight: 600;">Free</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; color: #0f172a; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                            <span>Total Paid</span>
+                            <span>৳ ${parseFloat(ord.paid_amount).toFixed(2)}</span>
+                        </div>
+                    </div>
+                `;
             } else {
-                alert('Error: ' + (data.message || 'Failed to cancel order'));
+                content.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">${data.message || 'Failed to load order.'}</div>`;
             }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error canceling order');
+        .catch(err => {
+            content.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">Error loading order details.</div>`;
         });
-    }
 }
 
-// Add this JavaScript to your assets/js/main.js
+function closeOrderModal() {
+    document.getElementById('orderModal').style.display = 'none';
+}
 
-document.addEventListener('DOMContentLoaded', function() {
-    // --- Review Modal Logic ---
-    const reviewModal = document.getElementById('reviewModal');
-    const reviewProductNameSpan = document.getElementById('reviewProductName');
-    const reviewProductIdInput = document.getElementById('reviewProductId');
-    const submitReviewBtn = document.getElementById('submitReviewBtn');
-    const reviewFormMessage = document.getElementById('reviewFormMessage');
-    const reviewForm = document.getElementById('reviewForm');
-
-    // Open review modal when "Write Review" button is clicked
-    document.querySelectorAll('.btn-review').forEach(button => {
-        button.addEventListener('click', function() {
-            const productId = this.dataset.productId;
-            const productName = this.dataset.productName;
-
-            reviewProductNameSpan.textContent = productName;
-            reviewProductIdInput.value = productId;
-
-            // Clear previous form data and messages
-            reviewForm.reset();
-            reviewFormMessage.style.display = 'none';
-            reviewFormMessage.className = 'mt-3'; // Reset classes
-
-            // Show the modal
-            $('#reviewModal').modal('show');
-        });
+function buyAgain(paymentId) {
+    fetch('ajax/buy-again.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'payment_id=' + encodeURIComponent(paymentId)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.href = 'cart.php';
+        } else {
+            alert(data.message || 'Unable to reorder items at this moment.');
+        }
+    })
+    .catch(() => {
+        window.location.href = 'cart.php';
     });
+}
 
-    // Handle review form submission
-    if (submitReviewBtn) {
-        submitReviewBtn.addEventListener('click', function() {
-            const productId = reviewProductIdInput.value;
-            const rating = reviewForm.querySelector('input[name="rating"]:checked');
-            const reviewTitle = document.getElementById('modal_review_title').value.trim();
-            const comment = document.getElementById('modal_comment').value.trim();
-
-            if (!rating) {
-                displayReviewMessage('Please select a rating.', 'alert-danger');
-                return;
-            }
-            if (!reviewTitle) {
-                displayReviewMessage('Review title is required.', 'alert-danger');
-                return;
-            }
-            if (!comment) {
-                displayReviewMessage('Comment is required.', 'alert-danger');
-                return;
-            }
-
-            // Disable button and show loading
-            submitReviewBtn.disabled = true;
-            submitReviewBtn.textContent = 'Submitting...';
-
-            // AJAX call to submit review
-            fetch('<?php echo BASE_URL; ?>submit_review.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `product_id=${encodeURIComponent(productId)}&rating=${encodeURIComponent(rating.value)}&review_title=${encodeURIComponent(reviewTitle)}&comment=${encodeURIComponent(comment)}&_csrf=<?php echo $csrf->getToken() ?? ''; ?>` // Added ?? '' for safety
-            })
-            .then(response => response.json())
-            .then(data => {
-                submitReviewBtn.disabled = false;
-                submitReviewBtn.textContent = 'Submit Review';
-                if (data.status === 'success') {
-                    displayReviewMessage(data.message, 'alert-success');
-                    // Optionally, close modal after a short delay or reload page
-                    setTimeout(() => {
-                        $('#reviewModal').modal('hide');
-                        location.reload(); // Reload to update "Reviewed" button
-                    }, 1500);
-                } else {
-                    displayReviewMessage('Error: ' + data.message, 'alert-danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error submitting review:', error);
-                submitReviewBtn.disabled = false;
-                submitReviewBtn.textContent = 'Submit Review';
-                displayReviewMessage('An error occurred while submitting your review.', 'alert-danger');
-            });
-        });
-    }
-
-    function displayReviewMessage(message, typeClass) {
-        reviewFormMessage.textContent = message;
-        reviewFormMessage.className = `mt-3 alert ${typeClass}`;
-        reviewFormMessage.style.display = 'block';
-    }
-});
+function cancelOrder(paymentId) {
+    if (!confirm('Are you sure you want to cancel this order?')) return;
+    
+    fetch('ajax/cancel-order.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'payment_id=' + encodeURIComponent(paymentId)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert(data.message || 'Unable to cancel this order.');
+        }
+    })
+    .catch(() => {
+        alert('Network error. Please try again.');
+    });
+}
 </script>
 
 <?php require_once('footer.php'); ?>
