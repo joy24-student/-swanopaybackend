@@ -17,16 +17,23 @@ import {
   getMerchantActiveApiKey,
   getOrCreateMerchantApiKey,
 } from '../services/adminSupabase.js'
-import { generateRawApiKey, apiKeyDigest } from '../utils/crypto.js'
+import { generateRawApiKey, generateWebhookSecret, apiKeyDigest } from '../utils/crypto.js'
 
 const router = Router()
+
+function requireKeyManagementAuth(req, res, next) {
+  return requireMerchantOrAdminAuth(req, res, () => {
+    if (req.isAdmin || req.authMethod === 'supabase') return next()
+    return res.status(403).json({ error: 'API key management requires an authenticated account session' })
+  })
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // POST /v1/admin/keys/generate
 // Body: { merchant_id, merchant_name?, label? }
 // Returns the raw key ONCE — only the digest is stored in admin Supabase
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/generate', requireMerchantOrAdminAuth, async (req, res) => {
+router.post('/generate', requireKeyManagementAuth, async (req, res) => {
   const { merchant_id, merchant_name, label } = req.body || {}
 
   if (!merchant_id || typeof merchant_id !== 'string') {
@@ -74,13 +81,13 @@ router.post('/generate', requireMerchantOrAdminAuth, async (req, res) => {
 // POST /v1/admin/keys/revoke
 // Body: { key_id }
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/revoke', requireMerchantOrAdminAuth, async (req, res) => {
+router.post('/revoke', requireKeyManagementAuth, async (req, res) => {
   const { key_id } = req.body || {}
   if (!key_id || typeof key_id !== 'string') {
     return res.status(400).json({ error: 'key_id is required' })
   }
   try {
-    await revokeApiKeyRecord(key_id)
+    await revokeApiKeyRecord(key_id, req.isAdmin ? null : req.merchantUser?.id)
     console.log(`[keys/revoke] API key revoked: ${key_id}`)
     res.json({ ok: true, key_id, revoked: true })
   } catch (err) {
@@ -127,10 +134,14 @@ router.post('/validate', async (req, res) => {
 // Query: ?merchant_id=<id>&email=<email>&device_id=<device_id>
 // Returns the active dynamic API key for the merchant
 // ────────────────────────────────────────────────────────────────────────────
-router.get('/active', requireMerchantOrAdminAuth, async (req, res) => {
-  const targetMerchantId = req.query.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
-  const userEmail = req.query.email || (!req.isAdmin && req.merchantUser ? req.merchantUser.email : null)
-  const deviceId = req.query.device_id || req.headers['x-device-id'] || null
+router.get('/active', requireKeyManagementAuth, async (req, res) => {
+  const authenticatedMerchantId = !req.isAdmin ? req.merchantUser?.id : null
+  if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId) {
+    return res.status(403).json({ ok: false, error: 'Cannot access another merchant\'s API key' })
+  }
+  const targetMerchantId = req.isAdmin ? req.query.merchant_id : authenticatedMerchantId
+  const userEmail = req.isAdmin ? req.query.email : req.merchantUser?.email
+  const deviceId = req.isAdmin ? (req.query.device_id || req.headers['x-device-id'] || null) : null
 
   if (!targetMerchantId && !userEmail && !deviceId) {
     return res.status(400).json({ ok: false, error: 'merchant_id or email is required' })
@@ -153,7 +164,7 @@ router.get('/active', requireMerchantOrAdminAuth, async (req, res) => {
 // Body: { merchant_id, merchant_name?, label? }
 // Revokes previous active keys and creates a fresh signed dynamic key
 // ────────────────────────────────────────────────────────────────────────────
-router.post('/regenerate', requireMerchantOrAdminAuth, async (req, res) => {
+router.post('/regenerate', requireKeyManagementAuth, async (req, res) => {
   const targetMerchantId = req.body?.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
   if (!targetMerchantId) {
     return res.status(400).json({ ok: false, error: 'merchant_id is required' })
@@ -202,7 +213,7 @@ router.post('/regenerate', requireMerchantOrAdminAuth, async (req, res) => {
 
     if (admin) {
       try {
-        const updates = { api_key: rawKey, webhook_secret: rawKey, updated_at: new Date().toISOString() }
+        const updates = { api_key: rawKey, webhook_secret: generateWebhookSecret('wh'), updated_at: new Date().toISOString() }
         let { error: uErr } = await admin.from('merchants').update(updates).eq('id', targetMerchantId)
         if (uErr && (uErr.message?.includes('api_key') || uErr.message?.includes('schema cache'))) {
           delete updates.api_key
@@ -233,13 +244,19 @@ router.post('/regenerate', requireMerchantOrAdminAuth, async (req, res) => {
 // Returns key records (digest is never sent to the client)
 // Supports ?merchant_id=<id> filter
 // ────────────────────────────────────────────────────────────────────────────
-router.get('/', requireMerchantOrAdminAuth, async (req, res) => {
+router.get('/', requireKeyManagementAuth, async (req, res) => {
   try {
     let keys = await listApiKeyRecords()
 
-    const targetMerchantId = req.query.merchant_id || (!req.isAdmin && req.merchantUser ? req.merchantUser.id : null)
+    const authenticatedMerchantId = !req.isAdmin ? req.merchantUser?.id : null
+    if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId) {
+      return res.status(403).json({ ok: false, error: 'Cannot list another merchant\'s API keys' })
+    }
+    const targetMerchantId = req.isAdmin ? req.query.merchant_id : authenticatedMerchantId
     if (targetMerchantId) {
       keys = keys.filter(k => k.merchant_id === targetMerchantId)
+    } else if (!req.isAdmin) {
+      return res.status(401).json({ ok: false, error: 'Merchant authentication required' })
     }
 
     res.json({ ok: true, count: keys.length, keys })

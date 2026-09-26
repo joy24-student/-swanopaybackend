@@ -147,9 +147,56 @@ serve(async (request) => {
       return json({ error: `Quantity must be a whole number from ${quantityMinimum} to ${quantityMaximum}` }, 422);
     }
     const quantity = clampInteger(requestedQuantity, quantityMinimum, quantityMaximum);
-    const customAmount = Number(findAnswer(fields, validation.answers, "CUSTOM_AMOUNT") || input.amount);
-    const unitPrice = product ? Number(product.sale_price || product.price) : customAmount;
-    const subtotal = paymentRequired ? unitPrice * quantity : 0;
+    let calculatedAmount = 0;
+    if (product) {
+      const uPrice = Number(product.sale_price > 0 ? product.sale_price : product.price);
+      calculatedAmount = uPrice * quantity;
+    } else {
+      for (const f of fields) {
+        const fType = String(f.type || "").toUpperCase();
+        const ansVal = validation.answers[f.id];
+        if (fType === "CUSTOM_AMOUNT" && ansVal) {
+          const custVal = parseFloat(ansVal);
+          if (!isNaN(custVal) && custVal > 0) calculatedAmount += custVal;
+        } else if (fType === "DONATION" && ansVal) {
+          const dVal = parseAmountFromText(ansVal);
+          if (dVal > 0) calculatedAmount += dVal;
+        } else if ((fType === "RADIO" || fType === "DROPDOWN" || fType === "MCQ") && ansVal) {
+          const optVal = parseAmountFromText(ansVal);
+          if (optVal > 0) calculatedAmount += (optVal * quantity);
+        } else if ((fType === "CHECKBOX" || fType === "MULTI_SELECT") && Array.isArray(ansVal)) {
+          for (const item of ansVal) {
+            const optVal = parseAmountFromText(item);
+            if (optVal > 0) calculatedAmount += optVal;
+          }
+        }
+      }
+      if (calculatedAmount === 0 && Number(form.amount || 0) > 0) {
+        calculatedAmount = Number(form.amount);
+      } else if (calculatedAmount === 0 && Number(input.amount || 0) > 0) {
+        calculatedAmount = Number(input.amount);
+      }
+    }
+
+    // Coupon discount calculation
+    const couponCode = String(input.coupon_code || validation.answers["coupon_code"] || "").trim().toUpperCase();
+    if (couponCode && calculatedAmount > 0) {
+      const themeCoupons = Array.isArray(theme.coupons) ? theme.coupons : [];
+      const matchedCoupon = themeCoupons.find((c: any) => String(c.code || "").trim().toUpperCase() === couponCode);
+      if (matchedCoupon) {
+        const discType = String(matchedCoupon.type || "FLAT").toUpperCase();
+        const discVal = Number(matchedCoupon.value || 0);
+        let discAmt = 0;
+        if (discType === "PERCENT" || discType === "PERCENTAGE") {
+          discAmt = (calculatedAmount * Math.min(100, Math.max(0, discVal))) / 100;
+        } else {
+          discAmt = discVal;
+        }
+        calculatedAmount = Math.max(0, calculatedAmount - discAmt);
+      }
+    }
+
+    const subtotal = paymentRequired ? calculatedAmount : 0;
     const taxPercent = Math.min(100, Math.max(0, Number(theme.tax_percent || 0)));
     const amount = Math.round((subtotal + subtotal * taxPercent / 100) * 100) / 100;
     if (paymentRequired && (!Number.isFinite(amount) || amount <= 0 || amount > 10_000_000)) return json({ error: "Invalid payment amount" }, 422);
@@ -311,11 +358,25 @@ function csvLookup(form: Json, url: URL): Response {
     return Object.values(row).some((val) => String(val || "").trim().toLowerCase() === normalizedQuery);
   });
 
+  // Filter to only columns that are mapped to form fields to prevent leaking unmapped private columns
+  const columnMappings = asObject(theme.csv_column_mappings || theme.csvColumnMappings);
+  const mappedCols = new Set(Object.keys(columnMappings));
+  if (lookupCol) mappedCols.add(lookupCol);
+
+  let filteredRecord: Record<string, string> | null = null;
+  if (match) {
+    filteredRecord = {};
+    for (const [col, val] of Object.entries(match)) {
+      if (mappedCols.size === 0 || mappedCols.has(col)) {
+        filteredRecord[col] = val;
+      }
+    }
+  }
+
   return json({
     ok: true,
-    found: Boolean(match),
-    record: match || null,
-    headers: parsed.headers,
+    found: Boolean(filteredRecord),
+    record: filteredRecord,
   }, 200);
 }
 
@@ -589,9 +650,6 @@ function renderCustomWebApp(form: Json, merchant: Json | null, methodRows: Json[
   const resolvedJs = resolveVars(rawJs);
 
   const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
-  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
-  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
-  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
   const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
   const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
   const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
@@ -633,10 +691,22 @@ function renderCustomWebApp(form: Json, merchant: Json | null, methodRows: Json[
   ${resolvedHtml}
 
   <script nonce="${nonce}">
-    window.csvBackendData = ${csvDataJson};
+    window.enableCsvBackend = ${enableCsv};
     window.csvLookupColumn = ${csvLookupCol};
     window.csvTargetLookupFieldId = ${csvTargetLookupId};
     window.csvColumnMappings = ${csvMappings};
+    window.lookupCsvRecord = async function(query, lookupCol) {
+      if (!query) return null;
+      const col = lookupCol || ${csvLookupCol};
+      const lookupUrl = new URL(location.href);
+      lookupUrl.searchParams.set('action', 'csv_lookup');
+      lookupUrl.searchParams.set('lookup_column', col);
+      lookupUrl.searchParams.set('query', query);
+      const resp = await fetch(lookupUrl, { headers: { 'accept': 'application/json' } });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return (data.found && data.record) ? data.record : null;
+    };
 
     window.swapnopaySubmit = async function(answers, options) {
       options = options || {};
@@ -804,11 +874,8 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
     </div>
   ` : "";
 
-  // CSV backend dataset injection
+  // CSV backend settings
   const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
-  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
-  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
-  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
   const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
   const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
   const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
@@ -867,41 +934,50 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
     }
   })();
 
-  // CSV backend dataset & autofill
+  // CSV backend dataset & autofill via secure server lookup
   (function() {
-    const csvBackendData = ${csvDataJson};
+    const enableCsv = ${enableCsv};
     const csvLookupCol = ${csvLookupCol};
     const csvTargetLookupId = ${csvTargetLookupId};
     const csvColumnMappings = ${csvMappings};
 
-    if (csvBackendData.length > 0 && csvLookupCol && csvTargetLookupId) {
+    if (enableCsv && csvLookupCol && csvTargetLookupId) {
       const lookupInput = document.querySelector('[data-field-id="' + CSS.escape(csvTargetLookupId) + '"]');
       if (lookupInput) {
         let timer;
         lookupInput.addEventListener('input', () => {
           clearTimeout(timer);
-          timer = setTimeout(() => {
-            const query = (lookupInput.value || '').trim().toLowerCase();
+          timer = setTimeout(async () => {
+            const query = (lookupInput.value || '').trim();
             if (!query) {
               lookupInput.style.borderColor = '';
               return;
             }
-            const matched = csvBackendData.find(row => String(row[csvLookupCol] || '').trim().toLowerCase() === query);
-            if (matched) {
-              Object.entries(csvColumnMappings).forEach(([colName, fieldId]) => {
-                if (fieldId === csvTargetLookupId) return;
-                const targetEl = document.querySelector('[data-field-id="' + CSS.escape(fieldId) + '"]');
-                if (targetEl && matched[colName] !== undefined) {
-                  targetEl.value = matched[colName];
-                  targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                  targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-              });
-              lookupInput.style.borderColor = '#10B981';
-            } else {
-              lookupInput.style.borderColor = '';
-            }
-          }, 250);
+            try {
+              const lookupUrl = new URL(location.href);
+              lookupUrl.searchParams.set('action', 'csv_lookup');
+              lookupUrl.searchParams.set('lookup_column', csvLookupCol);
+              lookupUrl.searchParams.set('query', query);
+              const resp = await fetch(lookupUrl, { headers: { 'accept': 'application/json' } });
+              if (!resp.ok) return;
+              const resJson = await resp.json();
+              if (resJson.found && resJson.record) {
+                const matched = resJson.record;
+                Object.entries(csvColumnMappings).forEach(([colName, fieldId]) => {
+                  if (fieldId === csvTargetLookupId) return;
+                  const targetEl = document.querySelector('[data-field-id="' + CSS.escape(fieldId) + '"]');
+                  if (targetEl && matched[colName] !== undefined) {
+                    targetEl.value = matched[colName];
+                    targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                });
+                lookupInput.style.borderColor = '#10B981';
+              } else {
+                lookupInput.style.borderColor = '';
+              }
+            } catch (_) {}
+          }, 350);
         });
       }
     }

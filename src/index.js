@@ -32,32 +32,14 @@ import { subscriptionRouter } from './routes/subscription.js'
 import employeeRouter from './routes/employee.js'
 import { pinRouter } from './routes/pin.js'
 import { aiFormRouter } from './routes/aiForm.js'
+import { safeCompare as safeSecretCompare } from './middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Validate required environment variables (with development defaults)
+// Validate required environment variables. Secrets are never defaulted in code.
 // ──────────────────────────────────────────────────────────────────────────────
-if (!process.env.ADMIN_SUPABASE_URL) {
-  process.env.ADMIN_SUPABASE_URL = 'https://tldubojeokgyoclxnzkb.supabase.co'
-}
-if (!process.env.ADMIN_SUPABASE_ANON_KEY) {
-  process.env.ADMIN_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0'
-}
-if (!process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
-  process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY = process.env.ADMIN_SUPABASE_ANON_KEY
-}
-if (!process.env.ADMIN_SECRET) {
-  process.env.ADMIN_SECRET = 'swapnopay_platform_admin_master_secret_2026_super_key_32'
-}
-if (!process.env.API_KEY_PEPPER) {
-  process.env.API_KEY_PEPPER = 'swapnopay_api_key_pepper_cryptographic_secret_salt_32'
-}
-if (!process.env.PAYMENT_WEBHOOK_SECRET) {
-  process.env.PAYMENT_WEBHOOK_SECRET = 'swapnopay_payment_webhook_secret_signature_key_32'
-}
-
 const REQUIRED_ENV = [
   'ADMIN_SUPABASE_URL',
   'ADMIN_SUPABASE_SERVICE_ROLE_KEY',
@@ -73,6 +55,14 @@ if (missingEnv.length > 0) {
 }
 if ((process.env.ADMIN_SECRET || '').length < 32) {
   console.error('[startup] ❌ ADMIN_SECRET must be at least 32 characters')
+  process.exit(1)
+}
+if (process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY === process.env.ADMIN_SUPABASE_ANON_KEY) {
+  console.error('[startup] ❌ ADMIN_SUPABASE_SERVICE_ROLE_KEY must be a distinct privileged key, not the anon key')
+  process.exit(1)
+}
+if ((process.env.PAYMENT_WEBHOOK_SECRET || '').length < 32) {
+  console.error('[startup] ❌ PAYMENT_WEBHOOK_SECRET must be at least 32 characters')
   process.exit(1)
 }
 if ((process.env.API_KEY_PEPPER || '').length < 32) {
@@ -204,6 +194,48 @@ const io = new SocketIOServer(httpServer, {
   maxHttpBufferSize: 1e6,
 })
 
+// Public checkout widgets may connect for an order room. Merchant rooms require
+// a verified account token, platform API key, or the configured admin secret.
+io.use(async (socket, next) => {
+  const headers = socket.handshake.headers || {}
+  const auth = socket.handshake.auth || {}
+  const adminSecret = headers['x-admin-secret'] || auth.admin_secret
+  const authorization = headers.authorization || auth.token || ''
+  const bearer = String(authorization).replace(/^Bearer\s+/i, '').trim()
+  const apiKey = headers['x-api-key'] || auth.api_key || (/^(sp_|sk_)/.test(bearer) ? bearer : '')
+  try {
+    if (adminSecret && safeSecretCompare(String(adminSecret), process.env.ADMIN_SECRET)) {
+      socket.data.isAdmin = true
+      return next()
+    }
+    if (apiKey) {
+      const [{ validateApiKey }, { apiKeyDigest }] = await Promise.all([
+        import('./services/adminSupabase.js'), import('./utils/crypto.js')
+      ])
+      const key = await validateApiKey(apiKeyDigest(String(apiKey)))
+      if (key?.merchant_id) socket.data.authenticatedMerchantId = key.merchant_id
+      return next()
+    }
+    if (bearer && bearer.split('.').length === 3) {
+      const { getAdminClient } = await import('./services/adminSupabase.js')
+      const admin = getAdminClient()
+      const { data: { user }, error } = await admin.auth.getUser(bearer)
+      if (!error && user?.id) {
+        const { data: adminRecord } = await admin.from('admin_users').select('id,is_active').eq('id', user.id).maybeSingle()
+        if (adminRecord?.is_active) socket.data.isAdmin = true
+        else {
+          const { data: merchant } = await admin.from('merchants').select('id').eq('user_id', user.id).maybeSingle()
+          if (merchant?.id) socket.data.authenticatedMerchantId = merchant.id
+        }
+      }
+    }
+    return next()
+  } catch (error) {
+    console.warn('[socket.io] Optional client authentication failed:', error.message)
+    return next()
+  }
+})
+
 io.on('connection', (socket) => {
   console.log(`[socket.io] Client connected: ${socket.id}`)
 
@@ -219,6 +251,10 @@ io.on('connection', (socket) => {
   // ── Android merchant app joins a merchant room + marks as online ──
   socket.on('join_merchant', ({ merchant_id, device_id } = {}) => {
     if (!merchant_id || typeof merchant_id !== 'string' || merchant_id.length > 100) return
+    if (!socket.data.isAdmin && socket.data.authenticatedMerchantId !== merchant_id) {
+      socket.emit('authorization_error', { error: 'Merchant authentication required' })
+      return
+    }
     const room = `merchant:${merchant_id}`
     socket.join(room)
 
@@ -240,6 +276,7 @@ io.on('connection', (socket) => {
   // ── Merchant device heartbeat — keeps device_active=true in memory ──
   socket.on('merchant_heartbeat', ({ merchant_id, device_id } = {}) => {
     if (!merchant_id || typeof merchant_id !== 'string') return
+    if (!socket.data.isAdmin && socket.data.authenticatedMerchantId !== merchant_id) return
     merchantHeartbeatMap.set(merchant_id, {
       ts: Date.now(),
       socketId: socket.id,

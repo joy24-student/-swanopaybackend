@@ -378,10 +378,11 @@ export async function deployEdgeFunctions(projectRef, accessToken) {
 
   // 2. Set Project Secrets for Edge Functions
   try {
+    const webhookSecret = process.env.PROCESS_SMS_WEBHOOK_SECRET || 'swapnopay-prod-sms-secret'
     const secretsPayload = [
-      { name: 'PROCESS_SMS_WEBHOOK_SECRET', value: 'swapnopay-prod-sms-secret' },
-      { name: 'SWAPNOPAY_RECEIPT_SERVICE_URL', value: 'https://api.swapnopay.top' },
-      { name: 'SWAPNOPAY_RECEIPT_API_KEY', value: 'swapnopay-platform-key' },
+      { name: 'PROCESS_SMS_WEBHOOK_SECRET', value: webhookSecret },
+      { name: 'SWAPNOPAY_RECEIPT_SERVICE_URL', value: process.env.SWAPNOPAY_RECEIPT_SERVICE_URL || 'https://api.swapnopay.top' },
+      { name: 'SWAPNOPAY_RECEIPT_API_KEY', value: process.env.SWAPNOPAY_RECEIPT_API_KEY || 'swapnopay-platform-key' },
     ]
 
     const secRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/secrets`, {
@@ -398,6 +399,66 @@ export async function deployEdgeFunctions(projectRef, accessToken) {
   }
 
   return results
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Automated SMS Webhook Trigger Setup (pg_net trigger on sms_logs)
+// ──────────────────────────────────────────────────────────────────────────────
+export async function configureSmsWebhookTrigger(projectRef, accessToken, webhookSecret = (process.env.PROCESS_SMS_WEBHOOK_SECRET || 'swapnopay-prod-sms-secret')) {
+  console.log(`[provision-webhook] Configuring automated SMS webhook trigger for ${projectRef}...`)
+
+  const setupSql = `
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.handle_sms_log_insert_webhook()
+RETURNS TRIGGER AS $func$
+DECLARE
+  v_url text := 'https://${projectRef}.supabase.co/functions/v1/process-sms';
+  v_secret text := '${webhookSecret}';
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'net' AND p.proname = 'http_post') THEN
+    PERFORM net.http_post(
+      url := v_url,
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-webhook-secret', v_secret
+      ),
+      body := jsonb_build_object(
+        'type', 'INSERT',
+        'table', 'sms_logs',
+        'schema', 'public',
+        'record', row_to_json(NEW)
+      ),
+      timeout_milliseconds := 10000
+    );
+  END IF;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NEW;
+END;
+$func$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sms_logs') THEN
+    DROP TRIGGER IF EXISTS trg_sms_logs_process_sms ON public.sms_logs;
+    CREATE TRIGGER trg_sms_logs_process_sms
+      AFTER INSERT ON public.sms_logs
+      FOR EACH ROW
+      EXECUTE FUNCTION public.handle_sms_log_insert_webhook();
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+`
+  const res = await executeSqlQuery(projectRef, accessToken, setupSql)
+  console.log(`[provision-webhook] SMS webhook trigger configuration result: ${res.ok ? 'SUCCESS' : 'NOTICE'}`)
+  return res
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -449,6 +510,7 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
     storageBuckets: false,
     realtimePublication: false,
     edgeFunctions: false,
+    smsWebhookConfigured: false,
     authConfigured: false,
     keysFound: false,
   }
@@ -534,6 +596,16 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
     console.log(`[provision-auth] Auth configuration result: ${authConfigRes.ok ? 'SUCCESS' : authConfigRes.status} (${authBodyText.slice(0, 100)})`)
   } catch (authErr) {
     console.warn('[provision-auth] Notice: Could not set auth config automatically:', authErr.message)
+  }
+
+  // 4c. Configure Automated SMS Webhook Trigger (pg_net)
+  try {
+    console.log(`[provision] 4c/5 Configuring automated SMS webhook trigger for ${projectRef}...`)
+    const webhookRes = await configureSmsWebhookTrigger(projectRef, accessToken)
+    summary.smsWebhookConfigured = Boolean(webhookRes?.ok)
+    console.log(`[provision] SMS webhook trigger configured: ${webhookRes?.ok ? 'SUCCESS' : 'NOTICE'}`)
+  } catch (webhookErr) {
+    console.warn('[provision-webhook] Notice: Could not set SMS webhook trigger automatically:', webhookErr.message)
   }
 
   // 5. Retrieve API Keys

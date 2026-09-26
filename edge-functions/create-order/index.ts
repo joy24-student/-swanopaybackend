@@ -164,6 +164,7 @@ serve(async (req: Request) => {
       return jsonResponse({
         status: "SUCCESS",
         order_id: existingOrder.id,
+        merchant_id: merchant.id,
         merchantNumber: existingNumbers?.[0]?.number || merchant.default_number,
         expiresAt: existingOrder.expires_at,
         idempotent: true,
@@ -221,9 +222,10 @@ serve(async (req: Request) => {
       JSON.stringify({
         status: "SUCCESS",
         order_id: order.id,
+        merchant_id: merchant.id,
         merchantNumber: receivingNumber,
         expiresAt,
-      }), 
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

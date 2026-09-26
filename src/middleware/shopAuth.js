@@ -1,10 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { requireMerchantOrAdminAuth, safeCompare } from './auth.js'
-import { getMerchantCredentials, getAdminClient, validateApiKey } from '../services/adminSupabase.js'
+import { getMerchantCredentials, validateApiKey } from '../services/adminSupabase.js'
 import { apiKeyDigest } from '../utils/crypto.js'
 
-// First accept platform authentication. Otherwise verify against dynamic API key,
-// device ID, the merchant's registered project, or the platform merchants directory.
+// Accept only credentials that prove platform-admin or merchant ownership.
 export async function requireShopAuth(req, res, next) {
   const rawAuth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const xAdminSecret = req.headers['x-admin-secret']
@@ -13,6 +12,7 @@ export async function requireShopAuth(req, res, next) {
   // 0. Check Platform Admin authentication upfront
   if (adminSecret && ((xAdminSecret && safeCompare(xAdminSecret, adminSecret)) || (rawAuth && safeCompare(rawAuth, adminSecret)))) {
     req.isAdmin = true
+    req.authMethod = 'admin_secret'
     req.merchantUser = { id: req.shopMerchantId || 'platform_admin', role: 'admin' }
     return next()
   }
@@ -27,46 +27,11 @@ export async function requireShopAuth(req, res, next) {
       const keyRecord = await validateApiKey(digest)
       if (keyRecord && (!req.shopMerchantId || keyRecord.merchant_id === req.shopMerchantId)) {
         req.merchantUser = { id: keyRecord.merchant_id, name: keyRecord.merchant_name }
+        req.authMethod = 'api_key'
         return next()
       }
     } catch (e) {
       console.warn('[shopAuth] API key auth notice:', e.message)
-    }
-  }
-
-  // 1b. Check Device ID (x-device-id header or device_id parameter) with auto-binding
-  const deviceId = req.headers['x-device-id'] || req.headers['x-installation-id'] || req.query?.device_id || req.body?.device_id
-  if (deviceId && req.shopMerchantId) {
-    try {
-      const adminClient = getAdminClient()
-      if (adminClient) {
-        const { data: dev } = await adminClient
-          .from('merchant_devices')
-          .select('merchant_id')
-          .eq('device_id', deviceId)
-          .maybeSingle()
-        if (dev && dev.merchant_id === req.shopMerchantId) {
-          req.merchantUser = { id: req.shopMerchantId }
-          return next()
-        }
-
-        // Auto-bind device for this merchant (same as requireMerchantOrAdminAuth)
-        await adminClient.from('merchant_devices').upsert({
-          device_id: deviceId,
-          merchant_id: req.shopMerchantId,
-          device_name: req.headers['user-agent']?.slice(0, 100) || 'Merchant Mobile App',
-          status: 'ACTIVE',
-          last_active_at: new Date().toISOString()
-        }, { onConflict: 'merchant_id,device_id' })
-
-        req.merchantUser = { id: req.shopMerchantId }
-        return next()
-      }
-    } catch (e) {
-      console.warn('[shopAuth] Device ID auth notice:', e.message)
-      // Allow mobile device with installation ID to manage their own storefront
-      req.merchantUser = { id: req.shopMerchantId }
-      return next()
     }
   }
 
@@ -95,6 +60,7 @@ export async function requireShopAuth(req, res, next) {
                 .maybeSingle()
               if (!ownerError && merchant) {
                 req.merchantUser = data.user
+                req.authMethod = 'merchant_supabase'
                 return next()
               }
             }
@@ -102,32 +68,6 @@ export async function requireShopAuth(req, res, next) {
         }
       }
 
-      // 3. Fallback: Authenticate registered platform merchants seamlessly without requiring GoTrue email sign up
-      if (req.shopMerchantId) {
-        let adminClient = null
-        try { adminClient = getAdminClient() } catch (_) {}
-        if (adminClient) {
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.shopMerchantId)
-          let mQuery = adminClient
-            .from('merchants')
-            .select('id, user_id, email, business_name, kyc_status, status')
-          if (isUuid) {
-            mQuery = mQuery.or(`id.eq.${req.shopMerchantId},user_id.eq.${req.shopMerchantId}`)
-          } else {
-            mQuery = mQuery.eq('id', req.shopMerchantId)
-          }
-          const { data: merchantRecord } = await mQuery.maybeSingle()
-          if (merchantRecord) {
-            req.merchantUser = {
-              id: merchantRecord.id,
-              user_id: merchantRecord.user_id,
-              email: merchantRecord.email,
-              business_name: merchantRecord.business_name
-            }
-            return next()
-          }
-        }
-      }
     } catch { /* A failed verification never grants access. */ }
 
     return res.status(401).json({

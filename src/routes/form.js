@@ -12,9 +12,91 @@ import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { getAdminClient, getMerchantCredentials, getMerchantGatewayConfig, recordPaymentEvent } from '../services/adminSupabase.js'
+import { postSafeWebhook } from '../utils/urlValidator.js'
+import { safeCompare } from '../middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+/** Authenticate form management actions. Merchant identifiers are selectors, never credentials. */
+export async function authenticateFormCaller(req) {
+  const adminSecret = process.env.ADMIN_SECRET
+  const xAdminSecret = req.headers['x-admin-secret']
+
+  // 1. Static Admin Secret
+  if (xAdminSecret && adminSecret && safeCompare(xAdminSecret, adminSecret)) {
+    return { isAdmin: true, merchantId: null }
+  }
+
+  const authHeader = req.headers['authorization']
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (adminSecret && safeCompare(token, adminSecret)) {
+      return { isAdmin: true, merchantId: null }
+    }
+
+    // Supabase JWT verification and explicit admin/merchant ownership checks.
+    try {
+      const { getAdminClient } = await import('../services/adminSupabase.js')
+      const adminClient = getAdminClient()
+      if (adminClient?.auth) {
+        const { data: { user }, error: userError } = await adminClient.auth.getUser(token)
+        if (!userError && user?.id) {
+          const { data: adminRecord } = await adminClient
+            .from('admin_users')
+            .select('id, role, is_active')
+            .eq('id', user.id)
+            .maybeSingle()
+          if (adminRecord?.is_active) {
+            return { isAdmin: true, merchantId: user.id }
+          }
+          const { data: merchant } = await adminClient
+            .from('merchants')
+            .select('id, user_id')
+            .eq('user_id', user.id)
+            .maybeSingle()
+          const requested = String(req.headers['x-merchant-id'] || req.body?.merchant_id || req.query?.merchant_id || '').trim()
+          if (merchant?.id && (!requested || requested === merchant.id || requested === user.id)) {
+            return { isAdmin: false, merchantId: merchant.id, user }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Dynamic API Key
+  const rawKey = req.headers['x-api-key'] || req.headers['x-merchant-secret']
+  if (rawKey && typeof rawKey === 'string') {
+    try {
+      const { validateApiKey } = await import('../services/adminSupabase.js')
+      const { apiKeyDigest } = await import('../utils/crypto.js')
+      const digest = apiKeyDigest(rawKey.trim())
+      const keyRecord = await validateApiKey(digest)
+      const requested = String(req.headers['x-merchant-id'] || req.body?.merchant_id || req.query?.merchant_id || '').trim()
+      if (keyRecord?.merchant_id && (!requested || requested === keyRecord.merchant_id)) {
+        return { isAdmin: false, merchantId: keyRecord.merchant_id }
+      }
+    } catch (_) {}
+  }
+
+  return { isAdmin: false, merchantId: null }
+}
+
+/**
+ * Sanitizes form theme configuration before exposing to unauthenticated visitors.
+ * Strips raw CSV data and internal payment webhook URLs to prevent data leakage.
+ */
+export function sanitizeThemeForPublic(theme = {}) {
+  if (!theme || typeof theme !== 'object') return {}
+  const sanitized = { ...theme }
+  delete sanitized.csv_raw_data
+  delete sanitized.csvRawData
+  delete sanitized.payment_callback_url
+  delete sanitized.webhook_url
+  delete sanitized.webhookUrl
+  return sanitized
+}
+
 
 // Persistent route & submissions storage file paths
 const DATA_DIR = path.resolve(__dirname, '../../data')
@@ -164,14 +246,21 @@ function initPersistence() {
             if (!formSubmissionsMemory.has(sub.form_slug)) formSubmissionsMemory.set(sub.form_slug, [])
             formSubmissionsMemory.get(sub.form_slug).push(sub)
           }
+          const subMapping = {
+            form_id: sub.form_id,
+            submission_id: sub.id || sub.submission_id,
+            merchant_id: sub.merchant_id,
+            form_slug: sub.form_slug,
+            amount: sub.amount
+          }
           if (sub.order_id) {
-            orderToFormSubmissionMap.set(sub.order_id, {
-              form_id: sub.form_id,
-              submission_id: sub.id || sub.submission_id,
-              merchant_id: sub.merchant_id,
-              form_slug: sub.form_slug,
-              amount: sub.amount
-            })
+            orderToFormSubmissionMap.set(sub.order_id, subMapping)
+          }
+          if (sub.tran_id) {
+            orderToFormSubmissionMap.set(sub.tran_id, subMapping)
+          }
+          if (sub.transaction_id) {
+            orderToFormSubmissionMap.set(sub.transaction_id, subMapping)
           }
         }
         console.log(`[form-router] Loaded ${subItems.length} persistent form submissions from disk.`)
@@ -287,6 +376,7 @@ export function formRouter(io = null) {
   // ──────────────────────────────────────────────────────────────────────────
   router.post('/routes', async (req, res) => {
     try {
+      const caller = await authenticateFormCaller(req)
       const {
         form_id,
         slug,
@@ -306,8 +396,29 @@ export function formRouter(io = null) {
       }
 
       const formSnapshot = payload || form_data || null
-      const effectiveMerchantId = merchant_id || (formSnapshot && typeof formSnapshot === 'object' ? formSnapshot.merchant_id : null) || null
-      if (formSnapshot && typeof formSnapshot === 'object' && effectiveMerchantId && !formSnapshot.merchant_id) {
+      const requestedMerchantId = caller.isAdmin
+        ? (merchant_id || (formSnapshot && typeof formSnapshot === 'object' ? formSnapshot.merchant_id : null) || null)
+        : caller.merchantId
+
+      if (!caller.isAdmin && !requestedMerchantId) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: merchant identification required to register a form route' })
+      }
+
+      // Tenancy check: prevent cross-merchant route takeover
+      const compactId = cleanFormId ? cleanFormId.toLowerCase().replace(/-/g, '') : ''
+      const existing = (normalizedSlug ? routeBySlug.get(normalizedSlug) : null) ||
+                       (compactId ? routeById.get(compactId) : null) ||
+                       (cleanFormId ? routeById.get(cleanFormId.toLowerCase()) : null)
+
+      if (existing && !caller.isAdmin) {
+        const existingOwner = existing.merchant_id || existing.payload?.merchant_id
+        if (existingOwner !== requestedMerchantId) {
+          return res.status(403).json({ ok: false, error: 'Forbidden: Form route is owned by another merchant' })
+        }
+      }
+
+      const effectiveMerchantId = caller.isAdmin ? (merchant_id || requestedMerchantId) : requestedMerchantId
+      if (formSnapshot && typeof formSnapshot === 'object' && effectiveMerchantId) {
         formSnapshot.merchant_id = effectiveMerchantId
       }
 
@@ -337,7 +448,7 @@ export function formRouter(io = null) {
         if (formSnapshot && typeof formSnapshot === 'object') {
           const admin = getAdminClient()
           const effectiveFormUuid = normalizeUuid(cleanFormId) || deterministicUuid(cleanFormId || normalizedSlug)
-          const effectiveMerchantUuid = normalizeUuid(formSnapshot.merchant_id || merchant_id) || deterministicUuid(formSnapshot.merchant_id || merchant_id || '00000000-0000-0000-0000-000000000001')
+          const effectiveMerchantUuid = normalizeUuid(effectiveMerchantId) || deterministicUuid(effectiveMerchantId || '00000000-0000-0000-0000-000000000001')
           const dbRow = {
             id: effectiveFormUuid,
             merchant_id: effectiveMerchantUuid,
@@ -401,19 +512,41 @@ export function formRouter(io = null) {
   // ──────────────────────────────────────────────────────────────────────────
   // DELETE /v1/routes/:id and DELETE /v1/forms/:id
   // ──────────────────────────────────────────────────────────────────────────
-  function handleDeleteFormRoute(req, res) {
-    const id = (req.params.id || '').toLowerCase().trim()
-    const compactId = id.replace(/-/g, '')
-    const existing = routeById.get(compactId) || routeBySlug.get(id)
-    if (existing) {
+  async function handleDeleteFormRoute(req, res) {
+    try {
+      const caller = await authenticateFormCaller(req)
+      if (!caller.isAdmin && !caller.merchantId) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: merchant credentials required to delete form' })
+      }
+
+      const id = (req.params.id || '').toLowerCase().trim()
+      const compactId = id.replace(/-/g, '')
+      const existing = routeById.get(compactId) || routeBySlug.get(id)
+
+      if (!existing) {
+        return res.status(404).json({ ok: false, error: 'Form route not found' })
+      }
+
+      // Tenancy isolation check
+      if (!caller.isAdmin) {
+        const existingOwner = existing.merchant_id || existing.payload?.merchant_id
+        if (existingOwner !== caller.merchantId) {
+          return res.status(403).json({ ok: false, error: 'Forbidden: Cannot delete another merchant\'s form route' })
+        }
+      }
+
       if (existing.slug) routeBySlug.delete(existing.slug.toLowerCase())
       if (existing.form_id) {
         routeById.delete(existing.form_id.toLowerCase())
         routeById.delete(existing.form_id.toLowerCase().replace(/-/g, ''))
       }
       saveRoutesToDisk()
+
+      return res.status(200).json({ ok: true })
+    } catch (err) {
+      console.error('[form-router] Error deleting route:', err.message)
+      return res.status(500).json({ ok: false, error: err.message })
     }
-    return res.status(200).json({ ok: true })
   }
 
   router.delete('/routes/:id', handleDeleteFormRoute)
@@ -426,11 +559,29 @@ export function formRouter(io = null) {
   // ──────────────────────────────────────────────────────────────────────────
   async function handleUpdateForm(req, res) {
     try {
+      const caller = await authenticateFormCaller(req)
+      if (!caller.isAdmin && !caller.merchantId) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: merchant credentials required to update form' })
+      }
+
       const identifier = String(req.params.slugOrId || '').trim()
       const normalizedIdentifier = identifier.toLowerCase()
       const compactId = normalizedIdentifier.replace(/-/g, '')
 
       let route = routeBySlug.get(normalizedIdentifier) || routeById.get(compactId) || routeById.get(normalizedIdentifier)
+
+      if (!route && !caller.isAdmin) {
+        return res.status(404).json({ ok: false, error: 'Form route not found' })
+      }
+
+      // Tenancy check: cannot update another merchant's form
+      if (route && !caller.isAdmin) {
+        const existingOwner = route.merchant_id || route.payload?.merchant_id
+        if (existingOwner !== caller.merchantId) {
+          return res.status(403).json({ ok: false, error: 'Forbidden: Cannot update another merchant\'s form' })
+        }
+      }
+
       const existingPayload = (route && route.payload) ? { ...route.payload } : { id: identifier, slug: identifier }
 
       const updates = req.body || {}
@@ -448,6 +599,7 @@ export function formRouter(io = null) {
         },
         updated_at: new Date().toISOString()
       }
+      if (!caller.isAdmin) updatedPayload.merchant_id = caller.merchantId
 
       if (updates.image_url) updatedPayload.image_url = updates.image_url
       if (updates.products) updatedPayload.products = updates.products
@@ -462,7 +614,9 @@ export function formRouter(io = null) {
       const routeRecord = {
         form_id: cleanFormId,
         slug: cleanSlug.toLowerCase(),
-        merchant_id: updatedPayload.merchant_id || route?.merchant_id || null,
+        merchant_id: caller.isAdmin
+          ? (updatedPayload.merchant_id || route?.merchant_id || null)
+          : caller.merchantId,
         payload: updatedPayload,
         updated_at: new Date().toISOString()
       }
@@ -511,7 +665,14 @@ export function formRouter(io = null) {
   // ──────────────────────────────────────────────────────────────────────────
   router.get(['/forms', '/hosted-forms'], async (req, res) => {
     try {
-      const merchantId = String(req.query.merchant_id || req.headers['x-merchant-id'] || '').trim()
+      const caller = await authenticateFormCaller(req)
+      const requestedMerchantId = String(req.query.merchant_id || req.headers['x-merchant-id'] || '').trim()
+
+      if (!caller.isAdmin && !caller.merchantId && !requestedMerchantId) {
+        return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+      }
+
+      const merchantId = caller.isAdmin ? (requestedMerchantId || caller.merchantId) : (caller.merchantId || requestedMerchantId)
       const formsMap = new Map()
 
       // 1. Ensure routes loaded from disk
@@ -623,6 +784,81 @@ export function formRouter(io = null) {
     } catch (err) {
       console.error('[form-router] GET /forms Error:', err.message)
       return res.status(500).json({ error: 'Failed to retrieve forms: ' + err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /v1/forms/submissions (Merchant-Wide Submissions)
+  // Fetch all form responses for authenticated merchant across all their forms
+  // ──────────────────────────────────────────────────────────────────────────
+  router.get(['/forms/submissions', '/hosted-forms/submissions', '/submissions'], async (req, res) => {
+    try {
+      const caller = await authenticateFormCaller(req)
+      if (!caller.isAdmin && !caller.merchantId) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: merchant authentication required to access form submissions' })
+      }
+
+      const targetMerchantId = caller.isAdmin ? (req.query.merchant_id || null) : caller.merchantId
+      const memMap = new Map()
+
+      // 1. Gather all submissions from memory
+      for (const list of formSubmissionsMemory.values()) {
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (item && (item.id || item.submission_id)) {
+              if (!targetMerchantId || String(item.merchant_id || '') === String(targetMerchantId)) {
+                const amt = Number(item.amount_bdt !== undefined ? item.amount_bdt : (item.amount || 0))
+                const normItem = {
+                  ...item,
+                  amount: amt,
+                  amount_bdt: amt
+                }
+                const sid = String(item.id || item.submission_id)
+                memMap.set(sid, normItem)
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Gather from DB
+      try {
+        const admin = getAdminClient()
+        if (admin) {
+          let query = admin.from('hosted_form_submissions').select('*')
+          if (targetMerchantId) {
+            query = query.eq('merchant_id', targetMerchantId)
+          }
+          const { data, error } = await query.order('created_at', { ascending: false }).limit(200)
+          if (!error && Array.isArray(data)) {
+            for (const item of data) {
+              if (item && item.id) {
+                const amt = Number(item.amount_bdt !== undefined ? item.amount_bdt : (item.amount || 0))
+                const normItem = {
+                  ...item,
+                  amount: amt,
+                  amount_bdt: amt
+                }
+                const existing = memMap.get(String(item.id))
+                memMap.set(String(item.id), { ...normItem, ...(existing || {}) })
+              }
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[form-router] submissions DB fetch error:', dbErr.message)
+      }
+
+      const merged = Array.from(memMap.values()).sort((a, b) => {
+        const tA = new Date(a.created_at || 0).getTime()
+        const tB = new Date(b.created_at || 0).getTime()
+        return tB - tA
+      })
+
+      return res.json({ ok: true, submissions: merged })
+    } catch (err) {
+      console.error('[form-router] GET /forms/submissions error:', err.message)
+      return res.status(500).json({ ok: false, error: 'Failed to retrieve submissions: ' + err.message })
     }
   })
 
@@ -794,7 +1030,7 @@ export function formRouter(io = null) {
         fields: form.fields || [],
         products: form.products || [],
         pages: form.pages || [],
-        theme: form.theme || {},
+        theme: sanitizeThemeForPublic(form.theme || {}),
         logo_url: form.logo_url || theme.logo_url || null,
         banner_url: form.banner_url || theme.banner_url || null,
         submissions_count: form.submissions_count || 0,
@@ -1201,25 +1437,21 @@ export function formRouter(io = null) {
         }
       }
 
-      // Webhook Callback if configured
+      // Webhook Callback if configured (with strict SSRF validation)
       if (theme.payment_callback_enabled && theme.payment_callback_url) {
-        fetch(theme.payment_callback_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'form_submission',
-            form_id: form.id,
-            form_slug: form.slug,
-            submission_id: submissionId,
-            customer_name: clientName,
-            customer_phone: clientPhone,
-            customer_email: clientEmail,
-            amount: calculatedAmount,
-            answers: answers,
-            payment_required: paymentRequired,
-            timestamp: new Date().toISOString()
-          })
-        }).catch(cbErr => console.warn('[form-router] Webhook callback failed:', cbErr.message))
+        postSafeWebhook(theme.payment_callback_url, {
+              event: 'form_submission',
+              form_id: form.id,
+              form_slug: form.slug,
+              submission_id: submissionId,
+              customer_name: clientName,
+              customer_phone: clientPhone,
+              customer_email: clientEmail,
+              amount: calculatedAmount,
+              answers: answers,
+              payment_required: paymentRequired,
+              timestamp: new Date().toISOString()
+          }).catch(cbErr => console.warn('[form-router] Safe webhook callback failed:', cbErr.message))
       }
 
       // 6. Handle Payment Order Creation if required
@@ -1407,8 +1639,37 @@ export function formRouter(io = null) {
   // Fetch responses for a form
   // ──────────────────────────────────────────────────────────────────────────
   router.get(['/forms/:slugOrId/submissions', '/hosted-forms/:slugOrId/submissions'], async (req, res) => {
+    const caller = await authenticateFormCaller(req)
+    if (!caller.isAdmin && !caller.merchantId) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized: merchant authentication required to access form submissions' })
+    }
+
     const identifier = String(req.params.slugOrId || '').trim()
     const route = routeBySlug.get(identifier) || routeById.get(identifier) || routeBySlug.get(identifier.toLowerCase())
+
+    if (!caller.isAdmin) {
+      if (route) {
+        const formOwner = route.merchant_id || route.payload?.merchant_id
+        if (!formOwner || String(formOwner) !== String(caller.merchantId)) {
+          return res.status(403).json({ ok: false, error: 'Forbidden: Cannot view another merchant\'s form submissions' })
+        }
+      } else {
+        try {
+          const admin = getAdminClient()
+          const parsedUuid = normalizeUuid(identifier)
+          const query = admin.from('payment_forms').select('merchant_id')
+          const { data } = parsedUuid
+            ? await query.eq('id', parsedUuid).maybeSingle()
+            : await query.eq('slug', identifier).maybeSingle()
+          if (!data || String(data.merchant_id || '') !== String(caller.merchantId)) {
+            return res.status(404).json({ ok: false, error: 'Form not found for this merchant' })
+          }
+        } catch {
+          return res.status(503).json({ ok: false, error: 'Unable to verify form ownership' })
+        }
+      }
+    }
+
     const formId = route?.form_id || identifier
     const formSlug = route?.slug || identifier
 
@@ -1456,7 +1717,14 @@ export function formRouter(io = null) {
       console.warn('[form-router] submissions DB fetch error:', dbErr.message)
     }
 
-    const merged = Array.from(memMap.values()).sort((a, b) => {
+    const merged = Array.from(memMap.values()).map(item => {
+      const amt = Number(item.amount_bdt !== undefined ? item.amount_bdt : (item.amount || 0))
+      return {
+        ...item,
+        amount: amt,
+        amount_bdt: amt
+      }
+    }).sort((a, b) => {
       const tA = new Date(a.created_at || 0).getTime()
       const tB = new Date(b.created_at || 0).getTime()
       return tB - tA
@@ -1473,6 +1741,11 @@ export function formRouter(io = null) {
   // ──────────────────────────────────────────────────────────────────────────
   router.post('/forms/upload-image', async (req, res) => {
     try {
+      const caller = await authenticateFormCaller(req)
+      if (!caller.isAdmin && !caller.merchantId) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized: merchant or admin credentials required to upload images' })
+      }
+
       const { image, filename } = req.body || {}
       if (!image || typeof image !== 'string') {
         return res.status(400).json({ ok: false, error: 'Missing image base64 data' })
@@ -1536,7 +1809,23 @@ export function formRouter(io = null) {
 export async function handleFormPaymentPaid(orderId, trxId, amount, io = null) {
   if (!orderId) return false
   const cleanId = String(orderId).trim()
-  const mapping = orderToFormSubmissionMap.get(cleanId) || orderToFormSubmissionMap.get(cleanId.toLowerCase())
+  let mapping = orderToFormSubmissionMap.get(cleanId) || orderToFormSubmissionMap.get(cleanId.toLowerCase())
+  if (!mapping) {
+    for (const [formKey, submissions] of formSubmissionsMemory.entries()) {
+      const match = submissions.find(s => s.order_id === cleanId || s.id === cleanId || s.transaction_id === cleanId || s.tran_id === cleanId)
+      if (match) {
+        mapping = {
+          form_id: match.form_id || formKey,
+          submission_id: match.id || match.submission_id,
+          merchant_id: match.merchant_id,
+          form_slug: match.form_slug,
+          amount: match.amount
+        }
+        orderToFormSubmissionMap.set(cleanId, mapping)
+        break
+      }
+    }
+  }
   if (!mapping) return false
 
   const { form_id, submission_id, merchant_id, form_slug } = mapping
@@ -1544,11 +1833,15 @@ export async function handleFormPaymentPaid(orderId, trxId, amount, io = null) {
 
   // 0. Update in-memory submission record
   let updatedRecord = null
+  let alreadyPaid = false
   const memList = formSubmissionsMemory.get(form_id) || []
   for (const item of memList) {
-    if (item.id === submission_id || item.order_id === cleanId) {
+    if (item.id === submission_id || item.order_id === cleanId || item.transaction_id === cleanId) {
+      if (item.payment_status === 'PAID') {
+        alreadyPaid = true
+      }
       item.payment_status = 'PAID'
-      item.trx_id = trxId || 'PAID_GATEWAY'
+      item.trx_id = trxId || item.trx_id || 'PAID_GATEWAY'
       item.updated_at = new Date().toISOString()
       updatedRecord = item
       break
@@ -1605,21 +1898,23 @@ export async function handleFormPaymentPaid(orderId, trxId, amount, io = null) {
       }
       await q
 
-      // Increment total_revenue on payment_forms
-      const parsedFormUuid = normalizeUuid(form_id) || deterministicUuid(form_id || form_slug)
-      const { data: currentForm } = await admin.from('payment_forms')
-        .select('total_revenue, submissions_count')
-        .eq('id', parsedFormUuid)
-        .maybeSingle()
-
-      if (currentForm) {
-        const newRevenue = Number(currentForm.total_revenue || 0) + Number(amount || 0)
-        await admin.from('payment_forms')
-          .update({
-            total_revenue: newRevenue,
-            updated_at: new Date().toISOString()
-          })
+      // Increment total_revenue on payment_forms only if not already counted as PAID
+      if (!alreadyPaid) {
+        const parsedFormUuid = normalizeUuid(form_id) || deterministicUuid(form_id || form_slug)
+        const { data: currentForm } = await admin.from('payment_forms')
+          .select('total_revenue, submissions_count')
           .eq('id', parsedFormUuid)
+          .maybeSingle()
+
+        if (currentForm) {
+          const newRevenue = Number(currentForm.total_revenue || 0) + Number(amount || 0)
+          await admin.from('payment_forms')
+            .update({
+              total_revenue: newRevenue,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', parsedFormUuid)
+        }
       }
     }
   } catch (adminErr) {

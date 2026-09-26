@@ -4,9 +4,16 @@ import express from 'express'
 import { formRouter, handleFormPaymentPaid, parseAmountFromText, orderToFormSubmissionMap, isProductRoute } from './form.js'
 import { paymentRouter } from './payment.js'
 
+const testAdminSecret = 'form-test-admin-secret-32-characters'
+process.env.ADMIN_SECRET = testAdminSecret
+
 function createTestApp() {
   const app = express()
   app.use(express.json())
+  app.use((req, _res, next) => {
+    req.headers['x-admin-secret'] = testAdminSecret
+    next()
+  })
   app.use('/v1', formRouter(null))
   app.use('/v1/payment', paymentRouter(null))
   return app
@@ -199,7 +206,10 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
 
     const res = await fetch(`${baseUrl}/forms/upload-image`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-merchant-id': 'merchant-test-123'
+      },
       body: JSON.stringify({
         image: sampleBase64,
         filename: 'sample_product.png'
@@ -333,7 +343,7 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
     assert.equal(isProductRoute('conference-2026'), false)
   })
 
-  await t.test('12. GET /forms and GET /payment/merchant-config return merchant forms and receiving numbers dynamically', async () => {
+  await t.test('12. GET /forms lists forms and merchant-config fails closed without its database', async () => {
     // 1. Fetch forms for merchant-test-123
     const formsRes = await fetch(`${baseUrl}/forms?merchant_id=merchant-test-123`)
     assert.equal(formsRes.status, 200)
@@ -345,11 +355,42 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
 
     // 2. Fetch merchant gateway config
     const configRes = await fetch(`${baseUrl}/payment/merchant-config?merchant_id=merchant-test-123`)
-    assert.equal(configRes.status, 200)
+    assert.equal(configRes.status, 503)
     const configData = await configRes.json()
-    assert.equal(configData.ok, true)
-    assert.equal(configData.merchant_id, 'merchant-test-123')
-    assert.ok(configData.config !== undefined)
+    assert.equal(configData.ok, false)
+    assert.equal(configData.error, 'Merchant gateway configuration is unavailable')
+  })
+
+  await t.test('13. GET /forms/submissions and /forms/:slug/submissions return normalized merchant submissions', async () => {
+    // 1. Test merchant-wide submissions endpoint
+    const allRes = await fetch(`${baseUrl}/forms/submissions?merchant_id=merchant-test-123`, {
+      headers: {
+        'x-merchant-id': 'merchant-test-123'
+      }
+    })
+    assert.equal(allRes.status, 200)
+    const allData = await allRes.json()
+    assert.equal(allData.ok, true)
+    assert.ok(Array.isArray(allData.submissions))
+    assert.ok(allData.submissions.length > 0)
+
+    // Check that amounts are normalized
+    const sample = allData.submissions[0]
+    assert.ok(sample.amount !== undefined)
+    assert.ok(sample.amount_bdt !== undefined)
+    assert.equal(sample.amount, sample.amount_bdt)
+
+    // 2. Test form slug submissions endpoint
+    const slugRes = await fetch(`${baseUrl}/forms/workshop-event/submissions`, {
+      headers: {
+        'x-merchant-id': 'merchant-test-123'
+      }
+    })
+    assert.equal(slugRes.status, 200)
+    const slugData = await slugRes.json()
+    assert.equal(slugData.ok, true)
+    assert.ok(Array.isArray(slugData.submissions))
+    assert.ok(slugData.submissions.length > 0)
+    assert.ok(slugData.submissions.every(s => s.form_id === 'pricing-form-uuid-004' || s.form_slug === 'workshop-event'))
   })
 })
-

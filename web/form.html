@@ -1192,8 +1192,47 @@
       const params = new URLSearchParams(window.location.search);
       const status = (params.get("status") || params.get("payment") || "").toLowerCase();
       if (status === "paid" || status === "success") {
-        renderPaymentReceipt(params);
-        return;
+        const orderId = params.get("order_id") || params.get("tran_id");
+        if (orderId) {
+          const formWrap = document.getElementById("form-wrap");
+          if (formWrap) {
+            formWrap.innerHTML = `
+              <div style="text-align:center; padding: 48px 24px; background:#fff; border-radius:16px;">
+                <div style="margin: 0 auto 16px auto; width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                <h3 style="font-weight: 700; color: var(--text-dark);">Verifying payment confirmation...</h3>
+                <p style="font-size: 13px; color: var(--text-light);">Please wait while we confirm your payment status.</p>
+              </div>
+            `;
+          }
+          fetch(`/v1/payment/check-status?order_id=${encodeURIComponent(orderId)}`)
+            .then(r => r.json())
+            .then(res => {
+              if (res.status === 'PAID') {
+                params.set('amount', res.amount || params.get('amount') || '0');
+                params.set('trx_id', res.trx_id || params.get('trx_id') || '');
+                renderPaymentReceipt(params);
+              } else {
+                if (formWrap) {
+                  formWrap.innerHTML = `
+                    <div style="text-align:center; padding: 48px 24px; background:#fff; border-radius:16px; border:1px solid #fee2e2;">
+                      <div style="font-size: 40px; color: #ef4444; margin-bottom: 8px;">✕</div>
+                      <h3 style="font-weight: 700; color: #991b1b;">Payment Unconfirmed</h3>
+                      <p style="font-size: 14px; color: #7f1d1d; max-width: 420px; margin: 8px auto 16px auto;">
+                        Order #${orderId} is currently ${res.status || 'UNPAID'}.
+                      </p>
+                      <a href="${window.location.pathname}" style="display:inline-block; padding: 10px 20px; background: var(--primary); color:#fff; border-radius: 8px; font-weight:600; text-decoration:none;">Return to Form</a>
+                    </div>
+                  `;
+                }
+              }
+            })
+            .catch(() => {
+              renderPaymentReceipt(params);
+            });
+          return;
+        } else {
+          console.warn('[form] Ignored status=paid without order_id parameter');
+        }
       }
 
       if (status === "cancelled" || status === "cancel") {
@@ -2441,39 +2480,35 @@
       } catch (err) {
         console.warn("Backend submission error, attempting Supabase fallback:", err.message);
 
-        // Fallback to direct Supabase edge function or RPC
+        // Fallback to hosted-form Supabase edge function
         try {
           const calcAmount = recalculateTotalAmount();
-          const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/create_hosted_form_submission`, {
+          const targetFormId = formConfig?.id || formIdentifier;
+          const edgeUrl = `${supabaseUrl}/functions/v1/hosted-form?id=${encodeURIComponent(targetFormId)}`;
+          const edgeRes = await fetch(edgeUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "apikey": supabaseAnonKey,
-              "Authorization": `Bearer ${supabaseAnonKey}`
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "idempotency-key": requestId
             },
             body: JSON.stringify({
-              p_form_id: formConfig?.id,
-              p_request_id: requestId,
-              p_customer_name: cusName || "Customer",
-              p_customer_phone: cusPhone,
-              p_customer_email: cusEmail,
-              p_amount: calcAmount,
-              p_payment_method: selectedMethod,
-              p_payment_required: calcAmount > 0 && isPaymentEnabled,
-              p_answers: answersMap,
-              p_client_hash: "web-client"
+              request_id: requestId,
+              answers: answersMap,
+              payment_method: selectedMethod,
+              payment_required: calcAmount > 0 && isPaymentEnabled
             })
           });
 
-          const rpcData = await rpcRes.json();
-          const record = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+          const edgeData = await edgeRes.json();
 
-          if (rpcRes.ok && record?.order_id) {
-            window.location.href = `widget.html?order_id=${record.order_id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${record.amount}&merchant_name=${encodeURIComponent(formConfig?.title || 'SwapnoPay')}`;
+          if (edgeRes.ok && edgeData?.order_id) {
+            window.location.href = `widget.html?order_id=${edgeData.order_id}&supabase_url=${encodeURIComponent(supabaseUrl)}&supabase_anon_key=${encodeURIComponent(supabaseAnonKey)}&amount=${edgeData.amount}&merchant_name=${encodeURIComponent(formConfig?.title || 'SwapnoPay')}`;
             return;
           }
 
-          if (rpcRes.ok && (record?.ok || !calcAmount)) {
+          if (edgeRes.ok && (edgeData?.ok || !calcAmount)) {
             document.getElementById("form-wrap").innerHTML = `
               <div class="closed-state">
                 <div class="icon" style="color:#10B981">✓</div>
@@ -2484,7 +2519,7 @@
             return;
           }
 
-          throw new Error(record?.error || rpcData?.error || "Submission could not be completed.");
+          throw new Error(edgeData?.error || "Submission could not be completed.");
         } catch (rpcErr) {
           alert(`Submission failed: ${err.message || rpcErr.message}`);
           submitBtn.disabled = false;

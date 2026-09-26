@@ -10,10 +10,12 @@
 // GET  /v1/payment/device-status  — lightweight device status check (used by widget retry button)
 
 import { Router } from 'express'
+import crypto from 'node:crypto'
 import { requireAdminSecret, requireWebhookSecret, requireMerchantOrAdminAuth } from '../middleware/auth.js'
 import {
   getGatewayConfig,
   getMerchantGatewayConfig,
+  canonicalMethodName,
   setMerchantGatewayConfig,
   recordPaymentEvent,
   getOrderFromMerchantDB,
@@ -22,6 +24,7 @@ import {
   createDisputeAppeal,
 } from '../services/adminSupabase.js'
 import { verifyWebhookSignature } from '../utils/crypto.js'
+import { isSafeOutboundWebhookUrl, postSafeWebhook } from '../utils/urlValidator.js'
 import { sendPaymentReceipts } from '../services/mailer.js'
 import {
   checkAndAlertMerchantOffline,
@@ -108,6 +111,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         ok: true,
         // Gateway options
         enabled_methods:            config.enabled_methods,
+        gateway_configured: Object.entries(config.enabled_methods || {}).some(([method, enabled]) => enabled && Boolean(String(config.receiving_numbers?.[method] || '').trim())),
         payment_timeout_seconds:    config.payment_timeout_seconds,
         processing_timeout_seconds: config.processing_timeout_seconds,
         min_amount:                 config.min_amount,
@@ -148,12 +152,13 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       // Fail open — return safe defaults
       res.json({
         ok: false,
-        enabled_methods: { bKash: true, Nagad: true, Rocket: true, Upay: true },
+        enabled_methods: { bKash: false, Nagad: false, Rocket: false, Upay: false },
         payment_timeout_seconds: 600,
         processing_timeout_seconds: 300,
         maintenance_mode: false,
         maintenance_message: '',
         receiving_numbers: {},
+        gateway_configured: false,
         account_types: {},
         qr_codes: {},
         merchant_logo_url: null,
@@ -171,20 +176,23 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // App/Merchant queries recent transactions & payment events
   // Query: ?merchant_id=<id>&limit=100
   // ──────────────────────────────────────────────────────────────────────────
-  router.get('/transactions', async (req, res) => {
+  router.get('/transactions', requireMerchantOrAdminAuth, async (req, res) => {
     try {
       const merchantId = req.query.merchant_id || req.headers['x-merchant-id']
       const limit = Math.min(parseInt(req.query.limit || '50', 10), 200)
       if (!merchantId) {
         return res.status(400).json({ ok: false, error: 'merchant_id is required' })
       }
+      if (!req.isAdmin && req.merchantUser?.id !== merchantId) {
+        return res.status(403).json({ ok: false, error: 'Cannot access another merchant\'s transactions' })
+      }
       const { getAdminClient } = await import('../services/adminSupabase.js')
       const admin = getAdminClient()
       const { data, error } = await admin
         .from('payment_events')
         .select('*')
-        .or(`merchant_id.eq.${merchantId},order_id.eq.${merchantId}`)
-        .order('created_at', { ascending: false })
+        .eq('merchant_id', merchantId)
+        .order('recorded_at', { ascending: false })
         .limit(limit)
 
       if (error) {
@@ -201,7 +209,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         sender: row.sender_number || 'Customer',
         method: row.payment_method || 'bKash',
         status: row.status === 'PAID' ? 'MATCHED' : (row.status || 'UNMATCHED'),
-        timestamp: new Date(row.payment_time || row.created_at).getTime(),
+        timestamp: new Date(row.payment_time || row.recorded_at).getTime(),
       }))
 
       res.json({ ok: true, transactions })
@@ -273,11 +281,14 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // Updates in-memory heartbeat map and broadcasts to Socket.IO merchant room.
   // Body: { merchant_id, device_id, battery_level, status }
   // ──────────────────────────────────────────────────────────────────────────
-  router.post('/heartbeat', async (req, res) => {
+  router.post('/heartbeat', requireMerchantOrAdminAuth, async (req, res) => {
     try {
       const { merchant_id, device_id, battery_level, status } = req.body || {}
       if (!merchant_id || typeof merchant_id !== 'string') {
         return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+      }
+      if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+        return res.status(403).json({ ok: false, error: 'Cannot send a heartbeat for another merchant' })
       }
 
       heartbeatMap.set(merchant_id, {
@@ -328,6 +339,9 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       if (!merchant_id || typeof merchant_id !== 'string') {
         return res.status(400).json({ error: 'merchant_id is required' })
       }
+      if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+        return res.status(403).json({ error: 'Cannot update another merchant\'s QR codes' })
+      }
       if (!qr_codes || typeof qr_codes !== 'object') {
         return res.status(400).json({ error: 'qr_codes object is required' })
       }
@@ -367,11 +381,14 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // Retrieves merchant gateway setup, receiving numbers, account types,
   // and QR codes for mobile app and web setup screen.
   // ──────────────────────────────────────────────────────────────────────────
-  router.get('/merchant-config', async (req, res) => {
+  router.get('/merchant-config', requireMerchantOrAdminAuth, async (req, res) => {
     try {
       const merchantId = String(req.query.merchant_id || req.headers['x-merchant-id'] || '').trim()
       if (!merchantId) {
         return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+      }
+      if (!req.isAdmin && req.merchantUser?.id !== merchantId) {
+        return res.status(403).json({ ok: false, error: 'Cannot access another merchant\'s configuration' })
       }
 
       let config = {}
@@ -379,16 +396,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         config = await getMerchantGatewayConfig(merchantId, heartbeatMap)
       } catch (cfgErr) {
         console.warn('[merchant-config] Config load notice:', cfgErr.message)
-        config = {
-          merchant_id: merchantId,
-          receiving_numbers: {},
-          account_types: {},
-          qr_codes: {},
-          bkash_enabled: true,
-          nagad_enabled: true,
-          rocket_enabled: true,
-          upay_enabled: true
-        }
+        return res.status(503).json({ ok: false, error: 'Merchant gateway configuration is unavailable' })
       }
       return res.json({ ok: true, merchant_id: merchantId, config })
     } catch (err) {
@@ -427,6 +435,9 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       if (!merchant_id || typeof merchant_id !== 'string') {
         return res.status(400).json({ error: 'merchant_id is required' })
       }
+      if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+        return res.status(403).json({ error: 'Cannot update another merchant\'s configuration' })
+      }
 
       const saved = await setMerchantGatewayConfig(merchant_id, {
         merchant_name,
@@ -457,10 +468,10 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // ──────────────────────────────────────────────────────────────────────────
   // POST /v1/payment/report-payment
   // Called by merchant's Android phone when an incoming SMS transaction is parsed.
-  // Directly records verified payment event (status: 'PAID') and triggers
-  // instant verification if an order is waiting for this TrxID!
+  // Records a captured SMS for the merchant dashboard. The merchant database
+  // SMS processor is the only path that can verify and mark an order as PAID.
   // ──────────────────────────────────────────────────────────────────────────
-  router.post('/report-payment', async (req, res) => {
+  router.post('/report-payment', requireMerchantOrAdminAuth, async (req, res) => {
     try {
       const {
         merchant_id, trx_id, amount, payment_method, sender_number, timestamp, device_id
@@ -469,18 +480,31 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       if (!trx_id) {
         return res.status(400).json({ ok: false, error: 'trx_id is required' })
       }
+      if (!merchant_id) {
+        return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+      }
+      if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+        return res.status(403).json({ ok: false, error: 'Cannot report payment activity for another merchant' })
+      }
 
       const cleanTrx = String(trx_id).trim().toUpperCase()
       const numAmount = parseFloat(amount) || 0
+      if (!/^[A-Z0-9_-]{3,120}$/.test(cleanTrx) || !Number.isFinite(numAmount) || numAmount <= 0) {
+        return res.status(400).json({ ok: false, error: 'Valid trx_id and positive amount are required' })
+      }
 
       console.log(`[payment/report-payment] 📲 Incoming payment reported from Android device: TrxID ${cleanTrx} | ৳${numAmount} | Method: ${payment_method || 'bKash'} | Merchant: ${merchant_id}`)
 
-      // 1. Record in admin DB payment_events as PAID
+      // 1. Record the SMS capture in the central activity feed as unmatched.
       try {
-        recordPaymentEvent(cleanTrx, {
+        const eventRecorded = await recordPaymentEvent(cleanTrx, {
           tran_id: cleanTrx,
           trx_id: cleanTrx,
-          status: 'PAID',
+          // A device report is an SMS capture, not proof that an order matched.
+          // Only /verify, called by the atomic merchant-database matcher, can mark PAID.
+          // Keep the event in the schema's accepted non-final state. This is a
+          // captured SMS, not proof that an order was paid.
+          status: 'PENDING',
           amount: numAmount,
           currency: 'BDT',
           payment_method: payment_method || 'bKash',
@@ -489,52 +513,16 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
           payment_time: timestamp ? new Date(Number(timestamp)).toISOString() : new Date().toISOString(),
           product_name: `SMS Capture on Device: ${device_id || 'unknown'}`
         })
+        if (!eventRecorded) {
+          return res.status(503).json({ ok: false, error: 'SMS was received but could not be saved. Please retry.' })
+        }
       } catch (recErr) {
         console.warn('[payment/report-payment] Event record notice:', recErr.message)
+        return res.status(503).json({ ok: false, error: 'SMS was received but could not be saved. Please retry.' })
       }
 
-      // 2. Check if an order in payment_events is waiting for this TrxID
-      try {
-        const { getAdminClient } = await import('../services/adminSupabase.js')
-        const admin = getAdminClient()
-        if (admin) {
-          const { data: pendingEvents } = await admin.from('payment_events')
-            .select('*')
-            .eq('trx_id', cleanTrx)
-            .eq('status', 'PENDING')
-            .limit(5)
-
-          if (pendingEvents && pendingEvents.length > 0) {
-            for (const ev of pendingEvents) {
-              const matchedOrderId = ev.order_id || ev.tran_id
-              console.log(`[payment/report-payment] 🎯 Matched pending order: ${matchedOrderId} with TrxID: ${cleanTrx}`)
-              recordPaymentEvent(matchedOrderId, {
-                status: 'PAID',
-                trx_id: cleanTrx,
-                amount: numAmount || ev.amount,
-                payment_method: payment_method || ev.payment_method
-              })
-
-              io.to(`order:${matchedOrderId}`).emit('payment_status', {
-                order_id: matchedOrderId,
-                status: 'PAID',
-                trx_id: cleanTrx,
-                amount: numAmount || ev.amount,
-                paid_at: new Date().toISOString()
-              })
-
-              try {
-                const { handleFormPaymentPaid } = await import('./form.js')
-                await handleFormPaymentPaid(matchedOrderId, cleanTrx, numAmount || ev.amount, io)
-              } catch (_) {}
-            }
-          }
-        }
-      } catch (matchErr) {
-        console.warn('[payment/report-payment] Pending order matching notice:', matchErr.message)
-      }
-
-      // 3. Emit payment broadcast to merchant dashboard
+      // 2. Emit payment broadcast to merchant dashboard; order status remains
+      // pending until the merchant-database SMS matcher verifies it.
       if (merchant_id) {
         io.to(`merchant:${merchant_id}`).emit('payment_received', {
           trx_id: cleanTrx,
@@ -545,7 +533,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         })
       }
 
-      return res.json({ ok: true, message: 'Payment recorded and verified.', trx_id: cleanTrx })
+      return res.json({ ok: true, status: 'RECEIVED', message: 'SMS received. The merchant database is checking for a matching order.', trx_id: cleanTrx })
     } catch (err) {
       console.error('[payment/report-payment] Error:', err.message)
       return res.status(500).json({ ok: false, error: err.message })
@@ -559,10 +547,35 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // Body: { order_id, merchant_id, payment_method, customer_phone, trx_id }
   // ──────────────────────────────────────────────────────────────────────────
   router.post('/notify', async (req, res) => {
-    const { order_id, merchant_id, payment_method, customer_phone, trx_id } = req.body || {}
+    const body = req.body || {}
+    let order_id = body.order_id || body.tran_id
+    const requestedOrderRoom = order_id
+    const { payment_method, customer_phone, trx_id } = body
+    let { merchant_id } = req.body || {}
 
     if (!order_id || typeof order_id !== 'string' || order_id.length > 100) {
       return res.status(400).json({ error: 'order_id is required' })
+    }
+
+    // Resolve missing merchant IDs from known payment records when an older
+    // integration did not include it in the checkout URL.
+    if (!merchant_id) {
+      try {
+        const order = await getOrderFromMerchantDB(null, order_id)
+        merchant_id = order?.merchant_id || null
+      } catch (_) {}
+    }
+
+    const requestedOrder = await getOrderFromMerchantDB(merchant_id, order_id)
+    if (!requestedOrder || String(requestedOrder.merchant_id || '') !== String(merchant_id)) {
+      return res.status(404).json({ ok: false, error: 'Order not found for this merchant' })
+    }
+    order_id = requestedOrder.id || order_id
+    if (requestedOrder.status === 'PAID') {
+      return res.json({ ok: true, status: 'PAID', order_id, message: 'This order is already verified as paid.' })
+    }
+    if (['CANCELLED', 'EXPIRED', 'FAILED'].includes(String(requestedOrder.status || '').toUpperCase())) {
+      return res.status(409).json({ ok: false, status: requestedOrder.status, error: 'This order is no longer payable' })
     }
 
     const cleanTrx = trx_id ? String(trx_id).trim().toUpperCase() : null
@@ -578,25 +591,44 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       notified_at:    new Date().toISOString(),
     }
 
-    // Record or update payment event in platform DB
+    // Record or update payment event in platform DB before notifying clients.
+    let eventRecorded = false
     try {
-      recordPaymentEvent(order_id, {
-        tran_id: order_id,
+      eventRecorded = await recordPaymentEvent(order_id, {
+        tran_id: requestedOrder.tran_id || order_id,
         trx_id: cleanTrx,
         status: 'PENDING',
+        amount: requestedOrder.amount,
         merchant_id: merchant_id || null,
         sender_number: customer_phone || null,
         payment_method: payment_method || 'unknown',
         product_name: cleanTrx ? `Customer submitted TrxID: ${cleanTrx}` : 'Customer reported payment transfer'
       })
-    } catch {}
+    } catch (error) {
+      console.error('[payment/notify] Failed to record payment event:', error.message)
+    }
+    if (!eventRecorded) {
+      return res.status(503).json({ ok: false, error: 'Payment notification could not be saved. Please retry.' })
+    }
 
     // Emit to widget watching this order
     io.to(`order:${order_id}`).emit('payment_pending', notifyPayload)
+    if (requestedOrderRoom !== order_id) {
+      io.to(`order:${requestedOrderRoom}`).emit('payment_pending', notifyPayload)
+    }
 
     // Also emit to merchant Android app room for instant notification
     if (merchant_id) {
       io.to(`merchant:${merchant_id}`).emit('customer_payment_pending', notifyPayload)
+      io.to(`merchant:${merchant_id}`).emit('payment_received', {
+        order_id,
+        trx_id: cleanTrx,
+        amount: requestedOrder.amount || null,
+        method: payment_method || 'unknown',
+        sender: customer_phone ? maskPhone(customer_phone) : null,
+        status: 'PENDING',
+        time: notifyPayload.notified_at,
+      })
       console.log(`[payment/notify] Forwarded to merchant room: merchant:${merchant_id}`)
     }
 
@@ -605,29 +637,32 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       try {
         const { getAdminClient } = await import('../services/adminSupabase.js')
         const admin = getAdminClient()
+        const orderRecord = merchant_id ? await getOrderFromMerchantDB(merchant_id, order_id) : null
         let query = admin.from('payment_events')
           .select('*')
           .eq('trx_id', cleanTrx)
-        if (merchant_id) {
-          query = query.or(`merchant_id.eq.${merchant_id},merchant_id.eq.merchant_default,merchant_id.eq.00000000-0000-0000-0000-000000000001,merchant_id.is.null`)
-        }
-        const { data: matchedEvents } = await query.limit(1)
+          .eq('merchant_id', merchant_id)
+          .eq('status', 'PAID')
+        const { data: matchedEvents } = merchant_id ? await query.limit(10) : { data: [] }
+        const paidEvent = orderRecord
+          ? (matchedEvents || []).find(event => Number(event.amount) === Number(orderRecord.amount))
+          : null
 
-        if (matchedEvents && matchedEvents.length > 0 && matchedEvents[0].status === 'PAID') {
+        if (paidEvent) {
           await updateOrderStatusOnMerchantDB(merchant_id, order_id, 'PAID', {
             matched_trx_id: cleanTrx,
-            payment_method: payment_method || matchedEvents[0].payment_method,
-            amount: matchedEvents[0].amount
+            payment_method: payment_method || paidEvent.payment_method,
+            amount: paidEvent.amount
           })
           try {
             const { handleFormPaymentPaid } = await import('./form.js')
-            await handleFormPaymentPaid(order_id, cleanTrx, matchedEvents[0].amount, io)
+            await handleFormPaymentPaid(order_id, cleanTrx, paidEvent.amount, io)
           } catch (_) {}
           io.to(`order:${order_id}`).emit('payment_status', {
             order_id,
             status: 'PAID',
             trx_id: cleanTrx,
-            amount: matchedEvents[0].amount,
+            amount: paidEvent.amount,
             paid_at: new Date().toISOString()
           })
           return res.json({ ok: true, status: 'PAID', message: 'Payment verified immediately by TrxID match.' })
@@ -674,6 +709,25 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       return res.status(400).json({ error: 'Invalid status value' })
     }
 
+    const verifiedOrder = await getOrderFromMerchantDB(merchant_id, order_id)
+    if (!verifiedOrder || String(verifiedOrder.merchant_id || '') !== String(merchant_id)) {
+      return res.status(404).json({ error: 'Order not found for this merchant' })
+    }
+    const reportedAmount = Number(amount)
+    const storedAmount = Number(verifiedOrder.amount)
+    if (!Number.isFinite(reportedAmount) || reportedAmount <= 0 || reportedAmount !== storedAmount) {
+      return res.status(409).json({ error: 'Payment amount does not match the stored order' })
+    }
+    if (verifiedOrder.status === 'PAID' && status !== 'PAID') {
+      return res.status(409).json({ error: 'A paid order cannot be moved to another status' })
+    }
+    if (['CANCELLED', 'EXPIRED'].includes(String(verifiedOrder.status || '').toUpperCase()) && status === 'PAID') {
+      return res.status(409).json({ error: 'A cancelled or expired order cannot be marked paid' })
+    }
+    if (status === 'PAID' && !(trx_id || verification === 'ATOMIC_SMS_MATCH')) {
+      return res.status(400).json({ error: 'A verified transaction reference is required' })
+    }
+
     // ── Idempotency check: prevent duplicate execution on network retries ──
     const cacheKey = `${order_id}:${trx_id || tran_id || 'none'}:${status}`
     if (recentVerifications.has(cacheKey)) {
@@ -693,13 +747,16 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     console.log(`[payment/verify] ${status} — order: ${order_id} | ৳${amount} ${currency || 'BDT'} | ${payment_method} | merchant: ${merchant_id}`)
 
     // ── Step 1: Record in admin Supabase payment_events ──
-    recordPaymentEvent(order_id, {
+    const eventRecorded = await recordPaymentEvent(order_id, {
       tran_id, trx_id, status, amount,
       currency: currency || 'BDT',
       payment_method, sender_number: maskPhone(sender_number),
       payment_time, merchant_id, merchant_name,
       project_ref, cus_name, cus_email, product_name,
-    }) // non-blocking
+    })
+    if (!eventRecorded) {
+      return res.status(503).json({ error: 'Payment status could not be recorded. Retry the webhook.' })
+    }
 
     // ── Step 2: Cross-DB — Update order on MERCHANT'S Supabase DB ──
     const merchantUpdateResult = await updateOrderStatusOnMerchantDB(
@@ -763,9 +820,38 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     }
 
     // ── Step 4: Build redirect URL ──
+    if (verifiedOrder.callback_url) {
+      try {
+        const { getMerchantActiveApiKey } = await import('../services/adminSupabase.js')
+        const keyRecord = await getMerchantActiveApiKey(merchant_id)
+        if (!keyRecord?.api_key) throw new Error('Merchant API signing key is unavailable')
+        const callbackPayload = {
+          event: 'payment.status_changed',
+          event_id: cacheKey,
+          order_id: verifiedOrder.id || order_id,
+          tran_id: verifiedOrder.tran_id || tran_id,
+          merchant_id,
+          status,
+          amount: reportedAmount,
+          currency: currency || 'BDT',
+          payment_method: payment_method || verifiedOrder.payment_method || null,
+          trx_id: trx_id || null,
+          paid_at: payment_time || new Date().toISOString(),
+        }
+        const signature = crypto.createHmac('sha256', keyRecord.api_key)
+          .update(JSON.stringify(callbackPayload)).digest('hex')
+        await postSafeWebhook(verifiedOrder.callback_url, callbackPayload, 5000, {
+          'x-swapnopay-signature': signature,
+        })
+      } catch (callbackError) {
+        console.warn('[payment/verify] Merchant callback delivery failed:', callbackError.message)
+      }
+    }
+
+    const effectiveSuccessUrl = success_url || verifiedOrder.success_url
     let redirectUrl = null
-    if (status === 'PAID' && success_url) {
-      redirectUrl = buildRedirectUrl(success_url, { status: 'PAID', order_id, trx_id, tran_id, amount })
+    if (status === 'PAID' && effectiveSuccessUrl) {
+      redirectUrl = buildRedirectUrl(effectiveSuccessUrl, { status: 'PAID', order_id, trx_id, tran_id, amount })
     } else if (status === 'FAILED' && fail_url) {
       redirectUrl = buildRedirectUrl(fail_url, { status: 'FAILED', order_id, tran_id })
     } else if (status === 'CANCELLED' && cancel_url) {
@@ -864,6 +950,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
 
   router.get('/order/:order_id', handleOrderStatusLookup)
   router.get('/status', handleOrderStatusLookup)
+  router.get('/check-status', handleOrderStatusLookup)
 
   // ──────────────────────────────────────────────────────────────────────────
   // POST /v1/payment/cancel
@@ -874,8 +961,21 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     if (!order_id || typeof order_id !== 'string') {
       return res.status(400).json({ ok: false, error: 'order_id is required' })
     }
+    if (!merchant_id) {
+      return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+    }
 
     try {
+      const order = await getOrderFromMerchantDB(merchant_id, order_id)
+      if (!order || String(order.merchant_id || '') !== String(merchant_id)) {
+        return res.status(404).json({ ok: false, error: 'Order not found for this merchant' })
+      }
+      if (order.status === 'PAID') {
+        return res.status(409).json({ ok: false, error: 'A paid order cannot be cancelled' })
+      }
+      if (['CANCELLED', 'EXPIRED'].includes(String(order.status || '').toUpperCase())) {
+        return res.json({ ok: true, order_id, status: order.status })
+      }
       console.log(`[payment/cancel] Cancelling order ${order_id} (merchant: ${merchant_id || 'unknown'}) — reason: ${reason || 'Customer cancelled'}`)
 
       // 1. Update merchant DB if merchant_id provided
@@ -884,12 +984,15 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       }
 
       // 2. Record cancellation event in platform admin DB
-      recordPaymentEvent(order_id, {
-        tran_id: order_id,
+      const eventRecorded = await recordPaymentEvent(order.id || order_id, {
+        tran_id: order.tran_id || order_id,
         status: 'CANCELLED',
         merchant_id: merchant_id || null,
         product_name: `Cancelled: ${reason || 'User cancelled'}`,
       })
+      if (!eventRecorded) {
+        return res.status(503).json({ ok: false, error: 'Cancellation could not be saved. Please retry.' })
+      }
 
       // 3. Emit real-time cancellation to widget + merchant rooms
       const cancelPayload = {
@@ -969,11 +1072,14 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   // POST /v1/payment/form-submission
   // Relay endpoint for hosted form / web checkout submissions
   // ──────────────────────────────────────────────────────────────────────────
-  router.post('/form-submission', async (req, res) => {
+  router.post('/form-submission', requireMerchantOrAdminAuth, async (req, res) => {
     const { form_id, form_slug, merchant_id, submission_id, data, total_amount, tran_id } = req.body || {}
 
     if (!form_id && !form_slug) {
       return res.status(400).json({ ok: false, error: 'form_id or form_slug is required' })
+    }
+    if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+      return res.status(403).json({ ok: false, error: 'Cannot submit activity for another merchant' })
     }
 
     try {
@@ -1001,6 +1107,208 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     } catch (err) {
       console.error('[payment/form-submission] Error:', err.message)
       res.status(500).json({ ok: false, error: 'Failed to process form submission: ' + err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /v1/payment/create-order
+  // Creates an atomic payment order for storefront checkouts
+  // ──────────────────────────────────────────────────────────────────────────
+  router.post('/create-order', requireMerchantOrAdminAuth, async (req, res) => {
+    const {
+      merchant_id, tran_id, order_number, amount,
+      cus_name, cus_phone, cus_email, payment_method,
+      items, metadata, success_url, callback_url
+    } = req.body || {}
+
+    const numAmount = Number(amount)
+    if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 10000000) {
+      return res.status(400).json({ ok: false, error: 'A positive amount is required' })
+    }
+    if (!merchant_id) {
+      return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+    }
+    if (!req.isAdmin && req.merchantUser?.id !== merchant_id) {
+      return res.status(403).json({ ok: false, error: 'API key does not belong to this merchant' })
+    }
+    for (const [name, value] of [['success_url', success_url], ['callback_url', callback_url]]) {
+      if (!value) continue
+      const validation = isSafeOutboundWebhookUrl(value)
+      if (!validation.safe || new URL(value).protocol !== 'https:') {
+        return res.status(400).json({ ok: false, error: `${name} must be a public HTTPS URL` })
+      }
+    }
+
+    let merchantCredentials
+    try {
+      const { getMerchantCredentials } = await import('../services/adminSupabase.js')
+      merchantCredentials = await getMerchantCredentials(merchant_id)
+    } catch (lookupErr) {
+      console.warn('[payment/create-order] Merchant lookup failed:', lookupErr.message)
+    }
+    if (!merchantCredentials) {
+      return res.status(404).json({ ok: false, error: 'Merchant is not registered with this gateway' })
+    }
+    if (String(merchantCredentials.status || 'ACTIVE').toUpperCase() !== 'ACTIVE') {
+      return res.status(403).json({ ok: false, error: 'Merchant account is not active for payments' })
+    }
+    const selectedMethod = canonicalMethodName(payment_method || 'bKash')
+    if (!['bKash', 'Nagad', 'Rocket', 'Upay'].includes(selectedMethod)) {
+      return res.status(400).json({ ok: false, error: 'Unsupported payment method' })
+    }
+    let merchantGateway
+    try {
+      merchantGateway = await getMerchantGatewayConfig(merchant_id)
+    } catch (gatewayErr) {
+      console.error('[payment/create-order] Merchant gateway lookup failed:', gatewayErr.message)
+      return res.status(503).json({ ok: false, error: 'Merchant payment configuration is unavailable' })
+    }
+    if (!merchantGateway.enabled_methods?.[selectedMethod] || !String(merchantGateway.receiving_numbers?.[selectedMethod] || '').trim()) {
+      return res.status(409).json({ ok: false, error: `Merchant has not enabled ${selectedMethod} payments or configured a receiving number` })
+    }
+    const minAmount = Number(merchantGateway.min_amount || 0)
+    const maxAmount = Number(merchantGateway.max_amount || 10000000)
+    if (numAmount < minAmount || numAmount > maxAmount) {
+      return res.status(422).json({ ok: false, error: `Payment amount must be between ${minAmount} and ${maxAmount}` })
+    }
+
+    const orderUuid = crypto.randomUUID()
+    const tranId = tran_id || `SWP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`
+
+    try {
+      // 1. Persist in the merchant DB when the merchant has a dedicated database.
+      if (merchantCredentials.supabase_url && merchantCredentials.supabase_anon_key) {
+        try {
+          const { createClient } = await import('@supabase/supabase-js')
+          const mClient = createClient(merchantCredentials.supabase_url, merchantCredentials.supabase_anon_key, {
+            auth: { persistSession: false, autoRefreshToken: false }
+          })
+          const { error: insertError } = await mClient.from('orders').insert({
+            id: orderUuid,
+            merchant_id,
+            tran_id: tranId,
+            order_number: order_number || `ORD-${Date.now()}`,
+            amount: numAmount,
+            total_amount: numAmount,
+            cus_name: cus_name || 'Customer',
+            cus_phone: cus_phone || '01700000000',
+            cus_email: cus_email || '',
+            payment_method: selectedMethod,
+            status: 'PENDING',
+            order_status: 'PENDING',
+            success_url: success_url || null,
+            callback_url: callback_url || null,
+            expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+          })
+          if (insertError) throw insertError
+        } catch (mirrorErr) {
+          console.error('[payment/create-order] Merchant DB insert failed:', mirrorErr.message)
+          return res.status(502).json({ ok: false, error: 'Merchant payment database is unavailable; order was not created' })
+        }
+      }
+
+      // 2. Record the platform ledger event and fail closed if it is unavailable.
+      const eventRecorded = await recordPaymentEvent(orderUuid, {
+        tran_id: tranId,
+        order_number: order_number || `ORD-${Date.now()}`,
+        status: 'PENDING',
+        amount: numAmount,
+        currency: 'BDT',
+        payment_method: selectedMethod,
+        cus_name: cus_name || 'Customer',
+        cus_phone: cus_phone || null,
+        cus_email: cus_email || null,
+        merchant_id,
+        product_name: Array.isArray(items) ? items.map(item => item?.product_name).filter(Boolean).join(', ').slice(0, 500) : null,
+      })
+      if (!eventRecorded) throw new Error('Platform payment ledger is unavailable')
+
+      const backendUrl = process.env.BACKEND_PUBLIC_URL || process.env.API_BASE_URL || 'https://api.swapnopay.top'
+      const checkoutUrl = `${backendUrl.replace(/\/$/, '')}/widget.html?order_id=${orderUuid}&amount=${numAmount}&merchant_id=${encodeURIComponent(merchant_id)}`
+
+      res.status(201).json({
+        ok: true,
+        order_id: orderUuid,
+        tran_id: tranId,
+        amount: numAmount,
+        currency: 'BDT',
+        status: 'PENDING',
+        checkout_url: checkoutUrl
+      })
+    } catch (err) {
+      console.error('[payment/create-order] Error creating order:', err.message)
+      res.status(500).json({ ok: false, error: 'Failed to create order: ' + err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /v1/payment/sms-webhook-health
+  // Verifies SMS processing health: checks for backlog of unprocessed SMS logs
+  // ──────────────────────────────────────────────────────────────────────────
+  router.get('/sms-webhook-health', async (req, res) => {
+    const merchantId = req.query.merchant_id || req.headers['x-merchant-id']
+    if (!merchantId) {
+      return res.status(400).json({ ok: false, error: 'merchant_id is required' })
+    }
+
+    try {
+      const { getMerchantCredentials } = await import('../services/adminSupabase.js')
+      const creds = await getMerchantCredentials(merchantId)
+      if (!creds?.supabase_url || !creds?.supabase_anon_key) {
+        return res.json({
+          ok: true,
+          status: 'UNCONFIGURED',
+          message: 'Merchant does not use a dedicated Supabase database; platform matching is active.'
+        })
+      }
+
+      const { createClient } = await import('@supabase/supabase-js')
+      const mClient = createClient(creds.supabase_url, creds.supabase_anon_key, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      })
+
+      const { data: recentLogs, error } = await mClient
+        .from('sms_logs')
+        .select('id, processed, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (error) {
+        return res.status(502).json({
+          ok: false,
+          status: 'ERROR',
+          error: 'Unable to query merchant sms_logs: ' + error.message
+        })
+      }
+
+      const logs = recentLogs || []
+      const unprocessed = logs.filter(l => !l.processed && l.status === 'unprocessed')
+      const now = Date.now()
+      const staleBacklog = unprocessed.filter(l => (now - new Date(l.created_at).getTime()) > 3 * 60 * 1000)
+
+      let healthStatus = 'HEALTHY'
+      if (staleBacklog.length > 0) {
+        healthStatus = 'BACKLOG_DETECTED'
+      } else if (logs.length === 0) {
+        healthStatus = 'NO_SMS_YET'
+      }
+
+      const lastProcessed = logs.find(l => l.processed)
+
+      return res.json({
+        ok: true,
+        merchant_id: merchantId,
+        status: healthStatus,
+        total_recent_logs: logs.length,
+        unprocessed_count: unprocessed.length,
+        stale_backlog_count: staleBacklog.length,
+        last_processed_at: lastProcessed?.created_at || null,
+        message: healthStatus === 'BACKLOG_DETECTED'
+          ? 'Unprocessed SMS logs detected older than 3 minutes. The webhook or SMS processing service may be delayed.'
+          : 'SMS processing pipeline is healthy.'
+      })
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: err.message })
     }
   })
 

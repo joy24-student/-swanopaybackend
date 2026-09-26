@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import express from 'express'
 import { keysRouter } from './keys.js'
 
+process.env.API_KEY_PEPPER = 'k'.repeat(64)
+
 test('Dynamic API Key Management & Validation Suite', async (t) => {
   const app = express()
   app.use(express.json())

@@ -50,7 +50,8 @@ test('clean PostgreSQL schema, real provisioning, retries, tenant privileges and
     await fs.writeFile(path.join(config.template,'.env'),'PRIVATE=secret')
     await fs.writeFile(path.join(config.template,'debug_test.php'),'unsafe')
     let dnsReady=false, httpsReady=false
-    const shop=new ShopService(config,{pool,dns:async()=>dnsReady,probe:async()=>({ready:httpsReady,message:'Waiting for HTTPS'})})
+    const syncedWebsites=[]
+    const shop=new ShopService(config,{pool,dns:async()=>dnsReady,probe:async()=>({ready:httpsReady,message:'Waiting for HTTPS'}),syncMerchantWebsite:async row=>{syncedWebsites.push(row.merchant_id)},getMerchantApiKey:async()=>({api_key:'sp_live_test_key'})})
     assert.equal((await shop.status(merchant)).deployed,false)
     const queued=await shop.enqueue(launch)
     assert.equal(queued.status,'QUEUED'); assert.equal(queued.deployed,false)
@@ -60,6 +61,7 @@ test('clean PostgreSQL schema, real provisioning, retries, tenant privileges and
     await shop.tick()
     let status=await shop.status(merchant)
     assert.equal(status.status,'WAITING_DNS')
+    assert.ok(syncedWebsites.includes(merchant))
     const schema=schemaName(merchant)
     assert.equal((await db.query(`SELECT count(*)::int AS count FROM ${schema}.tbl_customer`)).rows[0].count,0)
     assert.equal((await db.query(`SELECT count(*)::int AS count FROM ${schema}.tbl_payment`)).rows[0].count,0)
