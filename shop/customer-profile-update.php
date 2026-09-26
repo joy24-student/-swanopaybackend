@@ -3,17 +3,8 @@ require_once('header.php');
 
 // Check if customer is logged in
 if (!isset($_SESSION['customer'])) {
-    if (isset($_GET['preview'])) {
-        $_SESSION['customer'] = [
-            'cust_id' => 30,
-            'cust_name' => 'Joy Saha',
-            'cust_email' => 'joy.saha@gmail.com',
-            'cust_phone' => '+880 1XXXXXXXXX'
-        ];
-    } else {
-        header('location: ' . BASE_URL . 'logout.php');
-        exit;
-    }
+    header('location: ' . BASE_URL . 'logout.php');
+    exit;
 } else {
     // If customer is inactive, force logout
     $statement = $pdo->prepare("SELECT cust_status FROM tbl_customer WHERE cust_id = ? AND cust_status = ?");
@@ -161,293 +152,166 @@ try {
                     </div>
                 <?php endif; ?>
 
-                <!-- Profile 2-Column Grid Layout (media_1790348409187.png) -->
-                <div class="sn-profile-grid-2col">
-                    <!-- Left Column: Completion Card, Personal Info Form, Contact Help -->
-                    <div class="sn-profile-left-col">
-                        <!-- Top Profile Completion Card -->
-                        <div class="sn-profile-top-card">
-                            <div class="sn-profile-user-left">
-                                <div class="sn-profile-avatar-large">
-                                    <?= htmlspecialchars(substr($first_name, 0, 1) . substr($last_name, 0, 1) ?: 'JS') ?>
-                                </div>
-                                <div class="sn-profile-title-block">
-                                    <h3><?= htmlspecialchars($cust['cust_name'] ?: 'Customer') ?></h3>
-                                    <p><?= htmlspecialchars($cust['cust_email'] ?: '') ?></p>
-                                    <span class="sn-verified-pill"><i class="fa-solid fa-circle-check"></i> Verified</span>
-                                    <div class="sn-profile-member-since" style="margin-top: 6px;">
-                                        Member since <?= $member_since ?>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="sn-profile-progress-box">
-                                <div class="sn-progress-label-row">
-                                    <span style="color: var(--sn-dark);">Profile Completion</span>
-                                    <span style="color: var(--sn-primary); font-weight: 800; font-size: 14px;"><?= $completion_pct ?>%</span>
-                                </div>
-                                <div class="sn-progress-bar-bg">
-                                    <div class="sn-progress-bar-fill" style="width: <?= $completion_pct ?>%;"></div>
-                                </div>
-                                <div class="sn-progress-tip">
-                                    Complete your profile to unlock personalized shopping recommendations.
-                                </div>
-                            </div>
+                <!-- Top Profile Completion Card -->
+                <div class="sn-profile-top-card">
+                    <div class="sn-profile-user-left">
+                        <div class="sn-profile-avatar-large">
+                            <?= htmlspecialchars(substr($first_name, 0, 1) . substr($last_name, 0, 1) ?: 'JS') ?>
                         </div>
-
-                        <!-- Personal Information Form Card -->
-                        <div class="sn-card" style="margin-bottom: 24px;">
-                            <div class="sn-form-section-title">
-                                <i class="fa-regular fa-user" style="color: var(--sn-primary); font-size: 18px;"></i>
-                                <div>
-                                    <div>Personal Information</div>
-                                    <small style="font-size: 12px; color: var(--sn-muted); font-weight: 400;">Your basic information</small>
-                                </div>
+                        <div class="sn-profile-title-block">
+                            <h3><?= htmlspecialchars($cust['cust_name'] ?: 'Customer') ?></h3>
+                            <p><?= htmlspecialchars($cust['cust_email'] ?: '') ?></p>
+                            <span class="sn-verified-pill"><i class="fa-solid fa-circle-check"></i> Verified</span>
+                            <div class="sn-profile-member-since" style="margin-top: 6px;">
+                                Member since <?= $member_since ?>
                             </div>
-
-                            <form action="" method="post">
-                                <?php $csrf->echoInputField(); ?>
-
-                                <div class="sn-form-grid">
-                                    <!-- First Name -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="first_name">First Name</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-regular fa-user prefix-icon"></i>
-                                            <input type="text" id="first_name" name="first_name" class="sn-input" value="<?= htmlspecialchars($first_name) ?>" required />
-                                        </div>
-                                    </div>
-
-                                    <!-- Last Name -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="last_name">Last Name</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-regular fa-user prefix-icon"></i>
-                                            <input type="text" id="last_name" name="last_name" class="sn-input" value="<?= htmlspecialchars($last_name) ?>" required />
-                                        </div>
-                                    </div>
-
-                                    <!-- Email Address (Verified) -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_email">Email Address</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-regular fa-envelope prefix-icon"></i>
-                                            <input type="email" id="cust_email" name="cust_email" class="sn-input" value="<?= htmlspecialchars($cust['cust_email'] ?: '') ?>" readonly style="background: #f8fafc; cursor: not-allowed; padding-right: 90px;" />
-                                            <span class="sn-input-pill-inside"><i class="fa-solid fa-circle-check"></i> Verified</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Phone Number -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_phone">Phone Number</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-solid fa-phone prefix-icon"></i>
-                                            <input type="text" id="cust_phone" name="cust_phone" class="sn-input" value="<?= htmlspecialchars($cust['cust_phone'] ?: '+880 1XXXXXXXXX') ?>" style="padding-right: 80px;" required />
-                                            <span class="sn-input-action-inside" onclick="document.getElementById('cust_phone').focus();">
-                                                <i class="fa-solid fa-pen"></i> Change
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Date of Birth -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_dob">Date of Birth</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-regular fa-calendar prefix-icon"></i>
-                                            <input type="date" id="cust_dob" name="cust_dob" class="sn-input" value="<?= htmlspecialchars($cust['cust_dob'] ?: '2006-01-01') ?>" />
-                                        </div>
-                                    </div>
-
-                                    <!-- Gender -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_gender">Gender</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-solid fa-venus-mars prefix-icon"></i>
-                                            <select id="cust_gender" name="cust_gender" class="sn-select">
-                                                <option value="Male" <?= ($cust['cust_gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
-                                                <option value="Female" <?= ($cust['cust_gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
-                                                <option value="Other" <?= ($cust['cust_gender'] ?? '') === 'Other' ? 'selected' : '' ?>>Other</option>
-                                                <option value="Prefer not to say" <?= ($cust['cust_gender'] ?? 'Prefer not to say') === 'Prefer not to say' ? 'selected' : '' ?>>Prefer not to say</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <!-- Country -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_country">Country</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-solid fa-globe prefix-icon"></i>
-                                            <select id="cust_country" name="cust_country" class="sn-select">
-                                                <?php if (!empty($countries)): ?>
-                                                    <?php foreach ($countries as $c): ?>
-                                                        <option value="<?= $c['country_id'] ?>" <?= ($cust['cust_country'] == $c['country_id'] || $c['country_name'] === 'Bangladesh') ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($c['country_name']) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                <?php else: ?>
-                                                    <option value="Bangladesh" selected>Bangladesh</option>
-                                                <?php endif; ?>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <!-- City -->
-                                    <div class="sn-form-group">
-                                        <label class="sn-label" for="cust_city">City</label>
-                                        <div class="sn-input-wrap">
-                                            <i class="fa-solid fa-location-dot prefix-icon"></i>
-                                            <input type="text" id="cust_city" name="cust_city" class="sn-input" value="<?= htmlspecialchars($cust['cust_city'] ?: 'Lalmonirhat') ?>" placeholder="Enter city / district" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Action Buttons -->
-                                <div style="display: flex; gap: 12px; align-items: center;">
-                                    <button type="submit" name="form1" class="sn-btn-primary">
-                                        <i class="fa-solid fa-floppy-disk"></i> Save Changes
-                                    </button>
-                                    <a href="dashboard.php" class="sn-btn-light">Cancel</a>
-                                </div>
-                            </form>
-                        </div>
-
-                        <!-- Contact Support Bottom Card -->
-                        <div style="background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 100%); border: 1px solid #bae6fd; border-radius: 12px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
-                            <div style="display: flex; align-items: center; gap: 14px;">
-                                <div style="width: 44px; height: 44px; border-radius: 50%; background: #ffffff; color: #0284c7; font-size: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(2, 132, 199, 0.12);">
-                                    <i class="fa-solid fa-headset"></i>
-                                </div>
-                                <div>
-                                    <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 700; color: var(--sn-dark);">Contact Help?</h4>
-                                    <p style="margin: 0; font-size: 12.5px; color: #475569;">Our support team is here for you 24/7.</p>
-                                </div>
-                            </div>
-                            <a href="contact.php" class="sn-btn-light" style="border-radius: 8px; color: var(--sn-primary); font-size: 12.5px; border-color: #bae6fd;">
-                                Contact Support &rarr;
-                            </a>
                         </div>
                     </div>
 
-                    <!-- Right Column: Profile Overview, Account Security, Quick Links -->
-                    <div class="sn-profile-right-col">
-                        <!-- Card 1: Profile Overview -->
-                        <div class="sn-overview-card">
-                            <div class="sn-overview-header">
-                                <div class="sn-overview-icon-badge">
-                                    <i class="fa-regular fa-user"></i>
-                                </div>
-                                <div>
-                                    <h3 class="sn-overview-title">Profile Overview</h3>
-                                    <p class="sn-overview-subtitle">Quick overview of your account</p>
+                    <div class="sn-profile-progress-box">
+                        <div class="sn-progress-label-row">
+                            <span style="color: var(--sn-dark);">Profile Completion</span>
+                            <span style="color: var(--sn-primary); font-weight: 800; font-size: 14px;"><?= $completion_pct ?>%</span>
+                        </div>
+                        <div class="sn-progress-bar-bg">
+                            <div class="sn-progress-bar-fill" style="width: <?= $completion_pct ?>%;"></div>
+                        </div>
+                        <div class="sn-progress-tip">
+                            Complete your profile to unlock personalized shopping recommendations.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Personal Information Form Card -->
+                <div class="sn-card" style="margin-bottom: 24px;">
+                    <div class="sn-form-section-title">
+                        <i class="fa-regular fa-user" style="color: var(--sn-primary); font-size: 18px;"></i>
+                        <div>
+                            <div>Personal Information</div>
+                            <small style="font-size: 12px; color: var(--sn-muted); font-weight: 400;">Your basic information</small>
+                        </div>
+                    </div>
+
+                    <form action="" method="post">
+                        <?php $csrf->echoInputField(); ?>
+
+                        <div class="sn-form-grid">
+                            <!-- First Name -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="first_name">First Name</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-regular fa-user prefix-icon"></i>
+                                    <input type="text" id="first_name" name="first_name" class="sn-input" value="<?= htmlspecialchars($first_name) ?>" required />
                                 </div>
                             </div>
 
-                            <div class="sn-overview-list">
-                                <div class="sn-overview-item">
-                                    <div class="sn-overview-item-icon">
-                                        <i class="fa-regular fa-user"></i>
-                                    </div>
-                                    <div class="sn-overview-item-content">
-                                        <span class="sn-overview-label">Name</span>
-                                        <span class="sn-overview-val"><?= htmlspecialchars($cust['cust_name'] ?: 'Customer') ?></span>
-                                    </div>
+                            <!-- Last Name -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="last_name">Last Name</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-regular fa-user prefix-icon"></i>
+                                    <input type="text" id="last_name" name="last_name" class="sn-input" value="<?= htmlspecialchars($last_name) ?>" required />
                                 </div>
+                            </div>
 
-                                <div class="sn-overview-item">
-                                    <div class="sn-overview-item-icon">
-                                        <i class="fa-regular fa-envelope"></i>
-                                    </div>
-                                    <div class="sn-overview-item-content" style="flex: 1;">
-                                        <span class="sn-overview-label">Email</span>
-                                        <span class="sn-overview-val"><?= htmlspecialchars($cust['cust_email'] ?: '') ?></span>
-                                    </div>
-                                    <span class="sn-verified-pill"><i class="fa-solid fa-circle-check"></i> Verified</span>
+                            <!-- Email Address (Verified) -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_email">Email Address</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-regular fa-envelope prefix-icon"></i>
+                                    <input type="email" id="cust_email" name="cust_email" class="sn-input" value="<?= htmlspecialchars($cust['cust_email'] ?: '') ?>" readonly style="background: #f8fafc; cursor: not-allowed; padding-right: 90px;" />
+                                    <span class="sn-input-pill-inside"><i class="fa-solid fa-circle-check"></i> Verified</span>
                                 </div>
+                            </div>
 
-                                <div class="sn-overview-item">
-                                    <div class="sn-overview-item-icon">
-                                        <i class="fa-solid fa-phone"></i>
-                                    </div>
-                                    <div class="sn-overview-item-content" style="flex: 1;">
-                                        <span class="sn-overview-label">Phone</span>
-                                        <span class="sn-overview-val"><?= htmlspecialchars($cust['cust_phone'] ?: '+880 1XXXXXXXXX') ?></span>
-                                    </div>
-                                    <a href="javascript:void(0)" onclick="document.getElementById('cust_phone').focus();" class="sn-overview-change-link">
+                            <!-- Phone Number -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_phone">Phone Number</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-solid fa-phone prefix-icon"></i>
+                                    <input type="text" id="cust_phone" name="cust_phone" class="sn-input" value="<?= htmlspecialchars($cust['cust_phone'] ?: '+880 1XXXXXXXXX') ?>" style="padding-right: 80px;" required />
+                                    <span class="sn-input-action-inside" onclick="document.getElementById('cust_phone').focus();">
                                         <i class="fa-solid fa-pen"></i> Change
-                                    </a>
+                                    </span>
                                 </div>
+                            </div>
 
-                                <div class="sn-overview-item">
-                                    <div class="sn-overview-item-icon">
-                                        <i class="fa-regular fa-calendar"></i>
-                                    </div>
-                                    <div class="sn-overview-item-content">
-                                        <span class="sn-overview-label">Member Since</span>
-                                        <span class="sn-overview-val"><?= $member_since ?></span>
-                                    </div>
+                            <!-- Date of Birth -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_dob">Date of Birth</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-regular fa-calendar prefix-icon"></i>
+                                    <input type="date" id="cust_dob" name="cust_dob" class="sn-input" value="<?= htmlspecialchars($cust['cust_dob'] ?: '2006-01-01') ?>" />
                                 </div>
+                            </div>
 
-                                <div class="sn-overview-item">
-                                    <div class="sn-overview-item-icon">
-                                        <i class="fa-solid fa-location-dot"></i>
-                                    </div>
-                                    <div class="sn-overview-item-content">
-                                        <span class="sn-overview-label">Location</span>
-                                        <span class="sn-overview-val"><?= htmlspecialchars($cust['cust_city'] ? $cust['cust_city'] . ', ' . ($cust['cust_country'] ?? 'Bangladesh') : 'Lalmonirhat, Bangladesh') ?></span>
-                                    </div>
+                            <!-- Gender -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_gender">Gender</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-solid fa-venus-mars prefix-icon"></i>
+                                    <select id="cust_gender" name="cust_gender" class="sn-select">
+                                        <option value="Male" <?= ($cust['cust_gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
+                                        <option value="Female" <?= ($cust['cust_gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
+                                        <option value="Other" <?= ($cust['cust_gender'] ?? '') === 'Other' ? 'selected' : '' ?>>Other</option>
+                                        <option value="Prefer not to say" <?= ($cust['cust_gender'] ?? 'Prefer not to say') === 'Prefer not to say' ? 'selected' : '' ?>>Prefer not to say</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Country -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_country">Country</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-solid fa-globe prefix-icon"></i>
+                                    <select id="cust_country" name="cust_country" class="sn-select">
+                                        <?php if (!empty($countries)): ?>
+                                            <?php foreach ($countries as $c): ?>
+                                                <option value="<?= $c['country_id'] ?>" <?= ($cust['cust_country'] == $c['country_id'] || $c['country_name'] === 'Bangladesh') ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($c['country_name']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <option value="Bangladesh" selected>Bangladesh</option>
+                                        <?php endif; ?>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- City -->
+                            <div class="sn-form-group">
+                                <label class="sn-label" for="cust_city">City</label>
+                                <div class="sn-input-wrap">
+                                    <i class="fa-solid fa-location-dot prefix-icon"></i>
+                                    <input type="text" id="cust_city" name="cust_city" class="sn-input" value="<?= htmlspecialchars($cust['cust_city'] ?: 'Lalmonirhat') ?>" placeholder="Enter city / district" />
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Card 2: Account Security -->
-                        <div class="sn-security-card">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                                <div style="display: flex; gap: 14px; align-items: flex-start;">
-                                    <div class="sn-security-icon-circle">
-                                        <i class="fa-solid fa-shield-halved"></i>
-                                    </div>
-                                    <div>
-                                        <h4 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 700; color: var(--sn-dark);">Account Security</h4>
-                                        <p style="margin: 0; font-size: 12.5px; color: var(--sn-muted);">Your account is secure and protected.</p>
-                                    </div>
-                                </div>
-                                <span class="sn-badge-allgood">
-                                    <i class="fa-solid fa-circle-check"></i> All good
-                                </span>
-                            </div>
+                        <!-- Action Buttons -->
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <button type="submit" name="form1" class="sn-btn-primary">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                            </button>
+                            <a href="dashboard.php" class="sn-btn-light">Cancel</a>
                         </div>
+                    </form>
+                </div>
 
-                        <!-- Card 3: Quick Links -->
-                        <div class="sn-quicklinks-card">
-                            <div class="sn-quicklinks-header">
-                                <i class="fa-solid fa-link" style="color: var(--sn-primary); font-size: 15px;"></i>
-                                <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--sn-dark);">Quick Links</h4>
-                            </div>
-                            <div class="sn-quicklinks-list">
-                                <a href="customer-password-update.php" class="sn-quicklink-row">
-                                    <div class="sn-quicklink-left">
-                                        <i class="fa-solid fa-lock"></i>
-                                        <span>Change Password</span>
-                                    </div>
-                                    <i class="fa-solid fa-chevron-right sn-quicklink-arrow"></i>
-                                </a>
-                                <a href="customer-password-update.php#notifications" class="sn-quicklink-row">
-                                    <div class="sn-quicklink-left">
-                                        <i class="fa-regular fa-bell"></i>
-                                        <span>Notification Preferences</span>
-                                    </div>
-                                    <i class="fa-solid fa-chevron-right sn-quicklink-arrow"></i>
-                                </a>
-                                <a href="customer-password-update.php#privacy" class="sn-quicklink-row">
-                                    <div class="sn-quicklink-left">
-                                        <i class="fa-solid fa-shield-halved"></i>
-                                        <span>Privacy Settings</span>
-                                    </div>
-                                    <i class="fa-solid fa-chevron-right sn-quicklink-arrow"></i>
-                                </a>
-                            </div>
+                <!-- Contact Support Bottom Card -->
+                <div style="background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 100%); border: 1px solid #bae6fd; border-radius: 12px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="width: 44px; height: 44px; border-radius: 50%; background: #ffffff; color: #0284c7; font-size: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(2, 132, 199, 0.12);">
+                            <i class="fa-solid fa-headset"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 700; color: var(--sn-dark);">Contact Help?</h4>
+                            <p style="margin: 0; font-size: 12.5px; color: #475569;">Our support team is here for you 24/7.</p>
                         </div>
                     </div>
+                    <a href="contact.php" class="sn-btn-light" style="border-radius: 8px; color: var(--sn-primary); font-size: 12.5px; border-color: #bae6fd;">
+                        Contact Support &rarr;
+                    </a>
                 </div>
             </main>
         </div>

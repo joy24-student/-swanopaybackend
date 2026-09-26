@@ -15,8 +15,14 @@ const schemaFile = path.join(base, '../../sql/storefront.sql')
 const publicFields = 'merchant_id,store_name,shop_slug,custom_domain,currency,theme_color,admin_email,status,message,job_id,updated_at'
 
 export function shopConfiguration(env = process.env) {
+  const isProd = env.NODE_ENV === 'production'
+  const hasConfigKey = /^[0-9a-f]{64}$/i.test(env.SHOP_CONFIG_KEY || '')
+  if (isProd && !hasConfigKey && !env.ADMIN_SECRET) {
+    throw new ShopError(500, 'SHOP_NOT_CONFIGURED', 'Production deployment requires an explicit SHOP_CONFIG_KEY (64-char hex) or ADMIN_SECRET.')
+  }
+
   const defaultKey = crypto.createHash('sha256').update(env.ADMIN_SECRET || 'swapnopay-default-shop-config-secret-key-32').digest('hex')
-  const key = (/^[0-9a-f]{64}$/i.test(env.SHOP_CONFIG_KEY || '')) ? env.SHOP_CONFIG_KEY : defaultKey
+  const key = hasConfigKey ? env.SHOP_CONFIG_KEY : defaultKey
   const rawAddresses = (env.SHOP_SERVER_IPS || '127.0.0.1').split(',').map(x => x.trim()).filter(Boolean)
   const addresses = rawAddresses.length && rawAddresses.every(x => net.isIP(x)) ? rawAddresses : ['127.0.0.1']
 
@@ -30,7 +36,7 @@ export function shopConfiguration(env = process.env) {
 
   const rawDbUrl = env.SHOP_DATABASE_URL || env.DATABASE_URL || env.POSTGRES_URL || ''
   const isServerRuntime = Boolean(env.PORT || env.ADMIN_SUPABASE_URL || env.ADMIN_SECRET)
-  const allowEmbedded = env.ALLOW_EMBEDDED_SHOP_DB === 'true' || (isServerRuntime && env.NODE_ENV !== 'test')
+  const allowEmbedded = env.ALLOW_EMBEDDED_SHOP_DB === 'true' || (!isProd && isServerRuntime && env.NODE_ENV !== 'test')
   if (!rawDbUrl && !allowEmbedded) {
     throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting is not configured yet. The platform operator must complete the storefront setup.')
   }
@@ -74,6 +80,25 @@ export class ShopService {
     this.config = config
     this.dns = dependencies.dns || ((host, addresses, lookup) => checkShopDns(host, addresses, lookup, config.baseDomain))
     this.probe = dependencies.probe || probeStore
+    this.getMerchantApiKey = dependencies.getMerchantApiKey || (async merchantId => {
+      const { getMerchantActiveApiKey } = await import('./adminSupabase.js')
+      return getMerchantActiveApiKey(merchantId)
+    })
+    this.syncMerchantWebsite = dependencies.syncMerchantWebsite || (async row => {
+      const { getAdminClient } = await import('./adminSupabase.js')
+      const adminClient = getAdminClient()
+      const storeUrl = row.custom_domain
+        ? `https://${row.custom_domain}`
+        : `https://${this.config.baseDomain}/${row.shop_slug}`
+      const { data, error } = await adminClient
+        .from('merchants')
+        .update({ website: storeUrl })
+        .eq('id', row.merchant_id)
+        .select('id')
+        .maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('Merchant record was not found while syncing the storefront URL')
+    })
     this.initialized = null
     this.processing = false
 
@@ -149,6 +174,7 @@ export class ShopService {
         ok: true, deployed: false, status: 'NOT_DEPLOYED',
         shop_url: url, platform_url: url, admin_url: `${url}/admin`, admin_login_url: `${url}/admin/login.php`,
         base_domain: this.config.baseDomain, ssl_active: false,
+        gateway_connected: false, gateway_status: 'CONFIGURATION_REQUIRED',
         message: 'Set up your store and launch when ready.'
       }
     }
@@ -168,6 +194,7 @@ export class ShopService {
       store_name: row.store_name, custom_domain: row.custom_domain || null, currency: row.currency, theme_color: row.theme_color,
       base_domain: this.config.baseDomain, ssl_active: row.status === 'LIVE',
       vps_status: row.status === 'LIVE' ? 'VERIFIED' : 'UNVERIFIED', gateway_connected: false,
+      gateway_status: 'CHECKING',
       dns_records: {
         a_record: { type: 'A', host: row.custom_domain || '@', target: this.config.addresses[0] },
         cname_record: { type: 'CNAME', host: 'www', target: this.config.baseDomain }
@@ -194,7 +221,21 @@ export class ShopService {
       (SELECT count(*)::int FROM ${s}.tbl_product WHERE p_is_active=1) AS products_count,
       (SELECT count(*)::int FROM ${s}.tbl_payment) AS orders_count,
       (SELECT coalesce(sum(paid_amount),0) FROM ${s}.tbl_payment WHERE payment_status='Completed') AS total_revenue`)
-    return this.publicStatus(row, rows[0])
+    let gatewayConnected = false
+    try {
+      const { getMerchantGatewayConfig } = await import('./adminSupabase.js')
+      const gateway = await getMerchantGatewayConfig(id)
+      gatewayConnected = Object.entries(gateway.enabled_methods || {}).some(([method, enabled]) =>
+        enabled && Boolean(String(gateway.receiving_numbers?.[method] || '').trim())
+      )
+    } catch (error) {
+      console.warn('[shop/status] Gateway configuration check failed:', error.message)
+    }
+    return {
+      ...this.publicStatus(row, rows[0]),
+      gateway_connected: gatewayConnected,
+      gateway_status: gatewayConnected ? 'CONNECTED' : 'CONFIGURATION_REQUIRED',
+    }
   }
   async enqueue(body) {
     if (!this.pool) {
@@ -275,8 +316,11 @@ export class ShopService {
       await fs.rename(stage, tenantDir)
     }
     const schema = schemaName(row.merchant_id)
+    const keyRecord = await this.getMerchantApiKey(row.merchant_id)
+    if (!keyRecord?.api_key) throw new Error('A merchant API key is required to connect the storefront checkout.')
     const runtime = {
       merchant_id: row.merchant_id,
+      gateway_api_key: keyRecord.api_key,
       base_url: row.custom_domain ? `https://${row.custom_domain}/` : `https://${this.config.baseDomain}/${row.shop_slug}/`,
       store_name: row.store_name,
       db: { host: this.config.dbHost, port: this.config.dbPort, database: this.config.dbName, user: schema, password: secrets.dbPassword, sslmode: this.config.sslmode },
@@ -352,21 +396,12 @@ export class ShopService {
     } catch(error) { await client.query('ROLLBACK'); throw error }
     await this.publishFiles(row,secrets)
 
-    // Sync storefront website URL to Supabase merchants record
+    // Never report a successful launch unless its canonical merchant record is linked to the URL.
     try {
-      const { getAdminClient } = await import('./adminSupabase.js')
-      const adminClient = getAdminClient()
-      if (adminClient) {
-        const storeUrl = row.custom_domain
-          ? `https://${row.custom_domain}`
-          : `https://${this.config.baseDomain}/${row.shop_slug}`
-        await adminClient
-          .from('merchants')
-          .update({ website: storeUrl })
-          .eq('id', row.merchant_id)
-      }
+      await this.syncMerchantWebsite(row)
     } catch (syncErr) {
       console.warn('[shop/provision] Supabase merchant website sync notice:', syncErr.message)
+      throw syncErr
     }
   }
   async tick() {

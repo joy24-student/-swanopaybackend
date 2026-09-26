@@ -16,6 +16,9 @@ interface AppDao {
     @Query("SELECT * FROM sms_queue WHERE (merchantId = :merchantId OR merchantId = 'merchant_default' OR merchantId = '00000000-0000-0000-0000-000000000001' OR merchantId = '' OR :merchantId = '' OR :merchantId = 'merchant_default') AND status = 'PENDING'")
     suspend fun getPendingSms(merchantId: String): List<SmsQueueEntity>
 
+    @Query("SELECT COUNT(*) FROM sms_queue WHERE status = 'PENDING'")
+    fun observePendingSmsCount(): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSms(sms: SmsQueueEntity): Long
 
@@ -246,6 +249,9 @@ interface AppDao {
 
     @Query("DELETE FROM supabase_profiles WHERE id = :id")
     suspend fun deleteSupabaseProfile(id: String)
+
+    @Query("UPDATE supabase_profiles SET lastSyncAt = :lastSyncAt, lastSyncError = :lastSyncError WHERE id = :id")
+    suspend fun updateProfileSyncMetadata(id: String, lastSyncAt: Long, lastSyncError: String)
 
     // Dynamic MFS Regex Patterns
     @Query("SELECT * FROM mfs_patterns WHERE active = 1")
@@ -715,6 +721,9 @@ interface AppDao {
 
     @Query("SELECT * FROM outbox_sms WHERE merchantId = :merchantId AND status = 'QUEUED' ORDER BY createdAt ASC LIMIT :limit")
     suspend fun getPendingOutboxSms(merchantId: String, limit: Int = 50): List<OutboxSmsEntity>
+
+    @Query("SELECT COUNT(*) FROM outbox_sms WHERE status = 'QUEUED'")
+    fun observePendingOutboxSmsCount(): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOutboxSms(sms: OutboxSmsEntity): Long

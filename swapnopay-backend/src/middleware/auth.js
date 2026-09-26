@@ -31,6 +31,7 @@ export async function requireAdminSecret(req, res, next) {
   const xAdminSecret = req.headers['x-admin-secret']
   if (xAdminSecret && adminSecret && safeCompare(xAdminSecret, adminSecret)) {
     req.isAdmin = true
+    req.authMethod = 'admin_secret'
     req.adminUser = { id: 'admin_secret', role: 'super_admin' }
     return next()
   }
@@ -43,6 +44,7 @@ export async function requireAdminSecret(req, res, next) {
     // 2a. Direct static secret match via Bearer
     if (adminSecret && safeCompare(token, adminSecret)) {
       req.isAdmin = true
+      req.authMethod = 'admin_secret'
       req.adminUser = { id: 'admin_secret', role: 'super_admin' }
       return next()
     }
@@ -58,18 +60,19 @@ export async function requireAdminSecret(req, res, next) {
           // 1. Check admin_users by ID
           let { data: adminRecord } = await adminClient
             .from('admin_users')
-            .select('id, role')
+            .select('id, role, is_active')
             .eq('id', user.id)
             .maybeSingle()
+          if (adminRecord && !adminRecord.is_active) adminRecord = null
 
           // 2. Check admin_users by Email
           if (!adminRecord && user.email) {
             const { data: byEmail } = await adminClient
               .from('admin_users')
-              .select('id, role')
+              .select('id, role, is_active')
               .ilike('email', user.email)
               .maybeSingle()
-            if (byEmail) {
+            if (byEmail?.is_active) {
               adminRecord = byEmail
               try {
                 await adminClient.from('admin_users').upsert({ id: user.id, email: user.email, role: byEmail.role || 'admin' })
@@ -77,17 +80,10 @@ export async function requireAdminSecret(req, res, next) {
             }
           }
 
-          // 3. Super admin by email pattern or platform admin project account
-          if (!adminRecord && user.email && (user.email === 'admin@swapnopay.top' || user.email.endsWith('@swapnopay.top') || user.email.includes('admin'))) {
-            adminRecord = { id: user.id, role: 'super_admin' }
-            try {
-              await adminClient.from('admin_users').upsert({ id: user.id, email: user.email, role: 'super_admin' })
-            } catch (_) {}
-          }
-
           if (adminRecord) {
             req.adminUser = { id: user.id, email: user.email, role: adminRecord.role || 'admin' }
             req.isAdmin = true
+            req.authMethod = 'supabase'
             return next()
           }
         }
@@ -115,8 +111,7 @@ export function requireWebhookSecret(req, res, next) {
   }
   const provided =
     req.headers['x-webhook-secret'] ||
-    (req.headers['authorization']?.toLowerCase().startsWith('bearer ') ? req.headers['authorization'].replace(/^Bearer\s+/i, '').trim() : null) ||
-    req.body?.webhook_secret
+    (req.headers['authorization']?.toLowerCase().startsWith('bearer ') ? req.headers['authorization'].replace(/^Bearer\s+/i, '').trim() : null)
 
   if (!provided || !safeCompare(provided, expected)) {
     return res.status(401).json({ error: 'Unauthorized: invalid webhook secret' })
@@ -138,6 +133,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
   const xAdminSecret = req.headers['x-admin-secret']
   if (xAdminSecret && adminSecret && safeCompare(xAdminSecret, adminSecret)) {
     req.isAdmin = true
+    req.authMethod = 'admin_secret'
     req.adminUser = { id: 'admin_secret', role: 'super_admin' }
     return next()
   }
@@ -159,6 +155,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
     // 2a. Direct static secret match via Bearer
     if (adminSecret && safeCompare(token, adminSecret)) {
       req.isAdmin = true
+      req.authMethod = 'admin_secret'
       req.adminUser = { id: 'admin_secret', role: 'super_admin' }
       return next()
     }
@@ -174,22 +171,24 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
           // Check if admin user by id or email
           let { data: adminRecord } = await adminClient
             .from('admin_users')
-            .select('id, role')
+            .select('id, role, is_active')
             .eq('id', user.id)
             .maybeSingle()
+          if (adminRecord && !adminRecord.is_active) adminRecord = null
 
           if (!adminRecord && user.email) {
             const { data: byEmail } = await adminClient
               .from('admin_users')
-              .select('id, role')
+              .select('id, role, is_active')
               .ilike('email', user.email)
               .maybeSingle()
-            if (byEmail) adminRecord = byEmail
+            if (byEmail?.is_active) adminRecord = byEmail
           }
 
-          if (adminRecord || user.email === 'admin@swapnopay.top' || user.email?.endsWith('@swapnopay.top') || user.email?.includes('admin')) {
+          if (adminRecord) {
             req.adminUser = { id: user.id, email: user.email, role: adminRecord?.role || 'admin' }
             req.isAdmin = true
+            req.authMethod = 'supabase'
             return next()
           }
 
@@ -206,6 +205,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
             } catch (_) {}
 
             req.merchantUser = { ...user, id: merchantId, merchant_id: merchantId, userId: user.id }
+            req.authMethod = 'supabase'
             return next()
           }
 
@@ -224,6 +224,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
 
             if (isOwner) {
               req.merchantUser = { ...user, id: targetMerchantId, merchant_id: targetMerchantId, userId: user.id }
+              req.authMethod = 'supabase'
               return next()
             }
           } catch (_) {}
@@ -237,43 +238,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
     }
   }
 
-  // 3. Device ID / Mobile App identification fallback
-  const deviceId = req.headers['x-device-id'] || req.headers['x-installation-id'] || req.query?.device_id || req.body?.device_id
-  if (deviceId && targetMerchantId) {
-    try {
-      const { getAdminClient } = await import('../services/adminSupabase.js')
-      const adminClient = getAdminClient()
-      if (adminClient) {
-        const { data: dev } = await adminClient
-          .from('merchant_devices')
-          .select('merchant_id')
-          .eq('device_id', deviceId)
-          .maybeSingle()
-
-        if (dev && dev.merchant_id === targetMerchantId) {
-          req.merchantUser = { id: targetMerchantId, merchant_id: targetMerchantId, device_id: deviceId }
-          return next()
-        }
-
-        // Auto-bind device for merchant
-        await adminClient.from('merchant_devices').upsert({
-          device_id: deviceId,
-          merchant_id: targetMerchantId,
-          device_name: req.headers['user-agent']?.slice(0, 100) || 'Merchant Mobile App',
-          status: 'ACTIVE',
-          last_active_at: new Date().toISOString()
-        }, { onConflict: 'merchant_id,device_id' })
-
-        req.merchantUser = { id: targetMerchantId, merchant_id: targetMerchantId, device_id: deviceId }
-        return next()
-      }
-    } catch (_) {
-      req.merchantUser = { id: targetMerchantId, merchant_id: targetMerchantId, device_id: deviceId }
-      return next()
-    }
-  }
-
-  // 4. Check dynamic merchant API key from X-API-Key, X-Merchant-Secret, or Bearer sp_...
+  // 3. Check dynamic merchant API key from X-API-Key, X-Merchant-Secret, or Bearer sp_...
   const rawKey =
     req.headers['x-api-key'] ||
     req.headers['x-merchant-secret'] ||
@@ -293,17 +258,12 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
           merchant_id: keyRecord.merchant_id,
           name: keyRecord.merchant_name
         }
+        req.authMethod = 'api_key'
         return next()
       }
     } catch (e) {
       console.warn('[auth] API key verification notice:', e.message)
     }
-  }
-
-  // 5. Merchant Mobile App direct identifier fallback
-  if (targetMerchantId && (deviceId || req.headers['x-merchant-id'] || req.body?.merchant_id)) {
-    req.merchantUser = { id: targetMerchantId, merchant_id: targetMerchantId, device_id: deviceId || 'merchant_direct' }
-    return next()
   }
 
   return res.status(401).json({ error: 'Unauthorized: valid merchant or admin credentials required' })

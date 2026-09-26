@@ -81,7 +81,7 @@ test('Auth Middleware Test Suite', async (t) => {
     assert.equal(nextCalled, true)
   })
 
-  await t.test('7. requireWebhookSecret validates body.webhook_secret', () => {
+  await t.test('7. requireWebhookSecret rejects a secret supplied in the body', () => {
     const req = { headers: {}, body: { webhook_secret: 'test_webhook_secret_super_key_32_chars' } }
     let nextCalled = false
     const res = {
@@ -89,7 +89,8 @@ test('Auth Middleware Test Suite', async (t) => {
       json(data) { this.data = data; return this }
     }
     requireWebhookSecret(req, res, () => { nextCalled = true })
-    assert.equal(nextCalled, true)
+    assert.equal(nextCalled, false)
+    assert.equal(res.statusCode, 401)
   })
 
   await t.test('8. requireWebhookSecret rejects invalid secret', () => {

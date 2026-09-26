@@ -98,7 +98,9 @@ data class SupabaseProfileEntity(
     @ColumnInfo(defaultValue = "''") val authRefreshToken: String = "",
     @ColumnInfo(defaultValue = "0") val authTokenExpiresAt: Long = 0L,
     val isActive: Boolean = false,
-    val defaultNumber: String = ""
+    val defaultNumber: String = "",
+    @ColumnInfo(defaultValue = "0") val lastSyncAt: Long = 0L,
+    @ColumnInfo(defaultValue = "''") val lastSyncError: String = ""
 )
 
 @Entity(tableName = "mfs_patterns")

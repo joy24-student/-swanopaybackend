@@ -112,7 +112,7 @@ async function proxyHostedForm(request, env, identifier) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  headers.set("x-swapnopay-route", publicId);
+  headers.set("x-swapnopay-route", cleanId);
 
   let upstream;
   try {

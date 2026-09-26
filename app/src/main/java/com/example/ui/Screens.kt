@@ -966,6 +966,7 @@ fun AppNavigation(viewModel: AppViewModel) {
         "FormBuilder", "FormBuilderStudio", "AiFormBuilder", "AiBuilder", "FormTemplates", "TemplatePicker", "FormResponses", "FormSubmissions" -> FormBuilderStudioScreen(viewModel)
         "SMSLogs" -> SMSLogsScreen(viewModel)
         "Notifications" -> NotificationsScreen(viewModel)
+        "SupabaseProfiles", "SupabaseProfileManager", "SupabaseDiagnostics", "CloudBackends" -> SupabaseProfilesScreen(viewModel)
         "SupabaseSetupGuide" -> SupabaseSetupGuideScreen(viewModel)
         "Backup", "BackupAndRestore", "BackupAndRestoreScreen", "BackupRestore" -> BackupAndRestoreScreen(viewModel)
         "KycVerification", "KYC", "MerchantKYC", "VerifyAccount" -> KycVerificationScreen(viewModel)
@@ -8410,6 +8411,17 @@ fun SetupScreen(viewModel: AppViewModel) {
                             Text("Cloud Console", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
+                        Button(
+                            onClick = { viewModel.navigateTo("SupabaseProfiles") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Outlined.CloudQueue, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Profiles", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -12904,6 +12916,116 @@ fun SettingsScreen(viewModel: AppViewModel) {
                     }
                 }
 
+                // DATABASE & CLOUD BACKENDS SECTION
+                item {
+                    Column {
+                        Text(
+                            text = if (languageState == "Bangla") "ডাটাবেজ ও ক্লাউড ব্যাকএন্ড" else "DATABASE & CLOUD BACKENDS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = secondaryText,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                        Card(
+                            shape = RoundedCornerShape(24.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            border = BorderStroke(1.dp, cardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column {
+                                // Multi-Profile Manager Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.navigateTo("SupabaseProfiles") }
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        GradientIcon(
+                                            icon = Icons.Outlined.CloudQueue,
+                                            gradient = listOf(Color(0xFF6366F1), Color(0xFF4F46E5)),
+                                            size = 36.dp,
+                                            iconSize = 18.dp,
+                                            cornerRadius = 10.dp
+                                        )
+                                        Column {
+                                            Text(
+                                                text = if (languageState == "Bangla") "সুপাবেজ ব্যাকএন্ড প্রোফাইল" else "Supabase Multi-Profile Manager",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = primaryText
+                                            )
+                                            Text(
+                                                text = if (languageState == "Bangla") "একাধিক ব্যাকএন্ড পরিবর্তন ও রিয়েলটাইম ডায়াগনস্টিকস" else "Switch cloud backends, test endpoints & live CRUD diagnostics",
+                                                fontSize = 11.sp,
+                                                color = secondaryText
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = secondaryText,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                HorizontalDivider(color = dividerColor, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
+
+                                // Setup Wizard Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.navigateTo("Setup") }
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        GradientIcon(
+                                            icon = Icons.Outlined.SettingsSuggest,
+                                            gradient = listOf(Color(0xFF10B981), Color(0xFF059669)),
+                                            size = 36.dp,
+                                            iconSize = 18.dp,
+                                            cornerRadius = 10.dp
+                                        )
+                                        Column {
+                                            Text(
+                                                text = if (languageState == "Bangla") "ডাটাবেজ সেটআপ উইজার্ড" else "Database Setup Wizard",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = primaryText
+                                            )
+                                            Text(
+                                                text = if (languageState == "Bangla") "টেবিল স্কিমা, আরএলএস এবং স্টোরেজ কনফিগারেশন" else "Configure schema tables, RLS policies & storage buckets",
+                                                fontSize = 11.sp,
+                                                color = secondaryText
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = secondaryText,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ACCOUNT DELETION SECTION
                 item {
                     Column {
@@ -16845,6 +16967,7 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
             )
         }
     }
+}
 }
 
 data class DashActionItem(

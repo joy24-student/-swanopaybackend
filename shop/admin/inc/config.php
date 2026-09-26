@@ -15,12 +15,6 @@ if (!$runtimeRoot) {
 }
 $runtime = null;
 if ($runtimeRoot) {
-    // Hosted checkout supports COD until provider verification and reconciliation
-    // are integrated. Legacy callback URLs must not create or mark payments.
-    $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
-    if (preg_match('~/(?:^|[a-z0-9-]+/)payment/(?!cod/)[^/]+/~i', $requestPath)) {
-        http_response_code(503); exit('Online payments are not configured for this store. Please use cash on delivery.');
-    }
     $host = strtolower($_SERVER['HTTP_HOST'] ?? '');
     if (str_contains($host, ':')) {
         $host = explode(':', $host, 2)[0];
@@ -88,11 +82,11 @@ if ($runtimeRoot) {
 
 $db_driver = 'pgsql';
 $db = $runtime['db'] ?? [
-    'host' => getenv('DB_HOST') ?: getenv('SUPABASE_DB_HOST') ?: 'aws-0-ap-southeast-1.pooler.supabase.com',
-    'port' => getenv('DB_PORT') ?: getenv('SUPABASE_DB_PORT') ?: 6543,
-    'database' => getenv('DB_NAME') ?: getenv('SUPABASE_DB_NAME') ?: 'postgres',
-    'user' => getenv('DB_USER') ?: getenv('SUPABASE_DB_USER') ?: 'postgres.oaudxkhxwdrdsybyaheb',
-    'password' => getenv('DB_PASS') ?: getenv('SUPABASE_DB_PASSWORD') ?: 'BVlsJxoubjhsny9M',
+    'host' => getenv('DB_HOST') ?: getenv('SUPABASE_DB_HOST') ?: '',
+    'port' => getenv('DB_PORT') ?: getenv('SUPABASE_DB_PORT') ?: 5432,
+    'database' => getenv('DB_NAME') ?: getenv('SUPABASE_DB_NAME') ?: '',
+    'user' => getenv('DB_USER') ?: getenv('SUPABASE_DB_USER') ?: '',
+    'password' => getenv('DB_PASS') ?: getenv('SUPABASE_DB_PASSWORD') ?: '',
     'sslmode' => getenv('DB_SSLMODE') ?: 'require'
 ];
 if (!$runtime && getenv('DATABASE_URL')) {
@@ -112,7 +106,6 @@ try {
     if (!$db['user'] || !$db['database']) throw new RuntimeException('Database credentials missing');
     foreach (['host','port','database','sslmode'] as $part) if (strpbrk((string)$db[$part], ";\r\n") !== false) throw new RuntimeException('Invalid database configuration');
     $dsn = 'pgsql:host=' . $db['host'] . ';port=' . $db['port'] . ';dbname=' . $db['database'] . ';sslmode=' . $db['sslmode'];
-    $pdo = new PDO($dsn,$db['user'],$db['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo = new PDO($dsn,$db['user'],$db['password'],[
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -130,6 +123,7 @@ define('SUPABASE_URL',$runtime ? '' : (getenv('SUPABASE_URL') ?: ''));
 define('SUPABASE_ANON_KEY',$runtime ? '' : (getenv('SUPABASE_ANON_KEY') ?: ''));
 define('SUPABASE_SERVICE_KEY',$runtime ? '' : (getenv('SUPABASE_SERVICE_ROLE_KEY') ?: ''));
 define('MERCHANT_ID',$runtime['merchant_id'] ?? (getenv('MERCHANT_ID') ?: ''));
+define('SWAPNOPAY_API_URL',rtrim($runtime['api_url'] ?? (getenv('SWAPNOPAY_API_URL') ?: 'https://api.swapnopay.top'),'/'));
 $BASE_URL = $runtime['base_url'] ?? (getenv('STORE_BASE_URL') ?: '');
 if (!$BASE_URL) {
     $column = $db_driver === 'pgsql' ? '"BASE_URL"' : '`BASE_URL`';

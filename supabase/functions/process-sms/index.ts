@@ -184,7 +184,7 @@ serve(async (req) => {
           cancel_url: order.cancel_url || gws?.cancel_callback_url || null,
         };
 
-        await fetch(`${backendUrl}/v1/payment/verify`, {
+        const verifyResponse = await fetch(`${backendUrl.replace(/\/$/, "")}/v1/payment/verify`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -193,7 +193,11 @@ serve(async (req) => {
           body: JSON.stringify(backendPayload),
           signal: AbortSignal.timeout(8000),
         });
-        console.log(`SwapnoPay backend notified for order: ${order.id}`);
+        const verifyBody = await verifyResponse.json().catch(() => ({}));
+        if (!verifyResponse.ok || verifyBody?.ok !== true) {
+          throw new Error(`Payment verification endpoint returned ${verifyResponse.status}: ${JSON.stringify(verifyBody).slice(0, 500)}`);
+        }
+        console.log(`SwapnoPay backend confirmed order ${order.id}: merchant_db_updated=${verifyBody.merchant_db_updated}`);
       } catch (backendErr) {
         // Non-blocking — log but don't fail the match
         console.error("SwapnoPay backend notification failed:", backendErr);

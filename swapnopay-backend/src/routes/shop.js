@@ -53,6 +53,45 @@ export function createShopRouter({ service = getShopService, authenticate = requ
     return row
   }
   router.get('/status', wrap(async (req,res) => res.json(await service().status(id(req)))))
+  // Link the merchant's own Supabase project to its gateway before a site is launched.
+  router.post('/connect-database', wrap(async (req,res) => {
+    if (!req.isAdmin && !['api_key', 'supabase', 'merchant_supabase'].includes(req.authMethod)) {
+      throw new ShopError(403, 'ACCOUNT_AUTH_REQUIRED', 'Sign in to your merchant account before connecting a database.')
+    }
+    const projectUrl = String(req.body.supabase_url || '').trim().replace(/\/$/, '')
+    const anonKey = String(req.body.supabase_anon_key || '').trim()
+    let parsed
+    try { parsed = new URL(projectUrl) } catch { throw new ShopError(400, 'INVALID_SUPABASE_URL', 'Enter a valid Supabase project URL.') }
+    const permittedHosts = (process.env.SHOP_AUTH_HOSTS || '').split(',').map(host => host.trim().toLowerCase()).filter(Boolean)
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password ||
+      !(parsed.hostname.endsWith('.supabase.co') || permittedHosts.includes(parsed.hostname))) {
+      throw new ShopError(400, 'INVALID_SUPABASE_URL', 'Supabase must use HTTPS and a verified Supabase project host.')
+    }
+    if (anonKey.length < 20 || anonKey.length > 4096) throw new ShopError(400, 'INVALID_SUPABASE_KEY', 'Enter the project publishable or anon key.')
+    if (/^(sb_secret_|service_role_)/i.test(anonKey)) {
+      throw new ShopError(400, 'SERVICE_ROLE_KEY_FORBIDDEN', 'Never connect a service-role or secret key. Use the project publishable or anon key.')
+    }
+    const jwtPayload = anonKey.split('.')[1]
+    if (jwtPayload) {
+      try {
+        const decoded = JSON.parse(Buffer.from(jwtPayload, 'base64url').toString('utf8'))
+        if (decoded.role && decoded.role !== 'anon') {
+          throw new ShopError(400, 'SERVICE_ROLE_KEY_FORBIDDEN', 'Use the project anon key, not an elevated database key.')
+        }
+      } catch (error) {
+        if (error instanceof ShopError) throw error
+        throw new ShopError(400, 'INVALID_SUPABASE_KEY', 'The Supabase key must be a valid publishable or anon key.')
+      }
+    }
+    if (!req.isAdmin && req.merchantUser?.id !== id(req)) throw new ShopError(403, 'MERCHANT_MISMATCH', 'Database credentials must belong to this merchant.')
+    const { getAdminClient } = await import('../services/adminSupabase.js')
+    const { data, error } = await getAdminClient().from('merchants')
+      .update({ supabase_url: parsed.href.replace(/\/$/, ''), supabase_anon_key: anonKey, updated_at: new Date().toISOString() })
+      .eq('id', id(req)).select('id').maybeSingle()
+    if (error) throw error
+    if (!data) throw new ShopError(404, 'MERCHANT_NOT_FOUND', 'The signed-in merchant account was not found.')
+    res.json({ ok: true, merchant_id: id(req), connected: true, project_url: parsed.href.replace(/\/$/, '') })
+  }))
   router.post('/deploy', rateLimit({windowMs:60000,limit:10,standardHeaders:'draft-8',legacyHeaders:false}), wrap(async (req,res) => {
     const result = await service().enqueue(req.body)
     res.status(result.deployed ? 200 : 202).json(result)

@@ -311,11 +311,25 @@ function csvLookup(form: Json, url: URL): Response {
     return Object.values(row).some((val) => String(val || "").trim().toLowerCase() === normalizedQuery);
   });
 
+  // Filter to only columns that are mapped to form fields to prevent leaking unmapped private columns
+  const columnMappings = asObject(theme.csv_column_mappings || theme.csvColumnMappings);
+  const mappedCols = new Set(Object.keys(columnMappings));
+  if (lookupCol) mappedCols.add(lookupCol);
+
+  let filteredRecord: Record<string, string> | null = null;
+  if (match) {
+    filteredRecord = {};
+    for (const [col, val] of Object.entries(match)) {
+      if (mappedCols.size === 0 || mappedCols.has(col)) {
+        filteredRecord[col] = val;
+      }
+    }
+  }
+
   return json({
     ok: true,
-    found: Boolean(match),
-    record: match || null,
-    headers: parsed.headers,
+    found: Boolean(filteredRecord),
+    record: filteredRecord,
   }, 200);
 }
 
@@ -589,9 +603,6 @@ function renderCustomWebApp(form: Json, merchant: Json | null, methodRows: Json[
   const resolvedJs = resolveVars(rawJs);
 
   const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
-  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
-  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
-  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
   const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
   const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
   const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
@@ -633,7 +644,6 @@ function renderCustomWebApp(form: Json, merchant: Json | null, methodRows: Json[
   ${resolvedHtml}
 
   <script nonce="${nonce}">
-    window.csvBackendData = ${csvDataJson};
     window.csvLookupColumn = ${csvLookupCol};
     window.csvTargetLookupFieldId = ${csvTargetLookupId};
     window.csvColumnMappings = ${csvMappings};
@@ -804,11 +814,8 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
     </div>
   ` : "";
 
-  // CSV backend dataset injection
+  // CSV backend settings
   const enableCsv = theme.enable_csv_backend === true || theme.enableCsvBackend === true;
-  const rawCsv = String(theme.csv_raw_data || theme.csvRawData || "");
-  const parsedCsv = enableCsv ? parseCsv(rawCsv) : { headers: [], rows: [] };
-  const csvDataJson = JSON.stringify(parsedCsv.rows.slice(0, 500));
   const csvLookupCol = JSON.stringify(String(theme.csv_lookup_column || theme.csvLookupColumn || ""));
   const csvTargetLookupId = JSON.stringify(String(theme.csv_target_lookup_field_id || theme.csvTargetLookupFieldId || ""));
   const csvMappings = JSON.stringify(asObject(theme.csv_column_mappings || theme.csvColumnMappings));
@@ -867,41 +874,50 @@ function renderForm(form: Json, methodRows: Json[], nonce: string): string {
     }
   })();
 
-  // CSV backend dataset & autofill
+  // CSV backend dataset & autofill via secure server lookup
   (function() {
-    const csvBackendData = ${csvDataJson};
+    const enableCsv = ${enableCsv};
     const csvLookupCol = ${csvLookupCol};
     const csvTargetLookupId = ${csvTargetLookupId};
     const csvColumnMappings = ${csvMappings};
 
-    if (csvBackendData.length > 0 && csvLookupCol && csvTargetLookupId) {
+    if (enableCsv && csvLookupCol && csvTargetLookupId) {
       const lookupInput = document.querySelector('[data-field-id="' + CSS.escape(csvTargetLookupId) + '"]');
       if (lookupInput) {
         let timer;
         lookupInput.addEventListener('input', () => {
           clearTimeout(timer);
-          timer = setTimeout(() => {
-            const query = (lookupInput.value || '').trim().toLowerCase();
+          timer = setTimeout(async () => {
+            const query = (lookupInput.value || '').trim();
             if (!query) {
               lookupInput.style.borderColor = '';
               return;
             }
-            const matched = csvBackendData.find(row => String(row[csvLookupCol] || '').trim().toLowerCase() === query);
-            if (matched) {
-              Object.entries(csvColumnMappings).forEach(([colName, fieldId]) => {
-                if (fieldId === csvTargetLookupId) return;
-                const targetEl = document.querySelector('[data-field-id="' + CSS.escape(fieldId) + '"]');
-                if (targetEl && matched[colName] !== undefined) {
-                  targetEl.value = matched[colName];
-                  targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                  targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-              });
-              lookupInput.style.borderColor = '#10B981';
-            } else {
-              lookupInput.style.borderColor = '';
-            }
-          }, 250);
+            try {
+              const lookupUrl = new URL(location.href);
+              lookupUrl.searchParams.set('action', 'csv_lookup');
+              lookupUrl.searchParams.set('lookup_column', csvLookupCol);
+              lookupUrl.searchParams.set('query', query);
+              const resp = await fetch(lookupUrl, { headers: { 'accept': 'application/json' } });
+              if (!resp.ok) return;
+              const resJson = await resp.json();
+              if (resJson.found && resJson.record) {
+                const matched = resJson.record;
+                Object.entries(csvColumnMappings).forEach(([colName, fieldId]) => {
+                  if (fieldId === csvTargetLookupId) return;
+                  const targetEl = document.querySelector('[data-field-id="' + CSS.escape(fieldId) + '"]');
+                  if (targetEl && matched[colName] !== undefined) {
+                    targetEl.value = matched[colName];
+                    targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                });
+                lookupInput.style.borderColor = '#10B981';
+              } else {
+                lookupInput.style.borderColor = '';
+              }
+            } catch (_) {}
+          }, 350);
         });
       }
     }

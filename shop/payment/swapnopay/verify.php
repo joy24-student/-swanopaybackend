@@ -5,16 +5,25 @@ require_once("../../admin/inc/config.php");
 require_once("../../admin/inc/functions.php");
 
 $tran_id = strip_tags($_GET['tran_id'] ?? ($_SESSION['pending_tran_id'] ?? ''));
+$gateway_order_id = strip_tags($_SESSION['pending_gateway_order_id'] ?? $tran_id);
 $method = strip_tags($_GET['method'] ?? ($_SESSION['pending_method'] ?? 'bKash'));
+$allowedMethods = ['bKash', 'Nagad', 'Rocket', 'Upay'];
+if (!in_array($method, $allowedMethods, true)) {
+    $method = 'bKash';
+}
 $amount = (float)($_SESSION['pending_amount'] ?? 0);
 
-if (empty($tran_id)) {
+if (empty($tran_id) || !preg_match('/^[A-Za-z0-9_-]{1,120}$/', $tran_id)) {
     header('location: ../../checkout.php');
     exit;
 }
+if (!empty($_SESSION['pending_tran_id']) && !hash_equals((string)$_SESSION['pending_tran_id'], $tran_id)) {
+    http_response_code(403);
+    exit('This payment session does not match the requested order.');
+}
 
 // Fetch merchant payment receiving number
-$receiving_number = '01700000000';
+$receiving_number = null;
 $account_type = 'Personal';
 
 $supabase_url = defined('SUPABASE_URL') ? SUPABASE_URL : getenv('SUPABASE_URL');
@@ -22,10 +31,14 @@ $supabase_service_key = defined('SUPABASE_SERVICE_KEY') && !empty(SUPABASE_SERVI
     ? SUPABASE_SERVICE_KEY 
     : (defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : getenv('SUPABASE_ANON_KEY'));
 $supabase_anon_key = defined('SUPABASE_ANON_KEY') ? SUPABASE_ANON_KEY : (getenv('SUPABASE_ANON_KEY') ?: '');
+$api_url = defined('SWAPNOPAY_API_URL') && !empty(SWAPNOPAY_API_URL) ? SWAPNOPAY_API_URL : 'https://api.swapnopay.top';
+$merchant_id = defined('MERCHANT_ID') && !empty(MERCHANT_ID) ? MERCHANT_ID : ($runtime['merchant_id'] ?? null);
 
 if (!empty($supabase_url) && !empty($supabase_service_key)) {
     $clean_supabase_url = rtrim($supabase_url, '/');
-    $ch = curl_init("{$clean_supabase_url}/rest/v1/merchant_numbers?type=eq.{$method}&active=eq.true&select=number,is_default&limit=1");
+    $numberQuery = 'type=eq.' . rawurlencode($method) . '&active=eq.true&select=number,is_default&limit=1';
+    if (!empty($merchant_id)) $numberQuery .= '&merchant_id=eq.' . rawurlencode($merchant_id);
+    $ch = curl_init("{$clean_supabase_url}/rest/v1/merchant_numbers?{$numberQuery}");
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         "apikey: {$supabase_service_key}",
@@ -37,7 +50,18 @@ if (!empty($supabase_url) && !empty($supabase_service_key)) {
     if (!empty($numbers[0]['number'])) {
         $receiving_number = $numbers[0]['number'];
     }
+} else if ($merchant_id) {
+    // Hosted Storefront Mode: Query SwapnoPay Central Gateway
+    $ch = curl_init("{$api_url}/v1/payment/config?merchant_id=" . urlencode($merchant_id));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $res = curl_exec($ch);
+    curl_close($ch);
+    $config_res = json_decode($res, true);
+    if (!empty($config_res['receiving_numbers'][$method])) {
+        $receiving_number = $config_res['receiving_numbers'][$method];
+    }
 }
+$is_number_available = !empty($receiving_number);
 
 // Method branding colors
 $branding = [
@@ -54,25 +78,66 @@ if (isset($_POST['submit_trx'])) {
     $user_trx = strip_tags($_POST['trx_id'] ?? '');
     $user_sender = strip_tags($_POST['sender_number'] ?? '');
     if (!empty($user_trx)) {
-        if (!empty($supabase_url) && !empty($supabase_key)) {
+        if (!empty($supabase_url) && !empty($supabase_service_key)) {
             // Update order with customer-provided TrxID for faster matching/appeal
             $patch_payload = json_encode([
                 'sender_number' => $user_sender,
                 'matched_trx_id' => $user_trx
             ]);
-            $ch = curl_init("{$clean_supabase_url}/rest/v1/orders?tran_id=eq.{$tran_id}");
+            $orderQuery = 'tran_id=eq.' . rawurlencode($tran_id);
+            if (!empty($merchant_id)) $orderQuery .= '&merchant_id=eq.' . rawurlencode($merchant_id);
+            $ch = curl_init("{$clean_supabase_url}/rest/v1/orders?{$orderQuery}");
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PATCH');
             curl_setopt($ch, CURLOPT_POSTFIELDS, $patch_payload);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                "apikey: {$supabase_key}",
-                "Authorization: Bearer {$supabase_key}",
+                "apikey: {$supabase_service_key}",
+                "Authorization: Bearer {$supabase_service_key}",
                 "Content-Type: application/json"
             ]);
-            curl_exec($ch);
+            $patch_response = curl_exec($ch);
+            $patch_code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $patch_error = curl_error($ch);
             curl_close($ch);
+            if ($patch_response === false || $patch_code < 200 || $patch_code >= 300) {
+                error_log('SwapnoPay order TrxID update failed: ' . ($patch_error ?: 'Merchant database rejected the update'));
+                $trx_message = 'We could not save your TrxID. Please try again or contact store support.';
+            } else {
+                $trx_message = 'TrxID received. The merchant payment system is checking the transaction.';
+            }
+        } else if ($merchant_id) {
+            // Hosted Storefront Mode: Relay to Central Gateway /notify
+            $notify_payload = json_encode([
+                'merchant_id' => $merchant_id,
+                'order_id' => $gateway_order_id,
+                'tran_id' => $tran_id,
+                'trx_id' => $user_trx,
+                'customer_phone' => $user_sender,
+                'payment_method' => $method
+            ]);
+            $ch_n = curl_init("{$api_url}/v1/payment/notify");
+            curl_setopt($ch_n, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch_n, CURLOPT_CONNECTTIMEOUT, 5);
+            curl_setopt($ch_n, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch_n, CURLOPT_POST, true);
+            curl_setopt($ch_n, CURLOPT_POSTFIELDS, $notify_payload);
+            curl_setopt($ch_n, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+            $notify_response = curl_exec($ch_n);
+            $notify_code = (int)curl_getinfo($ch_n, CURLINFO_HTTP_CODE);
+            $notify_error = curl_error($ch_n);
+            curl_close($ch_n);
+            $notify_data = json_decode((string)$notify_response, true);
+            if ($notify_response === false || $notify_code < 200 || $notify_code >= 300 || empty($notify_data['ok'])) {
+                error_log('SwapnoPay notify failed: ' . ($notify_error ?: ($notify_data['error'] ?? 'Invalid gateway response')));
+                $trx_message = 'We could not reach the payment verifier. Your TrxID was not submitted; please try again.';
+            } else {
+                $trx_message = 'TrxID received. The merchant payment system is checking the transaction.';
+            }
+        } else {
+            $trx_message = 'Payment verification is not configured for this store. Please contact store support.';
         }
-        $trx_message = 'TrxID submitted! Verifying transaction with your payment SMS...';
     }
 }
 ?>
@@ -233,6 +298,11 @@ if (isset($_POST['submit_trx'])) {
             <div class="amount-val">৳ <?php echo number_format($amount, 2); ?></div>
         </div>
 
+        <?php if (!$is_number_available): ?>
+        <div style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: 10px; padding: 14px; margin-bottom: 20px; color: #991b1b; font-size: 13px; line-height: 1.5;">
+            <strong>⚠️ Configuration Alert:</strong> The merchant has not configured a receiving number for <strong><?php echo htmlspecialchars($method); ?></strong>. Please contact store support or use an alternative payment option.
+        </div>
+        <?php else: ?>
         <div class="number-box">
             <div>
                 <div style="font-size: 11px; text-transform: uppercase; color: #64748b;">Send Money To (<?php echo $account_type; ?>)</div>
@@ -240,6 +310,7 @@ if (isset($_POST['submit_trx'])) {
             </div>
             <button type="button" class="btn-copy" onclick="copyNumber()">Copy</button>
         </div>
+        <?php endif; ?>
 
         <div class="instructions">
             <ol>

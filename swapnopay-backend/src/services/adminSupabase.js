@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { generateRawApiKey, apiKeyDigest } from '../utils/crypto.js'
+import { generateRawApiKey, generateWebhookSecret, apiKeyDigest } from '../utils/crypto.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -168,14 +168,13 @@ export async function getMerchantCredentials(merchantId) {
     merchantRow = mData
   } catch (_) {}
 
-  // If merchantRow was not found and merchantId is UUID or string, try matching by user_id or email
+  // Retry only an exact merchant ID lookup. Never interpolate caller input into PostgREST filters.
   if (!merchantRow && merchantId) {
     try {
       const { data: fallbackM } = await admin
         .from('merchants')
         .select('id, user_id, email, business_name, photo_url, phone, default_number, status, supabase_url, supabase_anon_key')
-        .or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
-        .limit(1)
+        .eq('id', merchantId)
         .maybeSingle()
       if (fallbackM) merchantRow = fallbackM
     } catch (_) {}
@@ -277,13 +276,11 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
 
   // Check merchant credentials and account status
   const creds = await getMerchantCredentials(merchantId)
-  const isAccountActive = creds?.status === 'ACTIVE'
-
   // Slow path: query merchant's Supabase devices table
   try {
     if (!creds?.supabase_url || !creds?.supabase_anon_key) {
-      // No custom DB configured — platform active merchant; allow payments
-      return { active: isAccountActive, last_seen: null, device_count: 0, source: 'platform_merchant' }
+      // A platform merchant with no recent authenticated device heartbeat is offline.
+      return { active: false, last_seen: null, device_count: 0, source: 'no_device_heartbeat' }
     }
 
     const merchantClient = createMerchantClient(creds.supabase_url, creds.supabase_anon_key)
@@ -294,13 +291,11 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
 
     if (error) {
       console.warn(`[device-status] Merchant DB query notice for ${merchantId}:`, error.message)
-      return { active: isAccountActive, last_seen: null, device_count: 0, source: 'db_fallback' }
+      return { active: false, last_seen: null, device_count: 0, source: 'db_unavailable' }
     }
 
     if (!devices || devices.length === 0) {
-      // Merchant has no hardware devices configured yet (web / form / API payment mode)
-      // Do NOT block checkout as offline!
-      return { active: true, last_seen: null, device_count: 0, source: 'active_no_devices' }
+      return { active: false, last_seen: null, device_count: 0, source: 'no_devices' }
     }
 
     const now = Date.now()
@@ -318,14 +313,14 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
     })
 
     return {
-      active: hasActiveDevice || isAccountActive,
+      active: hasActiveDevice,
       last_seen: lastSeen,
       device_count: devices.length,
       source: 'merchant_db',
     }
   } catch (err) {
     console.error(`[device-status] Error checking merchant ${merchantId}:`, err.message)
-    return { active: isAccountActive || true, last_seen: null, device_count: 0, source: 'error_fail_open' }
+    return { active: false, last_seen: null, device_count: 0, source: 'error_fail_closed' }
   }
 }
 
@@ -362,7 +357,7 @@ export async function getOrderFromMerchantDB(merchantId, orderIdOrTranId) {
 
       let query = merchantClient
         .from('orders')
-        .select('id, tran_id, amount, status, cus_name, cus_phone, cus_email, product_name, payment_method, matched_trx_id, sender_number, paid_at, expires_at, success_url, fail_url, cancel_url, created_at, merchant_id')
+        .select('id, tran_id, amount, status, cus_name, cus_phone, cus_email, product_name, payment_method, matched_trx_id, sender_number, paid_at, expires_at, success_url, fail_url, cancel_url, callback_url, created_at, merchant_id')
 
       if (isUuid) {
         query = query.or(`id.eq.${orderIdOrTranId},tran_id.eq.${orderIdOrTranId}`)
@@ -392,6 +387,7 @@ export async function getOrderFromMerchantDB(merchantId, orderIdOrTranId) {
     const admin = getAdminClient()
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderIdOrTranId)
     let q = admin.from('payment_events').select('*')
+    if (targetMerchantId) q = q.eq('merchant_id', targetMerchantId)
     if (isUuid) {
       q = q.or(`order_id.eq.${orderIdOrTranId},tran_id.eq.${orderIdOrTranId}`)
     } else {
@@ -458,11 +454,20 @@ export async function updateOrderStatusOnMerchantDB(merchantId, orderId, status,
     } else {
       query = query.eq('tran_id', orderId)
     }
+    if (dbStatus === 'PAID') {
+      query = query.neq('status', 'CANCELLED').neq('status', 'EXPIRED')
+    } else {
+      query = query.neq('status', 'PAID')
+    }
 
-    const { error } = await query
+    const { data: updatedRows, error } = await query.select('id')
 
     if (error) {
       console.error(`[merchant-db] Failed to update order ${orderId} to ${status}:`, error.message)
+      return false
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      console.warn(`[merchant-db] Merchant database did not confirm an update for order ${orderId}`)
       return false
     }
 
@@ -589,8 +594,6 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
   }
 
   // If merchant account is ACTIVE in database or has configured receiving numbers, never falsely declare offline
-  const isAccountActive = creds?.status === 'ACTIVE'
-
   const effectiveReceiving = {}
   const effectiveAccountTypes = {}
   const effectiveQrCodes = {}
@@ -632,11 +635,14 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
   // Also query merchant_numbers table if available in Admin Supabase for THIS merchant only
   try {
     const admin = getAdminClient()
-    const { data: numRows } = await admin
-      .from('merchant_numbers')
-      .select('*')
-      .or(`merchant_id.eq.${merchantId},user_id.eq.${merchantId}`)
-      .eq('active', true)
+    const numberMerchantId = creds?.merchant_id || merchantId
+    let numberQuery = admin.from('merchant_numbers').select('*').eq('active', true)
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(numberMerchantId)) {
+      numberQuery = numberQuery.or(`merchant_id.eq.${numberMerchantId},user_id.eq.${numberMerchantId}`)
+    } else {
+      numberQuery = numberQuery.eq('merchant_id', numberMerchantId)
+    }
+    const { data: numRows } = await numberQuery
     if (Array.isArray(numRows) && numRows.length > 0) {
       for (const row of numRows) {
         const method = canonicalMethodName(row.type || row.method)
@@ -656,26 +662,7 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
     }
   } catch (_) {}
 
-  // DO NOT grab another merchant's numbers or inject fake numbers!
-  // Only apply env overrides if explicitly provided and NOT fake
-  if (process.env.SWAPNOPAY_BKASH_NUMBER && !isFakeNumber(process.env.SWAPNOPAY_BKASH_NUMBER) && !effectiveReceiving.bKash) {
-    effectiveReceiving.bKash = process.env.SWAPNOPAY_BKASH_NUMBER
-  }
-  if (process.env.SWAPNOPAY_NAGAD_NUMBER && !isFakeNumber(process.env.SWAPNOPAY_NAGAD_NUMBER) && !effectiveReceiving.Nagad) {
-    effectiveReceiving.Nagad = process.env.SWAPNOPAY_NAGAD_NUMBER
-  }
-  if (process.env.SWAPNOPAY_ROCKET_NUMBER && !isFakeNumber(process.env.SWAPNOPAY_ROCKET_NUMBER) && !effectiveReceiving.Rocket) {
-    effectiveReceiving.Rocket = process.env.SWAPNOPAY_ROCKET_NUMBER
-  }
-  if (process.env.SWAPNOPAY_UPAY_NUMBER && !isFakeNumber(process.env.SWAPNOPAY_UPAY_NUMBER) && !effectiveReceiving.Upay) {
-    effectiveReceiving.Upay = process.env.SWAPNOPAY_UPAY_NUMBER
-  }
-
   const hasNumbers = Object.values(effectiveReceiving).some(Boolean)
-
-  if (deviceStatus.active === false && (isAccountActive || hasNumbers || !deviceStatus.device_count)) {
-    deviceStatus.active = true
-  }
 
   const effectiveName = merchantRow?.merchant_name || memSettings?.merchant_name || creds?.merchant_name || null
   const effectiveLogo = merchantRow?.merchant_logo_url || memSettings?.merchant_logo_url || creds?.merchant_logo_url || null
@@ -886,9 +873,12 @@ export async function storeApiKeyRecord(record) {
   return data
 }
 
-export async function revokeApiKeyRecord(keyId) {
+export async function revokeApiKeyRecord(keyId, merchantId = null) {
+  let found = false
   for (const [mId, mem] of inMemoryApiKeys.entries()) {
     if (mem.id === keyId) {
+      if (merchantId && mem.merchant_id !== merchantId) throw new Error('API key not found for this merchant')
+      found = true
       mem.revoked = true
       mem.revoked_at = new Date().toISOString()
     }
@@ -897,13 +887,17 @@ export async function revokeApiKeyRecord(keyId) {
   let admin = null
   try { admin = getAdminClient() } catch (_) {}
   if (admin) {
-    const { error } = await admin
+    let query = admin
       .from('platform_api_keys')
       .update({ revoked: true, revoked_at: new Date().toISOString() })
       .eq('id', keyId)
+    if (merchantId) query = query.eq('merchant_id', merchantId)
+    const { data, error } = await query.select('id')
 
     if (error) throw new Error('Failed to revoke API key: ' + error.message)
+    found = found || Boolean(data?.length)
   }
+  if (!found) throw new Error('API key not found for this merchant')
 }
 
 export async function listApiKeyRecords() {
@@ -1000,6 +994,12 @@ export async function getOrCreateMerchantApiKey(merchantId, merchantName = 'Merc
         .eq('id', cleanId)
         .maybeSingle()
 
+      if (mData?.api_key && mData.api_key === mData.webhook_secret) {
+        await admin.from('merchants')
+          .update({ webhook_secret: generateWebhookSecret('wh'), updated_at: new Date().toISOString() })
+          .eq('id', cleanId)
+      }
+
       if (mData?.api_key && mData.api_key.startsWith('sp_live_')) {
         return {
           id: existing?.id || randomUUID(),
@@ -1055,8 +1055,9 @@ export async function getOrCreateMerchantApiKey(merchantId, merchantName = 'Merc
     }
 
     try {
-      // Also update merchants table api_key & webhook_secret for maximum backward compatibility
-      const updates = { api_key: rawKey, webhook_secret: rawKey, updated_at: new Date().toISOString() }
+      // Keep API credentials and webhook secrets independent. A payment API key
+      // must never double as a webhook signing secret.
+      const updates = { api_key: rawKey, updated_at: new Date().toISOString() }
       let { error: uErr } = await admin.from('merchants').update(updates).eq('id', cleanId)
       if (uErr && (uErr.message?.includes('api_key') || uErr.message?.includes('schema cache'))) {
         delete updates.api_key
@@ -1097,7 +1098,7 @@ export async function getMerchantActiveApiKey(merchantId, userEmail = null, devi
         } else if (cleanId.includes('@')) {
           mQuery = mQuery.ilike('email', cleanId)
         } else {
-          mQuery = mQuery.or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+          mQuery = mQuery.eq('id', cleanId)
         }
         const { data } = await mQuery.maybeSingle()
         if (data) {
@@ -1139,13 +1140,22 @@ export async function getMerchantActiveApiKey(merchantId, userEmail = null, devi
 export async function recordPaymentEvent(orderId, eventData) {
   try {
     const admin = getAdminClient()
+    const status = eventData.status || 'PAID'
+    const trxId = eventData.trx_id || null
+    let duplicateQuery = admin.from('payment_events').select('id').eq('order_id', orderId).eq('status', status)
+    duplicateQuery = trxId ? duplicateQuery.eq('trx_id', trxId) : duplicateQuery.is('trx_id', null)
+    if (eventData.merchant_id) duplicateQuery = duplicateQuery.eq('merchant_id', eventData.merchant_id)
+    const { data: existingEvent, error: duplicateError } = await duplicateQuery.limit(1).maybeSingle()
+    if (duplicateError) throw duplicateError
+    if (existingEvent) return true
+
     const { error } = await admin
       .from('payment_events')
       .insert({
         order_id:       orderId,
         tran_id:        eventData.tran_id || null,
-        trx_id:         eventData.trx_id || null,
-        status:         eventData.status || 'PAID',
+        trx_id:         trxId,
+        status,
         amount:         eventData.amount || null,
         currency:       eventData.currency || 'BDT',
         payment_method: eventData.payment_method || null,
@@ -1163,9 +1173,12 @@ export async function recordPaymentEvent(orderId, eventData) {
 
     if (error) {
       console.error('[admin-supabase] recordPaymentEvent notice:', error.message)
+      return false
     }
+    return true
   } catch (err) {
     console.warn('[admin-supabase] recordPaymentEvent skipped:', err.message)
+    return false
   }
 }
 

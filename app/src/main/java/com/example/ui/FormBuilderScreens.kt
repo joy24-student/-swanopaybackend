@@ -40,6 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 
 /**
  * Pixel-Perfect Form Builder Studio with 4 Navigation Tabs (Builder, Settings, Integrations, Responses)
@@ -6725,11 +6728,23 @@ private fun FormResponsesTab(
         hostedForms.find { it.id == activeFormId }
     }
     val activeFormSlug = activeForm?.slug.orEmpty()
-    val submissions = remember(allSubmissions, activeFormId, activeFormSlug) {
-        allSubmissions.filter {
-            val fId = it.optString("form_id")
-            val fSlug = it.optString("form_slug")
-            fId == activeFormId || (activeFormSlug.isNotEmpty() && (fSlug == activeFormSlug || fId == activeFormSlug))
+    var showAllForms by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hostedForms, activeFormId) {
+        if (hostedForms.isNotEmpty() && hostedForms.none { it.id == activeFormId }) {
+            viewModel.selectHostedForm(hostedForms.first().id)
+        }
+    }
+
+    val submissions = remember(allSubmissions, activeFormId, activeFormSlug, showAllForms, activeForm) {
+        if (showAllForms || activeForm == null || hostedForms.isEmpty()) {
+            allSubmissions
+        } else {
+            allSubmissions.filter {
+                val fId = it.optString("form_id")
+                val fSlug = it.optString("form_slug")
+                fId == activeFormId || (activeFormSlug.isNotEmpty() && (fSlug == activeFormSlug || fId == activeFormSlug))
+            }
         }
     }
     LaunchedEffect(activeFormId) { viewModel.fetchFormSubmissions(activeFormId) }
@@ -6742,8 +6757,10 @@ private fun FormResponsesTab(
     val goldText = if (isDark) Color(0xFFFACC15) else Color(0xFF705D00)
     val goldDarkBg = if (isDark) Color(0xFF221A0C) else Color(0xFFFFFDF0)
 
-    val totalRevenue = submissions.filter { it.optString("payment_status") == "PAID" }
-        .sumOf { it.optDouble("amount_bdt", 0.0) }
+    val totalRevenue = submissions.filter {
+        val st = it.optString("payment_status", "").uppercase()
+        st == "PAID" || st == "NOT_REQUIRED" || st == "FREE" || st == "COMPLETED"
+    }.sumOf { it.optDouble("amount_bdt", it.optDouble("amount", 0.0)) }
     var selectedSubmission by remember { mutableStateOf<org.json.JSONObject?>(null) }
     fun csvCell(raw: String): String {
         val protected = if (raw.firstOrNull() in listOf('=', '+', '-', '@')) "'$raw" else raw
@@ -6758,6 +6775,58 @@ private fun FormResponsesTab(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp)
     ) {
+        // Form Selector Chips (when merchant has multiple forms)
+        if (hostedForms.size > 1) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val allSelected = showAllForms
+                    Surface(
+                        onClick = { showAllForms = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (allSelected) goldDarkBg else cardBg,
+                        border = BorderStroke(1.dp, if (allSelected) goldPrimary else cardBorder)
+                    ) {
+                        Text(
+                            text = "All Forms (${allSubmissions.size})",
+                            fontSize = 12.sp,
+                            fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (allSelected) goldText else textSecondary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+
+                    hostedForms.forEach { form ->
+                        val isSelected = !showAllForms && activeFormId == form.id
+                        Surface(
+                            onClick = {
+                                showAllForms = false
+                                viewModel.selectHostedForm(form.id)
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) goldDarkBg else cardBg,
+                            border = BorderStroke(1.dp, if (isSelected) goldPrimary else cardBorder)
+                        ) {
+                            Text(
+                                text = form.title.ifBlank { "Untitled" },
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) goldText else textSecondary,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Summary Metrics Cards
         item {
             Row(
@@ -6826,7 +6895,7 @@ private fun FormResponsesTab(
                             csv.append(
                                 listOf(
                                     sub.optString("id"), sub.optString("customer_name"), contact,
-                                    sub.optDouble("amount_bdt").toString(), sub.optString("payment_status"),
+                                    sub.optDouble("amount_bdt", sub.optDouble("amount", 0.0)).toString(), sub.optString("payment_status"),
                                     sub.optString("payment_method"), sub.optString("created_at")
                                 ).joinToString(",") { csvCell(it) } + "\n"
                             )
@@ -6870,7 +6939,8 @@ private fun FormResponsesTab(
         items(submissions) { submission ->
             val name = submission.optString("customer_name", "Anonymous")
             val desc = submission.optString("customer_email", submission.optString("customer_phone", ""))
-            val pay = "৳ ${"%,.0f".format(submission.optDouble("amount_bdt", 0.0))} • ${submission.optString("payment_status", "PENDING")} via ${submission.optString("payment_method", "Unknown")}"
+            val amt = submission.optDouble("amount_bdt", submission.optDouble("amount", 0.0))
+            val pay = "৳ ${"%,.0f".format(amt)} • ${submission.optString("payment_status", "PENDING")} via ${submission.optString("payment_method", "Unknown")}"
             Card(
                 onClick = { selectedSubmission = submission },
                 shape = RoundedCornerShape(16.dp),

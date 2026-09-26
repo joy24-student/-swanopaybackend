@@ -164,8 +164,16 @@ class AppRepository(private val context: Context) {
         activeProfileId = profileId
     }
 
+    suspend fun updateProfileSyncMetadata(id: String, lastSyncAt: Long, lastSyncError: String = "") {
+        dao.updateProfileSyncMetadata(id, lastSyncAt, lastSyncError)
+    }
+
     // SMS queue, orders, payments, appeals, devices
     fun observeSmsQueue(merchantId: String): Flow<List<SmsQueueEntity>> = dao.observeSmsQueue(merchantId)
+    fun observePendingSmsCount(): Flow<Int> = dao.observePendingSmsCount()
+    fun observePendingOutboxSmsCount(): Flow<Int> = dao.observePendingOutboxSmsCount()
+    suspend fun getPendingSms(merchantId: String): List<SmsQueueEntity> = dao.getPendingSms(merchantId)
+    suspend fun updateSmsStatus(id: Int, status: String) = dao.updateSmsStatus(id, status)
     fun observeOrders(merchantId: String): Flow<List<CachedOrderEntity>> = dao.observeOrders(merchantId)
     fun observePayments(merchantId: String): Flow<List<CachedPaymentEntity>> = dao.observePayments(merchantId)
     fun observeAppeals(merchantId: String): Flow<List<AppealEntity>> = dao.observeAppeals(merchantId)
@@ -354,6 +362,9 @@ class AppRepository(private val context: Context) {
                 conn.requestMethod = "GET"
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
+                active?.authSessionToken?.takeIf { it.isNotBlank() }?.let {
+                    conn.setRequestProperty("Authorization", "Bearer $it")
+                }
                 if (conn.responseCode in 200..299) {
                     val respStr = conn.inputStream.bufferedReader().use { it.readText() }
                     val json = org.json.JSONObject(respStr)
@@ -368,7 +379,7 @@ class AppRepository(private val context: Context) {
                                     merchantId = targetMerchantId,
                                     amount = obj.optDouble("amount", 0.0),
                                     sender = obj.optString("sender_number", obj.optString("sender", "Unknown")),
-                                    timestamp = parseIsoDateToMillis(obj.optString("created_at")),
+                                    timestamp = obj.optLong("timestamp", parseIsoDateToMillis(obj.optString("created_at"))),
                                     status = obj.optString("status", "SUCCESS"),
                                     method = obj.optString("payment_method", obj.optString("method", "bKash")),
                                     orderId = if (obj.isNull("order_id")) null else obj.optString("order_id")
@@ -496,6 +507,9 @@ class AppRepository(private val context: Context) {
             val conn = (java.net.URL("https://api.swapnopay.top/v1/payment/heartbeat").openConnection() as java.net.HttpURLConnection).apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
+                active.authSessionToken.takeIf { it.isNotBlank() }?.let {
+                    setRequestProperty("Authorization", "Bearer $it")
+                }
                 doOutput = true
                 connectTimeout = 4000
                 readTimeout = 4000
@@ -672,6 +686,7 @@ class AppRepository(private val context: Context) {
     }
 
     suspend fun reportPaymentToBackend(payment: CachedPaymentEntity): Boolean = withContext(Dispatchers.IO) {
+        val activeProfile = getAuthenticatedSupabaseProfile()
         val payload = org.json.JSONObject().apply {
             put("merchant_id", payment.merchantId)
             put("trx_id", payment.id)
@@ -692,6 +707,9 @@ class AppRepository(private val context: Context) {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.setRequestProperty("x-device-id", installationId)
                 conn.setRequestProperty("x-merchant-id", payment.merchantId)
+                activeProfile?.authSessionToken?.takeIf { it.isNotBlank() }?.let {
+                    conn.setRequestProperty("Authorization", "Bearer $it")
+                }
                 conn.doOutput = true
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
@@ -899,7 +917,7 @@ class AppRepository(private val context: Context) {
         val timestamp: Long
     )
 
-    private suspend fun parseSms(sender: String, body: String): ParsedSms? {
+    suspend fun parseSms(sender: String, body: String): ParsedSms? {
         val senderLower = sender.lowercase().trim()
         val cleanSender = sender.lowercase().filter { it.isLetterOrDigit() }
         val mfsName = when {
