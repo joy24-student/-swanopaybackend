@@ -1190,8 +1190,18 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
         </a>
 
         <!-- 5. Account -->
+        <?php 
+            $is_account_active = in_array($cur_page, [
+                'dashboard.php', 
+                'customer-profile-update.php', 
+                'customer-order.php', 
+                'customer-billing-shipping-update.php', 
+                'customer-wishlist.php', 
+                'customer-password-update.php'
+            ]);
+        ?>
         <?php if(isset($_SESSION['customer'])): ?>
-            <a href="<?php echo BASE_URL; ?>dashboard.php" class="sn-dock-item <?php echo ($cur_page == 'dashboard.php' || $cur_page == 'customer-profile-update.php' || $cur_page == 'customer-order.php') ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>dashboard.php" class="sn-dock-item <?php echo $is_account_active ? 'active' : ''; ?>">
                 <div class="sn-dock-icon-box">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
