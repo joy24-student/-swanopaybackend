@@ -4,7 +4,7 @@
 <?php
 if(isset($_POST['form1'])) {
 
-	if($_SESSION['user']['role'] == 'Super Admin') {
+	if(in_array($_SESSION['user']['role'] ?? '', ['Super Admin', 'Top Admin', 'Admin'], true)) {
 
 		$valid = 1;
 
@@ -189,7 +189,7 @@ $_SESSION['user'] = array_merge($_SESSION['user'], [
 									<div class="form-group">
 										<label for="" class="col-sm-2 control-label">Name <span>*</span></label>
 										<?php
-										if($_SESSION['user']['role'] == 'Super Admin') {
+										if(in_array($_SESSION['user']['role'] ?? '', ['Super Admin', 'Top Admin', 'Admin'], true)) {
 											?>
 												<div class="col-sm-4">
 													<input type="text" class="form-control" name="full_name" value="<?php echo $full_name; ?>">
@@ -215,7 +215,7 @@ $_SESSION['user'] = array_merge($_SESSION['user'], [
 									<div class="form-group">
 										<label for="" class="col-sm-2 control-label">Email Address <span>*</span></label>
 										<?php
-										if($_SESSION['user']['role'] == 'Super Admin') {
+										if(in_array($_SESSION['user']['role'] ?? '', ['Super Admin', 'Top Admin', 'Admin'], true)) {
 											?>
 												<div class="col-sm-4">
 													<input type="email" class="form-control" name="email" value="<?php echo $email; ?>">

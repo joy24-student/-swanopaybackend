@@ -1,11 +1,22 @@
 <?php require_once __DIR__ . '/inc/guard.php'; ?>
+<?php require_once __DIR__ . '/inc/supabase_storage.php'; ?>
 <?php require_once('header.php'); ?>
 
 <?php
+// Handle Slide Deletion from settings tab
+if (isset($_GET['action']) && $_GET['action'] === 'delete_slide' && !empty($_GET['slide_id'])) {
+    $deleteId = (int)$_GET['slide_id'];
+    $stmt = $pdo->prepare("DELETE FROM tbl_slider WHERE id = ?");
+    $stmt->execute([$deleteId]);
+    header("Location: settings.php#tab_home_features");
+    exit;
+}
+
 // Fetch all settings data from the database
 $statement = $pdo->prepare("SELECT * FROM tbl_settings WHERE id=1");
 $statement->execute();
 $settings_data = $statement->fetch(PDO::FETCH_ASSOC);
+$slides = $pdo->query("SELECT * FROM tbl_slider ORDER BY slide_order ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 // Assign variables for current values, using null coalescing operator for safety
 // General Settings
 $logo = $settings_data['logo'] ?? '';
@@ -353,104 +364,163 @@ if(isset($_POST['form_popup_settings'])) {
 
 // Home Page Features Form
 if(isset($_POST['form_home_features'])) {
-    $valid = 1;
+    // 1. General & Hero Settings
+    $hero_slider_autoplay = isset($_POST['hero_slider_autoplay']) ? 1 : 0;
+    $hero_slider_interval = !empty($_POST['hero_slider_interval']) ? (int)$_POST['hero_slider_interval'] : 4500;
+    $home_slider_on_off   = isset($_POST['home_slider_on_off']) ? (int)$_POST['home_slider_on_off'] : 1;
+    $hero_tag             = trim($_POST['hero_tag'] ?? '');
+    $hero_title           = trim($_POST['hero_title'] ?? '');
+    $hero_subtitle        = trim($_POST['hero_subtitle'] ?? '');
+    $hero_btn_text        = trim($_POST['hero_btn_text'] ?? '');
+    $hero_btn_url         = trim($_POST['hero_btn_url'] ?? '');
+    $hero_btn2_text       = trim($_POST['hero_btn2_text'] ?? '');
+    $hero_btn2_url        = trim($_POST['hero_btn2_url'] ?? '');
+    $hero_badge1_text     = trim($_POST['hero_badge1_text'] ?? '');
+    $hero_badge2_text     = trim($_POST['hero_badge2_text'] ?? '');
 
-    $cta_photo = handle_file_upload('cta_photo', $cta_photo, '../assets/uploads/', 'cta-');
-    if ($cta_photo === false) $valid = 0;
+    // 2. Categories Section
+    $home_category_on_off = isset($_POST['home_category_on_off']) ? (int)$_POST['home_category_on_off'] : 1;
+    $categories_title     = trim($_POST['categories_title'] ?? 'Shop by Category');
+    $categories_subtitle  = trim($_POST['categories_subtitle'] ?? 'Explore our wide range of popular collections');
 
-    $testimonial_photo = handle_file_upload('testimonial_photo', $testimonial_photo, '../assets/uploads/', 'testimonial-');
-    if ($testimonial_photo === false) $valid = 0;
+    // 3. Dual Promotional Banners
+    $home_welcome_on_off  = isset($_POST['home_welcome_on_off']) ? (int)$_POST['home_welcome_on_off'] : 1;
+    $promo1_tag           = trim($_POST['promo_banner1_tag'] ?? '');
+    $promo1_title         = trim($_POST['promo_banner1_title'] ?? '');
+    $promo1_subtitle      = trim($_POST['promo_banner1_subtitle'] ?? '');
+    $promo1_btn_text      = trim($_POST['promo_banner1_btn_text'] ?? '');
+    $promo1_btn_url       = trim($_POST['promo_banner1_btn_url'] ?? '');
 
-    $slider_side_banner_img = handle_file_upload('slider_side_banner_img', $settings_data['slider_side_banner_img'] ?? '', '../assets/uploads/', 'side-banner-');
-    if ($slider_side_banner_img === false) $valid = 0;
+    $promo2_tag           = trim($_POST['promo_banner2_tag'] ?? '');
+    $promo2_title         = trim($_POST['promo_banner2_title'] ?? '');
+    $promo2_subtitle      = trim($_POST['promo_banner2_subtitle'] ?? '');
+    $promo2_btn_text      = trim($_POST['promo_banner2_btn_text'] ?? '');
+    $promo2_btn_url       = trim($_POST['promo_banner2_btn_url'] ?? '');
 
-    if ($valid == 1) {
-        $statement = $pdo->prepare("UPDATE tbl_settings SET 
-            cta_title=?, cta_content=?, cta_read_more_text=?, cta_read_more_url=?, cta_photo=?, 
-            featured_product_title=?, featured_product_subtitle=?, 
-            latest_product_title=?, latest_product_subtitle=?, 
-            popular_product_title=?, popular_product_subtitle=?, 
-            testimonial_title=?, testimonial_subtitle=?, testimonial_photo=?, 
-            blog_title=?, blog_subtitle=?, newsletter_text=?, 
-            total_featured_product_home=?, total_latest_product_home=?, total_popular_product_home=?, 
-            home_welcome_on_off=?, home_featured_product_on_off=?, 
-            home_latest_product_on_off=?, home_popular_product_on_off=?, 
-            home_service_on_off=?, home_blog_on_off=?, 
-            home_map_on_off=?, home_newsletter_on_off=?, home_brand_on_off=?, 
-            home_testimonial_on_off=?, 
-            home_slider_on_off=?, home_features_on_off=?, home_category_on_off=?,
-            multi_vendor_on_off=?, 
-        coin_payment_on_off=?, 
-        desktop_advanced_layout_on_off=?,
-            /* New Columns */
-            bg_color_categories=?, bg_color_latest_products=?, bg_color_featured_products=?, show_scroll_top_btn=?,
-            slider_side_banner_img=?, slider_side_banner_text=?, extra_footer_section_enable=?, flash_sale_end_time=?,
+    // 4. Featured Products Section
+    $home_featured_product_on_off = isset($_POST['home_featured_product_on_off']) ? (int)$_POST['home_featured_product_on_off'] : 1;
+    $featured_products_title      = trim($_POST['featured_products_title'] ?? 'Featured Products');
+    $featured_products_subtitle   = trim($_POST['featured_products_subtitle'] ?? 'Handpicked best sellers and top rated products');
+    $total_featured_product_home  = !empty($_POST['total_featured_product_home']) ? (int)$_POST['total_featured_product_home'] : 8;
 
-            /* Ordering */
-            home_slider_order=?, home_features_order=?, home_category_order=?,
-            home_flash_order=?, home_featured_product_order=?, 
-            home_latest_product_order=?, home_popular_product_order=?
+    // 5. Trust Bar
+    $home_service_on_off  = isset($_POST['home_service_on_off']) ? (int)$_POST['home_service_on_off'] : 1;
+    $trust1_title         = trim($_POST['trust_item1_title'] ?? '');
+    $trust1_desc          = trim($_POST['trust_item1_desc'] ?? '');
+    $trust2_title         = trim($_POST['trust_item2_title'] ?? '');
+    $trust2_desc          = trim($_POST['trust_item2_desc'] ?? '');
+    $trust3_title         = trim($_POST['trust_item3_title'] ?? '');
+    $trust3_desc          = trim($_POST['trust_item3_desc'] ?? '');
+    $trust4_title         = trim($_POST['trust_item4_title'] ?? '');
+    $trust4_desc          = trim($_POST['trust_item4_desc'] ?? '');
 
-            WHERE id=1");
+    // Fetch current image URLs from DB
+    $currSettings = $pdo->query("SELECT promo_banner1_image, promo_banner2_image FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    $promo1_image = $currSettings['promo_banner1_image'] ?? '';
+    $promo2_image = $currSettings['promo_banner2_image'] ?? '';
 
-        $statement->execute(array(
-            $_POST['cta_title'] ?? '',
-            $_POST['cta_content'] ?? '',
-            $_POST['cta_read_more_text'] ?? '',
-            $_POST['cta_read_more_url'] ?? '',
-            $cta_photo,
-            $_POST['featured_product_title'] ?? '',
-            $_POST['featured_product_subtitle'] ?? '',
-            $_POST['latest_product_title'] ?? '',
-            $_POST['latest_product_subtitle'] ?? '',
-            $_POST['popular_product_title'] ?? '',
-            $_POST['popular_product_subtitle'] ?? '',
-            $_POST['testimonial_title'] ?? '',
-            $_POST['testimonial_subtitle'] ?? '',
-            $testimonial_photo,
-            $_POST['blog_title'] ?? '',
-            $_POST['blog_subtitle'] ?? '',
-            $_POST['newsletter_text'] ?? '',
-            $_POST['total_featured_product_home'] ?? 0,
-            $_POST['total_latest_product_home'] ?? 0,
-            $_POST['total_popular_product_home'] ?? 0,
-            $_POST['home_welcome_on_off'] ?? 0,
-            $_POST['home_featured_product_on_off'] ?? 0,
-            $_POST['home_latest_product_on_off'] ?? 0,
-            $_POST['home_popular_product_on_off'] ?? 0,
-            $_POST['home_service_on_off'] ?? 0,
-            $_POST['home_blog_on_off'] ?? 0,
-            $_POST['home_map_on_off'] ?? 0,
-            $_POST['home_newsletter_on_off'] ?? 0,
-            $_POST['home_brand_on_off'] ?? 0,
-            $_POST['home_testimonial_on_off'] ?? 0,
-            $_POST['home_slider_on_off'] ?? 1,
-            $_POST['home_features_on_off'] ?? 1,
-            $_POST['home_category_on_off'] ?? 1,
-              $_POST['multi_vendor_on_off'] ?? 0,
-        $_POST['coin_payment_on_off'] ?? 0,
-        $_POST['desktop_advanced_layout_on_off'] ?? 0,
-            // New Values
-            $_POST['bg_color_categories'] ?? '#ffffff',
-            $_POST['bg_color_latest_products'] ?? '#ffffff',
-            $_POST['bg_color_featured_products'] ?? '#ffffff',
-            $_POST['show_scroll_top_btn'] ?? 0,
-            $slider_side_banner_img,
-            $_POST['slider_side_banner_text'] ?? '',
-            $_POST['extra_footer_section_enable'] ?? 0,
-            ($_POST['flash_sale_end_time'] ?? '') ?: null,
-
-            // Ordering
-            $_POST['home_slider_order'] ?? 1,
-            $_POST['home_features_order'] ?? 2,
-            $_POST['home_category_order'] ?? 3,
-            $_POST['home_flash_order'] ?? 4,
-            $_POST['home_featured_product_order'] ?? 5,
-            $_POST['home_latest_product_order'] ?? 6,
-            $_POST['home_popular_product_order'] ?? 7
-        ));
-        $success_message = 'Home Page Features updated successfully.';
+    // Supabase Upload for Promo Banner 1
+    if (!empty($_FILES['promo1_image_file']['tmp_name']) && is_uploaded_file($_FILES['promo1_image_file']['tmp_name'])) {
+        $ext = strtolower(pathinfo($_FILES['promo1_image_file']['name'], PATHINFO_EXTENSION));
+        $newPromo1Url = uploadFileToSupabase($_FILES['promo1_image_file']['tmp_name'], 'promo1_' . time() . '.' . $ext);
+        if ($newPromo1Url) {
+            $promo1_image = $newPromo1Url;
+        }
+    } elseif (!empty($_POST['promo_banner1_image_url'])) {
+        $promo1_image = trim($_POST['promo_banner1_image_url']);
     }
+
+    // Supabase Upload for Promo Banner 2
+    if (!empty($_FILES['promo2_image_file']['tmp_name']) && is_uploaded_file($_FILES['promo2_image_file']['tmp_name'])) {
+        $ext = strtolower(pathinfo($_FILES['promo2_image_file']['name'], PATHINFO_EXTENSION));
+        $newPromo2Url = uploadFileToSupabase($_FILES['promo2_image_file']['tmp_name'], 'promo2_' . time() . '.' . $ext);
+        if ($newPromo2Url) {
+            $promo2_image = $newPromo2Url;
+        }
+    } elseif (!empty($_POST['promo_banner2_image_url'])) {
+        $promo2_image = trim($_POST['promo_banner2_image_url']);
+    }
+
+    // Update tbl_settings in Supabase
+    $updateStmt = $pdo->prepare("UPDATE tbl_settings SET 
+        home_slider_on_off = ?, hero_slider_autoplay = ?, hero_slider_interval = ?,
+        hero_tag = ?, hero_title = ?, hero_subtitle = ?, hero_btn_text = ?, hero_btn_url = ?, 
+        hero_btn2_text = ?, hero_btn2_url = ?, hero_badge1_text = ?, hero_badge2_text = ?,
+        home_category_on_off = ?, categories_title = ?, categories_subtitle = ?,
+        home_welcome_on_off = ?,
+        promo_banner1_tag = ?, promo_banner1_title = ?, promo_banner1_subtitle = ?, promo_banner1_btn_text = ?, promo_banner1_btn_url = ?, promo_banner1_image = ?,
+        promo_banner2_tag = ?, promo_banner2_title = ?, promo_banner2_subtitle = ?, promo_banner2_btn_text = ?, promo_banner2_btn_url = ?, promo_banner2_image = ?,
+        home_featured_product_on_off = ?, featured_products_title = ?, featured_products_subtitle = ?, total_featured_product_home = ?,
+        home_service_on_off = ?,
+        trust_item1_title = ?, trust_item1_desc = ?,
+        trust_item2_title = ?, trust_item2_desc = ?,
+        trust_item3_title = ?, trust_item3_desc = ?,
+        trust_item4_title = ?, trust_item4_desc = ?
+        WHERE id = 1");
+
+    $updateStmt->execute([
+        $home_slider_on_off, $hero_slider_autoplay, $hero_slider_interval,
+        $hero_tag, $hero_title, $hero_subtitle, $hero_btn_text, $hero_btn_url,
+        $hero_btn2_text, $hero_btn2_url, $hero_badge1_text, $hero_badge2_text,
+        $home_category_on_off, $categories_title, $categories_subtitle,
+        $home_welcome_on_off,
+        $promo1_tag, $promo1_title, $promo1_subtitle, $promo1_btn_text, $promo1_btn_url, $promo1_image,
+        $promo2_tag, $promo2_title, $promo2_subtitle, $promo2_btn_text, $promo2_btn_url, $promo2_image,
+        $home_featured_product_on_off, $featured_products_title, $featured_products_subtitle, $total_featured_product_home,
+        $home_service_on_off,
+        $trust1_title, $trust1_desc,
+        $trust2_title, $trust2_desc,
+        $trust3_title, $trust3_desc,
+        $trust4_title, $trust4_desc
+    ]);
+
+    // Process Existing Slide Orders & Active Status
+    if (!empty($_POST['slide_order']) && is_array($_POST['slide_order'])) {
+        foreach ($_POST['slide_order'] as $slideId => $orderVal) {
+            $slideId  = (int)$slideId;
+            $orderVal = (int)$orderVal;
+            $isActive = isset($_POST['slide_active'][$slideId]) ? 1 : 0;
+            $pdo->prepare("UPDATE tbl_slider SET slide_order = ?, is_active = ? WHERE id = ?")->execute([$orderVal, $isActive, $slideId]);
+        }
+    }
+
+    // Process MULTIPLE Image Uploads for Hero Slider to Supabase Bucket
+    $uploadedCount = 0;
+    if (!empty($_FILES['hero_slider_photos']['name']) && is_array($_FILES['hero_slider_photos']['name'])) {
+        $maxOrder = (int)$pdo->query("SELECT COALESCE(MAX(slide_order), 0) FROM tbl_slider")->fetchColumn();
+        foreach ($_FILES['hero_slider_photos']['name'] as $idx => $fileName) {
+            if (!empty($fileName) && !empty($_FILES['hero_slider_photos']['tmp_name'][$idx])) {
+                $tmpName = $_FILES['hero_slider_photos']['tmp_name'][$idx];
+                $error   = $_FILES['hero_slider_photos']['error'][$idx];
+                if ($error === UPLOAD_ERR_OK && is_uploaded_file($tmpName)) {
+                    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+                    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'])) {
+                        $uniqueRemoteName = 'hero_slide_' . time() . '_' . ($idx + 1) . '_' . bin2hex(random_bytes(3)) . '.' . $ext;
+                        $cloudUrl = uploadFileToSupabase($tmpName, $uniqueRemoteName, 'assets');
+                        if ($cloudUrl) {
+                            $maxOrder++;
+                            $insertStmt = $pdo->prepare("INSERT INTO tbl_slider (photo, heading, content, button_text, button_url, position, slide_order, is_active) VALUES (?, '', '', '', '', 'Center', ?, 1)");
+                            $insertStmt->execute([$cloudUrl, $maxOrder]);
+                            $uploadedCount++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Invalidate settings cache
+    @unlink(__DIR__ . '/inc/cache_settings.json');
+    
+    // Refresh settings data & slides for this page render
+    $settings_data = $pdo->query("SELECT * FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    $slides = $pdo->query("SELECT * FROM tbl_slider ORDER BY slide_order ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    
+    $msgParts = ['Homepage features and customizations updated successfully!'];
+    if ($uploadedCount > 0) {
+        $msgParts[] = "{$uploadedCount} new hero slide(s) uploaded directly to Supabase Storage.";
+    }
+    $success_message = implode(' ', $msgParts);
 }
 // Payment Gateways Form
 if(isset($_POST['form_payment_gateways'])) {
@@ -561,14 +631,35 @@ if(isset($_POST['form_banner_settings'])) {
     $update_query_values = [];
 
     foreach ($banner_fields as $field) {
-        $new_banner_name = handle_file_upload($field, $settings_data[$field] ?? '', '../assets/uploads/', $field . '-');
-        if ($new_banner_name === false) {
-            $valid = 0;
-            break; // Stop if any upload fails
+        $updated_val = null;
+        if (!empty($_FILES[$field]['tmp_name']) && is_uploaded_file($_FILES[$field]['tmp_name'])) {
+            $ext = strtolower(pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION));
+            $allowed_exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+            if (in_array($ext, $allowed_exts)) {
+                $cloud_url = uploadFileToSupabase($_FILES[$field]['tmp_name'], $field . '_' . time() . '.' . $ext, 'assets');
+                if ($cloud_url) {
+                    $updated_val = $cloud_url;
+                } else {
+                    $valid = 0;
+                    $error_message = 'Failed to upload ' . $field . ' to Supabase Storage.';
+                    break;
+                }
+            } else {
+                $valid = 0;
+                $error_message = 'Invalid file format for ' . $field . '. Supported formats: JPG, JPEG, PNG, WEBP, GIF, SVG.';
+                break;
+            }
+        } elseif (isset($_POST[$field . '_url']) && trim($_POST[$field . '_url']) !== '') {
+            $url_val = trim($_POST[$field . '_url']);
+            if ($url_val !== ($settings_data[$field] ?? '')) {
+                $updated_val = $url_val;
+            }
         }
-        if ($new_banner_name !== ($settings_data[$field] ?? '')) { // Only update if file was changed/uploaded
+
+        if ($updated_val !== null) {
             $update_query_parts[] = '"' . $field . '" = ?';
-            $update_query_values[] = $new_banner_name;
+            $update_query_values[] = $updated_val;
+            $settings_data[$field] = $updated_val;
         }
     }
 
@@ -576,9 +667,9 @@ if(isset($_POST['form_banner_settings'])) {
         if (!empty($update_query_parts)) {
             $statement = $pdo->prepare("UPDATE tbl_settings SET " . implode(', ', $update_query_parts) . " WHERE id=1");
             $statement->execute($update_query_values);
-            $success_message = 'Banner Settings are updated successfully.';
+            $success_message = 'Banner Settings updated successfully in Supabase Storage and Database.';
         } else {
-            $error_message = 'No new banner files selected for upload.';
+            $error_message = 'No changes or new banner files selected.';
         }
     }
 }
@@ -1210,334 +1301,392 @@ $hide_free_delivery_mobile = $settings_data['hide_free_delivery_mobile'] ?? 0;
                         </div>
 
                       <div class="tab-pane" id="tab_home_features">
-                            <form class="form-horizontal" action="" method="post" enctype="multipart/form-data">
-                            <div class="box box-info">
-                                <div class="box-body">
+                            <form action="" method="post" enctype="multipart/form-data">
+                                <div style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border:1px solid #bfdbfe; padding:14px 20px; border-radius:10px; margin-bottom:25px;">
+                                    <div>
+                                        <h4 style="margin:0 0 4px 0; color:#1e40af; font-weight:700;"><i class="fa fa-sliders"></i> Modern Homepage Customizer & Hero Slider</h4>
+                                        <p style="margin:0; font-size:13px; color:#3b82f6;">All image uploads are streamed directly to Supabase Storage (<code>storefront/assets/</code>). Changes reflect immediately on your storefront.</p>
+                                    </div>
+                                    <div>
+                                        <a href="homepage-banners.php" class="btn btn-primary" style="border-radius:20px; font-weight:700; padding:6px 18px;">
+                                            <i class="fa fa-arrows-alt"></i> Full Screen Mode
+                                        </a>
+                                    </div>
+                                </div>
 
-                                    <h3 class="seo-info" style="color:#3c8dbc; margin-bottom: 20px;">1. Homepage Layout Manager</h3>
-                                    <p style="margin-bottom: 25px; color:#666;">Control which sections appear and rearrange their order (1 = Top, 10 = Bottom).</p>
+                                <!-- 1. HERO SLIDER & AUTO-SLIDING MULTIPLE IMAGE UPLOAD -->
+                                <div class="box box-primary" style="border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:25px;">
+                                    <div class="box-header with-border" style="background:#f8fafc; padding:15px 20px;">
+                                        <h3 class="box-title" style="font-weight:700; color:#1e293b;"><i class="fa fa-picture-o text-primary"></i> 1. Hero Auto-Sliding Gallery & Multi-Upload</h3>
+                                        <span class="pull-right badge bg-green" style="font-size:11px; padding:5px 10px; border-radius:12px;"><i class="fa fa-cloud-upload"></i> Supabase Storage CDN</span>
+                                    </div>
+                                    <div class="box-body" style="padding:20px;">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Hero Section Display</label>
+                                                    <select name="home_slider_on_off" class="form-control">
+                                                        <option value="1" <?php if(($settings_data['home_slider_on_off'] ?? 1) == 1) echo 'selected'; ?>>Show Hero Section</option>
+                                                        <option value="0" <?php if(($settings_data['home_slider_on_off'] ?? 1) == 0) echo 'selected'; ?>>Hide Hero Section</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Automatic Sliding (Autoplay)</label>
+                                                    <select name="hero_slider_autoplay" class="form-control">
+                                                        <option value="1" <?php if(($settings_data['hero_slider_autoplay'] ?? 1) == 1) echo 'selected'; ?>>Enabled (Auto-slides automatically)</option>
+                                                        <option value="0" <?php if(($settings_data['hero_slider_autoplay'] ?? 1) == 0) echo 'selected'; ?>>Disabled (Manual slide only)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="form-group">
+                                                    <label>Slide Duration / Interval (Milliseconds)</label>
+                                                    <div class="input-group">
+                                                        <input type="number" name="hero_slider_interval" class="form-control" value="<?php echo htmlspecialchars($settings_data['hero_slider_interval'] ?? 4500); ?>" min="1000" step="500">
+                                                        <span class="input-group-addon">ms</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                    <div class="form-group" style="background:#f9f9f9; padding:15px 0; border:1px solid #eee;">
-                                        <label class="col-sm-3 control-label">Home Slider</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_slider_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_slider_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_slider_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_slider_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_slider_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 1)</p></div>
-                                    </div>
+                                        <hr style="margin:15px 0;">
 
-                                    <div class="form-group" style="padding:15px 0;">
-                                        <label class="col-sm-3 control-label">Feature Icons</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_features_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_features_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_features_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
+                                        <div class="form-group">
+                                            <label style="font-size:15px; color:#1e293b;"><i class="fa fa-plus-circle text-success"></i> Add Multiple Slide Images for Home Hero:</label>
+                                            <div style="border: 2px dashed #93c5fd; background:#eff6ff; border-radius:12px; padding:20px; text-align:center;">
+                                                <i class="fa fa-cloud-upload" style="font-size:32px; color:#3b82f6; margin-bottom:8px;"></i>
+                                                <p style="font-weight:600; margin-bottom:4px; color:#1e293b;">Select one or multiple images to upload directly to Supabase</p>
+                                                <p style="font-size:12px; color:#64748b; margin-bottom:12px;">Supported formats: JPG, PNG, WEBP, GIF. Images will automatically slide on the storefront.</p>
+                                                <input type="file" name="hero_slider_photos[]" multiple accept="image/*" class="form-control" style="max-width:380px; margin:0 auto; background:#fff;">
+                                            </div>
                                         </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_features_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_features_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 2)</p></div>
-                                    </div>
 
-                                    <div class="form-group" style="background:#f9f9f9; padding:15px 0; border:1px solid #eee;">
-                                        <label class="col-sm-3 control-label">Browse Categories</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_category_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_category_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_category_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_category_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_category_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 3)</p></div>
-                                    </div>
+                                        <h4 style="font-size:15px; font-weight:700; color:#1e293b; margin-top:25px; margin-bottom:15px;">
+                                            <i class="fa fa-list"></i> Current Slides in Hero Carousel (<?php echo count($slides); ?> active):
+                                        </h4>
 
-                                    <div class="form-group" style="padding:15px 0;">
-                                        <label class="col-sm-3 control-label">Flash Sale Section</label>
-                                        <div class="col-sm-3">
-                                             <input type="text" class="form-control" value="Auto-Hides if Empty" disabled style="background:#fff;">
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_flash_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_flash_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 4)</p></div>
+                                        <?php if (empty($slides)): ?>
+                                            <div class="alert alert-info">No slides uploaded yet. Upload images above to enable sliding!</div>
+                                        <?php else: ?>
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered table-striped" style="background:#fff;">
+                                                    <thead>
+                                                        <tr style="background:#f1f5f9;">
+                                                            <th style="width: 60px; text-align:center;">Order</th>
+                                                            <th style="width: 120px; text-align:center;">Preview</th>
+                                                            <th>Cloud Storage CDN URL</th>
+                                                            <th style="width: 90px; text-align:center;">Active</th>
+                                                            <th style="width: 90px; text-align:center;">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($slides as $idx => $slide): 
+                                                            $photoUrl = $slide['photo'];
+                                                            if (!str_starts_with($photoUrl, 'http')) {
+                                                                $photoUrl = '../assets/uploads/' . $photoUrl;
+                                                            }
+                                                        ?>
+                                                            <tr>
+                                                                <td style="vertical-align: middle; text-align:center;">
+                                                                    <input type="number" name="slide_order[<?php echo $slide['id']; ?>]" value="<?php echo (int)($slide['slide_order'] ?? ($idx+1)); ?>" class="form-control text-center" style="width:65px; margin:0 auto;">
+                                                                </td>
+                                                                <td style="vertical-align: middle; text-align:center;">
+                                                                    <a href="<?php echo htmlspecialchars($photoUrl); ?>" target="_blank">
+                                                                        <img src="<?php echo htmlspecialchars($photoUrl); ?>" style="width:85px; height:55px; object-fit:cover; border-radius:6px; border:1px solid #cbd5e1;">
+                                                                    </a>
+                                                                </td>
+                                                                <td style="vertical-align: middle;">
+                                                                    <div style="font-size:12px; font-family:monospace; color:#3b82f6; word-break:break-all;">
+                                                                        <?php echo htmlspecialchars($photoUrl); ?>
+                                                                    </div>
+                                                                    <small class="text-muted">Slide ID: #<?php echo $slide['id']; ?></small>
+                                                                </td>
+                                                                <td style="vertical-align: middle; text-align:center;">
+                                                                    <label style="margin:0; cursor:pointer;">
+                                                                        <input type="checkbox" name="slide_active[<?php echo $slide['id']; ?>]" value="1" <?php if(($slide['is_active'] ?? 1) == 1) echo 'checked'; ?>>
+                                                                        <span class="text-success" style="font-size:12px;">Active</span>
+                                                                    </label>
+                                                                </td>
+                                                                <td style="vertical-align: middle; text-align:center;">
+                                                                    <a href="settings.php?action=delete_slide&slide_id=<?php echo $slide['id']; ?>" class="btn btn-danger btn-xs" onclick="return confirm('Delete this slide from hero carousel?');">
+                                                                        <i class="fa fa-trash"></i> Delete
+                                                                    </a>
+                                                                </td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
+                                </div>
 
-                                    <div class="form-group" style="padding:15px 0;">
-                                        <label class="col-sm-3 control-label">Flash Sale End Time</label>
-                                        <div class="col-sm-6">
-                                            <input type="datetime-local" name="flash_sale_end_time" class="form-control" value="<?php echo htmlspecialchars($flash_sale_end_time); ?>">
-                                            <p style="padding-top:7px; color:#888;">Set the end time for the current flash sale (server time).</p>
-                                        </div>
+                                <!-- 2. HERO HEADINGS, BUTTONS & BADGES -->
+                                <div class="box box-warning" style="border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:25px;">
+                                    <div class="box-header with-border" style="background:#f8fafc; padding:15px 20px;">
+                                        <h3 class="box-title" style="font-weight:700; color:#1e293b;"><i class="fa fa-font text-yellow"></i> 2. Hero Headings, Buttons & Floating Badges</h3>
                                     </div>
-
-                                    <div class="form-group" style="background:#f9f9f9; padding:15px 0; border:1px solid #eee;">
-                                        <label class="col-sm-3 control-label">Featured Products</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_featured_product_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_featured_product_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_featured_product_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_featured_product_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_featured_product_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 5)</p></div>
-                                    </div>
-
-                                    <div class="form-group" style="padding:15px 0;">
-                                        <label class="col-sm-3 control-label">Latest Products</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_latest_product_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_latest_product_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_latest_product_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_latest_product_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_latest_product_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 6)</p></div>
-                                    </div>
-
-                                    <div class="form-group" style="background:#f9f9f9; padding:15px 0; border:1px solid #eee;">
-                                        <label class="col-sm-3 control-label">Popular Products</label>
-                                        <div class="col-sm-3">
-                                            <select name="home_popular_product_on_off" class="form-control">
-                                                <option value="1" <?php if($settings_data['home_popular_product_on_off'] == 1) {echo 'selected';} ?>>Show</option>
-                                                <option value="0" <?php if($settings_data['home_popular_product_on_off'] == 0) {echo 'selected';} ?>>Hide</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-sm-2">
-                                            <input type="number" name="home_popular_product_order" class="form-control" placeholder="Order #" value="<?php echo $settings_data['home_popular_product_order']; ?>">
-                                        </div>
-                                        <div class="col-sm-4"><p style="padding-top:7px; color:#888;">(Default Order: 7)</p></div>
-                                    </div>
-
-
-                                    <hr style="border-top: 2px solid #ccc; margin-top:40px; margin-bottom:40px;">
-                                    <h3 class="seo-info" style="color:#3c8dbc; margin-bottom: 20px;">2. Section Content & Titles</h3>
-
-                                    <h4 style="margin-top:30px; border-bottom:1px solid #ddd; padding-bottom:10px;">Call To Action (Welcome) Area</h4>
-                                    <div class="form-group">
-                                        <label for="cta_title" class="col-sm-3 control-label">Title</label>
-                                        <div class="col-sm-9">
-                                            <input type="text" name="cta_title" class="form-control" value="<?php echo htmlspecialchars($cta_title); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="cta_content" class="col-sm-3 control-label">Content</label>
-                                        <div class="col-sm-9">
-                                            <textarea name="cta_content" class="form-control" rows="5"><?php echo htmlspecialchars($cta_content); ?></textarea>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="cta_read_more_text" class="col-sm-3 control-label">Button Text</label>
-                                        <div class="col-sm-9">
-                                            <input type="text" name="cta_read_more_text" class="form-control" value="<?php echo htmlspecialchars($cta_read_more_text); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="cta_read_more_url" class="col-sm-3 control-label">Button URL</label>
-                                        <div class="col-sm-9">
-                                            <input type="text" name="cta_read_more_url" class="form-control" value="<?php echo htmlspecialchars($cta_read_more_url); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="cta_photo" class="col-sm-3 control-label">Background Photo</label>
-                                        <div class="col-sm-9">
-                                            <?php if (!empty($cta_photo)): ?>
-                                                <img src="../assets/uploads/<?php echo $cta_photo; ?>" style="width:150px; margin-bottom:10px;"><br>
-                                            <?php endif; ?>
-                                            <input type="file" name="cta_photo">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Show Welcome Section?</label>
-                                        <div class="col-sm-9">
-                                            <select name="home_welcome_on_off" class="form-control w-auto">
-                                                <option value="1" <?php if($home_welcome_on_off == 1) {echo 'selected';} ?>>On</option>
-                                                <option value="0" <?php if($home_welcome_on_off == 0) {echo 'selected';} ?>>Off</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-
-                                    <h4 style="margin-top:30px; border-bottom:1px solid #ddd; padding-bottom:10px;">Product Section Headers</h4>
-                                    
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Featured Title</label>
-                                        <div class="col-sm-9"><input type="text" name="featured_product_title" class="form-control" value="<?php echo htmlspecialchars($featured_product_title); ?>"></div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Featured Subtitle</label>
-                                        <div class="col-sm-9"><input type="text" name="featured_product_subtitle" class="form-control" value="<?php echo htmlspecialchars($featured_product_subtitle); ?>"></div>
-                                    </div>
-
-                                    <div class="form-group" style="margin-top:15px;">
-                                        <label class="col-sm-3 control-label">Latest Title</label>
-                                        <div class="col-sm-9"><input type="text" name="latest_product_title" class="form-control" value="<?php echo htmlspecialchars($latest_product_title); ?>"></div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Latest Subtitle</label>
-                                        <div class="col-sm-9"><input type="text" name="latest_product_subtitle" class="form-control" value="<?php echo htmlspecialchars($latest_product_subtitle); ?>"></div>
-                                    </div>
-
-                                    <div class="form-group" style="margin-top:15px;">
-                                        <label class="col-sm-3 control-label">Popular Title</label>
-                                        <div class="col-sm-9"><input type="text" name="popular_product_title" class="form-control" value="<?php echo htmlspecialchars($popular_product_title); ?>"></div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Popular Subtitle</label>
-                                        <div class="col-sm-9"><input type="text" name="popular_product_subtitle" class="form-control" value="<?php echo htmlspecialchars($popular_product_subtitle); ?>"></div>
-                                    </div>
-
-
-                                    <h4 style="margin-top:30px; border-bottom:1px solid #ddd; padding-bottom:10px;">Other Sections Visibility</h4>
-                                    
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Testimonial Section</label>
-                                        <div class="col-sm-9">
-                                            <select name="home_testimonial_on_off" class="form-control w-auto">
-                                                <option value="1" <?php if($home_testimonial_on_off == 1) {echo 'selected';} ?>>On</option>
-                                                <option value="0" <?php if($home_testimonial_on_off == 0) {echo 'selected';} ?>>Off</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Blog Section</label>
-                                        <div class="col-sm-9">
-                                            <select name="home_blog_on_off" class="form-control w-auto">
-                                                <option value="1" <?php if($home_blog_on_off == 1) {echo 'selected';} ?>>On</option>
-                                                <option value="0" <?php if($home_blog_on_off == 0) {echo 'selected';} ?>>Off</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Newsletter Section</label>
-                                        <div class="col-sm-9">
-                                            <select name="home_newsletter_on_off" class="form-control w-auto">
-                                                <option value="1" <?php if($home_newsletter_on_off == 1) {echo 'selected';} ?>>On</option>
-                                                <option value="0" <?php if($home_newsletter_on_off == 0) {echo 'selected';} ?>>Off</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Brands Section</label>
-                                        <div class="col-sm-9">
-                                            <select name="home_brand_on_off" class="form-control w-auto">
-                                                <option value="1" <?php if($home_brand_on_off == 1) {echo 'selected';} ?>>On</option>
-                                                <option value="0" <?php if($home_brand_on_off == 0) {echo 'selected';} ?>>Off</option>
-                                            </select>
-                                        </div>
-                                    </div>
-<hr>
-<h3 class="seo-info" style="color:#3c8dbc;">3. New UI & Effect Settings</h3>
-
-<div class="form-group">
-    <label class="col-sm-3 control-label">Category Section Background</label>
-    <div class="col-sm-3">
-        <input type="color" name="bg_color_categories" class="form-control" value="<?php echo $settings_data['bg_color_categories'] ?? '#ffffff'; ?>">
-    </div>
-</div>
-
-<div class="form-group">
-    <label class="col-sm-3 control-label">Latest Products Background</label>
-    <div class="col-sm-3">
-        <input type="color" name="bg_color_latest_products" class="form-control" value="<?php echo $settings_data['bg_color_latest_products'] ?? '#ffffff'; ?>">
-    </div>
-</div>
-
-<div class="form-group">
-    <label class="col-sm-3 control-label">Featured Products Background</label>
-    <div class="col-sm-3">
-        <input type="color" name="bg_color_featured_products" class="form-control" value="<?php echo htmlspecialchars($settings_data['bg_color_featured_products'] ?? '#ffffff'); ?>">
-    </div>
-</div>
-
-<div class="form-group">
-    <label class="col-sm-3 control-label">Scroll To Top Button</label>
-    <div class="col-sm-3">
-        <select name="show_scroll_top_btn" class="form-control">
-            <option value="1" <?php if(($settings_data['show_scroll_top_btn']??0) == 1) echo 'selected'; ?>>Enable</option>
-            <option value="0" <?php if(($settings_data['show_scroll_top_btn']??0) == 0) echo 'selected'; ?>>Disable</option>
-        </select>
-    </div>
-</div>
-
-<div class="form-group">
-    <label class="col-sm-3 control-label">Extra Footer Links (Desktop)</label>
-    <div class="col-sm-3">
-        <select name="extra_footer_section_enable" class="form-control">
-            <option value="1" <?php if(($settings_data['extra_footer_section_enable']??0) == 1) echo 'selected'; ?>>Enable</option>
-            <option value="0" <?php if(($settings_data['extra_footer_section_enable']??0) == 0) echo 'selected'; ?>>Disable</option>
-        </select>
-    </div>
-</div>
-
-<hr>
-<h3 class="seo-info" style="color:#3c8dbc;">4. Slider Side Banner</h3>
-<div class="form-group">
-    <label class="col-sm-3 control-label">Side Banner Image</label>
-    <div class="col-sm-9">
-        <?php if(!empty($settings_data['slider_side_banner_img'])): ?>
-            <img src="../assets/uploads/<?php echo $settings_data['slider_side_banner_img']; ?>" style="width:150px;"><br>
-        <?php endif; ?>
-        <input type="file" name="slider_side_banner_img">
-    </div>
-</div>
-<div class="form-group">
-    <label class="col-sm-3 control-label">Side Banner Text (HTML)</label>
-    <div class="col-sm-9">
-        <textarea name="slider_side_banner_text" class="form-control" rows="3"><?php echo htmlspecialchars($settings_data['slider_side_banner_text'] ?? ''); ?></textarea>
-    </div>
-</div>
-
-                         <div class="form-group">
-                                        <label class="col-sm-3 control-label">Multi-Vendor System</label>
-                                        <div class="col-sm-4">
-                                            <select name="multi_vendor_on_off" class="form-control">
-                                                <option value="1" <?php if($multi_vendor_on_off == 1) echo 'selected'; ?>>On (Enable Shop & Merchant Buttons)</option>
-                                                <option value="0" <?php if($multi_vendor_on_off == 0) echo 'selected'; ?>>Off (Disable Merchant Features)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                         <input type="hidden" name="multi_vendor_on_off" value="0">
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Coin Payment System</label>
-                                        <div class="col-sm-4">
-                                            <select name="coin_payment_on_off" class="form-control">
-                                                <option value="1" <?php if($coin_payment_on_off == 1) echo 'selected'; ?>>On (Show Coin Payment Button)</option>
-                                                <option value="0" <?php if($coin_payment_on_off == 0) echo 'selected'; ?>>Off (Hide Coin Payment)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label">Desktop Advanced Layout</label>
-                                        <div class="col-sm-4">
-                                            <select name="desktop_advanced_layout_on_off" class="form-control">
-                                                <option value="1" <?php if($desktop_advanced_layout_on_off == 1) echo 'selected'; ?>>On (Decorative Sticky Grid)</option>
-                                                <option value="0" <?php if($desktop_advanced_layout_on_off == 0) echo 'selected'; ?>>Off (Standard Layout)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="col-sm-3 control-label"></label>
-                                        <div class="col-sm-6">
-                                            <button type="submit" class="btn btn-success" name="form_feature_settings">Update Features</button>
+                                    <div class="box-body" style="padding:20px;">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label>Eyebrow Tagline / Badge</label>
+                                                    <input type="text" name="hero_tag" class="form-control" value="<?php echo htmlspecialchars($settings_data['hero_tag'] ?? 'BETTER PRODUCTS • BETTER LIFE'); ?>">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Main Headline / Hero Title</label>
+                                                    <input type="text" name="hero_title" class="form-control input-lg" value="<?php echo htmlspecialchars($settings_data['hero_title'] ?? 'Upgrade Your Everyday Life'); ?>" required>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label>Hero Subtitle / Description</label>
+                                                    <textarea name="hero_subtitle" class="form-control" rows="3"><?php echo htmlspecialchars($settings_data['hero_subtitle'] ?? 'Discover top-quality products, unbeatable prices, and a seamless shopping experience.'); ?></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="panel panel-default" style="background:#f8fafc; border-radius:8px; padding:12px; margin-bottom:12px;">
+                                                    <h5 style="margin-top:0; font-weight:700;"><i class="fa fa-mouse-pointer text-primary"></i> Primary CTA Button</h5>
+                                                    <div class="row">
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_btn_text" class="form-control" placeholder="Label" value="<?php echo htmlspecialchars($settings_data['hero_btn_text'] ?? 'Shop Now'); ?>">
+                                                        </div>
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_btn_url" class="form-control" placeholder="URL" value="<?php echo htmlspecialchars($settings_data['hero_btn_url'] ?? 'product-category.php?id=1&type=top-category'); ?>">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="panel panel-default" style="background:#f8fafc; border-radius:8px; padding:12px; margin-bottom:12px;">
+                                                    <h5 style="margin-top:0; font-weight:700;"><i class="fa fa-external-link text-info"></i> Secondary CTA Button</h5>
+                                                    <div class="row">
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_btn2_text" class="form-control" placeholder="Label" value="<?php echo htmlspecialchars($settings_data['hero_btn2_text'] ?? 'Explore All'); ?>">
+                                                        </div>
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_btn2_url" class="form-control" placeholder="URL" value="<?php echo htmlspecialchars($settings_data['hero_btn2_url'] ?? 'product-category.php?id=1&type=top-category'); ?>">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="panel panel-default" style="background:#f8fafc; border-radius:8px; padding:12px;">
+                                                    <h5 style="margin-top:0; font-weight:700;"><i class="fa fa-certificate text-warning"></i> Floating Badges</h5>
+                                                    <div class="row">
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_badge1_text" class="form-control" placeholder="Badge 1" value="<?php echo htmlspecialchars($settings_data['hero_badge1_text'] ?? 'Top Brands • Best Deals'); ?>">
+                                                        </div>
+                                                        <div class="col-xs-6">
+                                                            <input type="text" name="hero_badge2_text" class="form-control" placeholder="Badge 2" value="<?php echo htmlspecialchars($settings_data['hero_badge2_text'] ?? '⭐ 4.9/5 Rating (12k+ Reviews)'); ?>">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </form>
-                    </div>
+
+                                <!-- 3. CATEGORIES & FEATURED PRODUCTS -->
+                                <div class="box box-success" style="border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:25px;">
+                                    <div class="box-header with-border" style="background:#f8fafc; padding:15px 20px;">
+                                        <h3 class="box-title" style="font-weight:700; color:#1e293b;"><i class="fa fa-th text-green"></i> 3. Category & Product Sections Controllability</h3>
+                                    </div>
+                                    <div class="box-body" style="padding:20px;">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="panel panel-default" style="border-radius:8px; padding:14px;">
+                                                    <h4 style="margin-top:0; font-weight:700; color:#0f766e;"><i class="fa fa-folder-open"></i> Shop by Category Section</h4>
+                                                    <div class="form-group">
+                                                        <label>Section Visibility</label>
+                                                        <select name="home_category_on_off" class="form-control">
+                                                            <option value="1" <?php if(($settings_data['home_category_on_off'] ?? 1) == 1) echo 'selected'; ?>>Show Category Section</option>
+                                                            <option value="0" <?php if(($settings_data['home_category_on_off'] ?? 1) == 0) echo 'selected'; ?>>Hide Category Section</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Title</label>
+                                                        <input type="text" name="categories_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['categories_title'] ?? 'Shop by Category'); ?>">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Subtitle</label>
+                                                        <input type="text" name="categories_subtitle" class="form-control" value="<?php echo htmlspecialchars($settings_data['categories_subtitle'] ?? 'Explore our wide range of popular collections'); ?>">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="panel panel-default" style="border-radius:8px; padding:14px;">
+                                                    <h4 style="margin-top:0; font-weight:700; color:#b45309;"><i class="fa fa-star"></i> Featured Products Section</h4>
+                                                    <div class="row">
+                                                        <div class="col-xs-6">
+                                                            <div class="form-group">
+                                                                <label>Visibility</label>
+                                                                <select name="home_featured_product_on_off" class="form-control">
+                                                                    <option value="1" <?php if(($settings_data['home_featured_product_on_off'] ?? 1) == 1) echo 'selected'; ?>>Show Section</option>
+                                                                    <option value="0" <?php if(($settings_data['home_featured_product_on_off'] ?? 1) == 0) echo 'selected'; ?>>Hide Section</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-xs-6">
+                                                            <div class="form-group">
+                                                                <label>Products Count</label>
+                                                                <input type="number" name="total_featured_product_home" class="form-control" value="<?php echo htmlspecialchars($settings_data['total_featured_product_home'] ?? 8); ?>" min="4" max="24" step="2">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Title</label>
+                                                        <input type="text" name="featured_products_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['featured_products_title'] ?? 'Featured Products'); ?>">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Subtitle</label>
+                                                        <input type="text" name="featured_products_subtitle" class="form-control" value="<?php echo htmlspecialchars($settings_data['featured_products_subtitle'] ?? 'Handpicked best sellers and top rated products'); ?>">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 4. PROMOTIONAL DUAL BANNERS -->
+                                <div class="box box-info" style="border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:25px;">
+                                    <div class="box-header with-border" style="background:#f8fafc; padding:15px 20px;">
+                                        <h3 class="box-title" style="font-weight:700; color:#1e293b;"><i class="fa fa-th-large text-aqua"></i> 4. Promotional Banners (Dual Poster Cards)</h3>
+                                        <label class="pull-right" style="margin:0; font-weight:normal;">
+                                            <input type="checkbox" name="home_welcome_on_off" value="1" <?php if(($settings_data['home_welcome_on_off'] ?? 1) == 1) echo 'checked'; ?>> Show Dual Banners
+                                        </label>
+                                    </div>
+                                    <div class="box-body" style="padding:20px;">
+                                        <div class="row">
+                                            <!-- Poster 1: Electronics -->
+                                            <div class="col-md-6">
+                                                <div class="panel panel-default" style="border-radius:8px; border-top: 3px solid #3b82f6;">
+                                                    <div class="panel-heading" style="background:#eff6ff;"><strong>Left Poster: Top Electronics</strong></div>
+                                                    <div class="panel-body">
+                                                        <div class="form-group">
+                                                            <label>Tag / Badge</label>
+                                                            <input type="text" name="promo_banner1_tag" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner1_tag'] ?? 'Up to 50% Off'); ?>">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label>Title</label>
+                                                            <input type="text" name="promo_banner1_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner1_title'] ?? 'Top Electronics'); ?>">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label>Subtitle</label>
+                                                            <input type="text" name="promo_banner1_subtitle" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner1_subtitle'] ?? 'Laptops, Phones, Accessories & More'); ?>">
+                                                        </div>
+                                                        <div class="row">
+                                                            <div class="col-xs-6">
+                                                                <input type="text" name="promo_banner1_btn_text" class="form-control" placeholder="Button Text" value="<?php echo htmlspecialchars($settings_data['promo_banner1_btn_text'] ?? 'Shop Now'); ?>">
+                                                            </div>
+                                                            <div class="col-xs-6">
+                                                                <input type="text" name="promo_banner1_btn_url" class="form-control" placeholder="URL" value="<?php echo htmlspecialchars($settings_data['promo_banner1_btn_url'] ?? 'product-category.php?id=4&type=top-category'); ?>">
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group" style="margin-top:10px;">
+                                                            <label>Upload to Supabase Storage</label>
+                                                            <input type="file" name="promo1_image_file" class="form-control" accept="image/*">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <input type="text" name="promo_banner1_image_url" class="form-control" placeholder="Or Cloud URL" value="<?php echo htmlspecialchars($settings_data['promo_banner1_image'] ?? ''); ?>">
+                                                        </div>
+                                                        <?php if (!empty($settings_data['promo_banner1_image'])): ?>
+                                                            <div style="background:#f8fafc; padding:8px; border-radius:6px; text-align:center;">
+                                                                <img src="<?php echo htmlspecialchars($settings_data['promo_banner1_image']); ?>" style="max-height:90px; max-width:100%; border-radius:4px; object-fit:contain;">
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Poster 2: Fashion -->
+                                            <div class="col-md-6">
+                                                <div class="panel panel-default" style="border-radius:8px; border-top: 3px solid #f59e0b;">
+                                                    <div class="panel-heading" style="background:#fffbeb;"><strong>Right Poster: Fresh Styles</strong></div>
+                                                    <div class="panel-body">
+                                                        <div class="form-group">
+                                                            <label>Tag / Badge</label>
+                                                            <input type="text" name="promo_banner2_tag" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner2_tag'] ?? 'Trending Deals'); ?>">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label>Title</label>
+                                                            <input type="text" name="promo_banner2_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner2_title'] ?? 'Fresh Styles For You'); ?>">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label>Subtitle</label>
+                                                            <input type="text" name="promo_banner2_subtitle" class="form-control" value="<?php echo htmlspecialchars($settings_data['promo_banner2_subtitle'] ?? 'Fashion, Footwear & Accessories'); ?>">
+                                                        </div>
+                                                        <div class="row">
+                                                            <div class="col-xs-6">
+                                                                <input type="text" name="promo_banner2_btn_text" class="form-control" placeholder="Button Text" value="<?php echo htmlspecialchars($settings_data['promo_banner2_btn_text'] ?? 'Shop Now'); ?>">
+                                                            </div>
+                                                            <div class="col-xs-6">
+                                                                <input type="text" name="promo_banner2_btn_url" class="form-control" placeholder="URL" value="<?php echo htmlspecialchars($settings_data['promo_banner2_btn_url'] ?? 'product-category.php?id=1&type=top-category'); ?>">
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group" style="margin-top:10px;">
+                                                            <label>Upload to Supabase Storage</label>
+                                                            <input type="file" name="promo2_image_file" class="form-control" accept="image/*">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <input type="text" name="promo_banner2_image_url" class="form-control" placeholder="Or Cloud URL" value="<?php echo htmlspecialchars($settings_data['promo_banner2_image'] ?? ''); ?>">
+                                                        </div>
+                                                        <?php if (!empty($settings_data['promo_banner2_image'])): ?>
+                                                            <div style="background:#f8fafc; padding:8px; border-radius:6px; text-align:center;">
+                                                                <img src="<?php echo htmlspecialchars($settings_data['promo_banner2_image']); ?>" style="max-height:90px; max-width:100%; border-radius:4px; object-fit:contain;">
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 5. TRUST & GUARANTEES BAR -->
+                                <div class="box box-success" style="border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:25px;">
+                                    <div class="box-header with-border" style="background:#f8fafc; padding:15px 20px;">
+                                        <h3 class="box-title" style="font-weight:700; color:#1e293b;"><i class="fa fa-shield text-green"></i> 5. Trust & Guarantees Value Bar</h3>
+                                        <label class="pull-right" style="margin:0; font-weight:normal;">
+                                            <input type="checkbox" name="home_service_on_off" value="1" <?php if(($settings_data['home_service_on_off'] ?? 1) == 1) echo 'checked'; ?>> Show Trust Bar
+                                        </label>
+                                    </div>
+                                    <div class="box-body" style="padding:20px;">
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <div class="form-group">
+                                                    <label><i class="fa fa-truck text-primary"></i> Item 1</label>
+                                                    <input type="text" name="trust_item1_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['trust_item1_title'] ?? 'Free Shipping'); ?>" placeholder="Title">
+                                                    <input type="text" name="trust_item1_desc" class="form-control" style="margin-top:5px;" value="<?php echo htmlspecialchars($settings_data['trust_item1_desc'] ?? 'On orders over ৳ 2,000'); ?>" placeholder="Subtitle">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-group">
+                                                    <label><i class="fa fa-lock text-success"></i> Item 2</label>
+                                                    <input type="text" name="trust_item2_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['trust_item2_title'] ?? 'Secure Payment'); ?>" placeholder="Title">
+                                                    <input type="text" name="trust_item2_desc" class="form-control" style="margin-top:5px;" value="<?php echo htmlspecialchars($settings_data['trust_item2_desc'] ?? '100% secure payment'); ?>" placeholder="Subtitle">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-group">
+                                                    <label><i class="fa fa-refresh text-warning"></i> Item 3</label>
+                                                    <input type="text" name="trust_item3_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['trust_item3_title'] ?? 'Easy Returns'); ?>" placeholder="Title">
+                                                    <input type="text" name="trust_item3_desc" class="form-control" style="margin-top:5px;" value="<?php echo htmlspecialchars($settings_data['trust_item3_desc'] ?? '30-day return policy'); ?>" placeholder="Subtitle">
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-group">
+                                                    <label><i class="fa fa-headphones text-info"></i> Item 4</label>
+                                                    <input type="text" name="trust_item4_title" class="form-control" value="<?php echo htmlspecialchars($settings_data['trust_item4_title'] ?? '24/7 Support'); ?>" placeholder="Title">
+                                                    <input type="text" name="trust_item4_desc" class="form-control" style="margin-top:5px;" value="<?php echo htmlspecialchars($settings_data['trust_item4_desc'] ?? "We're here to help"); ?>" placeholder="Subtitle">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="box-footer" style="padding:15px 20px; background:#f8fafc; text-align:right;">
+                                        <button type="submit" name="form_home_features" class="btn btn-primary btn-lg" style="border-radius:25px; padding:8px 32px; font-weight:700;">
+                                            <i class="fa fa-save"></i> Save All Customizations
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
 
                     <!-- TAB: GENERAL SETTINGS -->
                     <div class="tab-pane" id="tab_general">
@@ -1861,14 +2010,53 @@ $hide_free_delivery_mobile = $settings_data['hide_free_delivery_mobile'] ?? 0;
                                     foreach ($banner_fields_map as $field_name => $label): ?>
                                         <div class="form-group">
                                             <label for="<?php echo $field_name; ?>" class="col-sm-3 control-label">Existing <?php echo $label; ?></label>
-                                            <div class="col-sm-9">
-                                                <?php if (!empty($settings_data[$field_name]) && file_exists('../assets/uploads/'.$settings_data[$field_name])): ?>
-                                                    <img src="<?php echo BASE_URL; ?>assets/uploads/<?php echo htmlspecialchars($settings_data[$field_name]); ?>" alt="<?php echo $label; ?>" class="existing-photo"><br>
-                                                <?php else: ?>
-                                                    <p class="text-gray-500">No <?php echo strtolower($label); ?> uploaded.</p>
+                                    foreach ($banner_fields_map as $field_name => $label): 
+                                        $current_banner = $settings_data[$field_name] ?? '';
+                                        $banner_src = '';
+                                        if (!empty($current_banner)) {
+                                            if (strpos($current_banner, 'http://') === 0 || strpos($current_banner, 'https://') === 0) {
+                                                $banner_src = $current_banner;
+                                            } elseif (file_exists('../assets/uploads/' . $current_banner)) {
+                                                $banner_src = BASE_URL . 'assets/uploads/' . htmlspecialchars($current_banner);
+                                            }
+                                        }
+                                    ?>
+                                        <div class="form-group" style="background: #fbfcfe; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+                                            <label for="<?php echo $field_name; ?>" class="col-sm-3 control-label">
+                                                <strong><?php echo $label; ?></strong>
+                                                <?php if ($field_name === 'banner_login' || $field_name === 'banner_registration'): ?>
+                                                    <br><span class="label label-warning" style="display: inline-block; margin-top: 4px; font-size: 11px; padding: 3px 8px; border-radius: 4px;">Auth Side 3D Banner</span>
                                                 <?php endif; ?>
-                                                <input type="file" name="<?php echo $field_name; ?>" id="<?php echo $field_name; ?>" class="form-control-file">
-                                                <p class="help-block">Upload a new banner (JPG, PNG, JPEG, GIF)</p>
+                                            </label>
+                                            <div class="col-sm-9">
+                                                <?php if (!empty($banner_src)): ?>
+                                                    <div style="margin-bottom: 12px;">
+                                                        <img src="<?php echo htmlspecialchars($banner_src); ?>" alt="<?php echo $label; ?>" style="max-height: 120px; max-width: 280px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #cbd5e1; object-fit: contain; background: #ffffff; padding: 4px;">
+                                                        <div style="font-size: 11px; color: #64748b; margin-top: 4px; word-break: break-all;">
+                                                            <i class="fa fa-cloud" style="color: #3b82f6;"></i> <?php echo htmlspecialchars($banner_src); ?>
+                                                        </div>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <p class="text-muted" style="margin-bottom: 8px;"><i class="fa fa-info-circle"></i> No <?php echo strtolower($label); ?> uploaded yet.</p>
+                                                <?php endif; ?>
+
+                                                <div class="row">
+                                                    <div class="col-sm-6" style="margin-bottom: 8px;">
+                                                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; display: block; margin-bottom: 4px;">
+                                                            <i class="fa fa-upload"></i> Upload to Supabase Storage
+                                                        </label>
+                                                        <input type="file" name="<?php echo $field_name; ?>" id="<?php echo $field_name; ?>" class="form-control-file" accept="image/*">
+                                                    </div>
+                                                    <div class="col-sm-6">
+                                                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #475569; display: block; margin-bottom: 4px;">
+                                                            <i class="fa fa-link"></i> Or Direct Supabase CDN URL
+                                                        </label>
+                                                        <input type="text" name="<?php echo $field_name; ?>_url" value="<?php echo htmlspecialchars($current_banner); ?>" class="form-control input-sm" placeholder="https://...supabase.co/storage/v1/object/public/storefront/assets/...">
+                                                    </div>
+                                                </div>
+                                                <p class="help-block" style="font-size: 11px; margin-top: 4px; color: #94a3b8;">
+                                                    Saved to Supabase Storage bucket <code>storefront/assets/</code>
+                                                </p>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>

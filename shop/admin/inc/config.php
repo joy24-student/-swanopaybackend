@@ -112,6 +112,7 @@ try {
     if (!$db['user'] || !$db['database']) throw new RuntimeException('Database credentials missing');
     foreach (['host','port','database','sslmode'] as $part) if (strpbrk((string)$db[$part], ";\r\n") !== false) throw new RuntimeException('Invalid database configuration');
     $dsn = 'pgsql:host=' . $db['host'] . ';port=' . $db['port'] . ';dbname=' . $db['database'] . ';sslmode=' . $db['sslmode'];
+    $pdo = new PDO($dsn,$db['user'],$db['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo = new PDO($dsn,$db['user'],$db['password'],[
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

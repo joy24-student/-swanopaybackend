@@ -1,7 +1,8 @@
 <?php require_once __DIR__ . '/inc/guard.php'; ?>
-<?php require_once('header.php'); ?>
-
-<section class="content-header">
+<?php 
+header("Location: homepage-banners.php");
+exit;
+?>
 	<div class="content-header-left">
 		<h1>View Sliders</h1>
 	</div>

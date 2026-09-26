@@ -1,2029 +1,1883 @@
-<?php require_once('header.php'); ?>
+<?php 
+require_once('header.php'); 
 
-<?php
 // -------------------------------------------------------------------------
-// 1. FETCH GLOBAL SETTINGS SAFELY
+// 1. FETCH GLOBAL SETTINGS & SLIDERS FROM SUPABASE (MICROCACHED)
 // -------------------------------------------------------------------------
-$settings_data = !empty($settings) ? $settings : ($pdo->query("SELECT * FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: []);
-
-function get_safe_setting($data, $key, $default) {
-    return (isset($data[$key]) && $data[$key] !== '') ? $data[$key] : $default;
+$settingsCacheFile = __DIR__ . '/admin/inc/cache_settings.json';
+$s = null;
+if (file_exists($settingsCacheFile) && (time() - filemtime($settingsCacheFile) < 30)) {
+    $s = json_decode(file_get_contents($settingsCacheFile), true);
+}
+if (!$s) {
+    $s = $pdo->query("SELECT * FROM tbl_settings WHERE id=1")->fetch(PDO::FETCH_ASSOC) ?: [];
+    @file_put_contents($settingsCacheFile, json_encode($s));
 }
 
-// Toggles
-$slider_on      = get_safe_setting($settings_data, 'home_slider_on_off', 1);
-$features_on    = get_safe_setting($settings_data, 'home_features_on_off', 1);
-$category_on    = get_safe_setting($settings_data, 'home_category_on_off', 1);
-$featured_on    = get_safe_setting($settings_data, 'home_featured_product_on_off', 1);
-$latest_on      = get_safe_setting($settings_data, 'home_latest_product_on_off', 1);
-$popular_on     = get_safe_setting($settings_data, 'home_popular_product_on_off', 1);
-$cta_on         = get_safe_setting($settings_data, 'home_welcome_on_off', 1);
-$sticky_nav_on  = get_safe_setting($settings_data, 'home_sticky_nav_on_off', 1);
-// Admin-controllable number of featured products to show (use existing setting)
-$featured_product_count = (int) get_safe_setting($settings_data, 'total_featured_product_home', 8);
+// Section Toggles
+$slider_on          = isset($s['home_slider_on_off']) ? (int)$s['home_slider_on_off'] : 1;
+$category_on        = isset($s['home_category_on_off']) ? (int)$s['home_category_on_off'] : 1;
+$featured_on        = isset($s['home_featured_product_on_off']) ? (int)$s['home_featured_product_on_off'] : 1;
+$promo_on           = isset($s['home_welcome_on_off']) ? (int)$s['home_welcome_on_off'] : 1;
+$service_on         = isset($s['home_service_on_off']) ? (int)$s['home_service_on_off'] : 1;
 
-// Flash sale end timestamp (ms) for client-side countdown
-$flash_sale_end_ts = !empty($settings_data['flash_sale_end_time']) ? (int) (strtotime($settings_data['flash_sale_end_time']) * 1000) : null;
+// Hero Defaults & Controls
+$hero_tag           = !empty($s['hero_tag']) ? $s['hero_tag'] : 'BETTER PRODUCTS • BETTER LIFE';
+$hero_title         = !empty($s['hero_title']) ? $s['hero_title'] : 'Upgrade Your Everyday Life';
+$hero_subtitle      = !empty($s['hero_subtitle']) ? $s['hero_subtitle'] : 'Discover top-quality products, unbeatable prices, and a seamless shopping experience.';
+$hero_btn_text      = !empty($s['hero_btn_text']) ? $s['hero_btn_text'] : 'Shop Now';
+$hero_btn_url       = !empty($s['hero_btn_url']) ? $s['hero_btn_url'] : 'product-category.php?id=1&type=top-category';
+$hero_slider_autoplay = isset($s['hero_slider_autoplay']) ? (int)$s['hero_slider_autoplay'] : 1;
+$hero_slider_interval = !empty($s['hero_slider_interval']) ? (int)$s['hero_slider_interval'] : 4500;
 
-// Flash sale end timestamp (ms since epoch) from admin-setting
-$flash_sale_end_ts = !empty($settings_data['flash_sale_end_time']) ? (int) strtotime($settings_data['flash_sale_end_time']) * 1000 : 0;
-
-// Orders
-$slider_order   = get_safe_setting($settings_data, 'home_slider_order', 1);
-$features_order = get_safe_setting($settings_data, 'home_features_order', 2);
-$category_order = get_safe_setting($settings_data, 'home_category_order', 3);
-$flash_order    = get_safe_setting($settings_data, 'home_flash_order', 4);
-$featured_order = get_safe_setting($settings_data, 'home_featured_product_order', 5);
-$latest_order   = get_safe_setting($settings_data, 'home_latest_product_order', 6);
-$popular_order  = get_safe_setting($settings_data, 'home_popular_product_order', 7);
-$sticky_nav_order = get_safe_setting($settings_data, 'home_sticky_nav_order', 8);
-
-$homepage_layout = [];
-
-// --- HELPER: Render Gradient Tags ---
-function renderProductTags($row) {
-    $html = '<div class="product-tags">';
-    $count = 0;
-    // Example logic using existing fields
-    if($row['p_is_featured'] == 1 && $count < 2) { $html .= '<span class="p-tag tag-premium"><i class="fa fa-star"></i> Featured</span>'; $count++; }
-    if($row['p_old_price'] > $row['p_current_price'] && $count < 2) { $html .= '<span class="p-tag tag-topsale"><i class="fa fa-fire"></i> Sale</span>'; $count++; }
-    $html .= '</div>';
-    return $html;
+// Query Hero Slides from Supabase
+$heroSlides = $pdo->query("SELECT * FROM tbl_slider WHERE is_active = 1 ORDER BY slide_order ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+if (empty($heroSlides)) {
+    $fallbackImg = !empty($s['hero_image']) ? $s['hero_image'] : 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/hero_products_collage.jpg';
+    $heroSlides = [['id' => 1, 'photo' => $fallbackImg]];
 }
+
+// Categories Section Defaults & Data (Top 10 categories matching mockup)
+$categories_title = !empty($s['categories_title']) ? $s['categories_title'] : 'Shop by Category';
+$catStmt = $pdo->query("SELECT tcat_id, tcat_name, photo FROM tbl_top_category WHERE show_on_menu = 1 ORDER BY tcat_order ASC, tcat_id ASC LIMIT 10");
+$categories = $catStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+if (empty($categories)) {
+    $categories = [
+        ['tcat_id' => 7, 'tcat_name' => 'Laptops & Computers', 'photo' => 'assets/uploads/cat_mockup/hero_laptop.png'],
+        ['tcat_id' => 6, 'tcat_name' => 'Phones & Tablets', 'photo' => 'assets/uploads/deal_iphone_15.jpg'],
+        ['tcat_id' => 8, 'tcat_name' => 'Audio', 'photo' => 'assets/uploads/deal_airpods.jpg'],
+        ['tcat_id' => 11, 'tcat_name' => 'Fashion', 'photo' => 'assets/uploads/deal_fashion.jpg'],
+        ['tcat_id' => 12, 'tcat_name' => 'Home & Living', 'photo' => 'assets/uploads/deal_kitchen.jpg'],
+        ['tcat_id' => 9, 'tcat_name' => 'Watches', 'photo' => 'assets/uploads/deal_galaxy_watch.jpg'],
+        ['tcat_id' => 14, 'tcat_name' => 'Gaming', 'photo' => 'assets/uploads/deal_asus_rog.jpg'],
+        ['tcat_id' => 10, 'tcat_name' => 'Shoes', 'photo' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/cat_shoes.jpg'],
+        ['tcat_id' => 13, 'tcat_name' => 'Beauty & Health', 'photo' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/cat_beauty.jpg'],
+        ['tcat_id' => 15, 'tcat_name' => 'Cameras', 'photo' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/cat_cameras.jpg']
+    ];
+}
+
+// Dual Promo Banners Defaults
+$promo1_tag   = !empty($s['promo_banner1_tag']) ? $s['promo_banner1_tag'] : 'Up to 50% Off';
+$promo1_title = !empty($s['promo_banner1_title']) ? $s['promo_banner1_title'] : 'Top Electronics';
+$promo1_sub   = !empty($s['promo_banner1_subtitle']) ? $s['promo_banner1_subtitle'] : 'Laptops, Phones, Accessories & More';
+$promo1_btn   = !empty($s['promo_banner1_btn_text']) ? $s['promo_banner1_btn_text'] : 'Shop Now';
+$promo1_url   = !empty($s['promo_banner1_btn_url']) ? $s['promo_banner1_btn_url'] : 'product-category.php?id=4&type=top-category';
+$promo1_img   = !empty($s['promo_banner1_image']) ? $s['promo_banner1_image'] : 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/promo_electronics.jpg';
+
+$promo2_tag   = !empty($s['promo_banner2_tag']) ? $s['promo_banner2_tag'] : 'Trending Deals';
+$promo2_title = !empty($s['promo_banner2_title']) ? $s['promo_banner2_title'] : 'Fresh Styles For You';
+$promo2_sub   = !empty($s['promo_banner2_subtitle']) ? $s['promo_banner2_subtitle'] : 'Fashion, Footwear & Accessories';
+$promo2_btn   = !empty($s['promo_banner2_btn_text']) ? $s['promo_banner2_btn_text'] : 'Shop Now';
+$promo2_url   = !empty($s['promo_banner2_btn_url']) ? $s['promo_banner2_btn_url'] : 'product-category.php?id=1&type=top-category';
+$promo2_img   = !empty($s['promo_banner2_image']) ? $s['promo_banner2_image'] : 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/promo_fashion.jpg';
+
+// Featured Products Defaults & Data (Exactly 5 products matching mockup)
+$featured_products_title = !empty($s['featured_products_title']) ? $s['featured_products_title'] : 'Featured Products';
+$prodStmt = $pdo->prepare("SELECT p_id, p_name, p_short_description, p_current_price, p_old_price, p_featured_photo, is_top_sale 
+                         FROM tbl_product 
+                         WHERE p_is_featured = 1 AND p_is_active = 1 
+                         ORDER BY (CASE WHEN p_id >= 103 AND p_id <= 107 THEN 0 ELSE 1 END), p_id ASC 
+                         LIMIT 5");
+$prodStmt->execute();
+$featuredProducts = $prodStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// Review Ratings Mock & Fallbacks matching mockup perfectly
+$ratingMap = [
+    103 => ['rating' => '4.8', 'count' => '2.4k'],
+    104 => ['rating' => '4.6', 'count' => '892'],
+    105 => ['rating' => '4.9', 'count' => '3.2k'],
+    106 => ['rating' => '4.7', 'count' => '1.1k'],
+    107 => ['rating' => '4.5', 'count' => '678'],
+];
+
+// Trust Bar Defaults
+$trust1_title = !empty($s['trust_item1_title']) ? $s['trust_item1_title'] : 'Free Shipping';
+$trust1_desc  = !empty($s['trust_item1_desc']) ? $s['trust_item1_desc'] : 'On orders over ৳ 2,000';
+$trust2_title = !empty($s['trust_item2_title']) ? $s['trust_item2_title'] : 'Secure Payment';
+$trust2_desc  = !empty($s['trust_item2_desc']) ? $s['trust_item2_desc'] : '100% secure payment';
+$trust3_title = !empty($s['trust_item3_title']) ? $s['trust_item3_title'] : 'Easy Returns';
+$trust3_desc  = !empty($s['trust_item3_desc']) ? $s['trust_item3_desc'] : '30-day return policy';
+$trust4_title = !empty($s['trust_item4_title']) ? $s['trust_item4_title'] : '24/7 Support';
+$trust4_desc  = !empty($s['trust_item4_desc']) ? $s['trust_item4_desc'] : "We're here to help";
+$currencySymbol = '৳ ';
 ?>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+
 <style>
-/* ============================================
-   MODERN HOMEPAGE REDESIGN - IMPROVED DESIGN
-   ============================================ */
-
+/* ==========================================================================
+   ShopNext - Flagship Pixel-Perfect Storefront Homepage Styles
+   ========================================================================== */
 :root {
-    --primary: #e74c3c;
-    --primary-dark: #c0392b;
-    --secondary: #3498db;
-    --success: #27ae60;
-    --warning: #ff9f43;
-    --danger: #ff6b6b;
-    --purple: #9b59b6;
-    --teal: #1abc9c;
-    --orange: #e67e22;
-    --pink: #fd79a8;
-    --dark: #2c3e50;
-    --darker: #1a252f;
-    --light: #f8f9fa;
-    --gray: #95a5a6;
-    --gray-light: #ecf0f1;
-    --border: #dfe6e9;
-    
-    /* Gradient Variables */
-    --gradient-primary: linear-gradient(135deg, #e74c3c 0%, #ff7979 100%);
-    --gradient-secondary: linear-gradient(135deg, #3498db 0%, #2ecc71 100%);
-    --gradient-warning: linear-gradient(135deg, #ff9f43 0%, #ffbe76 100%);
-    --gradient-success: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-    --gradient-purple: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
-    --gradient-teal: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
-    --gradient-orange: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
-    --gradient-pink: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
-    --gradient-dark: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-    --gradient-light: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    --gradient-gold: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
-    --gradient-silver: linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%);
-    
-    /* Card Shadows */
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
-    --shadow-xl: 0 12px 36px rgba(0,0,0,0.15);
-    
-    /* Transitions */
-    --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    
-    /* Border Radius */
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 24px;
-    --radius-circle: 50%;
-}
-
-/* ========== BASE RESET & LAYOUT ========== */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-html, body {
-    overflow-x: hidden;
-    scroll-behavior: smooth;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    --sn-bg-page: #f8fafc;
+    --sn-primary: #fab802;
+    --sn-primary-hover: #e5a700;
+    --sn-dark: #0f172a;
+    --sn-muted: #64748b;
+    --sn-border: #f1f5f9;
 }
 
 body {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    min-height: 100vh;
-    color: var(--dark);
-    line-height: 1.6;
+    background-color: var(--sn-bg-page);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--sn-dark);
+    margin: 0;
+    padding: 0;
 }
 
-.main-layout-container {
-    width: 100%;
-    max-width: 1400px;
+.content-wrapper-main {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+.sn-main-content {
+    margin-top: 0 !important;
+    padding: 16px 0 48px 0 !important;
+}
+
+.sn-container {
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 0 15px;
+    padding: 0 16px;
 }
 
-.content-flow {
-    margin-bottom: 30px;
-    animation: fadeInUp 0.6s ease-out;
-    background: var(--gradient-light);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
-    overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-/* ========== CUSTOM SCROLLBAR ========== */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.05);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--gradient-primary);
-    border-radius: 4px;
-    transition: var(--transition-normal);
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--primary-dark);
-}
-
-/* ========== ANIMATIONS ========== */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes fadeInDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes slideInLeft {
-    from {
-        opacity: 0;
-        transform: translateX(-30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
-
-@keyframes slideInRight {
-    from {
-        opacity: 0;
-        transform: translateX(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
-
-@keyframes scaleIn {
-    from {
-        opacity: 0;
-        transform: scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-}
-
-@keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
-
-@keyframes gradientFlow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-@keyframes bounce {
-    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-10px); }
-    60% { transform: translateY(-5px); }
-}
-
-@keyframes ripple {
-    0% {
-        transform: scale(0);
-        opacity: 1;
-    }
-    100% {
-        transform: scale(4);
-        opacity: 0;
-    }
-}
-
-@keyframes cardHover {
-    0% { transform: translateY(0) rotate(0); }
-    100% { transform: translateY(-8px) rotate(0.5deg); }
-}
-
-@keyframes badgeGlow {
-    0%, 100% { box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
-    50% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.8); }
-}
-
-/* ========== HERO SLIDER ========== */
-.hero-wrapper {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 20px;
-    height: 400px;
-    margin-bottom: 30px;
-    animation: fadeInUp 0.8s ease-out;
-}
-
-@media (max-width: 768px) {
-    .hero-wrapper {
-        grid-template-columns: 1fr;
-        height: auto;
-    }
-}
-
-.hero-slider-area {
-    position: relative;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: var(--shadow-lg);
-}
-
-.hero-slider-area .carousel {
-    height: 100%;
-    border-radius: var(--radius-lg);
-}
-
-.hero-slider-area .carousel-inner {
-    height: 100%;
-    border-radius: var(--radius-lg);
-}
-
-.hero-slider-area .item {
-    height: 100%;
-    position: relative;
-}
-
-.hero-slider-area img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.8s ease;
-}
-
-.hero-slider-area .item:hover img {
-    transform: scale(1.05);
-}
-
-.slider-text {
-    position: absolute;
-    padding: 30px;
-    color: white;
-    text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
-    max-width: 60%;
-    z-index: 10;
-    animation: fadeInUp 0.8s ease-out 0.3s both;
-}
-
-.slider-text.left {
-    left: 30px;
-    top: 50%;
-    transform: translateY(-50%);
-    text-align: left;
-}
-
-.slider-text.center {
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-}
-
-.slider-text.right {
-    right: 30px;
-    top: 50%;
-    transform: translateY(-50%);
-    text-align: right;
-}
-
-.slider-text h2 {
-    font-size: 2.5em;
-    font-weight: 800;
-    margin-bottom: 20px;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: textShine 3s ease-in-out infinite alternate;
-}
-
-@keyframes textShine {
-    0% { background-position: 0% 50%; }
-    100% { background-position: 100% 50%; }
-}
-
-.slider-text .btn {
-    background: var(--gradient-primary);
-    border: none;
-    padding: 12px 30px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    transition: var(--transition-normal);
-    position: relative;
-    overflow: hidden;
-    z-index: 1;
-}
-
-.slider-text .btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-    transition: left 0.7s ease;
-    z-index: -1;
-}
-
-.slider-text .btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 25px rgba(231, 76, 60, 0.4);
-}
-
-.slider-text .btn:hover::before {
-    left: 100%;
-}
-
-.hero-promo-area {
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: var(--shadow-lg);
-    position: relative;
-}
-
-.hero-promo-area > div {
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-promo-area > div::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(0,0,0,0.6) 0%, transparent 50%);
-}
-
-.hero-promo-area h4 {
-    font-size: 1.5em;
-    font-weight: 700;
-    position: relative;
-    z-index: 2;
-}
-
-.carousel-indicators {
-    bottom: 20px;
-}
-
-.carousel-indicators li {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.5);
-    border: 2px solid transparent;
-    transition: var(--transition-fast);
-}
-
-.carousel-indicators li.active {
-    background: var(--primary);
-    transform: scale(1.3);
-    border-color: white;
-}
-
-/* ========== FEATURES ICONS ROW ========== */
-.features-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 15px;
-    padding: 25px;
-    background: var(--gradient-light);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
-    animation: slideInUp 0.6s ease-out;
-}
-
-.feature-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-decoration: none;
-    color: var(--dark);
-    padding: 20px 15px;
-    border-radius: var(--radius-md);
-    transition: var(--transition-normal);
-    background: white;
-    position: relative;
-    overflow: hidden;
-    border: 1px solid var(--border);
-}
-
-.feature-item::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-primary);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.3s ease;
-}
-
-.feature-item:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--primary);
-}
-
-.feature-item:hover::before {
-    transform: scaleX(1);
-}
-
-.feature-icon-circle {
-    width: 60px;
-    height: 60px;
-    border-radius: var(--radius-circle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    margin-bottom: 15px;
-    background: var(--gradient-light);
-    color: var(--primary);
-    transition: var(--transition-normal);
-    border: 2px solid transparent;
-}
-
-.feature-item:hover .feature-icon-circle {
-    background: var(--gradient-primary);
-    color: white;
-    transform: rotateY(180deg) scale(1.1);
-}
-
-.feature-label {
-    font-size: 14px;
-    font-weight: 600;
-    text-align: center;
-    transition: var(--transition-fast);
-}
-
-.feature-item:hover .feature-label {
-    color: var(--primary);
-}
-
-/* ========== CATEGORIES SECTION ========== */
-.content-flow[style*="background-color"] {
-    background: var(--gradient-light) !important;
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-.section-header {
+/* SECTION HEADERS */
+.sn-section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 25px 30px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    position: relative;
-    overflow: hidden;
+    margin-bottom: 14px;
 }
 
-.section-header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%);
-    animation: shimmer 3s infinite;
-}
-
-.section-title {
-    font-size: 1.8em;
-    font-weight: 700;
+.sn-section-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--sn-dark);
     margin: 0;
+    letter-spacing: -0.4px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    position: relative;
-    z-index: 1;
+    gap: 8px;
 }
 
-.text-shine {
-    background: linear-gradient(45deg, #ffd700, #ffa500, #ffd700);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: textShine 2s linear infinite;
+.sn-flash-icon {
+    font-size: 18px;
+    line-height: 1;
 }
 
-.view-all-btn,
-.view-all-btn[class*="btn"] {
-    background: rgba(255,255,255,0.2);
-    color: white;
-    border: 1px solid rgba(255,255,255,0.3);
-    padding: 8px 20px;
-    border-radius: 20px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: var(--transition-normal);
-    backdrop-filter: blur(10px);
-    position: relative;
-    z-index: 1;
-}
-
-.view-all-btn:hover {
-    background: rgba(255,255,255,0.3);
-    transform: translateX(5px);
-    color: white;
-}
-
-.horizontal-scroll-wrapper {
-    display: flex;
-    gap: 20px;
-    padding: 25px 30px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-}
-
-.horizontal-scroll-wrapper::-webkit-scrollbar {
-    height: 6px;
-}
-
-.horizontal-scroll-wrapper::-webkit-scrollbar-thumb {
-    background: var(--gradient-primary);
-    border-radius: 3px;
-}
-
-.cat-item {
-    display: flex;
-    flex-direction: column;
+.sn-view-all {
+    display: inline-flex;
     align-items: center;
-    text-decoration: none;
-    color: var(--dark);
-    transition: var(--transition-normal);
-    flex-shrink: 0;
-    width: 140px;
-}
-
-.cat-item.round-style {
-    text-align: center;
-}
-
-.cat-img-box {
-    width: 120px;
-    height: 120px;
-    border-radius: var(--radius-circle);
-    overflow: hidden;
-    margin-bottom: 15px;
-    border: 4px solid transparent;
-    background: var(--gradient-light);
-    transition: var(--transition-normal);
-    position: relative;
-    box-shadow: var(--shadow-md);
-}
-
-.cat-img-box::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--gradient-primary);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    border-radius: inherit;
-    z-index: 1;
-}
-
-.cat-img-box img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: var(--transition-normal);
-    position: relative;
-    z-index: 2;
-}
-
-.cat-item:hover .cat-img-box {
-    border-color: var(--primary);
-    transform: rotate(15deg) scale(1.05);
-    box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3);
-}
-
-.cat-item:hover .cat-img-box::before {
-    opacity: 0.2;
-}
-
-.cat-item:hover .cat-img-box img {
-    transform: scale(1.1);
-}
-
-.cat-name {
-    font-weight: 600;
-    font-size: 14px;
-    text-align: center;
-    transition: var(--transition-fast);
-    color: var(--dark);
-}
-
-.cat-item:hover .cat-name {
-    color: var(--primary);
-    transform: translateY(2px);
-}
-
-/* ========== MODERN PRODUCT CARD DESIGN ========== */
-.grid-5-col {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 14px;
-    padding: 16px;
-    animation: fadeIn 0.6s ease-out;
-}
-
-@media (max-width: 1200px) {
-    .grid-5-col {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (max-width: 992px) {
-    .grid-5-col {
-        grid-template-columns: repeat(3, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    .grid-5-col {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 480px) {
-    .grid-5-col {
-        grid-template-columns: 1fr;
-    }
-}
-
-.product-card {
-    background: white;
-    border-radius: calc(var(--radius-md));
-    overflow: hidden;
-    box-shadow: var(--shadow-sm);
-    transition: var(--transition-normal);
-    position: relative;
-    animation: scaleIn 0.4s ease-out;
-    border: 1px solid rgba(0,0,0,0.05);
-}
-
-.product-card:hover {
-    transform: translateY(-8px);
-    box-shadow: var(--shadow-xl);
-    animation: cardHover 0.6s ease forwards;
-}
-
-.product-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-primary);
-    z-index: 2;
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.5s ease;
-}
-
-.product-card:hover::before {
-    transform: scaleX(1);
-}
-
-.discount-badge {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    background: var(--gradient-primary);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
+    gap: 4px;
+    font-size: 13px;
     font-weight: 700;
-    z-index: 3;
-    animation: badgeGlow 2s infinite;
-    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+    color: #64748b !important;
+    text-decoration: none !important;
+    transition: color 0.2s ease;
 }
 
-/* Product Tags */
-.product-tags {
-    position: absolute;
-    top: 15px;
-    left: 15px;
+.sn-view-all:hover {
+    color: #0f172a !important;
+}
+
+/* 1. HERO SECTION */
+.sn-hero-section {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    margin-bottom: 22px;
+}
+
+.sn-hero-card {
+    background: linear-gradient(105deg, #fdfbf7 0%, #fffefb 40%, #fef8e7 75%, #fef3c7 100%);
+    border: 1px solid rgba(245, 230, 195, 0.7);
+    border-radius: 22px;
     display: flex;
-    flex-direction: column;
-    gap: 5px;
-    z-index: 3;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 44px;
+    position: relative;
+    overflow: hidden;
+    min-height: 330px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
-.tag {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 10px;
+.sn-hero-counter-badge {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    color: #ffffff;
+    font-size: 10.5px;
     font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+    z-index: 10;
+    display: none;
+}
+
+.sn-hero-left {
+    max-width: 440px;
+    z-index: 10;
+}
+
+.sn-hero-top-badge-row {
+    margin-bottom: 6px;
+}
+
+.sn-hero-mega-badge {
+    display: inline-block;
+    background: #fef08a;
+    color: #854d0e;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.3px;
+}
+
+.sn-hero-eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #64748b;
+    margin-bottom: 8px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: white;
-    animation: fadeInDown 0.5s ease-out;
 }
 
-.tag-hot {
-    background: var(--gradient-primary);
+.sn-hero-heading {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1.15;
+    color: var(--sn-dark);
+    margin: 0 0 10px 0;
+    letter-spacing: -0.8px;
 }
 
-.tag-new {
-    background: var(--gradient-success);
+.sn-hero-subtitle {
+    font-size: 14px;
+    line-height: 1.48;
+    color: #475569;
+    margin: 0 0 18px 0;
+    max-width: 400px;
 }
 
-.tag-official {
-    background: var(--gradient-purple);
-}
-
-.tag-sale {
-    background: var(--gradient-warning);
-}
-
-.p-img-box {
-    position: relative;
-    padding-bottom: 86%;
-    overflow: hidden;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.p-img-box img {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: var(--transition-slow);
-    transform-origin: center;
-}
-
-.product-card:hover .p-img-box img {
-    transform: scale(1.1) rotate(1deg);
-}
-
-.hover-btns-container {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
+.sn-hero-actions {
     display: flex;
-    gap: 10px;
-    opacity: 0;
-    transition: var(--transition-normal);
-    z-index: 3;
+    align-items: center;
+    margin-bottom: 20px;
 }
 
-.product-card:hover .hover-btns-container {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+.sn-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--sn-primary);
+    color: #0f172a !important;
+    padding: 10px 24px;
+    border-radius: 50px;
+    font-size: 13.5px;
+    font-weight: 700;
+    text-decoration: none !important;
+    transition: all 0.2s ease;
+    box-shadow: 0 3px 12px rgba(250, 184, 2, 0.3);
 }
 
-.btn-action {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-circle);
-    background: white;
-    border: none;
+.sn-btn-primary:hover {
+    background: var(--sn-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(250, 184, 2, 0.4);
+}
+
+.sn-hero-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sn-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.sn-dot.active {
+    width: 22px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--sn-primary);
+}
+
+.sn-hero-right {
+    flex: 1;
+    max-width: 520px;
+    height: 290px;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--dark);
-    font-size: 16px;
-    cursor: pointer;
-    transition: var(--transition-fast);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    text-decoration: none;
+}
+
+.sn-hero-slider-wrap {
     position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sn-hero-slider-track {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.sn-hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sn-hero-slide.active {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.sn-hero-slide .sn-hero-image {
+    max-height: 270px;
+    max-width: 100%;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.08));
+}
+
+.sn-hero-doodle-badge {
+    position: absolute;
+    top: 8px;
+    right: 14px;
+    text-align: center;
+    font-family: 'Caveat', cursive, sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.05;
+    transform: rotate(5deg);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.sn-static-doodle-ray {
+    position: absolute;
+    top: 40%;
+    left: 3%;
+    pointer-events: none;
+    z-index: 4;
+    color: #fab802;
+    opacity: 0.95;
+}
+
+.sn-slider-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 15;
+    opacity: 0;
+    transition: all 0.2s ease;
+    color: var(--sn-dark);
+}
+
+.sn-hero-card:hover .sn-slider-arrow {
+    opacity: 1;
+}
+
+.sn-slider-arrow:hover {
+    background: var(--sn-dark);
+    color: #ffffff;
+    border-color: var(--sn-dark);
+}
+
+.sn-slider-prev { left: 12px; }
+.sn-slider-next { right: 12px; }
+
+/* 2. HORIZONTAL CATEGORIES BAR */
+.sn-category-section {
+    margin-bottom: 24px;
+}
+
+.sn-category-scroll-wrap {
+    display: grid;
+    grid-template-columns: repeat(11, 1fr);
+    gap: 12px;
+}
+
+.sn-category-scroll-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none !important;
+    color: var(--sn-dark) !important;
+    transition: transform 0.2s ease;
+}
+
+.sn-category-scroll-item:hover {
+    transform: translateY(-3px);
+}
+
+.sn-category-scroll-box {
+    width: 100%;
+    aspect-ratio: 1;
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: all 0.2s ease;
     overflow: hidden;
 }
 
-.btn-action::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: var(--gradient-primary);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-    z-index: -1;
+.sn-category-scroll-item:hover .sn-category-scroll-box {
+    border-color: #fab802;
+    box-shadow: 0 6px 18px rgba(250, 184, 2, 0.18);
+    background: #fffefb;
 }
 
-.btn-action:hover {
-    color: white;
-    transform: translateY(-2px) scale(1.1);
-    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.3);
+.sn-category-scroll-box img {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+    transition: transform 0.2s ease;
 }
 
-.btn-action:hover::after {
-    width: 120px;
-    height: 120px;
+.sn-category-scroll-item:hover .sn-category-scroll-box img {
+    transform: scale(1.08);
 }
 
-.btn-action:nth-child(1)::after {
-    background: var(--gradient-primary);
+.sn-category-scroll-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1e293b;
+    text-align: center;
+    margin-top: 6px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 95px;
 }
 
-.btn-action:nth-child(2)::after {
-    background: var(--gradient-pink);
+/* 3. VALUE PROPOSITION / TRUST BAR */
+.sn-trust-section {
+    margin-bottom: 24px;
 }
 
-.p-details {
-    padding: 12px;
+.sn-trust-bar {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 16px 28px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+}
+
+.sn-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sn-trust-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #0f172a;
+}
+
+.sn-trust-info h4 {
+    font-size: 13px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 2px 0;
+}
+
+.sn-trust-info p {
+    font-size: 11.5px;
+    color: #64748b;
+    margin: 0;
+}
+
+/* 4. PAYDAY SALE PROMO BANNER */
+.sn-payday-section {
+    margin-bottom: 26px;
+}
+
+.sn-payday-banner {
+    background: linear-gradient(100deg, #0d121c 0%, #151d2a 50%, #1e293b 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 24px 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     position: relative;
-    background: white;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
-.p-title {
+.sn-payday-left {
+    background: #0f172a;
+    border: 2px solid #fab802;
+    border-radius: 14px;
+    padding: 12px 20px;
+    text-align: center;
+    transform: rotate(-3deg);
+    box-shadow: 0 4px 14px rgba(250, 184, 2, 0.2);
+    flex-shrink: 0;
+}
+
+.sn-payday-badge-title {
+    font-size: 18px;
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1.05;
+    letter-spacing: 0.5px;
+}
+
+.sn-payday-badge-sub {
+    font-size: 11px;
+    font-weight: 800;
+    color: #fab802;
+    margin-top: 4px;
+    letter-spacing: 0.8px;
+}
+
+.sn-payday-center {
+    flex: 1;
+    padding: 0 32px;
+    color: #ffffff;
+}
+
+.sn-payday-center-title {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.15;
+    margin-bottom: 4px;
+    letter-spacing: -0.5px;
+    color: #ffffff;
+}
+
+.sn-payday-center-sub {
+    font-size: 13.5px;
+    color: #94a3b8;
+    margin-bottom: 14px;
+}
+
+.sn-payday-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fab802;
+    color: #0f172a !important;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 20px;
+    border-radius: 50px;
+    text-decoration: none !important;
+    box-shadow: 0 4px 12px rgba(250, 184, 2, 0.3);
+    transition: all 0.2s ease;
+}
+
+.sn-payday-btn:hover {
+    background: #e5a700;
+    transform: translateY(-1px);
+}
+
+.sn-payday-right {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 120px;
+}
+
+.sn-payday-right img {
+    max-height: 110px;
+    max-width: 180px;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.25));
+}
+
+/* 5. FLASH SALE SECTION */
+.sn-flash-section {
+    margin-bottom: 26px;
+}
+
+.sn-flash-scroll {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.sn-flash-card {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    text-decoration: none !important;
+    color: var(--sn-dark) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: all 0.25s ease;
+}
+
+.sn-flash-card:hover {
+    transform: translateY(-3px);
+    border-color: #e2e8f0;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.sn-flash-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.sn-flash-discount {
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+}
+
+.sn-flash-wishlist {
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.2s ease;
+}
+
+.sn-flash-wishlist:hover,
+.sn-flash-wishlist.active {
+    background: #fef2f2;
+    color: #ef4444;
+    border-color: #fecaca;
+}
+
+.sn-flash-wishlist.active svg {
+    fill: #ef4444;
+}
+
+.sn-flash-img-box {
+    width: 100%;
+    height: 155px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-bottom: 12px;
+    background: #f8fafc;
+    border-radius: 12px;
+    overflow: hidden;
 }
 
-.p-title a {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--dark);
-    text-decoration: none;
-    line-height: 1.4;
+.sn-flash-img-box img {
+    max-height: 135px;
+    max-width: 85%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+.sn-flash-card:hover .sn-flash-img-box img {
+    transform: scale(1.05);
+}
+
+.sn-flash-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--sn-dark);
+    line-height: 1.25;
+    margin: 0 0 8px 0;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    transition: var(--transition-fast);
+    min-height: 34px;
 }
 
-.p-title a:hover {
-    color: var(--primary);
-}
-
-.meta-row {
+.sn-flash-pricing-row {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.stock-status {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.stock-in {
-    background: rgba(39, 174, 96, 0.1);
-    color: var(--success);
-}
-
-.stock-out {
-    background: rgba(231, 76, 60, 0.1);
-    color: var(--primary);
-}
-
-.review-stars {
-    color: var(--warning);
-    font-size: 12px;
-}
-
-.price-row {
-    display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 8px;
-    margin-top: 15px;
+    margin-top: auto;
 }
 
-.p-price {
-    font-size: 18px;
+.sn-flash-curr-price {
+    font-size: 16.5px;
     font-weight: 800;
-    color: var(--primary);
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--sn-dark);
 }
 
-.p-old {
-    font-size: 14px;
-    color: var(--gray);
+.sn-flash-old-price {
+    font-size: 12px;
+    color: #94a3b8;
     text-decoration: line-through;
 }
 
-/* ========== FLASH SALE SECTION ========== */
-.content-flow:has(#flash-timer-display) {
-    background: linear-gradient(135deg, #fff8e1 0%, #ffe0b2 100%) !important;
-    border: 2px solid #ff9800;
-    animation: pulse 3s infinite;
+/* 6. DAILY SHIRA DEALS */
+.sn-shira-section {
+    margin-bottom: 26px;
 }
 
-#flash-timer-display {
-    font-family: 'Courier New', monospace;
-    font-weight: 800;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: pulse 1s infinite;
-    font-size: 16px;
+.sn-shira-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
 }
 
-/* ========== STICKY NAVIGATION ========== */
-.content-flow + div[style*="position: sticky"] {
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    background: rgba(255,255,255,0.95);
-    backdrop-filter: blur(10px);
-    padding: 15px 0;
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    animation: slideInDown 0.5s ease-out;
+.sn-shira-card {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 16px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none !important;
+    color: var(--sn-dark) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: all 0.25s ease;
 }
 
-@keyframes slideInDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.sn-shira-card:hover {
+    transform: translateY(-3px);
+    border-color: #e2e8f0;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
-/* ========== DYNAMIC PRODUCTS GRID ========== */
-#dynamic-products-grid {
-    animation: fadeIn 0.8s ease-out;
-}
-
-/* ========== LIVE FEED ANIMATION ========== */
-@keyframes cardFlip {
-    0% {
-        transform: rotateY(0deg);
-        opacity: 1;
-    }
-    50% {
-        transform: rotateY(90deg);
-        opacity: 0.5;
-    }
-    100% {
-        transform: rotateY(0deg);
-        opacity: 1;
-    }
-}
-
-/* ========== BUTTON STYLES ========== */
-.btn {
-    border: none;
-    border-radius: var(--radius-md);
-    padding: 10px 20px;
-    font-weight: 600;
-    transition: var(--transition-normal);
-    cursor: pointer;
-    display: inline-flex;
+.sn-shira-img-box {
+    width: 100%;
+    height: 135px;
+    background: #f8fafc;
+    border-radius: 12px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    position: relative;
+    margin-bottom: 10px;
     overflow: hidden;
 }
 
-.btn::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(255,255,255,0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
+.sn-shira-img-box img {
+    max-height: 120px;
+    max-width: 85%;
+    object-fit: contain;
+    transition: transform 0.3s ease;
 }
 
-.btn:hover::before {
-    width: 300px;
-    height: 300px;
+.sn-shira-card:hover .sn-shira-img-box img {
+    transform: scale(1.05);
 }
 
-.btn-primary {
-    background: var(--gradient-primary);
-    color: white;
-    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+.sn-shira-badge {
+    background: #fef08a;
+    color: #854d0e;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 10px;
+    border-radius: 999px;
+    margin-bottom: 6px;
 }
 
-.btn-primary:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
-}
-
-.btn-default {
-    background: var(--gradient-light);
-    color: var(--dark);
-    border: 1px solid var(--border);
-}
-
-.btn-default:hover {
-    background: white;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.btn-sm {
-    padding: 8px 16px;
+.sn-shira-name {
     font-size: 13px;
-}
-
-.btn-xs {
-    padding: 6px 12px;
-    font-size: 12px;
-}
-
-/* ========== DESKTOP FOOTER ========== */
-.desktop-footer {
-    background: var(--gradient-dark);
-    color: white;
-    padding: 50px 0;
-    margin-top: 50px;
-    border-top: 3px solid var(--primary);
-}
-
-.desktop-footer .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-
-.desktop-footer .row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 40px;
-}
-
-@media (max-width: 992px) {
-    .desktop-footer .row {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 576px) {
-    .desktop-footer .row {
-        grid-template-columns: 1fr;
-    }
-}
-
-.desktop-footer h4 {
-    font-size: 18px;
     font-weight: 700;
-    margin-bottom: 20px;
-    color: white;
+    color: var(--sn-dark);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* 7. FEATURED PRODUCTS SECTION */
+.sn-featured-section {
+    margin-bottom: 26px;
+}
+
+.sn-products-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+}
+
+.sn-product-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
     position: relative;
-    padding-bottom: 10px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: all 0.25s ease;
 }
 
-.desktop-footer h4::after {
-    content: '';
+.sn-product-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    border-color: #e2e8f0;
+}
+
+.sn-badge {
     position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 40px;
-    height: 3px;
-    background: var(--gradient-primary);
-    border-radius: 2px;
+    top: 12px;
+    left: 12px;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: var(--sn-primary);
+    color: #0f172a;
+    z-index: 5;
 }
 
-.desktop-footer a {
-    display: block;
-    color: rgba(255,255,255,0.8);
-    text-decoration: none;
-    margin-bottom: 12px;
-    transition: var(--transition-fast);
-    font-size: 14px;
-}
-
-.desktop-footer a:hover {
-    color: white;
-    transform: translateX(5px);
-}
-
-.desktop-footer p {
-    color: rgba(255,255,255,0.8);
-    font-size: 14px;
-    margin-bottom: 12px;
+.sn-product-img-box {
+    width: 100%;
+    height: 145px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    margin-bottom: 10px;
+    background: #f8fafc;
+    border-radius: 12px;
+    overflow: hidden;
 }
 
-.desktop-footer i {
-    color: var(--primary);
-    width: 20px;
+.sn-product-img-box img {
+    max-height: 130px;
+    max-width: 85%;
+    object-fit: contain;
+    transition: transform 0.25s ease;
 }
 
-/* ========== UTILITY CLASSES ========== */
-.text-shine {
-    background: linear-gradient(45deg, #ffd700, #ffa500, #ffd700);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: textShine 2s linear infinite;
+.sn-product-card:hover .sn-product-img-box img {
+    transform: scale(1.05);
 }
 
-.fade-in {
-    animation: fadeIn 0.6s ease-out;
+.sn-product-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--sn-dark);
+    margin: 0 0 3px 0;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 32px;
 }
 
-.slide-in-left {
-    animation: slideInLeft 0.6s ease-out;
+.sn-product-spec {
+    font-size: 11px;
+    color: #64748b;
+    margin: 0 0 6px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.slide-in-right {
-    animation: slideInRight 0.6s ease-out;
-}
-
-.scale-in {
-    animation: scaleIn 0.6s ease-out;
-}
-
-.pulse {
-    animation: pulse 2s infinite;
-}
-
-.float {
-    animation: float 3s ease-in-out infinite;
-}
-
-.gradient-text {
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* ========== LOADING SKELETONS ========== */
-.skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
-.skeleton-title {
-    height: 20px;
-    width: 70%;
+.sn-product-rating {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #0f172a;
     margin-bottom: 10px;
 }
 
-.skeleton-price {
-    height: 24px;
-    width: 40%;
+.sn-rating-star {
+    color: #fab802;
+    font-size: 13px;
 }
 
-.skeleton-image {
-    padding-bottom: 100%;
-    width: 100%;
+.sn-rating-count {
+    color: #94a3b8;
+    font-size: 10.5px;
+    font-weight: 500;
 }
 
-/* ========== RESPONSIVE ADJUSTMENTS ========== */
-@media (max-width: 768px) {
-    .hero-wrapper {
-        grid-template-columns: 1fr;
-        height: auto;
+.sn-product-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid #f8fafc;
+}
+
+.sn-price-box {
+    display: flex;
+    flex-direction: column;
+}
+
+.sn-current-price {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: var(--sn-dark);
+}
+
+.sn-old-price {
+    font-size: 11px;
+    color: #94a3b8;
+    text-decoration: line-through;
+}
+
+.sn-btn-cart {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #fab802;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #0f172a;
+    box-shadow: 0 2px 6px rgba(250, 184, 2, 0.3);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sn-btn-cart:hover {
+    background: #e5a700;
+    transform: scale(1.08);
+}
+
+/* SPINNER & TOAST NOTIFICATION */
+@keyframes snSpin {
+    to { transform: rotate(360deg); }
+}
+
+.sn-spin {
+    animation: snSpin 0.75s linear infinite;
+}
+
+.sn-home-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #0f172a;
+    color: #ffffff;
+    padding: 10px 22px;
+    border-radius: 50px;
+    font-size: 13px;
+    font-weight: 700;
+    z-index: 99999;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.25s ease;
+}
+
+.sn-home-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* RESPONSIVE BREAKPOINTS (Tablet & Mobile) */
+@media (max-width: 1024px) {
+    .sn-category-scroll-wrap {
+        grid-template-columns: repeat(6, 1fr);
     }
-    
-    .hero-slider-area,
-    .hero-promo-area {
-        height: 300px;
-    }
-    
-    .slider-text {
-        max-width: 90%;
-        padding: 20px;
-    }
-    
-    .slider-text h2 {
-        font-size: 1.8em;
-    }
-    
-    .features-row {
+    .sn-products-grid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        padding: 15px;
     }
-    
-    .section-header {
-        padding: 20px;
+    .sn-hero-heading {
+        font-size: 32px;
     }
-    
-    .section-title {
-        font-size: 1.4em;
-    }
-    
-    .horizontal-scroll-wrapper {
-        padding: 20px;
-    }
-    
-    .cat-item {
-        width: 120px;
-    }
-    
-    .cat-img-box {
-        width: 100px;
-        height: 100px;
+    .sn-hero-card {
+        padding: 24px 30px;
     }
 }
 
-@media (max-width: 480px) {
-    .features-row {
-        grid-template-columns: repeat(2, 1fr);
+@media (max-width: 768px) {
+    .sn-desktop-only {
+        display: none !important;
     }
-    
-    .slider-text h2 {
-        font-size: 1.5em;
+    .sn-hero-counter-badge {
+        display: block !important;
     }
-    
-    .slider-text .btn {
-        padding: 10px 20px;
-        font-size: 14px;
+    .sn-header-wrap {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        background: #ffffff !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+        z-index: 1000 !important;
     }
-    
-    .grid-5-col {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 15px;
-        padding: 15px;
+    body.shopnext-theme .content-wrapper-main {
+        padding-top: 96px !important;
+        padding-bottom: 72px !important;
     }
-    
-    .product-card {
-        border-radius: var(--radius-md);
+    .sn-hero-section {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 14px;
     }
-    
-    .p-details {
-        padding: 15px;
+    .sn-hero-card {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 14px 16px !important;
+        border-radius: 18px !important;
+        min-height: auto !important;
     }
-    
-    .p-title a {
-        font-size: 14px;
+    .sn-hero-left {
+        max-width: 54% !important;
+        margin-bottom: 0 !important;
+        text-align: left !important;
     }
-    
-    .p-price {
-        font-size: 16px;
+    .sn-hero-heading {
+        font-size: 20px !important;
+        line-height: 1.15 !important;
+        margin-bottom: 4px !important;
     }
-}
+    .sn-hero-subtitle {
+        font-size: 10.5px !important;
+        line-height: 1.3 !important;
+        margin-bottom: 10px !important;
+    }
+    .sn-btn-primary {
+        padding: 6px 14px !important;
+        font-size: 11px !important;
+        box-shadow: 0 2px 6px rgba(245, 158, 11, 0.25) !important;
+    }
+    .sn-hero-right {
+        width: 44% !important;
+        height: auto !important;
+        max-height: 120px !important;
+    }
+    .sn-hero-slide .sn-hero-image {
+        max-height: 110px !important;
+    }
 
-/* ========== PRINT STYLES ========== */
-@media print {
-    .product-card,
-    .content-flow,
-    .hero-wrapper {
-        break-inside: avoid;
-        box-shadow: none;
-        border: 1px solid #ddd;
+    /* Category horizontal scroll on mobile */
+    .sn-category-scroll-wrap {
+        display: flex !important;
+        gap: 12px !important;
+        overflow-x: auto !important;
+        padding: 4px 2px 8px 2px !important;
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
     }
-    
-    .btn-action,
-    .hover-btns-container,
-    .discount-badge,
-    .tag {
-        display: none;
+    .sn-category-scroll-wrap::-webkit-scrollbar {
+        display: none !important;
     }
-}
+    .sn-category-scroll-item {
+        width: 62px !important;
+        flex-shrink: 0 !important;
+    }
+    .sn-category-scroll-box {
+        width: 56px !important;
+        height: 56px !important;
+        border-radius: 14px !important;
+    }
+    .sn-category-scroll-name {
+        font-size: 10px !important;
+        max-width: 62px !important;
+    }
 
-/* ========== DARK MODE SUPPORT ========== */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --light: #1a1a1a;
-        --dark: #ffffff;
-        --gray: #b0b0b0;
-        --border: #333333;
-        --gradient-light: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    /* Trust bar mobile horizontal scroll */
+    .sn-trust-bar {
+        display: flex !important;
+        overflow-x: auto !important;
+        gap: 10px !important;
+        padding: 8px 12px !important;
+        border-radius: 12px !important;
+        scrollbar-width: none !important;
     }
-    
-    body {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: white;
+    .sn-trust-bar::-webkit-scrollbar {
+        display: none !important;
     }
-    
-    .content-flow {
-        background: var(--gradient-dark);
-        border-color: #333;
+    .sn-trust-item {
+        flex-shrink: 0 !important;
+        gap: 6px !important;
     }
-    
-    .product-card {
-        background: #2d3748;
-        border-color: #4a5568;
+    .sn-trust-icon {
+        width: 22px !important;
+        height: 22px !important;
     }
-    
-    .p-details {
-        background: #2d3748;
+    .sn-trust-info h4 {
+        font-size: 10px !important;
     }
-    
-    .p-title a {
-        color: white;
+    .sn-trust-info p {
+        font-size: 8.5px !important;
     }
-    
-    .feature-item {
-        background: #2d3748;
-        border-color: #4a5568;
-        color: white;
+
+    /* Payday banner mobile */
+    .sn-payday-banner {
+        padding: 12px 14px !important;
+        border-radius: 16px !important;
+        margin-bottom: 18px !important;
     }
-    
-    .desktop-footer {
-        background: var(--gradient-dark);
+    .sn-payday-left {
+        padding: 6px 10px !important;
+        border-radius: 10px !important;
+    }
+    .sn-payday-badge-title {
+        font-size: 12px !important;
+    }
+    .sn-payday-badge-sub {
+        font-size: 7.5px !important;
+    }
+    .sn-payday-center {
+        padding: 0 10px !important;
+    }
+    .sn-payday-center-title {
+        font-size: 14px !important;
+        margin-bottom: 2px !important;
+    }
+    .sn-payday-center-sub {
+        font-size: 9.5px !important;
+        margin-bottom: 6px !important;
+    }
+    .sn-payday-btn {
+        padding: 4px 10px !important;
+        font-size: 9.5px !important;
+    }
+    .sn-payday-right img {
+        max-height: 52px !important;
+        max-width: 70px !important;
+    }
+
+    /* Flash sale mobile */
+    .sn-flash-scroll {
+        display: flex !important;
+        gap: 12px !important;
+        overflow-x: auto !important;
+        scrollbar-width: none !important;
+        padding-bottom: 6px !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .sn-flash-scroll::-webkit-scrollbar {
+        display: none !important;
+    }
+    .sn-flash-card {
+        width: 175px !important;
+        flex-shrink: 0 !important;
+        padding: 12px !important;
+    }
+    .sn-flash-img-box {
+        height: 120px !important;
+    }
+
+    /* Daily Shira deals mobile */
+    .sn-shira-grid {
+        display: flex !important;
+        gap: 12px !important;
+        overflow-x: auto !important;
+        scrollbar-width: none !important;
+        padding-bottom: 6px !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .sn-shira-grid::-webkit-scrollbar {
+        display: none !important;
+    }
+    .sn-shira-card {
+        width: 140px !important;
+        flex-shrink: 0 !important;
+        padding: 10px !important;
+    }
+    .sn-shira-img-box {
+        height: 95px !important;
     }
 }
 </style>
 
-<div class="main-layout-container">
+<main class="sn-main-content">
+    <div class="sn-container">
+        
+        <!-- ============================================================
+             1. HERO CARD SECTION ("Big Brands Bigger Savings")
+             ============================================================ -->
+        <?php if ($slider_on == 1): ?>
+        <section class="sn-hero-section">
+            <div class="sn-hero-card">
+                <!-- Mobile Slide Counter Badge (Top Right) -->
+                <span class="sn-hero-counter-badge" id="snHeroCounterBadge">1/<?php echo count($heroSlides); ?></span>
+                <button type="button" class="sn-slider-arrow sn-slider-prev sn-desktop-only" id="snHeroPrev" aria-label="Previous Slide">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <button type="button" class="sn-slider-arrow sn-slider-next sn-desktop-only" id="snHeroNext" aria-label="Next Slide">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
 
-<?php
-// =========================================================================
-//  SECTION 1: HERO SLIDER
-// =========================================================================
-if ($slider_on == 1) {
-    ob_start(); 
-    ?>
-    <div class="content-flow">
-        <div class="hero-wrapper">
-            <div class="hero-slider-area">
-                <div id="homeSlider" class="carousel slide" data-ride="carousel" style="height:100%;">
-                    <ol class="carousel-indicators">
-                        <?php
-                        $stmt = $pdo->prepare("SELECT * FROM tbl_slider ORDER BY id ASC");
-                        $stmt->execute();
-                        $count = $stmt->rowCount();
-                        for($i=0; $i<$count; $i++) { echo '<li data-target="#homeSlider" data-slide-to="'.$i.'" class="'.($i==0?'active':'').'"></li>'; }
+                <!-- Left Details -->
+                <div class="sn-hero-left">
+                    <div class="sn-hero-top-badge-row">
+                        <span class="sn-hero-mega-badge">Mega Sale</span>
+                    </div>
+                    <div class="sn-hero-eyebrow sn-desktop-only"><?php echo htmlspecialchars($hero_tag); ?></div>
+                    <h1 class="sn-hero-heading">Big Brands<br>Bigger Savings</h1>
+                    <p class="sn-hero-subtitle">Up to 60% Off on Electronics, Home & More!</p>
+                    
+                    <div class="sn-hero-actions">
+                        <a href="<?php echo htmlspecialchars($hero_btn_url); ?>" class="sn-btn-primary">
+                            <span>Shop Now</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </a>
+                    </div>
+
+                    <!-- 3 Dots Indicator (Desktop only) -->
+                    <div class="sn-hero-dots sn-desktop-only" id="snHeroDots">
+                        <?php 
+                        $dotsCount = max(3, count($heroSlides));
+                        for ($i = 0; $i < $dotsCount; $i++): 
                         ?>
-                    </ol>
-                    <div class="carousel-inner" style="height:100%;">
-                        <?php
-                        $stmt->execute();
-                        $sliders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                        $i=0;
-                        foreach($sliders as $slide):
-                        ?>
-                        <div class="item <?php echo ($i==0)?'active':''; ?>" style="height:100%;">
-                            <img src="assets/uploads/<?php echo htmlspecialchars($slide['photo']); ?>" alt="Slider" style="width:100%; height:100%; object-fit:cover;">
-                            <?php if(!empty($slide['heading'])): ?>
-                            <div class="slider-text <?php echo $slide['position']; ?>">
-                                <h2 class="text-shine"><?php echo htmlspecialchars($slide['heading']); ?></h2>
-                                <?php if(!empty($slide['button_text'])): ?>
-                                    <a href="<?php echo htmlspecialchars($slide['button_url']); ?>" class="btn btn-primary"><?php echo htmlspecialchars($slide['button_text']); ?></a>
+                            <span class="sn-dot <?php if ($i === 0) echo 'active'; ?>" data-slide="<?php echo $i % max(1, count($heroSlides)); ?>"></span>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+
+                <!-- Right Static Collage -->
+                <div class="sn-hero-right">
+                    <div class="sn-hero-slider-wrap">
+                        <div class="sn-hero-slider-track" id="snHeroSliderTrack">
+                            <?php foreach ($heroSlides as $i => $slide): 
+                                $slideImg = $slide['photo'];
+                                if (!str_starts_with($slideImg, 'http')) {
+                                    $slideImg = BASE_URL . 'assets/uploads/' . $slideImg;
+                                }
+                            ?>
+                                <div class="sn-hero-slide <?php if ($i === 0) echo 'active'; ?>" data-slide-index="<?php echo $i; ?>">
+                                    <img src="<?php echo htmlspecialchars($slideImg); ?>" alt="Hero Slide <?php echo $i+1; ?>" class="sn-hero-image" loading="<?php echo ($i === 0 ? 'eager' : 'lazy'); ?>">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <!-- Static Top Brands Best Deals Doodle (Desktop only) -->
+                        <div class="sn-hero-doodle-badge sn-desktop-only">
+                            <div>Top Brands<br>Best Deals</div>
+                            <svg class="sn-doodle-arrow" width="30" height="30" viewBox="0 0 45 45" fill="none">
+                                <path d="M10 5 C 28 12, 34 26, 22 38 M 16 33 L 22 38 L 27 32" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+
+                        <!-- Static Yellow Spark Rays Doodle (Desktop only) -->
+                        <div class="sn-static-doodle-ray sn-desktop-only">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0L14.2 9.2L23 12L14.2 14.8L12 24L9.8 14.8L1 12L9.8 9.2L12 0Z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <!-- ============================================================
+             2. HORIZONTAL CATEGORIES BAR (MATCHING SCREENSHOT)
+             ============================================================ -->
+        <?php if ($category_on == 1): ?>
+        <section class="sn-category-section">
+            <div class="sn-section-header sn-desktop-only">
+                <h2 class="sn-section-title"><?php echo htmlspecialchars($categories_title); ?></h2>
+                <a href="<?php echo BASE_URL; ?>product-category.php?id=7&type=top-category" class="sn-view-all">
+                    <span>View All</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </a>
+            </div>
+
+            <!-- Horizontal Swipe Container -->
+            <div class="sn-category-scroll-wrap">
+                <!-- 1. All Categories -->
+                <a href="<?php echo BASE_URL; ?>product-category.php?id=7&type=top-category" class="sn-category-scroll-item">
+                    <div class="sn-category-scroll-box">
+                        <img src="assets/uploads/cat_all.jpg" alt="All Categories" loading="lazy" onerror="this.onerror=null; this.src='assets/uploads/cat_mockup/hero_laptop.png';">
+                    </div>
+                    <span class="sn-category-scroll-name">All Categories</span>
+                </a>
+
+                <?php 
+                foreach ($categories as $cat):
+                    $cPhoto = !empty($cat['photo']) ? $cat['photo'] : 'assets/images/no-image.png';
+                    if (!str_starts_with($cPhoto, 'http') && !file_exists(__DIR__ . '/' . $cPhoto)) {
+                        $cPhoto = 'assets/uploads/' . $cPhoto;
+                    }
+                ?>
+                    <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $cat['tcat_id']; ?>&type=top-category" class="sn-category-scroll-item">
+                        <div class="sn-category-scroll-box">
+                            <img src="<?php echo htmlspecialchars($cPhoto); ?>" alt="<?php echo htmlspecialchars($cat['tcat_name']); ?>" loading="lazy" onerror="this.onerror=null; this.src='assets/uploads/cat_all.jpg';">
+                        </div>
+                        <span class="sn-category-scroll-name"><?php echo htmlspecialchars($cat['tcat_name']); ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <!-- ============================================================
+             3. TRUST HIGHLIGHTS VALUE BAR (PILL CONTAINER)
+             ============================================================ -->
+        <?php if ($service_on == 1): ?>
+        <section class="sn-trust-section">
+            <div class="sn-trust-bar">
+                <!-- 1. Free Shipping -->
+                <div class="sn-trust-item">
+                    <div class="sn-trust-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="1" y="3" width="15" height="13"></rect>
+                            <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
+                            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                        </svg>
+                    </div>
+                    <div class="sn-trust-info">
+                        <h4>Free Shipping</h4>
+                        <p>On orders over ৳ 2,000</p>
+                    </div>
+                </div>
+
+                <!-- 2. Secure Payment -->
+                <div class="sn-trust-item">
+                    <div class="sn-trust-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                    </div>
+                    <div class="sn-trust-info">
+                        <h4>Secure Payment</h4>
+                        <p>100% secure payments</p>
+                    </div>
+                </div>
+
+                <!-- 3. 7 Days Return -->
+                <div class="sn-trust-item">
+                    <div class="sn-trust-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="1 4 1 10 7 10"></polyline>
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                        </svg>
+                    </div>
+                    <div class="sn-trust-info">
+                        <h4>7 Days Return</h4>
+                        <p>Easy return policy</p>
+                    </div>
+                </div>
+
+                <!-- 4. 24/7 Support -->
+                <div class="sn-trust-item">
+                    <div class="sn-trust-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                        </svg>
+                    </div>
+                    <div class="sn-trust-info">
+                        <h4>24/7 Support</h4>
+                        <p>We're here to help</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <!-- ============================================================
+             4. PAYDAY SALE PROMO BANNER (MATCHING SCREENSHOT)
+             ============================================================ -->
+        <section class="sn-payday-section">
+            <div class="sn-payday-banner">
+                <!-- Left: Angled Badge -->
+                <div class="sn-payday-left">
+                    <div class="sn-payday-badge-title">PAYDAY<br>SALE</div>
+                    <div class="sn-payday-badge-sub">UP TO 80% OFF</div>
+                </div>
+
+                <!-- Center: Promo Offer -->
+                <div class="sn-payday-center">
+                    <div class="sn-payday-center-title">Extra 15% OFF</div>
+                    <div class="sn-payday-center-sub">On Your First Order</div>
+                    <a href="<?php echo BASE_URL; ?>product-category.php?id=7&type=top-category" class="sn-payday-btn">
+                        <span>Claim Now</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </a>
+                </div>
+
+                <!-- Right: Shopping Cart with Packages Image -->
+                <div class="sn-payday-right">
+                    <img src="assets/uploads/payday_cart.jpg" alt="Payday Shopping Cart" loading="lazy">
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             5. FLASH SALE SECTION (MATCHING SCREENSHOT)
+             ============================================================ -->
+        <section class="sn-flash-section">
+            <div class="sn-section-header">
+                <h2 class="sn-section-title">
+                    <span class="sn-flash-icon">⚡</span>
+                    <span>Flash Sale</span>
+                </h2>
+                <a href="<?php echo BASE_URL; ?>deals.php" class="sn-view-all">
+                    <span>Shop More</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </a>
+            </div>
+
+            <div class="sn-flash-scroll">
+                <?php
+                $flashItems = [
+                    [
+                        'id' => 105,
+                        'name' => 'Apple AirPods Pro (2nd Gen)',
+                        'curr' => '27,999',
+                        'old' => '32,999',
+                        'discount' => '-15%',
+                        'img' => 'assets/uploads/deal_airpods.jpg',
+                        'fallback' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/product_airpods_pro.jpg'
+                    ],
+                    [
+                        'id' => 107,
+                        'name' => 'Samsung Galaxy Watch 6',
+                        'curr' => '26,999',
+                        'old' => '29,999',
+                        'discount' => '-12%',
+                        'img' => 'assets/uploads/deal_galaxy_watch.jpg',
+                        'fallback' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/product_galaxy_watch_6.jpg'
+                    ],
+                    [
+                        'id' => 103,
+                        'name' => 'iPhone 15 128GB | Black',
+                        'curr' => '89,999',
+                        'old' => '99,999',
+                        'discount' => '-8%',
+                        'img' => 'assets/uploads/deal_iphone_15.jpg',
+                        'fallback' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/product_iphone16_pro.jpg'
+                    ],
+                    [
+                        'id' => 104,
+                        'name' => 'ASUS ROG Strix G15 Ryzen 7 | 16GB | 1TB SSD',
+                        'curr' => '1,12,999',
+                        'old' => '1,32,999',
+                        'discount' => '-10%',
+                        'img' => 'assets/uploads/deal_asus_rog.jpg',
+                        'fallback' => 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/product_hp_pavilion_15.jpg'
+                    ]
+                ];
+
+                foreach ($flashItems as $fi):
+                ?>
+                    <a href="<?php echo BASE_URL; ?>product.php?id=<?php echo $fi['id']; ?>" class="sn-flash-card">
+                        <div class="sn-flash-card-top">
+                            <span class="sn-flash-discount"><?php echo $fi['discount']; ?></span>
+                            <button type="button" class="sn-flash-wishlist" title="Save to Wishlist" onclick="homeToggleWishlist(<?php echo $fi['id']; ?>, this, event)">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                            </button>
+                        </div>
+                        <div class="sn-flash-img-box">
+                            <img src="<?php echo htmlspecialchars($fi['img']); ?>" alt="<?php echo htmlspecialchars($fi['name']); ?>" loading="lazy" onerror="this.onerror=null; this.src='<?php echo htmlspecialchars($fi['fallback']); ?>';">
+                        </div>
+                        <h3 class="sn-flash-title"><?php echo htmlspecialchars($fi['name']); ?></h3>
+                        <div class="sn-flash-pricing-row">
+                            <div class="sn-flash-curr-price">৳ <?php echo $fi['curr']; ?></div>
+                            <div class="sn-flash-old-price">৳ <?php echo $fi['old']; ?></div>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             6. DAILY SHIRA DEALS SECTION (MATCHING SCREENSHOT)
+             ============================================================ -->
+        <section class="sn-shira-section">
+            <div class="sn-section-header">
+                <h2 class="sn-section-title">
+                    <span class="sn-flash-icon">🕒</span>
+                    <span>Daily Shira Deals</span>
+                </h2>
+                <a href="<?php echo BASE_URL; ?>deals.php" class="sn-view-all">
+                    <span>Shop Now</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </a>
+            </div>
+
+            <div class="sn-shira-grid">
+                <?php
+                $shiraDeals = [
+                    [
+                        'name' => 'Groceries',
+                        'badge' => 'Up to 58%',
+                        'img' => 'assets/uploads/deal_groceries.jpg',
+                        'url' => BASE_URL . 'product-category.php?id=5&type=top-category'
+                    ],
+                    [
+                        'name' => 'Snacks & Beverages',
+                        'badge' => 'Up to 40%',
+                        'img' => 'assets/uploads/deal_snacks.jpg',
+                        'url' => BASE_URL . 'product-category.php?id=5&type=top-category'
+                    ],
+                    [
+                        'name' => 'Home & Kitchen',
+                        'badge' => 'Up to 35%',
+                        'img' => 'assets/uploads/deal_kitchen.jpg',
+                        'url' => BASE_URL . 'product-category.php?id=12&type=top-category'
+                    ],
+                    [
+                        'name' => 'Fashion',
+                        'badge' => 'Up to 60%',
+                        'img' => 'assets/uploads/deal_fashion.jpg',
+                        'url' => BASE_URL . 'product-category.php?id=11&type=top-category'
+                    ]
+                ];
+
+                foreach ($shiraDeals as $sd):
+                ?>
+                    <a href="<?php echo htmlspecialchars($sd['url']); ?>" class="sn-shira-card">
+                        <div class="sn-shira-img-box">
+                            <img src="<?php echo htmlspecialchars($sd['img']); ?>" alt="<?php echo htmlspecialchars($sd['name']); ?>" loading="lazy">
+                        </div>
+                        <span class="sn-shira-badge"><?php echo $sd['badge']; ?></span>
+                        <span class="sn-shira-name"><?php echo htmlspecialchars($sd['name']); ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+
+        <!-- ============================================================
+             7. FEATURED PRODUCTS & PROMO (DESKTOP EXTENSION)
+             ============================================================ -->
+        <?php if ($featured_on == 1 && !empty($featuredProducts)): ?>
+        <section class="sn-featured-section sn-desktop-only">
+            <div class="sn-section-header">
+                <h2 class="sn-section-title"><?php echo htmlspecialchars($featured_products_title); ?></h2>
+                <a href="<?php echo BASE_URL; ?>product-category.php?id=1&type=top-category" class="sn-view-all">
+                    <span>View All</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </a>
+            </div>
+
+            <div class="sn-products-grid">
+                <?php foreach ($featuredProducts as $idx => $p): 
+                    $currPrice = (float)str_replace(',', '', $p['p_current_price']);
+                    $oldPrice = (float)str_replace(',', '', $p['p_old_price'] ?? '0');
+                    $hasDiscount = ($oldPrice > $currPrice);
+                    $discountPct = $hasDiscount ? round((($oldPrice - $currPrice) / $oldPrice) * 100) : 0;
+                    
+                    $rInfo = $ratingMap[$p['p_id']] ?? ['rating' => '4.8', 'count' => '1.2k'];
+                    $score = $rInfo['rating'];
+                    $reviewsLabel = $rInfo['count'];
+
+                    $prodPhoto = !empty($p['p_featured_photo']) ? $p['p_featured_photo'] : 'assets/images/no-image.png';
+                    if (!str_starts_with($prodPhoto, 'http')) {
+                        $prodPhoto = BASE_URL . 'assets/uploads/' . $prodPhoto;
+                    }
+                ?>
+                    <div class="sn-product-card">
+                        <?php if ($idx === 0): ?>
+                            <span class="sn-badge">Best Seller</span>
+                        <?php elseif ($hasDiscount): ?>
+                            <span class="sn-badge">-<?php echo $discountPct; ?>%</span>
+                        <?php endif; ?>
+
+                        <a href="<?php echo BASE_URL; ?>product.php?id=<?php echo $p['p_id']; ?>" style="text-decoration:none; color:inherit; display:flex; flex-direction:column; flex:1;">
+                            <div class="sn-product-img-box">
+                                <img src="<?php echo htmlspecialchars($prodPhoto); ?>" alt="<?php echo htmlspecialchars($p['p_name']); ?>" loading="lazy">
+                            </div>
+                            <h3 class="sn-product-title"><?php echo htmlspecialchars($p['p_name']); ?></h3>
+                            <p class="sn-product-spec"><?php echo htmlspecialchars($p['p_short_description'] ?? ''); ?></p>
+                            
+                            <div class="sn-product-rating">
+                                <span class="sn-rating-star">★</span>
+                                <span><?php echo $score; ?></span>
+                                <span class="sn-rating-count">(<?php echo $reviewsLabel; ?>)</span>
+                            </div>
+                        </a>
+
+                        <div class="sn-product-bottom">
+                            <div class="sn-price-box">
+                                <span class="sn-current-price"><?php echo $currencySymbol . number_format($currPrice); ?></span>
+                                <?php if ($hasDiscount): ?>
+                                    <span class="sn-old-price"><?php echo $currencySymbol . number_format($oldPrice); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <?php endif; ?>
+                            <button type="button" class="sn-btn-cart" onclick="homeAddToCart(<?php echo $p['p_id']; ?>, '<?php echo htmlspecialchars(addslashes($p['p_name'])); ?>', this)" title="Add to cart" aria-label="Add to Cart">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="9" cy="21" r="1"></circle>
+                                    <circle cx="20" cy="21" r="1"></circle>
+                                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                                </svg>
+                            </button>
                         </div>
-                        <?php $i++; endforeach; ?>
                     </div>
-                </div>
+                <?php endforeach; ?>
             </div>
-            
-            <div class="hero-promo-area">
-                 <div style="flex:1; background: url('assets/uploads/<?php echo $settings_data['slider_side_banner_img'] ?? 'default.jpg'; ?>') center/cover; border-radius:12px; position:relative; overflow:hidden;">
-                    <div style="position:absolute; bottom:0; left:0; width:100%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); padding:15px; color:#fff;">
-                        <h4 style="margin:0; font-size:16px;"><?php echo $settings_data['slider_side_banner_text'] ?? 'Special Offer'; ?></h4>
-                    </div>
-                 </div>
-            </div>
-        </div>
+        </section>
+        <?php endif; ?>
+
     </div>
-    <?php
-    $homepage_layout[] = ['order' => $slider_order, 'html' => ob_get_clean()];
-}
+    <div id="sn-home-toast" class="sn-home-toast" style="display:none;"></div>
+</main>
 
-// =========================================================================
-//  SECTION 2: FEATURES ICONS
-// =========================================================================
-if ($features_on == 1) {
-    ob_start();
-    ?>
-    <div class="content-flow">
-        <div class="features-row">
-            <?php 
-            try {
-                $stmt = $pdo->prepare("SELECT * FROM tbl_features ORDER BY order_no ASC");
-                $stmt->execute();
-                foreach($stmt->fetchAll(PDO::FETCH_ASSOC) as $f): ?>
-                <a href="<?php echo $f['link']; ?>" class="feature-item">
-                    <div class="feature-icon-circle"><i class="fa <?php echo $f['icon']; ?>"></i></div>
-                    <span class="feature-label"><?php echo $f['title']; ?></span>
-                </a>
-                <?php endforeach;
-            } catch (Exception $e) { }
-            ?>
-        </div>
-    </div>
-    <?php
-    $homepage_layout[] = ['order' => $features_order, 'html' => ob_get_clean()];
-}
-// =========================================================================
-//  SECTION 3: BROWSE CATEGORIES (Horizontal Scroll + Round)
-// =========================================================================
-if ($category_on == 1) {
-    ob_start();
-    ?>
-    <div class="content-flow" style="background-color: <?php echo $settings_data['bg_color_categories'] ?? '#fff'; ?>;">
-        <div class="section-header">
-            <h3 class="section-title">Browse Categories</h3>
-            <a href="#" class="view-all-btn">View All</a>
-        </div>
-        <div class="horizontal-scroll-wrapper" style="padding: 0 20px 20px 20px;">
-            <?php
-            $cats = $GLOBALS['all_tcat'] ?? $pdo->query("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
-            foreach($cats as $cat): 
-                $cat_img = (isset($cat['photo']) && !empty($cat['photo'])) ? 'assets/uploads/'.$cat['photo'] : '';
-            ?>
-                <a href="product-category.php?id=<?php echo $cat['tcat_id']; ?>&type=top-category" class="cat-item round-style">
-                    <div class="cat-img-box">
-                        <?php if($cat_img): ?>
-                            <img src="<?php echo $cat_img; ?>" alt="<?php echo $cat['tcat_name']; ?>">
-                        <?php else: ?>
-                            <img src="assets/uploads/default_cat.jpg" alt="Default">
-                        <?php endif; ?>
-                    </div>
-                    <span class="cat-name"><?php echo $cat['tcat_name']; ?></span>
-                </a>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php
-    $homepage_layout[] = ['order' => $category_order, 'html' => ob_get_clean()];
-}
+<!-- ============================================================
+     HERO SLIDER AUTOMATIC ENGINE (JS)
+     ============================================================ -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const slides = document.querySelectorAll('.sn-hero-slide');
+    const dots = document.querySelectorAll('#snHeroDots .sn-dot');
+    const prevBtn = document.getElementById('snHeroPrev');
+    const nextBtn = document.getElementById('snHeroNext');
+    const heroCard = document.querySelector('.sn-hero-card');
+    const counterBadge = document.getElementById('snHeroCounterBadge');
 
-// =========================================================================
-//  HELPER: REUSABLE PRODUCT CARD GENERATOR
-// =========================================================================
+    if (slides.length <= 1) return;
 
+    let currentIndex = 0;
+    const totalSlides = slides.length;
+    const autoplayEnabled = <?php echo ($hero_slider_autoplay == 1 ? 'true' : 'false'); ?>;
+    const intervalMs = <?php echo (int)($hero_slider_interval > 0 ? $hero_slider_interval : 4500); ?>;
+    let autoPlayTimer = null;
 
-    function renderProductCard($row, $currencySymbol) {
-        global $pdo;
-        static $ratingCache = null;
-        if ($ratingCache === null) {
-            $ratingCache = [];
-            try {
-                $stmtRatings = $pdo->query("SELECT p_id, AVG(rating) as avg_rating, COUNT(*) as total FROM tbl_rating GROUP BY p_id");
-                while ($rRow = $stmtRatings->fetch()) {
-                    $ratingCache[$rRow['p_id']] = [
-                        'avg_rating' => $rRow['avg_rating'] !== null ? round($rRow['avg_rating']) : 0,
-                        'total' => (int)$rRow['total']
-                    ];
-                }
-            } catch (Throwable $e) {}
+    function showSlide(index) {
+        if (index < 0) index = totalSlides - 1;
+        if (index >= totalSlides) index = 0;
+
+        slides.forEach((slide, i) => {
+            slide.classList.toggle('active', i === index);
+        });
+
+        dots.forEach((dot, i) => {
+            dot.classList.toggle('active', i === index);
+        });
+
+        if (counterBadge) {
+            counterBadge.textContent = (index + 1) + '/' + totalSlides;
         }
-        $rating_data = $ratingCache[$row['p_id']] ?? ['avg_rating' => 0, 'total' => 0];
-        $rating = $rating_data['avg_rating'];
-        $review_count = $rating_data['total'];
-        
-        // Generate stars HTML
-        $stars_html = '';
-        for ($i = 1; $i <= 5; $i++) {
-            if ($i <= $rating) {
-                $stars_html .= '<i class="fa fa-star"></i>';
-            } else {
-                $stars_html .= '<i class="fa fa-star-o"></i>';
+
+        currentIndex = index;
+    }
+
+    function nextSlide() {
+        showSlide(currentIndex + 1);
+    }
+
+    function prevSlide() {
+        showSlide(currentIndex - 1);
+    }
+
+    function startAutoplay() {
+        if (autoplayEnabled && !autoPlayTimer) {
+            autoPlayTimer = setInterval(nextSlide, intervalMs);
+        }
+    }
+
+    function stopAutoplay() {
+        if (autoPlayTimer) {
+            clearInterval(autoPlayTimer);
+            autoPlayTimer = null;
+        }
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            stopAutoplay();
+            nextSlide();
+            startAutoplay();
+        });
+    }
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            stopAutoplay();
+            prevSlide();
+            startAutoplay();
+        });
+    }
+
+    dots.forEach((dot, idx) => {
+        dot.addEventListener('click', function() {
+            stopAutoplay();
+            showSlide(idx);
+            startAutoplay();
+        });
+    });
+
+    if (heroCard) {
+        heroCard.addEventListener('mouseenter', stopAutoplay);
+        heroCard.addEventListener('mouseleave', startAutoplay);
+
+        // Touch swipe support for mobile
+        let startX = 0;
+        heroCard.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            stopAutoplay();
+        }, { passive: true });
+
+        heroCard.addEventListener('touchend', function(e) {
+            const endX = e.changedTouches[0].clientX;
+            const diff = startX - endX;
+            if (Math.abs(diff) > 40) {
+                if (diff > 0) nextSlide();
+                else prevSlide();
             }
-        }
+            startAutoplay();
+        }, { passive: true });
+    }
 
-        // Calculate discount
-        $discount = 0;
-        // Discount badge
-        $discount_html = '';
-        if ($row['p_old_price'] > 0 && $row['p_old_price'] > $row['p_current_price']) {
-            $discount = round((($row['p_old_price'] - $row['p_current_price']) / $row['p_old_price']) * 100);
-            $discount_html = '<div class="discount-badge">-' . $discount . '%</div>';
-        }
-        
-        // Product tags
-        $tags_html = '<div class="product-tags">';
-        if (isset($row['p_is_top_sale']) && $row['p_is_top_sale']) {
-            $tags_html .= '<span class="tag tag-hot">HOT</span>';
-        }
-        if (isset($row['p_is_featured']) && $row['p_is_featured']) {
-            $tags_html .= '<span class="tag tag-new">NEW</span>';
-        }
-        if (isset($row['p_is_official']) && $row['p_is_official']) {
-            $tags_html .= '<span class="tag tag-official">OFFICIAL</span>';
-        }
-        if ($discount > 30) {
-            $tags_html .= '<span class="tag tag-sale">SALE</span>';
-        }
-        if (isset($row['p_qty']) && $row['p_qty'] < 10 && $row['p_qty'] > 0) {
-            $tags_html .= '<span class="tag tag-limited">LIMITED</span>';
-        }
-        $tags_html .= '</div>';
+    startAutoplay();
+});
 
-        // Stock status
-        $stock_status = '';
-        $stock_progress = '';
-        if ($row['p_qty'] > 0) {
-            $stock_status = '<span class="stock-status stock-in"><i class="fa fa-check-circle"></i> In Stock</span>';
-            if ($row['p_qty'] < 20) {
-                $percentage = ($row['p_qty'] / 20) * 100;
-                $stock_progress = '
-                <div class="stock-progress">
-                    <div class="stock-progress-bar" style="width: ' . $percentage . '%"></div>
-                </div>
-                <div class="stock-progress-text">Only ' . $row['p_qty'] . ' left</div>';
+// Home Add To Cart AJAX
+function homeAddToCart(productId, productName, btn) {
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="sn-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke="#0f172a"></path></svg>`;
+
+    const fd = new FormData();
+    fd.append('product_id', productId);
+    fd.append('quantity', 1);
+
+    fetch('add-to-cart-ajax.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        if (data.success) {
+            showHomeToast('"' + productName + '" added to cart!', 'success');
+            if (data.cart_count) {
+                updateCartBadges(data.cart_count);
             }
         } else {
-            $stock_status = '<span class="stock-status stock-out"><i class="fa fa-times-circle"></i> Out of Stock</span>';
+            showHomeToast(data.message || 'Added to cart!', 'success');
         }
-        
-        // Sold count (simulated based on views or random)
-        $sold_count = rand(50, 500);
-        $sold_html = $sold_count > 100 ? 
-            '<div class="sold-count"><i class="fa fa-fire"></i> ' . number_format($sold_count) . ' sold</div>' : '';
-        
-        // Old price
-        $old_price_html = ($row['p_old_price'] > 0) ? 
-            '<span class="p-old">' . $currencySymbol . number_format($row['p_old_price']) . '</span>' : '';
-        
-        // Wishlist status
-        $wishlist_icon = isset($_SESSION['customer']) ? 
-            '<a href="#" class="btn-action" onclick="addToWishlist(' . $row['p_id'] . '); return false;" title="Add to Wishlist"><i class="far fa-heart"></i></a>' : 
-            '<a href="login.php" class="btn-action" title="Login for Wishlist"><i class="far fa-heart"></i></a>';
-        
-        return '
-        <div class="product-card" data-product-id="' . $row['p_id'] . '">
-            ' . $discount_html . '
-            ' . $tags_html . '
-            
-            <div class="p-img-box">
-                <a href="product.php?id=' . $row['p_id'] . '">
-                    <img src="assets/uploads/' . htmlspecialchars($row['p_featured_photo']) . '" alt="' . htmlspecialchars($row['p_name']) . '">
-                </a>
-                <div class="hover-btns-container">
-                    <a href="product.php?id=' . $row['p_id'] . '" class="btn-action" title="View Product"><i class="fa fa-eye"></i></a>
-                    <a href="javascript:void(0);" onclick="addToCart(' . $row['p_id'] . ')" class="btn-action" title="Add to Cart"><i class="fa fa-shopping-cart"></i></a>
-                    ' . $wishlist_icon . '
-                </div>
-            </div>
-            
-            <div class="p-details">
-                <div class="p-title">
-                    <a href="product.php?id=' . $row['p_id'] . '">' . htmlspecialchars($row['p_name']) . '</a>
-                </div>
-                
-                <div class="meta-row">
-                    <div class="review-stars">
-                        ' . $stars_html . '
-                        <span class="review-count">(' . $review_count . ')</span>
-                    </div>
-                    ' . $sold_html . '
-                </div>
-                
-                <div class="meta-row">
-                    ' . $stock_status . '
-                </div>
-                
-                ' . $stock_progress . '
-                
-                <div class="price-row">
-                    <span class="p-price">' . $currencySymbol . number_format($row['p_current_price']) . '</span>
-                    ' . $old_price_html . '
-                </div>
-            </div>
-        </div>';
-    }
-
-// =========================================================================
-//  SECTION: FLASH SALE
-// =========================================================================
-if ($flash_order) { 
-    ob_start();
-    $stmt = $pdo->prepare("SELECT * FROM tbl_product WHERE p_old_price > p_current_price AND p_is_active=1 LIMIT 10");
-    $stmt->execute();
-    $flash_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    if(count($flash_products) > 0):
-    ?>
-    <div class="content-flow">
-        <div style="padding: 20px 30px; border-bottom: 1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
-            <h3 class="text-shine" style="margin:0; font-size:20px; font-weight:700;">
-                <i class="fa fa-bolt" style="color:#ff4757;"></i> Flash Sale
-            </h3>
-            <div style="font-weight:bold; color:#ff4757; background:#fff0f1; padding:5px 12px; border-radius:20px; font-size:13px; border:1px solid #ffdbde;">
-                <span id="flash-timer-display">00:00:00</span>
-            </div>
-        </div>
-        <div class="grid-5-col">
-            <?php foreach ($flash_products as $row) { echo renderProductCard($row, LANG_VALUE_1); } ?>
-        </div>
-    </div>
-    <?php endif; 
-    // Inject flash sale countdown JS if an end time is set
-    ob_start();
-    ?>
-    <script>
-    (function(){
-        var endTs = <?php echo $flash_sale_end_ts ? $flash_sale_end_ts : 'null'; ?>;
-        if(!endTs) return;
-        var display = document.getElementById('flash-timer-display');
-        if(!display) return;
-        function updateTimer(){
-            var now = Date.now();
-            var diff = endTs - now;
-            if(diff <= 0){ display.textContent = '00:00:00'; clearInterval(timer); return; }
-            var s = Math.floor(diff/1000);
-            var h = Math.floor(s/3600);
-            var m = Math.floor((s%3600)/60);
-            var sec = s%60;
-            display.textContent = (h<10?'0':'')+h+':' + (m<10?'0':'')+m+':' + (sec<10?'0':'')+sec;
-        }
-        updateTimer();
-        var timer = setInterval(updateTimer, 1000);
-    })();
-    </script>
-    <?php
-    $script_html = ob_get_clean();
-    $homepage_layout[] = ['order' => $flash_order, 'html' => ob_get_clean() . $script_html];
-}
-
-// =========================================================================
-//  SECTION: FEATURED PRODUCTS
-// =========================================================================
-if ($featured_on == 1) {
-    ob_start();
-    ?>
-    <div class="content-flow" style="background: <?php echo $settings_data['bg_color_featured_products'] ?? ($settings_data['bg_color_latest_products'] ?? '#ffffff'); ?>;">
-        <div class="section-header" style="padding: 20px 30px; border-bottom: 1px solid #eee;">
-            <h3 class="section-title text-shine" style="margin:0;"><?php echo get_safe_setting($settings_data, 'featured_product_title', 'Featured Products'); ?></h3>
-        </div>
-        <div class="grid-5-col">
-            <?php
-            $limit = get_safe_setting($settings_data, 'total_featured_product_home', 8);
-            $stmt = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_featured=? AND p_is_active=? LIMIT ".$limit);
-            $stmt->execute(array(1, 1));
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) { echo renderProductCard($row, LANG_VALUE_1); } 
-            ?>
-        </div>
-    </div>
-    <?php
-    $homepage_layout[] = ['order' => $featured_order, 'html' => ob_get_clean()];
-}
-
-// =========================================================================
-//  SECTION: LATEST PRODUCTS (Original Horizontal Scroll Preserved)
-// =========================================================================
-if ($latest_on == 1) {
-    ob_start();
-    ?>
-    <div class="content-flow" style="background: <?php echo $settings_data['bg_color_latest_products'] ?? '#ffffff'; ?>;">
-        <div class="section-header" style="padding: 20px; display:flex; justify-content:space-between;">
-            <h3 class="section-title"><?php echo get_safe_setting($settings_data, 'latest_product_title', 'Latest Products'); ?></h3>
-            <a href="search-result.php?type=latest" class="btn btn-default btn-xs">View All</a>
-        </div>
-        <div class="horizontal-scroll-wrapper" style="padding: 0 20px 20px 20px; display: flex; overflow-x: auto; gap: 15px;">
-            <?php
-            $limit = get_safe_setting($settings_data, 'total_latest_product_home', 8);
-            $stmt = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=? ORDER BY p_id DESC LIMIT 20");
-            $stmt->execute(array(1));
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row): ?>
-                 <div class="product-card" style="min-width: 200px;">
-                    <div class="p-img-box">
-                        <a href="product.php?id=<?php echo $row['p_id']; ?>">
-                            <img src="assets/uploads/<?php echo htmlspecialchars($row['p_featured_photo']); ?>" alt="">
-                        </a>
-                        <div class="hover-btns-container">
-                             <a href="product.php?id=<?php echo $row['p_id']; ?>" class="btn-action"><i class="fa fa-shopping-cart"></i></a>
-                             <a href="#" class="btn-action" onclick="addToWishlist(<?php echo $row['p_id']; ?>); return false;"><i class="fa fa-heart"></i></a>
-                        </div>
-                    </div>
-                    <div class="p-details">
-                        <div class="p-title"><a href="product.php?id=<?php echo $row['p_id']; ?>"><?php echo htmlspecialchars($row['p_name']); ?></a></div>
-                        <div class="price-row">
-                            <span class="p-price"><?php echo LANG_VALUE_1; ?><?php echo number_format($row['p_current_price']); ?></span>
-                        </div>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php
-    $homepage_layout[] = ['order' => $latest_order, 'html' => ob_get_clean()];
-}
-
-// =========================================================================
-//  SECTION: STICKY NAV & DYNAMIC FEED
-// =========================================================================
-if ($sticky_nav_on == 1) {
-    ob_start();
-    ?>
-    <div style="position: sticky; top: 60px; z-index: 100; background: rgba(255,255,255,0.95); backdrop-filter: blur(5px); padding: 15px 0; margin-top:30px; border-top:1px solid #eee; border-bottom:1px solid #eee;">
-        <div style="display:flex; gap:10px; overflow-x:auto; padding:0 15px;">
-            <button class="btn btn-sm btn-primary">For You</button>
-            <button class="btn btn-sm btn-default">Top Sale</button>
-            <button class="btn btn-sm btn-default">New Arrivals</button>
-        </div>
-    </div>
-
-    <div class="content-flow" style="background:transparent; border:none; box-shadow:none;">
-        <div class="grid-5-col" id="dynamic-products-grid">
-            <?php
-            $sql_rand = defined('SQL_RAND') ? SQL_RAND : 'RAND()';
-            $stmt = $pdo->prepare("SELECT * FROM tbl_product WHERE p_is_active=1 ORDER BY {$sql_rand} LIMIT 10");
-            $stmt->execute();
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) { echo renderProductCard($row, LANG_VALUE_1); } 
-            ?>
-        </div>
-    </div>
-    <?php
-    $homepage_layout[] = ['order' => $sticky_nav_order, 'html' => ob_get_clean()];
-}
-
-// --- RENDER LAYOUT ---
-usort($homepage_layout, function($a, $b) { return $a['order'] <=> $b['order']; });
-foreach ($homepage_layout as $block) { echo $block['html']; }
-?>
-
-</div> <?php if(($settings_data['extra_footer_section_enable']??0) == 1): ?>
-<div class="desktop-footer">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-3">
-                <h4>Information</h4>
-                <a href="about.php">About Us</a>
-                <a href="contact.php">Contact Us</a>
-                <a href="privacy.php">Privacy Policy</a>
-                <a href="terms.php">Terms & Conditions</a>
-            </div>
-            <div class="col-md-3">
-                <h4>My Account</h4>
-                <a href="dashboard.php">Dashboard</a>
-                <a href="customer-order.php">My Orders</a>
-                <a href="cart.php">Shopping Cart</a>
-                <a href="wishlist.php">Wishlist</a>
-            </div>
-            <div class="col-md-3">
-                <h4>Customer Service</h4>
-                <a href="#">Help Center</a>
-                <a href="#">Returns</a>
-                <a href="#">Shipping Info</a>
-                <a href="faq.php">FAQs</a>
-            </div>
-            <div class="col-md-3">
-                <h4>Contact Info</h4>
-                <p><i class="fa fa-phone"></i> <?php echo $settings_data['contact_phone']; ?></p>
-                <p><i class="fa fa-envelope"></i> <?php echo $settings_data['contact_email']; ?></p>
-                <p><i class="fa fa-map-marker"></i> <?php echo $settings_data['contact_address']; ?></p>
-            </div>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
-
-<script>
-// --- Live Feed Animation ---
-document.addEventListener("DOMContentLoaded", function() {
-    startLiveFeed();
-});
-
-function startLiveFeed() {
-    setInterval(() => {
-        if(window.isScrolling) return;
-
-        const grid = document.getElementById('dynamic-products-grid');
-        if(grid && grid.children.length > 4) {
-            
-            const cards = grid.getElementsByClassName('product-card');
-            const randomIndex = Math.floor(Math.random() * cards.length);
-            const targetCard = cards[randomIndex];
-
-            fetch('fetch_live_feed.php')
-                .then(res => res.json())
-                .then data => {
-                    if(data.success) {
-                        targetCard.style.transform = "rotateY(90deg)";
-                        targetCard.style.opacity = "0.5";
-                        targetCard.style.transition = "transform 0.4s ease-in, opacity 0.4s";
-
-                        setTimeout(() => {
-                            const img = targetCard.querySelector('.p-img-box img');
-                            const titleLink = targetCard.querySelector('.p-title a');
-                            const priceEl = targetCard.querySelector('.p-price');
-                            const stockEl = targetCard.querySelector('.stock-status');
-
-                            if(img) img.src = data.product.image;
-                            if(titleLink) { titleLink.innerText = data.product.name; titleLink.href = data.product.link; }
-                            if(priceEl) priceEl.innerText = data.product.price;
-                            
-                            // Visual reset for stock (optional if data includes it)
-                            // if(stockEl) ...
-
-                            targetCard.style.transform = "rotateY(0deg)";
-                            targetCard.style.opacity = "1";
-                        }, 400);
-                    }
-                })
-                .catch(err => console.log('Live feed error'));
-        }
-    }, 4000);
-}
-
-// Scroll Tracker
-window.isScrolling = false;
-window.addEventListener('scroll', () => {
-    window.isScrolling = true;
-    clearTimeout(window.scrollTimeout);
-    window.scrollTimeout = setTimeout(() => { window.isScrolling = false; }, 200);
-});
-
-// Timer
-window.onload = function () {
-    const display = document.querySelector('#flash-timer-display');
-    if(display) {
-        let timer = 18000;
-        setInterval(function () {
-            let hours = parseInt(timer / 3600, 10);
-            let minutes = parseInt((timer % 3600) / 60, 10);
-            let seconds = parseInt(timer % 60, 10);
-            display.textContent = (hours < 10 ? "0" + hours : hours) + ":" + (minutes < 10 ? "0" + minutes : minutes) + ":" + (seconds < 10 ? "0" + seconds : seconds);
-            if (--timer < 0) timer = 0;
-        }, 1000);
-    }
-};
-
-function addToWishlist(p_id) {
-    <?php if(!isset($_SESSION['customer'])): ?>
-        alert("Please login first.");
-        window.location.href = "login.php";
-    <?php else: ?>
-        alert("Product " + p_id + " added to wishlist!");
-    <?php endif; ?>
-}
-
-<!-- Replace your existing renderProductCard function with this: -->
-
-
-<!-- Add auto-scroll to latest products section: -->
-<div class="horizontal-scroll-wrapper product-auto-scroll">
-    <?php foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row): ?>
-        <?php echo renderProductCard($row, LANG_VALUE_1, $pdo); ?>
-    <?php endforeach; ?>
-</div>
-
-<!-- Add JavaScript for auto-scroll pause on hover: -->
-<script>
-document.querySelectorAll('.product-auto-scroll').forEach(scroll => {
-    scroll.addEventListener('mouseenter', () => {
-        scroll.style.animationPlayState = 'paused';
-    });
-    scroll.addEventListener('mouseleave', () => {
-        scroll.style.animationPlayState = 'running';
-    });
-});
-
-// Add to Cart function
-function addToCart(productId) {
-    fetch('add_to_cart.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'product_id=' + productId + '&quantity=1'
     })
-    .then(response => response.json())
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        showHomeToast('"' + productName + '" added to cart!', 'success');
+    });
+}
+
+// Home Wishlist Toggle AJAX
+function homeToggleWishlist(productId, btn, e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    btn.classList.toggle('active');
+    const isSaved = btn.classList.contains('active');
+
+    const fd = new FormData();
+    fd.append('product_id', productId);
+    fd.append('action', isSaved ? 'add' : 'remove');
+
+    fetch('wishlist_action.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
     .then(data => {
-        if(data.success) {
-            // Show cart animation
-            const cartBtn = event.target.closest('.btn-action');
-            cartBtn.innerHTML = '<i class="fa fa-check"></i>';
-            cartBtn.style.background = '#27ae60';
-            
-            setTimeout(() => {
-                cartBtn.innerHTML = '<i class="fa fa-shopping-cart"></i>';
-                cartBtn.style.background = '';
-            }, 1000);
-            
-            // Update cart count
-            updateCartCount();
+        if (data.status === 'error' && data.message && data.message.includes('logged in')) {
+            showHomeToast('Please log in to save to your wishlist', 'info');
+        } else {
+            showHomeToast(isSaved ? 'Saved to wishlist!' : 'Removed from wishlist', 'info');
         }
+    })
+    .catch(() => {
+        showHomeToast(isSaved ? 'Saved to wishlist!' : 'Removed from wishlist', 'info');
     });
 }
 
-function updateCartCount() {
-    // Update cart count in header
-    fetch('get_cart_count.php')
-    .then(response => response.json())
-    .then(data => {
-        document.querySelectorAll('.cart-count').forEach(el => {
-            el.textContent = data.count;
-        });
-    });
-}
-</script>
-</script
+// Toast Feedback System
+let homeToastTimer = null;
+function showHomeToast(msg, type) {
+    let toast = document.getElementById('sn-home-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'sn-home-toast';
+        toast.className = 'sn-home-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.display = 'flex';
+    toast.classList.add('visible');
 
-<!-- Limit featured products client-side (falls back until admin UI updates) -->
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    try {
-        var maxFeatured = <?php echo (int) $featured_product_count; ?>;
-        // Find the featured section by header text
-        document.querySelectorAll('.content-flow').forEach(function(block){
-            var titleEl = block.querySelector('.section-title');
-            if(titleEl && /featured/i.test(titleEl.textContent)){
-                var cards = block.querySelectorAll('.product-card');
-                if(cards.length > maxFeatured){
-                    for(var i=maxFeatured;i<cards.length;i++){
-                        cards[i].style.display = 'none';
-                    }
-                }
-            }
-        });
-    } catch(e){ console.warn('Featured limiter:', e); }
-});
+    if (homeToastTimer) clearTimeout(homeToastTimer);
+    homeToastTimer = setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.style.display = 'none', 300);
+    }, 2800);
+}
+
+// Synchronize Header and Mobile Cart Badges
+function updateCartBadges(count) {
+    const desktopBadge = document.getElementById('sn-cart-badge-count');
+    if (desktopBadge) desktopBadge.textContent = count;
+    const mobileBadge = document.querySelector('.sn-dock-cart-badge');
+    if (mobileBadge) mobileBadge.textContent = count;
+}
 </script>
 
 <?php require_once('footer.php'); ?>

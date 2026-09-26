@@ -118,6 +118,12 @@ foreach ($result as $row) {
 			          </a>
 			        </li>
 
+			        <li class="treeview <?php if( ($cur_page == 'homepage-banners.php') ) {echo 'active';} ?>">
+			          <a href="homepage-banners.php">
+			            <i class="fa fa-sliders"></i> <span>Homepage Customizer & Hero Slider</span>
+			          </a>
+			        </li>
+
                     <li class="treeview <?php if( ($cur_page == 'size.php') || ($cur_page == 'size-add.php') || ($cur_page == 'size-edit.php') || ($cur_page == 'color.php') || ($cur_page == 'color-add.php') || ($cur_page == 'color-edit.php') || ($cur_page == 'country.php') || ($cur_page == 'country-add.php') || ($cur_page == 'country-edit.php') || ($cur_page == 'shipping-cost.php') || ($cur_page == 'shipping-cost-edit.php') || ($cur_page == 'top-category.php') || ($cur_page == 'top-category-add.php') || ($cur_page == 'top-category-edit.php') || ($cur_page == 'mid-category.php') || ($cur_page == 'mid-category-add.php') || ($cur_page == 'mid-category-edit.php') || ($cur_page == 'end-category.php') || ($cur_page == 'end-category-add.php') || ($cur_page == 'end-category-edit.php') ) {echo 'active';} ?>">
                         <a href="#">
                             <i class="fa fa-cogs"></i>
@@ -160,9 +166,9 @@ foreach ($result as $row) {
                     </li>
 
 
-                     <li class="treeview <?php if( ($cur_page == 'slider.php') ) {echo 'active';} ?>">
-			          <a href="slider.php">
-			            <i class="fa fa-picture-o"></i> <span>Manage Sliders</span>
+                     <li class="treeview <?php if( ($cur_page == 'slider.php') || ($cur_page == 'homepage-banners.php') ) {echo 'active';} ?>">
+			          <a href="homepage-banners.php">
+			            <i class="fa fa-picture-o"></i> <span>Manage Sliders & Banners</span>
 			          </a>
 			        </li>
                     <!-- Icons to be displayed on Shop -->

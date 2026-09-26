@@ -9,6 +9,7 @@ if(empty($_SESSION['user']['id'])) { header('Location: ' . BASE_URL . 'admin/log
 $adminQuery=$pdo->prepare("SELECT * FROM tbl_user WHERE id=? AND status='Active'");
 $adminQuery->execute([$_SESSION['user']['id']]);$adminUser=$adminQuery->fetch();
 if(!$adminUser || !in_array($adminUser['role'],['Top Admin','Admin'],true)) { http_response_code(403);exit('Administrator access is required.'); }
+if(!$adminUser || !in_array($adminUser['role'],['Top Admin','Admin','Super Admin'],true)) { http_response_code(403);exit('Administrator access is required.'); }
 $passwordVersion=hash('sha256',$adminUser['password']);
 if(isset($_SESSION['shop_admin_version']) && !hash_equals($_SESSION['shop_admin_version'],$passwordVersion)) {
     unset($_SESSION['user'],$_SESSION['shop_admin_version']);header('Location: ' . BASE_URL . 'admin/login.php');exit;

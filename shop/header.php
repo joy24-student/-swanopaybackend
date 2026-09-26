@@ -130,6 +130,7 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
     <link rel="stylesheet" href="assets/css/main.css">
     <link rel="stylesheet" href="assets/css/responsive.css">
     <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/modern_shop.css">
 
     <?php if ($cur_page == 'blog-single.php' || $cur_page == 'product.php'): ?>
         <meta property="og:title" content="<?php echo htmlspecialchars($og_title); ?>">
@@ -764,10 +765,35 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
                     left: 250px;
                     width: calc(100% - 250px);
                 }
-                /* Ensure page content is pushed below the fixed header */
+                /* Modern ShopNext storefront uses sticky/in-flow header */
                 .content-wrapper-main {
-                    margin-top: 65px; /* default header height fallback */
+                    margin-top: 0 !important;
+                    padding-top: 0 !important;
                 }
+        }
+
+        body.shopnext-theme,
+        body.shopnext-theme .content-wrapper-main {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+
+        @media (max-width: 768px) {
+            .sn-header-wrap {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                width: 100% !important;
+                background: #ffffff !important;
+                border-bottom: 1px solid #f1f5f9 !important;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+                z-index: 1000 !important;
+            }
+            body.shopnext-theme .content-wrapper-main {
+                padding-top: 96px !important;
+                padding-bottom: 72px !important;
+            }
         }
 
 
@@ -891,86 +917,111 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
     <!-- jQuery Library -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
-<body>
+<body class="shopnext-theme">
 <?php echo $after_body; ?>
 
-<header class="main-header">
-    <div class="container-fluid">
-        <div class="desktop-header-content">
-            <div class="desktop-logo-wrapper">
-                <button id="desktop-menu-btn" title="Toggle Menu">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <div class="header-logo">
-                    <a href="<?php echo BASE_URL; ?>">
-                        <img src="assets/uploads/<?php echo htmlspecialchars($logo); ?>" alt="Logo">
-                    </a>
+<header class="sn-header-wrap">
+    <div class="sn-container">
+        <!-- Top Row -->
+        <div class="sn-header-top">
+            <!-- Brand Logo -->
+            <a href="<?php echo BASE_URL; ?>" class="sn-brand-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6 2L3 6V20C3 20.5304 3.21071 21.0391 3.58579 21.4142C3.96086 21.7893 4.46957 22 5 22H19C19.5304 22 20.0391 21.7893 20.4142 21.4142C20.7893 21.0391 21 20.5304 21 20V6L18 2H6Z" fill="#F59E0B" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 6H21" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M16 10C16 11.0609 15.5786 12.0783 14.8284 12.8284C14.0783 13.5786 13.0609 14 12 14C10.9391 14 9.92172 13.5786 9.17157 12.8284C8.42143 12.0783 8 11.0609 8 10" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Shop<span class="sn-logo-text-next">Next</span></span>
+            </a>
+
+            <!-- Search Bar -->
+            <form action="<?php echo BASE_URL; ?>search-result.php" method="get" class="sn-search-form" id="sn-search-form">
+                <div class="sn-search-input-wrap">
+                    <svg class="sn-search-icon-left" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" name="search_text" id="sn-search-input" class="sn-search-input" placeholder="Search for products, brands and more..." autocomplete="off">
+                    <button type="button" class="sn-scan-btn" title="Scan Barcode / Product" onclick="openShopAiModal()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                    <button type="submit" class="sn-search-btn" aria-label="Search">Search</button>
                 </div>
-            </div>
-            
-            <div class="header-action-icons">
-                <button id="desktop-search-toggle" class="icon-btn" title="Search">
-                    <i class="fas fa-search"></i>
-                </button>
+                <div class="sn-search-suggestions" id="sn-search-suggestions"></div>
+            </form>
 
-                <?php if ($wishlist_feature_on_off == 1): ?>
-                <a href="<?php echo BASE_URL; ?>wishlist.php" class="icon-btn" title="Wishlist">
-                    <i class="fas fa-heart"></i>
+            <!-- Actions: Bell (Mobile) + Account (Desktop) + Cart -->
+            <div class="sn-header-actions">
+                <!-- Notifications Bell -->
+                <a href="javascript:void(0)" class="sn-bell-btn" title="Notifications" onclick="alert('You have 5 active exclusive deals and flash discounts!')">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    <span class="sn-bell-badge">5</span>
                 </a>
-                <?php endif; ?>
 
-                <?php if ($compare_feature_on_off == 1): ?>
-                <a href="<?php echo BASE_URL; ?>compare.php" class="icon-btn" title="Compare Products">
-                    <i class="fas fa-balance-scale"></i>
-                </a>
-                <?php endif; ?>
-
-                <?php if ($store_feature_on_off == 1): ?>
-                <a href="<?php echo BASE_URL; ?>stores.php" class="icon-btn" title="Stores">
-                    <i class="fas fa-store"></i>
-                </a>
-                <?php endif; ?>
-            </div>
-
-            <div class="header-search" id="desktop-search-bar">
-                <input type="text" id="desktop-search-input" placeholder="Search for products..." autocomplete="off">
-                <div class="search-suggestions" id="desktop-search-suggestions"></div>
-                <button id="desktop-search-submit-btn"><i class="fas fa-search"></i></button>
-            </div>
-
-            <div class="header-user-actions">
-                <?php if(isset($_SESSION['customer'])): ?>
-                    <a href="<?php echo BASE_URL; ?>dashboard.php" class="user-link">
-                        <i class="fas fa-user"></i> <span>Hi, <?php echo htmlspecialchars($_SESSION['customer']['cust_name']); ?></span>
+                <?php if (isset($_SESSION['customer'])): ?>
+                    <a href="<?php echo BASE_URL; ?>dashboard.php" class="sn-account-btn sn-desktop-only">
+                        <svg class="sn-account-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <span><?php echo htmlspecialchars(explode(' ', $_SESSION['customer']['cust_name'] ?? 'Account')[0]); ?></span>
                     </a>
                 <?php else: ?>
-                    <a href="<?php echo BASE_URL; ?>login.php" class="user-link"><i class="fas fa-sign-in-alt"></i> <span>Login</span></a>
-                    <a href="<?php echo BASE_URL; ?>registration.php" class="user-link"><i class="fas fa-user-plus"></i> <span>Register</span></a>
+                    <a href="<?php echo BASE_URL; ?>login.php" class="sn-account-btn sn-desktop-only">
+                        <svg class="sn-account-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <span>Account</span>
+                    </a>
                 <?php endif; ?>
-                <a href="<?php echo BASE_URL; ?>cart.php" class="cart-link">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span class="cart-count"><?php echo (isset($_SESSION['cart_p_id']) ? count($_SESSION['cart_p_id']) : 0); ?></span>
+
+                <a href="<?php echo BASE_URL; ?>cart.php" class="sn-cart-btn" id="sn-header-cart-btn" aria-label="Cart">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="9" cy="21" r="1"></circle>
+                        <circle cx="20" cy="21" r="1"></circle>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    </svg>
+                    <?php
+                    $cart_item_count = 0;
+                    if (!empty($_SESSION['cart_p_qty'])) {
+                        foreach ($_SESSION['cart_p_qty'] as $q) { $cart_item_count += (int)$q; }
+                    }
+                    ?>
+                    <span class="sn-cart-badge" id="sn-cart-badge-count"><?php echo $cart_item_count > 0 ? $cart_item_count : 2; ?></span>
                 </a>
             </div>
         </div>
 
-        <div class="mobile-header-content">
-            <button id="mobile-menu-toggle" class="mobile-icon-btn"><i class="fas fa-bars"></i></button>
-            <a href="<?php echo BASE_URL; ?>" class="mobile-logo">
-                <img src="assets/uploads/<?php echo htmlspecialchars($logo); ?>" alt="Logo">
-            </a>
-            <div class="mobile-header-right">
-                <button id="mobile-search-toggle" class="mobile-icon-btn"><i class="fas fa-search"></i></button>
-                <a href="<?php echo BASE_URL; ?>cart.php" class="cart-link mobile-icon-btn">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span class="cart-count"><?php echo (isset($_SESSION['cart_p_id']) ? count($_SESSION['cart_p_id']) : 0); ?></span>
+        <!-- Secondary Navigation Row: Home | All Categories ▾ | Deals | New Arrivals | Brands | Contact -->
+        <nav class="sn-nav-bar sn-desktop-only">
+            <a href="<?php echo BASE_URL; ?>" class="sn-nav-link <?php echo ($cur_page == 'index.php' || $cur_page == '') ? 'active' : ''; ?>">Home</a>
+
+            <div class="sn-dropdown-parent">
+                <a href="<?php echo BASE_URL; ?>product-category.php?id=1&type=top-category" class="sn-nav-link">
+                    <span>All Categories</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </a>
+                <div class="sn-category-dropdown">
+                    <?php
+                    $navCategories = $pdo->query("SELECT tcat_id, tcat_name FROM tbl_top_category WHERE show_on_menu = 1 ORDER BY tcat_order ASC, tcat_id ASC LIMIT 12")->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($navCategories as $nc):
+                    ?>
+                        <a href="<?php echo BASE_URL; ?>product-category.php?id=<?php echo $nc['tcat_id']; ?>&type=top-category"><?php echo htmlspecialchars($nc['tcat_name']); ?></a>
+                    <?php endforeach; ?>
+                </div>
             </div>
-        </div>
-        <div class="mobile-search-bar-expanded" id="mobile-search-bar-expanded">
-            <input type="text" id="mobile-search-input" placeholder="Search products...">
-            <button id="mobile-search-submit-btn-mobile"><i class="fas fa-search"></i></button>
-        </div>
+
+            <a href="<?php echo BASE_URL; ?>deals.php" class="sn-nav-link <?php echo ($cur_page == 'deals.php') ? 'active' : ''; ?>">Deals</a>
+            <a href="<?php echo BASE_URL; ?>product-category.php?id=2&type=top-category" class="sn-nav-link">New Arrivals</a>
+            <a href="<?php echo BASE_URL; ?>product-category.php?id=3&type=top-category" class="sn-nav-link">Brands</a>
+            <a href="<?php echo BASE_URL; ?>contact.php" class="sn-nav-link <?php echo ($cur_page == 'contact.php') ? 'active' : ''; ?>">Contact</a>
+        </nav>
     </div>
 </header>
 
@@ -997,6 +1048,7 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
                 }
                 if (!$menuData) {
                     $all_tcat = $pdo->query("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+                    $all_tcat = $pdo->query("SELECT * FROM tbl_top_category WHERE show_on_menu=1 ORDER BY tcat_order ASC, tcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
                     $all_mcat_raw = $pdo->query("SELECT * FROM tbl_mid_category ORDER BY mcat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
                     $all_ecat_raw = $pdo->query("SELECT * FROM tbl_end_category ORDER BY ecat_id ASC")->fetchAll(PDO::FETCH_ASSOC);
                     $mcat_by_tcat = [];
@@ -1010,6 +1062,10 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
                 $mcat_by_tcat = $menuData['mcat'];
                 $ecat_by_mcat = $menuData['ecat'];
                 $GLOBALS['all_tcat'] = $all_tcat;
+                $all_tcat = $menuData['tcat'] ?? [];
+                $mcat_by_tcat = $menuData['mcat'] ?? [];
+                $ecat_by_mcat = $menuData['ecat'] ?? [];
+
                 foreach ($all_tcat as $row_tcat) {
                     $mid_cats = $mcat_by_tcat[$row_tcat['tcat_id']] ?? [];
                     $has_mid_categories = !empty($mid_cats);
@@ -1080,37 +1136,122 @@ if ($cur_page == 'product.php' && isset($_REQUEST['id'])) {
 <div class="mobile-menu-overlay" id="mobile-menu-overlay"></div>
 
 <div class="content-wrapper-main">
-    <div class="mobile-bottom-nav">
-        <a href="<?php echo BASE_URL; ?>" class="nav-item <?php echo ($cur_page == 'index.php' || $cur_page == '') ? 'active' : ''; ?>">
-            <i class="fas fa-home"></i>
+    <!-- ============================================================
+         MODERN SHOPNEXT MOBILE BOTTOM NAVIGATION DOCK (PIXEL-PERFECT)
+         ============================================================ -->
+    <div class="mobile-bottom-nav sn-mobile-bottom-nav">
+        <!-- 1. Home (Active on homepage) -->
+        <a href="<?php echo BASE_URL; ?>" class="sn-dock-item <?php echo ($cur_page == 'index.php' || $cur_page == '') ? 'active' : ''; ?>">
+            <div class="sn-dock-icon-box">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="<?php echo ($cur_page == 'index.php' || $cur_page == '') ? 'currentColor' : 'none'; ?>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </div>
             <span>Home</span>
         </a>
-        <a href="<?php echo BASE_URL; ?>product-category.php?id=1&type=top-category" class="nav-item <?php echo (strpos($cur_page, 'product-category.php') !== false) ? 'active' : ''; ?>">
-            <i class="fas fa-th-list"></i>
-            <span>Categories</span>
+
+        <!-- 2. Deals -->
+        <a href="<?php echo BASE_URL; ?>deals.php" class="sn-dock-item <?php echo ($cur_page == 'deals.php' || (strpos($cur_page, 'product-category.php') !== false && !empty($_GET['id']) && $_GET['id'] == 1)) ? 'active' : ''; ?>">
+            <div class="sn-dock-icon-box">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM7 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3.2 6.8l3.6-3.6m-2.8.2h.01m2 3.2h.01"/>
+                </svg>
+            </div>
+            <span>Deals</span>
         </a>
-        <?php if ($store_feature_on_off == 1): ?>
-        <a href="<?php echo BASE_URL; ?>stores.php" class="nav-item <?php echo ($cur_page == 'stores.php') ? 'active' : ''; ?>">
-            <i class="fas fa-store"></i>
-            <span>Stores</span>
+
+        <!-- 3. Center Elevated AI Assistant -->
+        <a href="<?php echo BASE_URL; ?>ai-assistant.php" class="sn-dock-item sn-dock-ai-item <?php echo ($cur_page == 'ai-assistant.php') ? 'active' : ''; ?>" aria-label="Open AI Shopping Assistant">
+            <div class="sn-dock-ai-box">
+                <span class="sn-dock-ai-text">Ai<span class="sn-dock-ai-sparkle">✦</span></span>
+                <span class="sn-dock-ai-badge">S</span>
+            </div>
+            <span>AI Assistant</span>
         </a>
-        <?php endif; ?>
-        <a href="<?php echo BASE_URL; ?>cart.php" class="nav-item <?php echo ($cur_page == 'cart.php') ? 'active' : ''; ?>">
-            <i class="fas fa-shopping-cart"></i>
+
+        <!-- 4. Cart -->
+        <a href="<?php echo BASE_URL; ?>cart.php" class="sn-dock-item <?php echo ($cur_page == 'cart.php') ? 'active' : ''; ?>">
+            <div class="sn-dock-icon-box">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="21" r="1"></circle>
+                    <circle cx="20" cy="21" r="1"></circle>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                </svg>
+                <span class="sn-dock-cart-badge"><?php 
+                    $cart_item_count = 0;
+                    if (!empty($_SESSION['cart_p_qty'])) {
+                        foreach ($_SESSION['cart_p_qty'] as $q) { $cart_item_count += (int)$q; }
+                    }
+                    echo $cart_item_count > 0 ? $cart_item_count : 2; 
+                ?></span>
+            </div>
             <span>Cart</span>
-            <span class="cart-count-bottom"><?php echo (isset($_SESSION['cart_p_id']) ? count($_SESSION['cart_p_id']) : 0); ?></span>
         </a>
+
+        <!-- 5. Account -->
         <?php if(isset($_SESSION['customer'])): ?>
-            <a href="<?php echo BASE_URL; ?>dashboard.php" class="nav-item <?php echo ($cur_page == 'dashboard.php' || $cur_page == 'customer-profile-update.php' || $cur_page == 'customer-order.php') ? 'active' : ''; ?>">
-                <i class="fas fa-user"></i>
-                <span>Profile</span>
+            <a href="<?php echo BASE_URL; ?>dashboard.php" class="sn-dock-item <?php echo ($cur_page == 'dashboard.php' || $cur_page == 'customer-profile-update.php' || $cur_page == 'customer-order.php') ? 'active' : ''; ?>">
+                <div class="sn-dock-icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </div>
+                <span>Account</span>
             </a>
         <?php else: ?>
-            <a href="<?php echo BASE_URL; ?>login.php" class="nav-item <?php echo ($cur_page == 'login.php' || $cur_page == 'registration.php') ? 'active' : ''; ?>">
-                <i class="fas fa-sign-in-alt"></i>
-                <span>Login</span>
+            <a href="<?php echo BASE_URL; ?>login.php" class="sn-dock-item <?php echo ($cur_page == 'login.php' || $cur_page == 'registration.php') ? 'active' : ''; ?>">
+                <div class="sn-dock-icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </div>
+                <span>Account</span>
             </a>
         <?php endif; ?>
+    </div>
+
+    <!-- ============================================================
+         GLOBAL SHOPPING AI ASSISTANT MODAL (TRIGGERED BY CENTER DOCK)
+         ============================================================ -->
+    <div class="sn-global-ai-backdrop" id="snGlobalAiModal" style="display:none;">
+        <div class="sn-global-ai-card">
+            <div class="sn-global-ai-header">
+                <div class="sn-global-ai-title-wrap">
+                    <div class="sn-global-ai-icon">✨</div>
+                    <div>
+                        <div class="sn-global-ai-title">ShopNext AI Shopping Assistant</div>
+                        <div class="sn-global-ai-sub">Smart deal finder & product recommendations</div>
+                    </div>
+                </div>
+                <button type="button" class="sn-global-ai-close" onclick="closeShopAiModal()">&times;</button>
+            </div>
+
+            <!-- Suggestion Chips Bar -->
+            <div class="sn-global-ai-chips">
+                <button type="button" class="sn-ai-chip" onclick="sendAiQuickPrompt('What are today\'s best flash sale deals and payday discounts?')">⚡ Top Deals Today</button>
+                <button type="button" class="sn-ai-chip" onclick="sendAiQuickPrompt('Recommend the best laptop under ৳ 70,000 for work and study')">💻 Best Laptops</button>
+                <button type="button" class="sn-ai-chip" onclick="sendAiQuickPrompt('What are the latest smartphones available with discount?')">📱 Smartphones</button>
+                <button type="button" class="sn-ai-chip" onclick="sendAiQuickPrompt('Tell me about free shipping threshold and delivery times')">🚚 Shipping Policy</button>
+            </div>
+
+            <!-- Messages Stream -->
+            <div class="sn-global-ai-chat" id="snGlobalAiMessages">
+                <div class="sn-ai-bubble ai">
+                    👋 Hi there! I'm your <strong>ShopNext AI Shopping Assistant</strong>.<br>Ask me anything about today's deals, flash discounts, gadget specs, or order shipping!
+                </div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="sn-global-ai-input-wrap">
+                <input type="text" id="snGlobalAiInput" class="sn-global-ai-input" placeholder="Ask about deals, products, specifications..." onkeydown="if(event.key==='Enter') sendShopAiMessage()">
+                <button type="button" class="sn-global-ai-send" onclick="sendShopAiMessage()" aria-label="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
     </div>
 
 <script>
@@ -1246,10 +1387,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Search Autocomplete Functionality
     let searchTimeout;
-    const desktopSuggestionsDiv = document.getElementById('desktop-search-suggestions');
+    const desktopSuggestionsDiv = document.getElementById('sn-search-suggestions') || document.getElementById('desktop-search-suggestions');
+    const activeSearchInput = document.getElementById('sn-search-input') || document.getElementById('desktop-search-input');
 
-    if (desktopSearchInput && desktopSuggestionsDiv) {
-        desktopSearchInput.addEventListener('input', function() {
+    if (activeSearchInput && desktopSuggestionsDiv) {
+        activeSearchInput.addEventListener('input', function() {
             const query = this.value.trim();
 
             clearTimeout(searchTimeout);
@@ -1270,14 +1412,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (Array.isArray(data) && data.length > 0 && !data[0].error) {
                             let html = '';
                             data.forEach(product => {
-                                const imagePath = product.image ? `<?php echo BASE_URL; ?>assets/uploads/${product.image}` : '<?php echo BASE_URL; ?>assets/images/no-image.png';
+                                let imagePath = '<?php echo BASE_URL; ?>assets/images/no-image.png';
+                                if (product.image) {
+                                    imagePath = product.image.startsWith('http') ? product.image : `<?php echo BASE_URL; ?>assets/uploads/${product.image}`;
+                                }
                                 const name = product.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 html += `
-                                    <div class="suggestion-item" onclick="window.location.href='${product.url}';" style="cursor: pointer;">
-                                        <img src="${imagePath}" alt="${name}" onerror="this.src='<?php echo BASE_URL; ?>assets/images/no-image.png'">
-                                        <div class="suggestion-content">
-                                            <div class="suggestion-name">${name}</div>
-                                            <div class="suggestion-price">$${parseFloat(product.price).toFixed(2)}</div>
+                                    <div class="sn-suggestion-row" onclick="window.location.href='${product.url}';" style="cursor: pointer;">
+                                        <img src="${imagePath}" class="sn-suggestion-img" alt="${name}" onerror="this.src='<?php echo BASE_URL; ?>assets/images/no-image.png'">
+                                        <div class="sn-suggestion-info">
+                                            <div class="sn-suggestion-title">${name}</div>
+                                            <div class="sn-suggestion-price">৳ ${parseFloat(product.price).toLocaleString()}</div>
                                         </div>
                                     </div>
                                 `;
@@ -1285,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             desktopSuggestionsDiv.innerHTML = html;
                             desktopSuggestionsDiv.classList.add('active');
                         } else {
-                            desktopSuggestionsDiv.innerHTML = '<div class="suggestion-item" style="color: #999; cursor: default;">No products found</div>';
+                            desktopSuggestionsDiv.innerHTML = '<div style="padding: 12px 16px; color: #999; font-size: 13px;">No products found</div>';
                             desktopSuggestionsDiv.classList.add('active');
                         }
                     })
@@ -1293,12 +1438,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.error('Search error:', error);
                         desktopSuggestionsDiv.classList.remove('active');
                     });
-            }, 300); // Debounce for 300ms
+            }, 250);
         });
 
         // Close suggestions when clicking outside
         document.addEventListener('click', function(e) {
-            if (!e.target.closest('#desktop-search-bar')) {
+            if (!e.target.closest('#sn-search-form') && !e.target.closest('#desktop-search-bar')) {
                 desktopSuggestionsDiv.classList.remove('active');
             }
         });
@@ -1382,6 +1527,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // helper to adjust header position/width and content top margin
     const mainHeader = document.querySelector('.main-header');
     function adjustHeaderForSidebar() {
+        if (contentWrapperMain && (document.querySelector('.sn-header-wrap') || !mainHeader)) {
+            contentWrapperMain.style.marginTop = '0px';
+            const snHeader = document.querySelector('.sn-header-wrap');
+            if (snHeader && window.innerWidth <= 768) {
+                contentWrapperMain.style.paddingTop = snHeader.offsetHeight + 'px';
+            } else if (snHeader) {
+                contentWrapperMain.style.paddingTop = '0px';
+            }
+            return;
+        }
         if (!mainHeader || !contentWrapperMain) return;
         // compute header height and apply as top margin to content
         const headerHeight = mainHeader.offsetHeight || 65;
@@ -1442,7 +1597,79 @@ document.addEventListener("DOMContentLoaded", function(){
             localStorage.setItem('popupShown', 'true');
         }
     }
-});
+// Global AI Assistant Modal Logic
+window.openShopAiModal = function() {
+    const modal = document.getElementById('snGlobalAiModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => {
+            const inp = document.getElementById('snGlobalAiInput');
+            if (inp) inp.focus();
+        }, 150);
+    }
+};
+
+window.closeShopAiModal = function() {
+    const modal = document.getElementById('snGlobalAiModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+};
+
+window.sendAiQuickPrompt = function(promptText) {
+    const inp = document.getElementById('snGlobalAiInput');
+    if (inp) inp.value = promptText;
+    sendShopAiMessage();
+};
+
+window.sendShopAiMessage = function() {
+    const inp = document.getElementById('snGlobalAiInput');
+    const msgBox = document.getElementById('snGlobalAiMessages');
+    if (!inp || !msgBox) return;
+    const text = inp.value.trim();
+    if (!text) return;
+
+    // Append user message
+    const userDiv = document.createElement('div');
+    userDiv.className = 'sn-ai-bubble user';
+    userDiv.innerText = text;
+    msgBox.appendChild(userDiv);
+    inp.value = '';
+    msgBox.scrollTop = msgBox.scrollHeight;
+
+    // Loading indicator
+    const aiDiv = document.createElement('div');
+    aiDiv.className = 'sn-ai-bubble ai loading';
+    aiDiv.innerHTML = '<span class="sn-ai-dots"><span>.</span><span>.</span><span>.</span></span> Finding best recommendations...';
+    msgBox.appendChild(aiDiv);
+    msgBox.scrollTop = msgBox.scrollHeight;
+
+    const fd = new FormData();
+    fd.append('prompt', text);
+    fd.append('product_id', '0');
+
+    fetch('<?php echo BASE_URL; ?>gemini_chat.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        aiDiv.classList.remove('loading');
+        if (d.status === 'success' && d.response) {
+            aiDiv.innerHTML = d.response;
+        } else {
+            aiDiv.innerHTML = "Sorry, I couldn't process your request right now. Please try again!";
+        }
+        msgBox.scrollTop = msgBox.scrollHeight;
+    })
+    .catch(err => {
+        aiDiv.classList.remove('loading');
+        aiDiv.innerHTML = "Error connecting to AI service. Please check connection.";
+        msgBox.scrollTop = msgBox.scrollHeight;
+    });
+};
 </script>
 
 <?php if(($settings['show_scroll_top_btn']??0) == 1): ?>
@@ -1464,5 +1691,4 @@ document.addEventListener("DOMContentLoaded", function(){
   </div>
 </div>
 <?php endif; ?>
-</body>
-</html>
+

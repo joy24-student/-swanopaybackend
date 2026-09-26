@@ -14,205 +14,117 @@ $newsletter_on_off = $settings['newsletter_on_off'] ?? 0;
 $before_body = $settings['before_body'] ?? '';
 $stripe_public_key = $settings['stripe_public_key'] ?? '';
 $stripe_secret_key = $settings['stripe_secret_key'] ?? '';
+
+// Newsletter subscription handling
+if (isset($_POST['form_subscribe']) && !empty($_POST['email_subscribe'])) {
+    $sub_email = trim($_POST['email_subscribe']);
+    if (filter_var($sub_email, FILTER_VALIDATE_EMAIL)) {
+        try {
+            $stmt_check = $pdo->prepare("SELECT subs_id FROM tbl_subscriber WHERE subs_email = ?");
+            $stmt_check->execute([$sub_email]);
+            if ($stmt_check->rowCount() == 0) {
+                $key = md5(uniqid(rand(), true));
+                $stmt_ins = $pdo->prepare("INSERT INTO tbl_subscriber (subs_email, subs_date, subs_date_time, subs_hash, subs_active) VALUES (?, ?, ?, ?, ?)");
+                $stmt_ins->execute([$sub_email, date('Y-m-d'), date('Y-m-d H:i:s'), $key, 1]);
+                echo "<script>alert('Thank you for subscribing to our newsletter!');</script>";
+            } else {
+                echo "<script>alert('This email is already subscribed.');</script>";
+            }
+        } catch (Exception $e) {
+            // Ignore DB errors on newsletter
+        }
+    }
+}
 ?>
 
+<footer class="sn-footer-wrap">
+    <div class="sn-container">
+        <div class="sn-footer-top">
+            <!-- Brand & Socials -->
+            <div class="sn-footer-brand">
+                <a href="<?php echo BASE_URL; ?>" class="sn-brand-logo">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M6 2L3 6V20C3 20.5304 3.21071 21.0391 3.58579 21.4142C3.96086 21.7893 4.46957 22 5 22H19C19.5304 22 20.0391 21.7893 20.4142 21.4142C20.7893 21.0391 21 20.5304 21 20V6L18 2H6Z" fill="#F59E0B" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3 6H21" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16 10C16 11.0609 15.5786 12.0783 14.8284 12.8284C14.0783 13.5786 13.0609 14 12 14C10.9391 14 9.92172 13.5786 9.17157 12.8284C8.42143 12.0783 8 11.0609 8 10" stroke="#111827" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Shop<span class="sn-logo-text-next">Next</span></span>
+                </a>
+                <h4>Your One-Stop Shop</h4>
+                <p>We bring you the best products from trusted brands, with a focus on quality, affordability and customer satisfaction.</p>
+                <div class="sn-footer-socials">
+                    <a href="https://facebook.com" class="sn-social-link" target="_blank" rel="noopener" aria-label="Facebook">
+                        <i class="fab fa-facebook-f"></i>
+                    </a>
+                    <a href="https://youtube.com" class="sn-social-link" target="_blank" rel="noopener" aria-label="YouTube">
+                        <i class="fab fa-youtube"></i>
+                    </a>
+                    <a href="https://twitter.com" class="sn-social-link" target="_blank" rel="noopener" aria-label="X">
+                        <i class="fab fa-twitter"></i>
+                    </a>
+                </div>
+            </div>
 
-<?php if($newsletter_on_off == 1): ?>
-<section class="home-newsletter">
-	<div class="container">
-		<div class="row">
-			<div class="col-md-6 col-md-offset-3">
-				<div class="single">
-					<?php
-			if(isset($_POST['form_subscribe']))
-			{
+            <!-- Quick Links -->
+            <div class="sn-footer-col">
+                <h5>Quick Links</h5>
+                <ul class="sn-footer-links">
+                    <li><a href="<?php echo BASE_URL; ?>">Home</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>product-category.php?id=1&type=top-category">All Categories</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>product-category.php?id=1&type=top-category">Deals</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>product-category.php?id=2&type=top-category">New Arrivals</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>about.php">About Us</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>contact.php">Contact</a></li>
+                </ul>
+            </div>
 
-				if(empty($_POST['email_subscribe'])) 
-			    {
-			        $valid = 0;
-			        $error_message1 .= LANG_VALUE_131;
-			    }
-			    else
-			    {
-			    	if (filter_var($_POST['email_subscribe'], FILTER_VALIDATE_EMAIL) === false)
-				    {
-				        $valid = 0;
-				        $error_message1 .= LANG_VALUE_134;
-				    }
-				    else
-				    {
-				    	$statement = $pdo->prepare("SELECT * FROM tbl_subscriber WHERE subs_email=?");
-				    	$statement->execute(array($_POST['email_subscribe']));
-				    	$total = $statement->rowCount();							
-				    	if($total)
-				    	{
-				    		$valid = 0;
-				        	$error_message1 .= LANG_VALUE_147;
-				    	}
-				    	else
-				    	{
-				    		// Sending email to the requested subscriber for email confirmation
-				    		// Getting activation key to send via email. also it will be saved to database until user click on the activation link.
-				    		$key = md5(uniqid(rand(), true));
+            <!-- Customer Service -->
+            <div class="sn-footer-col">
+                <h5>Customer Service</h5>
+                <ul class="sn-footer-links">
+                    <li><a href="<?php echo BASE_URL; ?>faq.php">Help Center</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>contact.php">Shipping Information</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>contact.php">Return & Refund</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>contact.php">Terms & Conditions</a></li>
+                    <li><a href="<?php echo BASE_URL; ?>contact.php">Privacy Policy</a></li>
+                </ul>
+            </div>
 
-				    		// Getting current date
-				    		$current_date = date('Y-m-d');
+            <!-- Newsletter -->
+            <div class="sn-footer-col">
+                <h5>Subscribe to Our Newsletter</h5>
+                <p class="sn-newsletter-desc">Get the latest updates, deals and exclusive promotions.</p>
+                <form action="" method="post" class="sn-newsletter-form">
+                    <?php if (isset($csrf)) $csrf->echoInputField(); ?>
+                    <input type="email" name="email_subscribe" class="sn-newsletter-input" placeholder="Enter your email address" required>
+                    <button type="submit" name="form_subscribe" class="sn-newsletter-btn" aria-label="Subscribe">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
 
-				    		// Getting current date and time
-				    		$current_date_time = date('Y-m-d H:i:s');
-
-				    		// Inserting data into the database
-				    		$statement = $pdo->prepare("INSERT INTO tbl_subscriber (subs_email,subs_date,subs_date_time,subs_hash,subs_active) VALUES (?,?,?,?,?)");
-				    		$statement->execute(array($_POST['email_subscribe'],$current_date,$current_date_time,$key,0));
-
-				    		// Sending Confirmation Email
-				    		$to = $_POST['email_subscribe'];
-							$subject = 'Subscriber Email Confirmation';
-							
-							// Getting the url of the verification link
-							$verification_url = BASE_URL.'verify.php?email='.$to.'&key='.$key;
-
-							$message = '
-Thanks for your interest to subscribe our newsletter!<br><br>
-Please click this link to confirm your subscription:
-					'.$verification_url.'<br><br>
-This link will be active only for 24 hours.
-					';
-
-							$headers = 'From: ' . $contact_email . "\r\n" .
-								   'Reply-To: ' . $contact_email . "\r\n" .
-								   'X-Mailer: PHP/' . phpversion() . "\r\n" . 
-								   "MIME-Version: 1.0\r\n" . 
-								   "Content-Type: text/html; charset=ISO-8859-1\r\n";
-
-							// Sending the email
-							mail($to, $subject, $message, $headers);
-
-							$success_message1 = LANG_VALUE_136;
-				    	}
-				    }
-			    }
-			}
-			if($error_message1 != '') {
-				echo "<script>alert('".$error_message1."')</script>";
-			}
-			if($success_message1 != '') {
-				echo "<script>alert('".$success_message1."')</script>";
-			}
-			?>
-				<form action="" method="post">
-					<?php $csrf->echoInputField(); ?>
-					<h2><?php echo LANG_VALUE_93; ?></h2>
-					<div class="input-group">
-			        	<input type="email" class="form-control" placeholder="<?php echo LANG_VALUE_95; ?>" name="email_subscribe">
-			         	<span class="input-group-btn">
-			         	<button class="btn btn-theme" type="submit" name="form_subscribe"><?php echo LANG_VALUE_92; ?></button>
-			         	</span>
-			        </div>
-				</div>
-				</form>
-			</div>
-		</div>
-	</div>
-</section>
-<?php endif; ?>
-
-
-
-
-<div class="footer-bottom">
-	<div class="container">
-		<div class="row">
-			<div class="col-md-12 copyright">
-				<?php echo $footer_copyright; ?>
-			</div>
-		</div>
-	</div>
-</div>
-
-
-<a href="#" class="scrollup">
-	<i class="fa fa-angle-up"></i>
-</a>
-
-
+        <!-- Footer Bottom -->
+        <div class="sn-footer-bottom">
+            <p class="sn-footer-copyright">© <?php echo date('Y'); ?> ShopNext. All rights reserved.</p>
+            <div class="sn-payment-icons">
+                <span style="font-weight:700; font-size:12px; color:#111827; margin-right:8px;">VISA</span>
+                <span style="font-weight:700; font-size:12px; color:#EA580C; margin-right:8px;">Mastercard</span>
+                <span style="font-weight:700; font-size:12px; color:#2563EB; margin-right:8px;">AMEX</span>
+                <span style="font-weight:800; font-size:12px; color:#E11D48; margin-right:8px;">bKash</span>
+                <span style="font-weight:800; font-size:12px; color:#D97706;">Nagad</span>
+            </div>
+        </div>
+    </div>
+</footer>
 
 <script src="assets/js/jquery-2.2.4.min.js"></script>
 <script src="assets/js/bootstrap.min.js"></script>
-<script src="https://js.stripe.com/v2/"></script>
-<script src="assets/js/megamenu.js"></script>
-<script src="assets/js/owl.carousel.min.js"></script>
-<script src="assets/js/owl.animate.js"></script>
-<script src="assets/js/jquery.bxslider.min.js"></script>
-<script src="assets/js/jquery.magnific-popup.min.js"></script>
-<script src="assets/js/rating.js"></script>
-<script src="assets/js/jquery.touchSwipe.min.js"></script>
-<script src="assets/js/bootstrap-touch-slider.js"></script>
-<script src="assets/js/select2.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.js"></script>
 <script src="assets/js/custom.js"></script>
-<script>
-	function confirmDelete()
-	{
-	    return confirm("Sure you want to delete this data?");
-	}
-	$(document).ready(function () {
-		advFieldsStatus = $('#advFieldsStatus').val();
 
-		$('#paypal_form').hide();
-		$('#stripe_form').hide();
-		$('#bank_form').hide();
-
-        $('#advFieldsStatus').on('change',function() {
-            advFieldsStatus = $('#advFieldsStatus').val();
-            if ( advFieldsStatus == '' ) {
-            	$('#paypal_form').hide();
-				$('#stripe_form').hide();
-				$('#bank_form').hide();
-            } else if ( advFieldsStatus == 'PayPal' ) {
-               	$('#paypal_form').show();
-				$('#stripe_form').hide();
-				$('#bank_form').hide();
-            } else if ( advFieldsStatus == 'Stripe' ) {
-               	$('#paypal_form').hide();
-				$('#stripe_form').show();
-				$('#bank_form').hide();
-            } else if ( advFieldsStatus == 'Bank Deposit' ) {
-            	$('#paypal_form').hide();
-				$('#stripe_form').hide();
-				$('#bank_form').show();
-            }
-        });
-	});
-
-
-	$(document).on('submit', '#stripe_form', function () {
-        // createToken returns immediately - the supplied callback submits the form if there are no errors
-        $('#submit-button').prop("disabled", true);
-        $("#msg-container").hide();
-        Stripe.card.createToken({
-            number: $('.card-number').val(),
-            cvc: $('.card-cvc').val(),
-            exp_month: $('.card-expiry-month').val(),
-            exp_year: $('.card-expiry-year').val()
-            // name: $('.card-holder-name').val()
-        }, stripeResponseHandler);
-        return false;
-    });
-    Stripe.setPublishableKey('<?php echo $stripe_public_key; ?>');
-    function stripeResponseHandler(status, response) {
-        if (response.error) {
-            $('#submit-button').prop("disabled", false);
-            $("#msg-container").html('<div style="color: red;border: 1px solid;margin: 10px 0px;padding: 5px;"><strong>Error:</strong> ' + response.error.message + '</div>');
-            $("#msg-container").show();
-        } else {
-            var form$ = $("#stripe_form");
-            var token = response['id'];
-            form$.append("<input type='hidden' name='stripeToken' value='" + token + "' />");
-            form$.get(0).submit();
-        }
-    }
-</script>
 <?php echo $before_body; ?>
 </body>
 </html>

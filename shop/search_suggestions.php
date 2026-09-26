@@ -24,6 +24,7 @@ if (strlen($query) >= 2) {
                 ecat_id
              FROM tbl_product 
              WHERE (p_name LIKE ? OR p_short_description LIKE ?) 
+             WHERE (p_name ILIKE ? OR p_short_description ILIKE ?) 
              AND p_is_active = 1
              ORDER BY p_name ASC
              LIMIT 15"

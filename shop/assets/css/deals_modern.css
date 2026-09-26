@@ -1,0 +1,988 @@
+/* ==========================================================================
+   ShopNext - Modern Deals Page Stylesheet
+   Pixel-perfect design matching uploaded reference media_1790249867147.png
+   Responsive: Mobile (<= 768px) and PC (>= 769px)
+   ========================================================================== */
+
+:root {
+    --sn-deals-yellow: #fab802;
+    --sn-deals-yellow-light: #fffbeb;
+    --sn-deals-yellow-border: #fef08a;
+    --sn-deals-dark: #0f172a;
+    --sn-deals-gray: #64748b;
+    --sn-deals-red: #ef4444;
+}
+
+.sn-deals-page-wrap {
+    width: 100%;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 12px 14px 85px 14px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--sn-deals-dark);
+}
+
+/* ==========================================================================
+   1. TOP TITLE BAR (< Deals 🏷️)
+   ========================================================================== */
+.sn-deals-title-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.sn-deals-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--sn-deals-dark);
+    text-decoration: none;
+    border-radius: 50%;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.sn-deals-back-btn:hover {
+    background-color: #f1f5f9;
+    transform: translateX(-2px);
+    color: var(--sn-deals-dark);
+}
+
+.sn-deals-title-content {
+    flex: 1;
+}
+
+.sn-deals-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--sn-deals-dark);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 2px 0;
+    line-height: 1.2;
+    letter-spacing: -0.3px;
+}
+
+.sn-deals-badge-sparkle {
+    display: inline-flex;
+    align-items: center;
+    font-size: 16px;
+}
+
+.sn-deals-subtitle {
+    font-size: 11.5px;
+    color: var(--sn-deals-gray);
+    margin: 0;
+    line-height: 1.35;
+}
+
+/* ==========================================================================
+   2. HERO BANNER CARD ("Up to 70% OFF")
+   ========================================================================== */
+.sn-deals-hero-card {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 45%, #fde68a 100%);
+    border: 1px solid rgba(254, 240, 138, 0.9);
+    border-radius: 18px;
+    padding: 16px 16px 14px 16px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 3px 12px rgba(245, 158, 11, 0.08);
+}
+
+/* Corner Circular Badge ("Up to 70% OFF") */
+.sn-deals-hero-badge-corner {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 5;
+}
+
+.sn-corner-circle-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #fef08a;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    font-size: 8px;
+    font-weight: 700;
+    color: #854d0e;
+    line-height: 1.05;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.sn-corner-circle-badge strong {
+    font-size: 12px;
+    font-weight: 900;
+    color: #78350f;
+    letter-spacing: -0.3px;
+}
+
+/* Left Hero Content */
+.sn-deals-hero-left {
+    max-width: 58%;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.sn-deals-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #ffffff;
+    color: #b45309;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2.5px 9px;
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    margin-bottom: 6px;
+}
+
+.sn-fire-emoji {
+    font-size: 10px;
+}
+
+.sn-deals-hero-heading {
+    font-size: 19px;
+    font-weight: 900;
+    color: var(--sn-deals-dark);
+    line-height: 1.15;
+    margin: 0 0 3px 0;
+    letter-spacing: -0.4px;
+}
+
+.sn-highlight-yellow {
+    color: #d97706;
+}
+
+.sn-deals-hero-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin: 0 0 10px 0;
+    font-weight: 500;
+}
+
+/* Coupon Code Pill */
+.sn-deals-code-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fef08a;
+    border: 1.5px dashed #d97706;
+    border-radius: 999px;
+    padding: 3.5px 10px;
+    cursor: pointer;
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
+}
+
+.sn-deals-code-pill:hover {
+    background: #fde047;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(217, 119, 6, 0.2);
+}
+
+.sn-code-tag-icon {
+    display: flex;
+    align-items: center;
+    color: #92400e;
+}
+
+.sn-code-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #78350f;
+}
+
+.sn-code-text {
+    font-size: 11px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: 0.5px;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.sn-code-copy-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 2px;
+    color: #78350f;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+/* Right Hero Collage */
+.sn-deals-hero-right {
+    width: 42%;
+    height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.sn-deals-hero-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.1));
+}
+
+/* ==========================================================================
+   3. CATEGORY FILTER PILLS
+   ========================================================================== */
+.sn-deals-filter-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 2px 10px 2px;
+    margin-bottom: 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.sn-deals-filter-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.sn-filter-pill {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+}
+
+.sn-filter-pill:hover {
+    background: #f8fafc;
+    color: #0f172a;
+    border-color: #cbd5e1;
+}
+
+.sn-filter-pill.active {
+    background: #0f172a;
+    color: #ffffff;
+    border-color: #0f172a;
+}
+
+/* ==========================================================================
+   4. DEALS PRODUCT GRID (2 Cols on Mobile, 4 Cols on PC)
+   ========================================================================== */
+.sn-deals-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.sn-deal-card {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 14px;
+    padding: 10px 10px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+}
+
+.sn-deal-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+    border-color: #e2e8f0;
+}
+
+/* Top Row: Discount Badge & Wishlist Heart */
+.sn-deal-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.sn-deal-discount-badge {
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 9.5px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 999px;
+    letter-spacing: -0.2px;
+}
+
+.sn-deal-wishlist-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 13px;
+    padding: 2px;
+    cursor: pointer;
+    transition: color 0.15s ease, transform 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+}
+
+.sn-deal-wishlist-btn:hover {
+    color: #ef4444;
+    transform: scale(1.15);
+}
+
+.sn-deal-wishlist-btn.active {
+    color: #ef4444;
+}
+
+/* Product Image Box */
+.sn-deal-img-box {
+    width: 100%;
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    position: relative;
+    overflow: hidden;
+}
+
+.sn-deal-img {
+    max-width: 90%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.25s ease;
+}
+
+.sn-deal-card:hover .sn-deal-img {
+    transform: scale(1.04);
+}
+
+/* Product Info */
+.sn-deal-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.25;
+    margin: 0 0 3px 0;
+    height: 29px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.sn-deal-specs {
+    font-size: 9.5px;
+    color: #64748b;
+    margin: 0 0 3px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Rating Line */
+.sn-deal-rating-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: #64748b;
+    margin-bottom: 5px;
+}
+
+.sn-deal-star-icon {
+    color: #fab802;
+    font-size: 11px;
+}
+
+.sn-deal-score {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.sn-deal-reviews-count {
+    color: #94a3b8;
+    font-size: 9.5px;
+}
+
+/* Pricing Row */
+.sn-deal-price-row {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+}
+
+.sn-deal-old-price {
+    font-size: 10px;
+    color: #94a3b8;
+    text-decoration: line-through;
+    line-height: 1;
+    margin-bottom: 2px;
+}
+
+.sn-deal-curr-price {
+    font-size: 14px;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1.1;
+    letter-spacing: -0.3px;
+}
+
+/* Card Actions: Code Pill + Shop Now Button */
+.sn-deal-actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: auto;
+}
+
+.sn-deal-coupon-pill {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #fffbeb;
+    border: 1px dashed #fcd34d;
+    border-radius: 6px;
+    padding: 3px 5px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    user-select: none;
+}
+
+.sn-deal-coupon-pill:hover {
+    background: #fef3c7;
+    border-color: #f59e0b;
+}
+
+.sn-deal-coupon-pill svg {
+    color: #d97706;
+    flex-shrink: 0;
+}
+
+.sn-deal-coupon-code-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.sn-deal-coupon-label {
+    font-size: 7.5px;
+    color: #854d0e;
+    line-height: 1;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.sn-deal-coupon-code {
+    font-size: 9px;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sn-deal-coupon-copy-icon {
+    color: #92400e;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.sn-deal-btn-shop {
+    background: var(--sn-deals-yellow);
+    color: #0f172a;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4.5px 9px;
+    border-radius: 999px;
+    text-decoration: none;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    flex-shrink: 0;
+}
+
+.sn-deal-btn-shop:hover {
+    background: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+    color: #0f172a;
+}
+
+/* ==========================================================================
+   5. SPECIAL COUPON BANNER (BOTTOM)
+   ========================================================================== */
+.sn-deals-special-coupon-card {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%);
+    border: 1.5px dashed #fde047;
+    border-radius: 14px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.sn-special-coupon-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.sn-special-coupon-ticket {
+    width: 34px;
+    height: 34px;
+    background: #fab802;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f172a;
+    font-weight: 900;
+    font-size: 16px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(250, 184, 2, 0.25);
+}
+
+.sn-special-coupon-info {
+    min-width: 0;
+}
+
+.sn-special-coupon-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 1px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sn-special-coupon-sub {
+    font-size: 10px;
+    color: #64748b;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sn-special-coupon-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.sn-special-code-box {
+    background: #ffffff;
+    border: 1px dashed #d97706;
+    border-radius: 8px;
+    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+}
+
+.sn-btn-copy-special {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #0f172a;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sn-btn-copy-special:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+/* ==========================================================================
+   6. INTERACTIVE TOAST NOTIFICATION
+   ========================================================================== */
+.sn-deals-toast {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: #0f172a;
+    color: #ffffff;
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.sn-deals-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.sn-deals-toast-icon {
+    color: #fab802;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   7. PC / DESKTOP RESPONSIVE LAYOUT (@media min-width: 769px)
+   ========================================================================== */
+@media (min-width: 769px) {
+    .sn-deals-page-wrap {
+        padding: 16px 20px 40px 20px;
+    }
+
+    .sn-deals-title-bar {
+        margin-bottom: 16px;
+    }
+
+    .sn-deals-title {
+        font-size: 26px;
+    }
+
+    .sn-deals-subtitle {
+        font-size: 13.5px;
+    }
+
+    .sn-deals-hero-card {
+        padding: 24px 30px;
+        min-height: 180px;
+        margin-bottom: 22px;
+    }
+
+    .sn-corner-circle-badge {
+        width: 68px;
+        height: 68px;
+        font-size: 10px;
+        top: 14px;
+        right: 18px;
+    }
+
+    .sn-corner-circle-badge strong {
+        font-size: 15px;
+    }
+
+    .sn-deals-hero-left {
+        max-width: 60%;
+    }
+
+    .sn-deals-pill-badge {
+        font-size: 11px;
+        padding: 3.5px 12px;
+        margin-bottom: 8px;
+    }
+
+    .sn-deals-hero-heading {
+        font-size: 28px;
+        line-height: 1.18;
+        margin-bottom: 6px;
+    }
+
+    .sn-deals-hero-sub {
+        font-size: 13.5px;
+        margin-bottom: 14px;
+    }
+
+    .sn-deals-code-pill {
+        padding: 6px 14px;
+        gap: 8px;
+    }
+
+    .sn-code-label {
+        font-size: 11.5px;
+    }
+
+    .sn-code-text {
+        font-size: 13px;
+        padding: 2px 8px;
+    }
+
+    .sn-deals-hero-right {
+        width: 35%;
+        height: 160px;
+    }
+
+    .sn-deals-filter-bar {
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+
+    .sn-filter-pill {
+        font-size: 12.5px;
+        padding: 6px 16px;
+    }
+
+    /* 4 Columns Grid on Desktop */
+    .sn-deals-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
+        margin-bottom: 24px;
+    }
+
+    .sn-deal-card {
+        padding: 14px 14px 16px 14px;
+        border-radius: 16px;
+    }
+
+    .sn-deal-img-box {
+        height: 140px;
+        margin-bottom: 10px;
+    }
+
+    .sn-deal-title {
+        font-size: 13.5px;
+        height: 34px;
+    }
+
+    .sn-deal-specs {
+        font-size: 11px;
+    }
+
+    .sn-deal-rating-row {
+        font-size: 11.5px;
+        margin-bottom: 8px;
+    }
+
+    .sn-deal-curr-price {
+        font-size: 16px;
+    }
+
+    .sn-deal-old-price {
+        font-size: 11.5px;
+    }
+
+    .sn-deal-actions-row {
+        gap: 8px;
+    }
+
+    .sn-deal-coupon-pill {
+        padding: 5px 8px;
+        border-radius: 8px;
+    }
+
+    .sn-deal-coupon-label {
+        font-size: 8.5px;
+    }
+
+    .sn-deal-coupon-code {
+        font-size: 10.5px;
+    }
+
+    .sn-deal-btn-shop {
+        font-size: 11.5px;
+        padding: 6px 14px;
+    }
+
+    .sn-deals-special-coupon-card {
+        padding: 16px 24px;
+        border-radius: 16px;
+    }
+
+    .sn-special-coupon-ticket {
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+        border-radius: 10px;
+    }
+
+    .sn-special-coupon-title {
+        font-size: 15px;
+    }
+
+    .sn-special-coupon-sub {
+        font-size: 12.5px;
+    }
+
+    .sn-special-code-box {
+        font-size: 12.5px;
+        padding: 6px 14px;
+    }
+
+    .sn-btn-copy-special {
+        font-size: 12px;
+        padding: 7px 18px;
+    }
+}
+
+/* ==========================================================================
+   MOBILE SPECIFIC RULES (@media max-width: 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+    html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+        width: 100% !important;
+    }
+    .sn-desktop-only {
+        display: none !important;
+    }
+    .sn-header-wrap {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        background: #ffffff !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+        z-index: 1000 !important;
+        padding: 0 !important;
+    }
+    .sn-header-wrap .sn-container {
+        padding: 0 14px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .sn-header-top {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 8px 0 6px 0 !important;
+        gap: 8px 0 !important;
+        width: 100% !important;
+    }
+    .sn-brand-logo {
+        order: 1 !important;
+        font-size: 20px !important;
+    }
+    .sn-header-actions {
+        order: 2 !important;
+        margin-left: auto !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 14px !important;
+    }
+    .sn-search-form {
+        order: 3 !important;
+        flex: 0 0 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 2px 0 0 0 !important;
+    }
+    .sn-search-input-wrap {
+        height: 38px !important;
+        display: flex !important;
+        align-items: center !important;
+        width: 100% !important;
+        border-radius: 999px !important;
+        border: 1.5px solid #f1f5f9 !important;
+        padding: 0 4px 0 12px !important;
+    }
+    .sn-search-input {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        width: auto !important;
+        border: none !important;
+        outline: none !important;
+        background: transparent !important;
+        padding: 0 6px !important;
+        font-size: 11.5px !important;
+    }
+    .sn-search-btn {
+        background: #fab802 !important;
+        color: #111827 !important;
+        font-weight: 700 !important;
+        font-size: 12px !important;
+        padding: 0 16px !important;
+        height: 30px !important;
+        border-radius: 999px !important;
+        border: none !important;
+    }
+    body.shopnext-theme .content-wrapper-main {
+        padding-top: 96px !important;
+        padding-bottom: 72px !important;
+    }
+    .sn-footer-wrap {
+        display: none !important;
+    }
+
+    /* Mobile Bottom Dock Active Pill (Matching Mockup) */
+    .mobile-bottom-nav .sn-dock-item.active {
+        background: #fab802 !important;
+        border-radius: 999px !important;
+        padding: 5px 14px !important;
+        color: #0f172a !important;
+        font-weight: 800 !important;
+        display: inline-flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    .mobile-bottom-nav .sn-dock-item.active .sn-dock-icon-box {
+        margin: 0 !important;
+    }
+    .mobile-bottom-nav .sn-dock-item.active svg {
+        color: #0f172a !important;
+        fill: #0f172a !important;
+    }
+    .mobile-bottom-nav .sn-dock-item.active span {
+        color: #0f172a !important;
+        font-weight: 800 !important;
+        font-size: 12px !important;
+    }
+}
+

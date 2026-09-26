@@ -28,4 +28,5 @@ swapnopay-backend/data/shop-runtime/
 swapnopay-backend/data/form_routes.json
 swapnopay-backend/data/*.json
 *.pyc
+
 shop/admin/inc/cache_*.json
