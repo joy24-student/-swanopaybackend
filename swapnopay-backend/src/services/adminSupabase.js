@@ -809,7 +809,7 @@ export async function setMerchantGatewayConfig(merchantId, settings) {
 // Platform API Keys
 // ──────────────────────────────────────────────────────────────────────────────
 
-const inMemoryApiKeys = new Map()
+export const inMemoryApiKeys = new Map()
 
 export async function storeApiKeyRecord(record) {
   inMemoryApiKeys.set(record.merchant_id, {

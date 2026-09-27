@@ -11,6 +11,7 @@
 
   <!-- Locally built production styles -->
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="preload" as="image" href="assets/hero-bg.jpg">
 
   <!-- Google Fonts: Plus Jakarta Sans, Hind Siliguri, Inter, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -283,6 +284,19 @@
       align-items: center;
     }
 
+    @media (max-width: 1023px) {
+      .radymate-launch-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 1.75rem !important;
+      }
+      .radymate-card {
+        width: 100% !important;
+      }
+      .radymate-screen {
+        width: 100% !important;
+      }
+    }
+
     .radymate-card {
       position: relative;
       overflow: hidden;
@@ -316,7 +330,7 @@
 
     .radymate-gallery-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
       gap: 1.25rem;
       margin-top: 1.25rem;
     }
@@ -1046,7 +1060,7 @@
   <main id="main-content">
   <div class="hero-section relative w-full min-h-screen bg-cover bg-center lg:bg-right-top bg-no-repeat flex flex-col justify-between overflow-hidden shadow-sm pt-24 md:pt-28">
     <canvas id="hero-particle-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-50"></canvas>
-    <div class="absolute inset-0 bg-white/40 pointer-events-none"></div>
+    <div class="hero-overlay absolute inset-0 pointer-events-none"></div>
 
     <div class="relative z-10 flex flex-col min-h-screen">
       <section id="home" class="flex-1 flex items-center px-4 md:px-12 max-w-7xl mx-auto w-full py-12 md:py-20">
@@ -1103,6 +1117,21 @@
                   <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
                   <span data-en="Android app | Offline-ready workflows | English and Bangla" data-bn="অ্যান্ড্রয়েড অ্যাপ • অফলাইন উপযোগী • বাংলা ও ইংরেজি সাপোর্ট">Android app | Offline-ready workflows | English and Bangla</span>
                 </div>
+
+                <!-- Dedicated Mobile Hero Image Showcase (Crystal Clear on Mobile!) -->
+                <div class="mobile-hero-visual block lg:hidden w-full mt-6 pt-2">
+                  <div class="hero-showcase-frame relative rounded-2xl p-2 bg-gradient-to-b from-amber-500/20 via-slate-100 to-white border border-amber-500/30 shadow-xl overflow-hidden">
+                    <div class="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-200">
+                      <img src="assets/hero-bg.jpg" alt="SwapnoPay MFS Payment Automation Ecosystem" class="w-full h-auto object-cover max-h-[340px] block" loading="eager" fetchpriority="high">
+                      <div class="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none"></div>
+                      <div class="absolute bottom-2.5 left-2.5 right-2.5 flex flex-wrap items-center justify-between gap-2 text-[10.5px] font-black text-white pointer-events-none">
+                        <span class="px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-bolt text-amber-400"></i> <span data-en="Real-time Match" data-bn="রিয়েল-টাইম ম্যাচ">Real-time Match</span></span>
+                        <span class="px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/20 flex items-center gap-1.5"><i class="fa-solid fa-shield-halved text-emerald-400"></i> <span data-en="AES-256 Protected" data-bn="AES-256 সুরক্ষিত">AES-256 Protected</span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1668,16 +1697,16 @@
         <!-- Real Storefront Photo Preview (Replaces Dark Simulation Card) -->
         <div class="radymate-card p-4 md:p-5">
           <div class="radymate-screen p-3">
-            <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-200">
               <div class="flex items-center gap-2">
                 <i class="fa-solid fa-image text-amber-600"></i>
                 <div>
-                  <div class="text-[10px] uppercase tracking-[0.16em] text-black font-black">Radymate Showcase</div>
-                  <div class="text-xs font-extrabold text-black" id="radymate-featured-title">Live Storefront Preview</div>
+                  <div class="text-[10px] uppercase tracking-[0.16em] text-black font-black" data-en="Radymate Showcase" data-bn="রেডিমেট শোকেস">Radymate Showcase</div>
+                  <div class="text-xs font-extrabold text-black" id="radymate-featured-title" data-en="Live Storefront Preview" data-bn="লাইভ স্টোরফ্রন্ট প্রিভিউ">Live Storefront Preview</div>
                 </div>
               </div>
               <span class="rounded-full bg-amber-500/20 border border-amber-500/40 px-2.5 py-0.5 font-extrabold text-[10px] text-black flex items-center gap-1">
-                <i class="fa-solid fa-circle-check text-emerald-600"></i> Verified Photo
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> <span data-en="Verified Photo" data-bn="ভেরিফাইড ফটো">Verified Photo</span>
               </span>
             </div>
             <div class="rounded-xl overflow-hidden border border-slate-200 bg-white">
@@ -1751,7 +1780,7 @@
       </p>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
       <div class="ui-card rounded-2xl p-5 space-y-2.5">
         <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-700 flex items-center justify-center">
           <i class="fa-solid fa-store text-lg"></i>
