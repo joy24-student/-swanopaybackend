@@ -773,6 +773,25 @@
       gap: 16px;
     }
 
+    .live-examples-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .gateway-links-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .live-examples-grid, .gateway-links-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+
     .status-item {
       background: var(--bg-input);
       border: 1px solid var(--border);
@@ -854,6 +873,218 @@
       transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* Live connection status pill */
+    .connection-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse-glow 2s infinite;
+    }
+    .pulse-dot.offline {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+      animation: none;
+    }
+    @keyframes pulse-glow {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+    }
+
+    /* Developer User Profile Header Bar */
+    .dev-profile-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+    .dev-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary-gold), var(--primary));
+      color: #000;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      cursor: pointer;
+      border: 2px solid rgba(245, 158, 11, 0.3);
+      user-select: none;
+    }
+    .dev-info-chip {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      text-align: left;
+    }
+    .dev-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .dev-mid {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: 'Fira Code', monospace;
+    }
+    .dev-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #ffffff;
+      border: 1px solid var(--border-hover);
+      border-radius: 14px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.18);
+      width: 270px;
+      padding: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 500;
+    }
+    .dev-dropdown.active {
+      display: flex;
+    }
+    .dev-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+    .dev-dropdown-item:hover {
+      background: var(--bg-input);
+      color: var(--primary-gold);
+    }
+
+    /* Auth Modal Tabs & Forms */
+    .auth-tabs {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-input);
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+    .auth-tab-btn {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .auth-tab-btn.active {
+      background: var(--bg-card);
+      color: var(--primary-gold);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    /* Real Carrier SMS Inspection Box */
+    .sms-carrier-card {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 14px;
+      padding: 16px;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      position: relative;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+    .sms-carrier-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .sms-carrier-badge.bkash { background: #d81b60; color: #fff; }
+    .sms-carrier-badge.nagad { background: #ea580c; color: #fff; }
+    .sms-carrier-badge.rocket { background: #7c3aed; color: #fff; }
+    .sms-carrier-badge.upay { background: #0284c7; color: #fff; }
+
+    .sms-body-text {
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+
+    /* Webhook Telemetry Delivery Pill */
+    .webhook-telemetry-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .webhook-telemetry-badge.ok {
+      background: rgba(22, 163, 74, 0.12);
+      color: #16a34a;
+      border: 1px solid rgba(22, 163, 74, 0.3);
+    }
+    .webhook-telemetry-badge.err {
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    /* Active Sandbox Order Session Card */
+    .order-session-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border-hover);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="enterprise.css">
@@ -891,9 +1122,10 @@
         <h1 class="brand-title">SwapnoPay Console</h1>
         <div class="brand-subtitle">Developer workspace</div>
       </div>
-      <div class="app-select-wrap">
-        <span class="material-symbols-outlined icon-inline" style="font-size: 16px; margin-right: 6px;">storefront</span>
-        Demo workspace
+      <!-- Live Gateway Status Pill -->
+      <div class="connection-status-pill" id="gateway-status-pill" title="Live REST & WebSocket Gateway Health">
+        <span class="pulse-dot" id="gateway-pulse-dot"></span>
+        <span id="gateway-status-text">Gateway Online</span>
       </div>
     </div>
     
@@ -903,10 +1135,16 @@
         <a href="docs.html">Docs</a>
         <a href="portal.html" style="color: var(--primary-gold);">Portal</a>
       </nav>
+
+      <!-- Developer Authentication Section -->
+      <div id="dev-auth-header-section" style="display:flex; align-items:center; gap:8px;">
+        <!-- Injected dynamically by portal.js -->
+      </div>
+
       <button class="widget-preview-btn btn btn-secondary" style="padding: 7px 14px; font-size: 12px;" onclick="openWidgetPreview()"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:6px;">smartphone</span>Widget preview</button>
       <div class="env-toggle-wrap">
-        <button class="env-btn active sandbox" onclick="setEnv('sandbox')">Sandbox</button>
-        <button class="env-btn live" onclick="setEnv('live')">Live examples</button>
+        <button class="env-btn active sandbox" onclick="setEnv('sandbox')">🧪 Sandbox</button>
+        <button class="env-btn live" onclick="setEnv('live')">🚀 Live</button>
       </div>
     </div>
   </header>
@@ -1067,8 +1305,8 @@
               <button class="btn" style="padding: 6px 12px; font-size: 11px;" onclick="openGatewayDemo()">Open gateway demo</button>
             </div>
           </div>
-          <div class="status-grid" id="live-examples-list" style="grid-template-columns: repeat(2, minmax(0, 1fr));"></div>
-          <div id="gateway-demo-links" style="margin-top: 18px; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px;"></div>
+          <div class="status-grid live-examples-grid" id="live-examples-list"></div>
+          <div class="gateway-links-grid" id="gateway-demo-links"></div>
         </div>
 
         <!-- Operational Health Indicators -->

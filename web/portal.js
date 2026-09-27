@@ -122,26 +122,26 @@ function renderLiveExamples() {
   if (!container) return;
 
   container.innerHTML = liveExamples.map((example) => `
-    <div class="status-item" style="padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); min-height: 120px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom: 10px;">
-        <span style="font-weight: 700; color:#f8fafc;">${example.provider}</span>
-        <span style="font-size: 10px; color: var(--primary-gold); background: rgba(250, 204, 21, 0.12); border: 1px solid rgba(250, 204, 21, 0.35); padding: 3px 7px; border-radius: 999px;">${example.mode}</span>
+    <div class="status-item live-example-card" style="display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; padding: 16px 18px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; min-height: 136px; gap: 10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-weight: 800; font-size: 15px; color: #000000;">${example.provider}</span>
+        <span style="font-size: 10.5px; font-weight: 700; color: #92400e; background: #fef3c7; border: 1px solid #f59e0b; padding: 3px 9px; border-radius: 999px;">${example.mode}</span>
       </div>
-      <div style="font-size: 12px; color: var(--text-muted); line-height: 1.8;">
-        <div><strong>Order:</strong> ${example.order}</div>
-        <div><strong>Amount:</strong> ${example.amount}</div>
-        <div><strong>Phone:</strong> ${example.phone}</div>
-        <div><strong>Flow:</strong> ${example.method}</div>
+      <div style="font-size: 12.5px; color: #000000; line-height: 1.75;">
+        <div><strong style="color:#000000;">Order:</strong> ${example.order}</div>
+        <div><strong style="color:#000000;">Amount:</strong> ${example.amount}</div>
+        <div><strong style="color:#000000;">Phone:</strong> ${example.phone}</div>
+        <div><strong style="color:#000000;">Flow:</strong> ${example.method}</div>
       </div>
-      <div style="margin-top: 10px; font-size: 11px; color: var(--success);">● ${example.status}</div>
+      <div style="font-size: 11.5px; font-weight: 700; color: var(--success);">● ${example.status}</div>
     </div>
   `).join('');
 
   if (linkContainer) {
     linkContainer.innerHTML = gatewayPageLinks.map((page) => `
-      <a href="${page.href}" target="_blank" style="display:block; padding:14px 16px; border:1px solid rgba(148,163,184,0.35); border-radius:12px; background: rgba(15,23,42,0.35); color: var(--text-main); text-decoration:none;">
-        <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--primary-gold); margin-bottom:8px;">${page.type}</div>
-        <div style="font-weight:700; font-size:14px;">${page.label}</div>
+      <a href="${page.href}" target="_blank" style="display:block; padding:14px 16px; border:1px solid #cbd5e1; border-radius:12px; background: #f8fafc; color: #000000; text-decoration:none; transition: border-color 0.2s, background 0.2s;">
+        <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #92400e; margin-bottom:6px;">${page.type}</div>
+        <div style="font-weight:700; font-size:14px; color:#000000;">${page.label} ↗</div>
       </a>
     `).join('');
   }
