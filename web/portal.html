@@ -1273,22 +1273,47 @@
 
         <!-- API Credentials Box -->
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">key</span>Sandbox & Live API Credentials</h3>
-          <p class="section-subtitle">Example credentials for the sandbox. Replace them with your own merchant credentials when integrating.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+            <div>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">key</span>Merchant API Credentials & Webhook Security</h3>
+              <p class="section-subtitle" style="margin-bottom:0;">Cryptographically signed credentials for server-to-server calls and HMAC webhook verification.</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="toggleKeyMask()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">visibility</span><span id="key-mask-label">Show Secret</span></button>
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="promptRegenerateKeys()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">refresh</span>Regenerate Keys</button>
+            </div>
+          </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Publishable API Key (Client Widget)</label>
+              <label>Publishable API Key (Client / Checkout Widget)</label>
               <div class="key-box">
                 <span id="key-pk">pk_sandbox_swapnopay_88f92a1109</span>
                 <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-pk').innerText)">Copy</button>
               </div>
             </div>
             <div class="form-group">
-              <label>Secret API Key (Server Webhooks)</label>
+              <label>Secret API Key (Backend Server Authorization)</label>
               <div class="key-box">
                 <span id="key-sk">sk_sandbox_swapnopay_99a83b2201</span>
-                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-sk').innerText)">Copy</button>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copySecretKey()">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top:14px;">
+            <div class="form-group">
+              <label>Webhook Signature Secret (HMAC-SHA256)</label>
+              <div class="key-box">
+                <span id="key-whsec">whsec_e9a8f27b14092c68e1a</span>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-whsec').innerText)">Copy</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="dashboard-webhook-url">Target Webhook Callback URL</label>
+              <div style="display:flex; gap:8px;">
+                <input type="url" id="dashboard-webhook-url" placeholder="https://yourdomain.com/api/swapnopay/webhook" style="font-family:'Fira Code',monospace; font-size:12px;">
+                <button class="btn" style="padding: 6px 14px; font-size: 11px; white-space:nowrap;" onclick="saveDashboardWebhookUrl()">Save URL</button>
               </div>
             </div>
           </div>
@@ -1394,124 +1419,205 @@
 
       <!-- VIEW: SANDBOX SIMULATOR -->
       <div class="panel-view" id="view-sandbox">
+        <!-- Top Flow Control Card -->
         <div class="glass-card" style="margin-bottom: 18px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
             <div>
-              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">playlist_play</span>Full Payment Flow Simulator</h3>
-              <p class="section-subtitle" style="margin-bottom: 0;">Run the real merchant flow: create order → request payment → receive SMS → verify → dispatch webhook → settle order.</p>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">science</span>Production Payment Flow Sandbox</h3>
+              <p class="section-subtitle" style="margin-bottom: 0;">Zero mocks: Dispatches real REST orders, simulates genuine carrier SMS parsing, and delivers signed HMAC webhooks with live round-trip latency.</p>
             </div>
-            <button class="btn" onclick="runFullSandboxPaymentFlow()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">play_arrow</span>Run full flow</button>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-secondary" onclick="resetSandboxSession()"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:4px;">restart_alt</span>Reset Flow</button>
+              <button class="btn" onclick="runFullRealSandboxFlow()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">play_arrow</span>Run Full Real Flow</button>
+            </div>
           </div>
-          <div id="sandbox-flow-status" style="margin-top: 14px; font-size: 12px; color: var(--text-muted);">Status: waiting for sandbox trigger</div>
+          <div id="sandbox-flow-status" style="margin-top: 14px; font-size: 12px; color: var(--text-muted); font-weight:600;">Status: Ready to initialize real sandbox checkout.</div>
           <div class="timeline" id="sandbox-flow-sequence" style="margin-top: 16px;"></div>
         </div>
 
         <div class="sim-grid">
           
           <div class="control-col">
-            <!-- MFS Broadcast Simulators -->
+            <!-- Step 1: Real Order Initialization -->
             <div class="glass-card">
-              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">sms</span>MFS SMS Broadcast Simulators</h3>
-              <p class="section-subtitle">Simulate incoming mobile operator SMS broadcasts to test real-time matching.</p>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">receipt_long</span>1. Real Order Parameters</h3>
+              <p class="section-subtitle">Set real checkout payload parameters to create a trackable transaction.</p>
               
-              <div class="form-row" style="margin-bottom: 16px;">
+              <div class="form-row" style="margin-bottom: 12px;">
                 <div class="form-group">
-                  <label for="sim-input-amount">Simulated Amount (BDT)</label>
-                  <input type="text" id="sim-input-amount" value="1500.00">
+                  <label for="sim-input-amount">Amount (BDT)</label>
+                  <input type="number" id="sim-input-amount" value="1500.00" min="10" step="10">
                 </div>
                 <div class="form-group">
-                  <label for="sim-input-phone">Customer Mobile Phone</label>
+                  <label for="sim-input-phone">Customer Phone</label>
                   <input type="text" id="sim-input-phone" value="01712345678">
                 </div>
               </div>
 
-              <div class="action-button-list">
-                <button class="sim-btn" onclick="triggerMfsSim('bKash')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">phone_iphone</span>
-                  <div>
-                    <h5 style="font-weight:700">bKash Payment</h5>
-                    <span class="sim-btn-badge" style="color: #ec4899;">Received Tk 1,500</span>
-                  </div>
-                </button>
-                
-                <button class="sim-btn" onclick="triggerMfsSim('bKash-cashin')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">payments</span>
-                  <div>
-                    <h5 style="font-weight:700">bKash Cash-In</h5>
-                    <span class="sim-btn-badge" style="color: #ec4899;">Cash-In Format</span>
-                  </div>
-                </button>
+              <div class="form-row" style="margin-bottom: 14px;">
+                <div class="form-group">
+                  <label for="sim-select-method">Payment Provider</label>
+                  <select id="sim-select-method">
+                    <option value="bKash">bKash (Carrier Shortcode 16247)</option>
+                    <option value="Nagad">Nagad (Carrier Shortcode 16167)</option>
+                    <option value="Rocket">Rocket (Carrier Shortcode 16216)</option>
+                    <option value="Upay">Upay (Carrier Shortcode 16268)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sim-input-webhook">Outbound Webhook URL</label>
+                  <input type="url" id="sim-input-webhook" placeholder="https://webhook.site/your-id or server URL">
+                </div>
+              </div>
 
-                <button class="sim-btn" onclick="triggerMfsSim('Nagad')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">account_balance_wallet</span>
-                  <div>
-                    <h5 style="font-weight:700">Nagad Payment</h5>
-                    <span class="sim-btn-badge" style="color: #f97316;">Money Received</span>
-                  </div>
-                </button>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" onclick="createRealSandboxOrder()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">add_shopping_cart</span>Create Real Sandbox Order</button>
+              </div>
 
-                <button class="sim-btn" onclick="triggerMfsSim('Rocket')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">rocket_launch</span>
-                  <div>
-                    <h5 style="font-weight:700">Rocket Cash-In</h5>
-                    <span class="sim-btn-badge" style="color: #a855f7;">Masked Account</span>
-                  </div>
-                </button>
+              <!-- Active Sandbox Order Session Details -->
+              <div class="order-session-card" id="active-order-session-card" style="display:none;">
+                <div>
+                  <div style="font-size:10.5px; font-weight:700; text-transform:uppercase; color:var(--primary-gold); letter-spacing:0.5px;">Active Order Session</div>
+                  <div style="font-family:'Fira Code',monospace; font-size:12px; font-weight:700;" id="sbx-active-order-id">ORD-UUID</div>
+                  <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;" id="sbx-active-order-meta">Amount: ৳1500.00 | bKash</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="status-badge warn" id="sbx-order-status-badge">PENDING</span>
+                  <button class="btn btn-secondary" style="padding:5px 10px; font-size:11px;" onclick="openActiveOrderCheckout()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">open_in_new</span>Checkout Widget ↗</button>
+                </div>
               </div>
             </div>
 
-            <!-- Dispute & Error Edge Case Simulator -->
+            <!-- Step 2: Real MFS Carrier SMS Simulation -->
             <div class="glass-card">
-              <h3 class="section-title">⚖ Dispute & Edge Case Simulators</h3>
-              <p class="section-subtitle">Test order expiration timeouts, failed verification, and dispute resolution.</p>
-              
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">cell_tower</span>2. Carrier SMS Interception & Atomic Match</h3>
+              <p class="section-subtitle">Triggers real backend carrier SMS parsing, updates ledger to PAID, and emits Socket.io events.</p>
+
               <div class="action-button-list">
-                <button class="sim-btn" style="border-color: rgba(239, 68, 68, 0.4)" onclick="triggerMfsSim('fail')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">error</span>
+                <button class="sim-btn" onclick="triggerRealMfsSim('bKash')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#ec4899;">phone_iphone</span>
                   <div>
-                    <h5 style="font-weight:700">Trigger Timeout / Fail</h5>
-                    <span class="sim-btn-badge" style="color: var(--danger)">Order Expiration</span>
+                    <h5 style="font-weight:700">bKash Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #ec4899;">Regex TrxID Match → PAID</span>
+                  </div>
+                </button>
+                
+                <button class="sim-btn" onclick="triggerRealMfsSim('Nagad')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#f97316;">account_balance_wallet</span>
+                  <div>
+                    <h5 style="font-weight:700">Nagad Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #f97316;">Payment Received Format</span>
                   </div>
                 </button>
 
-                <button class="sim-btn" style="border-color: rgba(245, 158, 11, 0.4)" onclick="triggerMfsSim('appeal')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">gavel</span>
+                <button class="sim-btn" onclick="triggerRealMfsSim('Rocket')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#a855f7;">rocket_launch</span>
                   <div>
-                    <h5 style="font-weight:700">Submit Dispute Appeal</h5>
-                    <span class="sim-btn-badge" style="color: var(--warning)">Manual Review</span>
+                    <h5 style="font-weight:700">Rocket Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #a855f7;">DB Balance Check</span>
+                  </div>
+                </button>
+
+                <button class="sim-btn" onclick="triggerRealMfsSim('Upay')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#3b82f6;">contactless</span>
+                  <div>
+                    <h5 style="font-weight:700">Upay Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #3b82f6;">UCB Mobile Banking</span>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Live Carrier SMS Intercepted Preview Card -->
+              <div class="sms-carrier-card" id="sim-carrier-sms-card" style="display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span class="sms-carrier-badge bkash" id="sim-carrier-badge">bKash SMS (16247)</span>
+                  <span style="font-size:10px; color:#94a3b8; font-family:'Fira Code',monospace;" id="sim-carrier-sms-time">Just now</span>
+                </div>
+                <div class="sms-body-text" id="sim-carrier-sms-body">Awaiting simulated carrier SMS event...</div>
+                <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                  <span style="color:#94a3b8;">Extracted TrxID: <strong style="color:#f59e0b;" id="sim-extracted-trxid">—</strong></span>
+                  <span style="color:#10b981; font-weight:700;">● Atomic Database Match OK</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Edge Cases -->
+            <div class="glass-card">
+              <h3 class="section-title">⚖ Dispute & Edge Case Scenarios</h3>
+              <p class="section-subtitle">Simulate real timeout expirations and customer dispute appeals.</p>
+              
+              <div class="action-button-list">
+                <button class="sim-btn" style="border-color: rgba(239, 68, 68, 0.3)" onclick="triggerRealMfsSim('bKash', 'TIMEOUT_FAIL')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:var(--danger)">timer_off</span>
+                  <div>
+                    <h5 style="font-weight:700">Trigger Timeout Expiration</h5>
+                    <span class="sim-btn-badge" style="color: var(--danger)">Status: EXPIRED</span>
+                  </div>
+                </button>
+
+                <button class="sim-btn" style="border-color: rgba(245, 158, 11, 0.3)" onclick="triggerRealMfsSim('bKash', 'CUSTOMER_APPEAL')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:var(--warning)">gavel</span>
+                  <div>
+                    <h5 style="font-weight:700">Submit Customer Dispute Appeal</h5>
+                    <span class="sim-btn-badge" style="color: var(--warning)">Dispute Telemetry</span>
                   </div>
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Order Lifecycle Timeline -->
+          <!-- Order Lifecycle Timeline & Live Webhook Delivery Column -->
           <div class="timeline-col">
-            <div class="glass-card" style="height: 100%;">
+            <div class="glass-card" style="margin-bottom:18px;">
               <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">timeline</span>Order Lifecycle Pipeline</h3>
-              <p class="section-subtitle">Track status transitions in real time as SMS events are parsed.</p>
+              <p class="section-subtitle">Real-time order transitions pushed by backend WebSocket & database matcher.</p>
               
               <div class="timeline" id="live-timeline">
                 <div class="timeline-item active" id="time-step1">
                   <div class="timeline-dot"></div>
                   <span class="timeline-header">1. Order Created (PENDING)</span>
-                  <span class="timeline-time">Waiting for matching MFS broadcast</span>
+                  <span class="timeline-time" id="time-step1-time">Awaiting order initialization</span>
                 </div>
                 <div class="timeline-item" id="time-step2">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">2. SMS Intercepted by App</span>
-                  <span class="timeline-time">Parsing TrxID & amount via Regex</span>
+                  <span class="timeline-header">2. SMS Intercepted by Gateway</span>
+                  <span class="timeline-time" id="time-step2-time">Awaiting carrier broadcast regex match</span>
                 </div>
                 <div class="timeline-item" id="time-step3">
                   <div class="timeline-dot"></div>
                   <span class="timeline-header">3. Transaction Matched (PAID)</span>
-                  <span class="timeline-time">Executing atomic SQL update</span>
+                  <span class="timeline-time" id="time-step3-time">Atomic database update & ledger confirmation</span>
                 </div>
                 <div class="timeline-item" id="time-step4">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">4. Webhook Dispatched</span>
-                  <span class="timeline-time">Signed HMAC SHA256 payload sent</span>
+                  <span class="timeline-header">4. Outbound Webhook Delivery</span>
+                  <span class="timeline-time" id="time-step4-time">Real signed HMAC SHA-256 payload dispatch</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Outbound Webhook Delivery Card -->
+            <div class="glass-card" id="webhook-delivery-telemetry-card" style="display:none;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="font-size:14px; font-weight:700; color:var(--text-main);"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:6px; color:var(--primary-gold);">send</span>Live Webhook Telemetry</h4>
+                <span class="webhook-telemetry-badge ok" id="webhook-delivery-badge">HTTP 200 OK (38ms)</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+                Target: <code style="color:var(--text-main); font-family:'Fira Code',monospace;" id="webhook-delivery-target">https://...</code>
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="font-size:11px;">HMAC-SHA256 Signature Header</label>
+                <div class="key-box" style="font-size:11px; padding:8px 10px;" id="webhook-delivery-signature">t=...,v1=...</div>
+              </div>
+              <div>
+                <label style="font-size:11px;">Payload Snippet</label>
+                <div class="code-block-wrap" style="padding:10px; max-height:160px; overflow-y:auto;">
+                  <pre id="webhook-delivery-payload" style="font-size:11px;"></pre>
+                </div>
+              </div>
+              <div style="margin-top:10px; display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="padding:5px 12px; font-size:11px;" onclick="copyText(document.getElementById('webhook-delivery-payload').innerText)">Copy Payload</button>
+                <button class="btn btn-secondary" style="padding:5px 12px; font-size:11px;" onclick="openPayloadModal(latestWebhookEventId)">Inspect Full Headers</button>
               </div>
             </div>
           </div>
@@ -1535,11 +1641,15 @@
               <label for="exp-path">Select Endpoint Route</label>
               <select id="exp-path" onchange="loadExplorerTemplate()">
                 <option value="/v1/payment/config">GET /v1/payment/config (Fetch Gateway Config)</option>
-                <option value="/v1/payment/merchant-config">POST /v1/payment/merchant-config (Sync Numbers & QR)</option>
-                <option value="/v1/payment/verify">POST /v1/payment/verify (Verify SMS Transaction)</option>
-                <option value="/v1/payment/merchant-qr-codes">POST /v1/payment/merchant-qr-codes (Save QR Code)</option>
-                <option value="/functions/v1/create-order">POST /functions/v1/create-order (Create Order)</option>
-                <option value="/functions/v1/resolve-appeal">POST /functions/v1/resolve-appeal (Resolve Dispute)</option>
+                <option value="/v1/developer/sandbox/order">POST /v1/developer/sandbox/order (Create Sandbox Order)</option>
+                <option value="/v1/developer/sandbox/simulate-mfs">POST /v1/developer/sandbox/simulate-mfs (Simulate MFS & Webhook)</option>
+                <option value="/v1/developer/sandbox/dispatch-webhook">POST /v1/developer/sandbox/dispatch-webhook (Signed Webhook Ping)</option>
+                <option value="/v1/developer/telemetry">GET /v1/developer/telemetry (Live Metrics)</option>
+                <option value="/v1/payment/notify">POST /v1/payment/notify (Report Customer Transfer)</option>
+                <option value="/v1/payment/verify">POST /v1/payment/verify (Verify SMS Match)</option>
+                <option value="/v1/payment/device-status">GET /v1/payment/device-status (Device Live Ping)</option>
+                <option value="/v1/developer/keys/regenerate">POST /v1/developer/keys/regenerate (Regenerate API Keys)</option>
+                <option value="/healthz">GET /healthz (Platform System Health)</option>
               </select>
             </div>
             <div class="form-group">
