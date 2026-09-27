@@ -10250,8 +10250,6 @@ fun SupabaseSetupGuideScreen(viewModel: AppViewModel) {
                                                   id text primary key default gen_random_uuid()::text,
                                                   event text not null,
                                                   details jsonb,
-                                                  
-... [truncated for diff preview]
                                                   timestamp timestamptz default now()
                                                 );
 

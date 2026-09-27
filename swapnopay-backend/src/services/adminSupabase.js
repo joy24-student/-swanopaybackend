@@ -1460,6 +1460,50 @@ export async function setShowcaseConfig(valueData) {
   return upsertShowcaseConfig('main_showcase', valueData)
 }
 
+export async function uploadShowcaseImageToStorage({ base64, filename = 'photo.jpg', contentType = 'image/jpeg', folder = 'app-showcase' } = {}) {
+  if (!base64 || typeof base64 !== 'string') {
+    throw new Error('base64 image payload is required')
+  }
+  const admin = getAdminClient()
+  const bucketName = 'radymate-gallery'
+
+  try {
+    const { data: buckets } = await admin.storage.listBuckets()
+    const exists = Array.isArray(buckets) && buckets.some(b => b.name === bucketName || b.id === bucketName)
+    if (!exists) {
+      await admin.storage.createBucket(bucketName, { public: true })
+    }
+  } catch (_) {}
+
+  const cleanBase64 = base64.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '')
+  const buffer = Buffer.from(cleanBase64, 'base64')
+  const safeName = String(filename || 'photo.jpg').replace(/[^a-zA-Z0-9._-]/g, '_')
+  const safeFolder = String(folder || 'app-showcase').replace(/[^a-zA-Z0-9/_-]/g, '')
+  const objectPath = `${safeFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`
+
+  const { data: uploadData, error: uploadError } = await admin.storage
+    .from(bucketName)
+    .upload(objectPath, buffer, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: contentType || 'image/jpeg',
+    })
+
+  if (uploadError) {
+    throw new Error('Storage upload failed: ' + uploadError.message)
+  }
+
+  const { data: publicUrlData } = admin.storage
+    .from(bucketName)
+    .getPublicUrl(uploadData?.path || objectPath)
+
+  const imageUrl = publicUrlData?.publicUrl
+  if (!imageUrl) {
+    throw new Error('Failed to resolve public URL for uploaded photo')
+  }
+  return imageUrl
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Dispute Appeals (Customer unverified payments)
 // ──────────────────────────────────────────────────────────────────────────────

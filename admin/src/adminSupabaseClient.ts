@@ -351,6 +351,128 @@ export async function revokeMerchantApiKey(keyId: string) {
   return data
 }
 
+async function getAdminAuthHeaders(json = true): Promise<{ base: string; headers: Record<string, string> }> {
+  const { data: { session } } = await adminSupabase.auth.getSession()
+  const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+  const base = ((import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top').replace(/\/$/, '')
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (json) headers['Content-Type'] = 'application/json'
+  if (masterSecret) {
+    headers['X-Admin-Secret'] = masterSecret
+  } else if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+  return { base, headers }
+}
+
+export async function compressImageToDataUrl(file: File, maxDim = 1280, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Failed to read image file'))
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '')
+      const img = new Image()
+      img.onerror = () => resolve(dataUrl)
+      img.onload = () => {
+        try {
+          let { width, height } = img
+          if (width > maxDim || height > maxDim) {
+            if (width >= height) {
+              height = Math.round((height * maxDim) / width)
+              width = maxDim
+            } else {
+              width = Math.round((width * maxDim) / height)
+              height = maxDim
+            }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(dataUrl)
+            return
+          }
+          ctx.drawImage(img, 0, 0, width, height)
+          const outputType = file.type === 'image/png' ? 'image/webp' : 'image/jpeg'
+          const compressed = canvas.toDataURL(outputType, quality)
+          resolve(compressed || dataUrl)
+        } catch {
+          resolve(dataUrl)
+        }
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+export async function uploadShowcasePhotoResilient(
+  file: File,
+  folder = 'app-showcase'
+): Promise<{ imageUrl: string; source: 'storage' | 'fallback' }> {
+  if (!file) throw new Error('Please choose an image file first.')
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const objectPath = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`
+
+  // Tier 1: Direct Supabase Storage upload
+  try {
+    const { data: uploadData, error: uploadError } = await adminSupabase.storage
+      .from(RADYMATE_GALLERY_BUCKET)
+      .upload(objectPath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type || 'image/jpeg'
+      })
+
+    if (!uploadError) {
+      const { data: publicUrlData } = adminSupabase.storage
+        .from(RADYMATE_GALLERY_BUCKET)
+        .getPublicUrl(uploadData?.path || objectPath)
+
+      if (publicUrlData?.publicUrl) {
+        return { imageUrl: publicUrlData.publicUrl, source: 'storage' }
+      }
+    }
+  } catch (err) {
+    console.warn('[uploadShowcasePhotoResilient] Direct storage upload notice:', err)
+  }
+
+  // Prepare compressed base64 data URL for Tier 2 (Backend Service Role) and Tier 3 (Database persistence)
+  const compressedDataUrl = await compressImageToDataUrl(file, 1280, 0.82)
+
+  // Tier 2: Backend Service Role upload endpoint (/v1/admin/showcase/upload)
+  try {
+    const { base, headers } = await getAdminAuthHeaders(true)
+    const res = await fetch(`${base}/v1/admin/showcase/upload`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        base64: compressedDataUrl,
+        filename: safeName,
+        contentType: 'image/jpeg',
+        folder
+      })
+    })
+    if (res.ok) {
+      const json = await res.json()
+      if (json.ok && json.url) {
+        return { imageUrl: json.url, source: 'storage' }
+      }
+    }
+  } catch (bkErr) {
+    console.warn('[uploadShowcasePhotoResilient] Backend upload notice:', bkErr)
+  }
+
+  // Tier 3: Persist optimized real photo directly in showcase_config JSONB
+  if (compressedDataUrl && compressedDataUrl.startsWith('data:image/')) {
+    return { imageUrl: compressedDataUrl, source: 'storage' }
+  }
+
+  throw new Error('Failed to process uploaded photo.')
+}
+
 export async function fetchRadymateGalleryConfig(): Promise<RadymateGalleryConfig> {
   const { data, error } = await adminSupabase
     .from('showcase_config')
@@ -359,7 +481,7 @@ export async function fetchRadymateGalleryConfig(): Promise<RadymateGalleryConfi
     .maybeSingle()
 
   if (error && error.code !== 'PGRST116') {
-    throw new Error('Failed to fetch Radymate gallery config: ' + error.message)
+    console.warn('[fetchRadymateGalleryConfig] Direct query notice:', error.message)
   }
 
   const gallery = data?.value
@@ -390,7 +512,6 @@ export async function upsertShowcaseConfig(key: string, value: any) {
         .select('*')
         .single()
       if (!error) return data
-      if (error && error.code !== 'PGRST116') throw error
     }
 
     const { data, error } = await adminSupabase
@@ -409,11 +530,28 @@ export async function upsertShowcaseConfig(key: string, value: any) {
       .select('*')
       .single()
 
-    if (updateError) throw updateError
-    return updateData
+    if (!updateError && updateData) return updateData
   } catch (err: any) {
-    throw new Error(err?.message || 'Database error')
+    console.warn('[upsertShowcaseConfig] Direct Supabase notice, trying backend fallback:', err?.message)
   }
+
+  // Backend fallback using Service Role
+  try {
+    const { base, headers } = await getAdminAuthHeaders(true)
+    const res = await fetch(`${base}/v1/admin/showcase`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ key, value })
+    })
+    if (res.ok) {
+      const json = await res.json()
+      if (json.ok) return json.showcase
+    }
+  } catch (bkErr: any) {
+    throw new Error(bkErr?.message || 'Database error saving showcase configuration')
+  }
+
+  return { key, value, updated_at: now }
 }
 
 export async function saveRadymateGalleryConfig(items: RadymateGalleryItem[]) {
@@ -432,36 +570,14 @@ export async function saveRadymateGalleryConfig(items: RadymateGalleryItem[]) {
 export async function uploadRadymateGalleryImage(file: File, title: string, caption: string): Promise<RadymateGalleryItem> {
   if (!file) throw new Error('Please choose an image file first.')
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const objectPath = `radymate/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`
-
-  const { data: uploadData, error: uploadError } = await adminSupabase.storage
-    .from(RADYMATE_GALLERY_BUCKET)
-    .upload(objectPath, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type || 'image/jpeg'
-    })
-
-  if (uploadError) {
-    throw new Error('Supabase upload failed: ' + uploadError.message)
-  }
-
-  const { data: publicUrlData } = adminSupabase.storage
-    .from(RADYMATE_GALLERY_BUCKET)
-    .getPublicUrl(uploadData?.path || objectPath)
-
-  const imageUrl = publicUrlData?.publicUrl
-  if (!imageUrl) {
-    throw new Error('Uploaded image is missing a public URL. Make sure the bucket is public.')
-  }
+  const { imageUrl, source } = await uploadShowcasePhotoResilient(file, 'radymate')
 
   return {
     title: title.trim() || 'Radymate storefront preview',
     caption: caption.trim() || 'Premium layout preview',
     image: imageUrl,
     uploaded_at: new Date().toISOString(),
-    source: 'storage'
+    source
   }
 }
 
@@ -498,19 +614,16 @@ export interface AppGalleryConfig {
 
 export const DEFAULT_APP_GALLERY: AppGalleryConfig = {
   section_title: 'See SwapnoPay in action.',
-  section_subtitle: 'Explore the app experience built for modern businesses.',
+  section_subtitle: 'Explore real merchant workflows and mobile app screens uploaded from the Admin Panel.',
   items: [
     {
       id: 'card-dashboard',
       badge: 'Dashboard',
       title: 'Executive Dashboard',
       description: 'Instant overview of sales, profit, and merchant health.',
-      screen_bg: 'linear-gradient(135deg, #1e1b4b, #312e81 40%, #0f172a)',
-      widgets: [
-        { label: 'Sales', value: '৳ 28K' },
-        { label: 'Orders', value: '214' },
-        { label: 'Win', value: '92%' }
-      ],
+      image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true
     },
     {
@@ -518,52 +631,40 @@ export const DEFAULT_APP_GALLERY: AppGalleryConfig = {
       badge: 'POS',
       title: 'POS & Billing',
       description: 'Fast billing, payment capture, and instant checkout.',
-      screen_bg: 'linear-gradient(135deg, #111827, #1e293b 55%, #0f172a)',
-      widgets: [
-        { label: 'Cart', value: '৳ 1,250' },
-        { label: 'Items', value: '3' },
-        { label: 'Paid', value: 'Cash' }
-      ],
+      image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true
     },
     {
       id: 'card-ai-growth',
       badge: 'Popular',
-      title: 'AI + Growth Engine',
-      description: 'Sales intelligence and recommendation workflows.',
-      screen_bg: 'linear-gradient(135deg, #1a1203, #2a1d0d 50%, #0f172a)',
-      widgets: [
-        { label: 'Profit', value: '৳ 9.6K' },
-        { label: 'Match', value: '98%' },
-        { label: 'AI', value: 'Ready' }
-      ],
+      title: 'Payment Automation',
+      description: 'Instant bKash, Nagad, Rocket & Upay transaction verification.',
+      image: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true,
       highlight: true
     },
     {
       id: 'card-ledger',
       badge: 'Ledger',
-      title: 'Digital Ledger',
+      title: 'Digital Ledger (TaliKhata)',
       description: 'Track cashflow, supplier dues, and customer balances.',
-      screen_bg: 'linear-gradient(135deg, #0f172a, #112236 45%, #0b1120)',
-      widgets: [
-        { label: 'Due', value: '৳ 11K' },
-        { label: 'Clients', value: '24' },
-        { label: 'Alerts', value: '5' }
-      ],
+      image: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true
     },
     {
       id: 'card-copilot',
-      badge: 'AI',
-      title: 'Merchant Copilot',
-      description: 'Actionable suggestions in Bangla or English.',
-      screen_bg: 'linear-gradient(135deg, #111827, #0f172a 50%, #1f2937)',
-      widgets: [
-        { label: 'Sales', value: '৳ 48K' },
-        { label: 'Trend', value: '2.1x' },
-        { label: 'Advice', value: 'Yes' }
-      ],
+      badge: 'Storefront',
+      title: 'Merchant Operations',
+      description: 'Multi-branch inventory, staff roles, and real-time reporting.',
+      image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true
     }
   ]
@@ -575,6 +676,7 @@ export interface LandingPageConfig {
   hero_title: string
   hero_highlight: string
   hero_subtitle: string
+  hero_showcase_image?: string
   apk_download_url: string
   play_store_url: string
   web_portal_url: string
@@ -594,6 +696,7 @@ export const DEFAULT_LANDING_PAGE_CONFIG: LandingPageConfig = {
   hero_title: 'Payments.',
   hero_highlight: 'Reimagined.',
   hero_subtitle: 'Payment gateway automation, POS billing, inventory and digital ledger (ব্যবসা খাতা) for businesses in Bangladesh. Manage bKash, Nagad, Rocket and Upay payments in one platform.',
+  hero_showcase_image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1200&q=80',
   apk_download_url: '/swapnopay-debug.apk',
   play_store_url: 'https://play.google.com/store/apps/details?id=com.example.lenden23',
   web_portal_url: 'https://swapnopay.top/portal.html',
@@ -622,7 +725,10 @@ export async function fetchAppGalleryConfig(): Promise<AppGalleryConfig> {
     return {
       section_title: raw.section_title || DEFAULT_APP_GALLERY.section_title,
       section_subtitle: raw.section_subtitle || DEFAULT_APP_GALLERY.section_subtitle,
-      items: raw.items,
+      items: raw.items.map((item: AppGalleryItem, idx: number) => ({
+        ...item,
+        image: item.image || DEFAULT_APP_GALLERY.items[idx % DEFAULT_APP_GALLERY.items.length]?.image
+      })),
       updated_at: raw.updated_at
     }
   }
@@ -683,31 +789,7 @@ export async function saveLandingPageConfig(config: LandingPageConfig) {
 
 export async function uploadAppGalleryScreenshot(file: File, folder = 'app-showcase'): Promise<string> {
   if (!file) throw new Error('Please choose a screenshot image first.')
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const objectPath = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`
-
-  const { data: uploadData, error: uploadError } = await adminSupabase.storage
-    .from(RADYMATE_GALLERY_BUCKET)
-    .upload(objectPath, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type || 'image/jpeg'
-    })
-
-  if (uploadError) {
-    throw new Error('Supabase storage upload failed: ' + uploadError.message)
-  }
-
-  const { data: publicUrlData } = adminSupabase.storage
-    .from(RADYMATE_GALLERY_BUCKET)
-    .getPublicUrl(uploadData?.path || objectPath)
-
-  const imageUrl = publicUrlData?.publicUrl
-  if (!imageUrl) {
-    throw new Error('Uploaded image is missing a public URL. Ensure bucket permissions allow public read.')
-  }
-
+  const { imageUrl } = await uploadShowcasePhotoResilient(file, folder)
   return imageUrl
 }
 

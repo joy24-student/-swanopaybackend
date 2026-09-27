@@ -23,6 +23,8 @@ import {
   revokeApiKeyRecord,
   getShowcaseConfig,
   setShowcaseConfig,
+  upsertShowcaseConfig,
+  uploadShowcaseImageToStorage,
   getPaymentStats,
   getMerchantDevicesList,
   getMfsPatterns,
@@ -247,10 +249,11 @@ router.post('/api-keys/:id/revoke', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 // GET /v1/admin/showcase — Get landing showcase config
 // ────────────────────────────────────────────────────────────────────────────
-router.get('/showcase', async (_req, res) => {
+router.get('/showcase', async (req, res) => {
   try {
-    const config = await getShowcaseConfig()
-    res.json({ ok: true, config: config || {} })
+    const key = req.query.key ? String(req.query.key) : 'main_showcase'
+    const config = await getShowcaseConfig(key)
+    res.json({ ok: true, key, config: config || {} })
   } catch (err) {
     console.error('[admin/showcase GET]', err.message)
     res.status(500).json({ error: 'Failed to read showcase configuration' })
@@ -263,12 +266,36 @@ router.get('/showcase', async (_req, res) => {
 router.post('/showcase', async (req, res) => {
   try {
     const payload = req.body || {}
-    const saved = await setShowcaseConfig(payload)
+    let saved
+    if (payload.key && typeof payload.key === 'string' && payload.value !== undefined) {
+      saved = await upsertShowcaseConfig(payload.key, payload.value)
+    } else {
+      saved = await setShowcaseConfig(payload)
+    }
     console.log('[admin/showcase POST] Showcase config & images upgraded at', new Date().toISOString())
     res.json({ ok: true, config: saved })
   } catch (err) {
     console.error('[admin/showcase POST]', err.message)
     res.status(500).json({ error: 'Failed to upgrade showcase config: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /v1/admin/showcase/upload — Upload real photo to Supabase Storage
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/showcase/upload', async (req, res) => {
+  try {
+    const { base64, filename, content_type, folder } = req.body || {}
+    const url = await uploadShowcaseImageToStorage({
+      base64,
+      filename,
+      contentType: content_type,
+      folder,
+    })
+    res.json({ ok: true, url })
+  } catch (err) {
+    console.error('[admin/showcase/upload POST]', err.message)
+    res.status(500).json({ error: 'Failed to upload showcase photo: ' + err.message })
   }
 })
 

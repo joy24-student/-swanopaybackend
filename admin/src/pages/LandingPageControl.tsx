@@ -195,12 +195,9 @@ export default function LandingPageControl() {
       badge: 'Feature',
       title: 'New App Feature',
       description: 'Highlight high-converting capability of SwapnoPay.',
-      screen_bg: 'linear-gradient(135deg, #111827, #1e293b 55%, #0f172a)',
-      widgets: [
-        { label: 'Speed', value: '100%' },
-        { label: 'Status', value: 'Live' },
-        { label: 'Security', value: 'Bank' },
-      ],
+      image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=900&q=80',
+      screen_bg: '#ffffff',
+      widgets: [],
       active: true,
     };
     setAppGallery(prev => ({
@@ -217,26 +214,37 @@ export default function LandingPageControl() {
     }));
   };
 
-  const handleWidgetChange = (cardId: string, widgetIndex: number, key: 'label' | 'value', val: string) => {
-    setAppGallery(prev => ({
-      ...prev,
-      items: prev.items.map(item => {
-        if (item.id !== cardId) return item;
-        const newWidgets = [...(item.widgets || [{ label: '', value: '' }, { label: '', value: '' }, { label: '', value: '' }])];
-        newWidgets[widgetIndex] = { ...newWidgets[widgetIndex], [key]: val };
-        return { ...item, widgets: newWidgets };
-      }),
-    }));
-  };
-
   const handleUploadScreenshot = async (cardId: string, file: File) => {
     setIsUploadingScreenshot(cardId);
     try {
       const url = await uploadAppGalleryScreenshot(file, 'app-showcase');
-      handleCardFieldChange(cardId, 'image', url);
-      showFeedback('success', '✅ Screenshot uploaded to Supabase Storage and attached to card!');
+      const updatedGallery: AppGalleryConfig = {
+        ...appGallery,
+        items: appGallery.items.map(item => (item.id === cardId ? { ...item, image: url } : item)),
+      };
+      setAppGallery(updatedGallery);
+      await saveAppGalleryConfig(updatedGallery);
+      showFeedback('success', '✅ Real photo uploaded and synced live to the SwapnoPay Landing Page!');
     } catch (err: any) {
-      showFeedback('error', '❌ Screenshot upload failed: ' + err.message);
+      showFeedback('error', '❌ Photo upload failed: ' + err.message);
+    } finally {
+      setIsUploadingScreenshot(null);
+    }
+  };
+
+  const handleUploadHeroPhoto = async (file: File) => {
+    setIsUploadingScreenshot('hero-showcase');
+    try {
+      const url = await uploadAppGalleryScreenshot(file, 'hero-showcase');
+      const updatedLanding: LandingPageConfig = {
+        ...landingConfig,
+        hero_showcase_image: url,
+      };
+      setLandingConfig(updatedLanding);
+      await saveLandingPageConfig(updatedLanding);
+      showFeedback('success', '✅ Hero showcase photo uploaded and synced live to the Landing Page!');
+    } catch (err: any) {
+      showFeedback('error', '❌ Hero photo upload failed: ' + err.message);
     } finally {
       setIsUploadingScreenshot(null);
     }
@@ -322,7 +330,7 @@ export default function LandingPageControl() {
                 Landing Page &amp; App Showcase Control
               </h1>
               <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 13 }}>
-                Live visual management of the 3D App Showcase Carousel, hero copy, APK download buttons, and Radymate storefronts.
+                Upload real photos for the App Showcase Carousel, Hero section, and Radymate Storefronts with instant live sync.
               </p>
             </div>
           </div>
@@ -401,8 +409,8 @@ export default function LandingPageControl() {
       {/* ── Navigation Tabs ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid #E2E8F0', paddingBottom: 10, flexWrap: 'wrap' }}>
         {[
-          { key: 'app_gallery', label: `📱 3D App Showcase Carousel (${appGallery.items.length})` },
-          { key: 'hero_cta', label: '⚡ Hero & APK Download Links' },
+          { key: 'app_gallery', label: `📱 App Photo Showcase (${appGallery.items.length})` },
+          { key: 'hero_cta', label: '⚡ Hero, Showcase Photo & Download Links' },
           { key: 'radymate', label: `🖼️ Radymate Storefronts (${radymateItems.length})` },
           { key: 'metrics', label: '📊 Platform Metrics & Uptime' },
         ].map(t => (
@@ -464,23 +472,23 @@ export default function LandingPageControl() {
                   className="input"
                   value={appGallery.section_subtitle}
                   onChange={e => setAppGallery({ ...appGallery, section_subtitle: e.target.value })}
-                  placeholder="Explore the app experience built for modern businesses."
+                  placeholder="Explore real merchant workflows and mobile app screens."
                 />
               </div>
             </div>
           </div>
 
-          {/* Live Visual 3D Carousel Preview */}
-          <div className="card" style={{ padding: 20, background: 'linear-gradient(135deg, #090B10, #121622)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#FFFFFF' }}>
+          {/* Live Visual Real Photo Carousel Preview */}
+          <div className="card" style={{ padding: 20, background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#000000' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Live 3D Preview (Interactive)
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Live Real Photo Showcase Preview
                 </div>
-                <h4 style={{ margin: '2px 0 0', fontSize: 17, fontWeight: 800, color: '#FFFFFF' }}>
+                <h4 style={{ margin: '2px 0 0', fontSize: 17, fontWeight: 800, color: '#000000' }}>
                   {appGallery.section_title}
                 </h4>
-                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94A3B8' }}>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#000000' }}>
                   {appGallery.section_subtitle}
                 </p>
               </div>
@@ -490,7 +498,7 @@ export default function LandingPageControl() {
                   onClick={() => setPreviewScrollIndex(prev => Math.max(0, prev - 1))}
                   disabled={previewScrollIndex === 0}
                   className="button"
-                  style={{ background: 'rgba(255,255,255,0.1)', color: '#FFFFFF', padding: '6px 10px', borderRadius: 20 }}
+                  style={{ background: '#F1F5F9', color: '#000000', padding: '6px 10px', borderRadius: 20 }}
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -499,7 +507,7 @@ export default function LandingPageControl() {
                   onClick={() => setPreviewScrollIndex(prev => Math.min(appGallery.items.length - 1, prev + 1))}
                   disabled={previewScrollIndex >= appGallery.items.length - 1}
                   className="button"
-                  style={{ background: 'rgba(255,255,255,0.1)', color: '#FFFFFF', padding: '6px 10px', borderRadius: 20 }}
+                  style={{ background: '#F1F5F9', color: '#000000', padding: '6px 10px', borderRadius: 20 }}
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -521,25 +529,25 @@ export default function LandingPageControl() {
                     minWidth: 260,
                     maxWidth: 260,
                     borderRadius: 20,
-                    background: item.highlight ? 'rgba(245, 158, 11, 0.08)' : 'rgba(15, 23, 42, 0.95)',
-                    border: item.highlight ? '2px solid rgba(245, 158, 11, 0.6)' : '1px solid rgba(255,255,255,0.12)',
+                    background: '#FFFFFF',
+                    border: item.highlight ? '2px solid #F59E0B' : '1px solid #CBD5E1',
                     padding: 14,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
                     transition: 'all 0.2s ease',
                   }}
                 >
                   <div>
-                    {/* Screen View */}
+                    {/* Real Photo View */}
                     <div style={{
                       borderRadius: 14,
-                      background: item.image ? '#0B0F19' : (item.screen_bg || 'linear-gradient(135deg, #111827, #1e293b)'),
-                      height: 140,
+                      background: '#F8FAFC',
+                      height: 156,
                       overflow: 'hidden',
                       position: 'relative',
-                      border: '1px solid rgba(255,255,255,0.08)',
+                      border: '1px solid #E2E8F0',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -551,24 +559,7 @@ export default function LandingPageControl() {
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        <div style={{ display: 'flex', gap: 6, padding: '0 8px', width: '100%', justifyContent: 'center' }}>
-                          {(item.widgets || []).map((w, wIdx) => (
-                            <div
-                              key={wIdx}
-                              style={{
-                                background: 'rgba(15,23,42,0.75)',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                borderRadius: 8,
-                                padding: '6px 4px',
-                                textAlign: 'center',
-                                flex: 1,
-                              }}
-                            >
-                              <strong style={{ display: 'block', fontSize: 12, color: '#F59E0B' }}>{w.value}</strong>
-                              <span style={{ fontSize: 9, textTransform: 'uppercase', opacity: 0.7, color: '#94A3B8' }}>{w.label}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <span style={{ fontSize: 12, color: '#000000', fontWeight: 700 }}>No photo uploaded yet</span>
                       )}
                       <div style={{
                         position: 'absolute',
@@ -576,8 +567,8 @@ export default function LandingPageControl() {
                         left: 8,
                         padding: '2px 8px',
                         borderRadius: 12,
-                        background: 'rgba(245, 158, 11, 0.9)',
-                        color: '#000',
+                        background: '#F59E0B',
+                        color: '#000000',
                         fontSize: 10,
                         fontWeight: 900,
                         textTransform: 'uppercase',
@@ -587,19 +578,19 @@ export default function LandingPageControl() {
                     </div>
 
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontWeight: 800, fontSize: 13, color: '#FFFFFF' }}>{item.title}</div>
-                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>{item.description}</div>
+                      <div style={{ fontWeight: 800, fontSize: 13, color: '#000000' }}>{item.title}</div>
+                      <div style={{ fontSize: 11, color: '#000000', marginTop: 3, lineHeight: 1.4 }}>{item.description}</div>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 10, color: '#F59E0B', fontWeight: 700 }}>Card #{idx + 1}</span>
+                  <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: '#000000', fontWeight: 700 }}>Card #{idx + 1}</span>
                     <button
                       type="button"
                       onClick={() => setEditingCardId(item.id)}
-                      style={{ background: 'transparent', border: 'none', color: '#60A5FA', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      style={{ background: 'transparent', border: 'none', color: '#4F46E5', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                     >
-                      Edit ✏️
+                      Edit / Upload Photo ✏️
                     </button>
                   </div>
                 </div>
@@ -615,7 +606,7 @@ export default function LandingPageControl() {
                   Manage App Showcase Cards ({appGallery.items.length})
                 </h3>
                 <p style={{ margin: '2px 0 0', color: '#64748B', fontSize: 12 }}>
-                  Drag or move cards, upload mobile screenshots directly, or customize labels and mini metrics.
+                  Upload real photos from your computer or phone. Uploaded photos are automatically saved and displayed on the Landing Page.
                 </p>
               </div>
 
@@ -671,15 +662,16 @@ export default function LandingPageControl() {
 
                         {/* Thumbnail / Badge */}
                         <div style={{
-                          width: 44,
-                          height: 44,
+                          width: 52,
+                          height: 52,
                           borderRadius: 8,
-                          background: card.image ? '#0F172A' : '#4F46E5',
+                          background: '#F1F5F9',
+                          border: '1px solid #CBD5E1',
                           overflow: 'hidden',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: '#FFF',
+                          color: '#000',
                           fontWeight: 800,
                           fontSize: 12,
                         }}>
@@ -721,7 +713,35 @@ export default function LandingPageControl() {
                       </div>
 
                       {/* Header Actions */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <label
+                          style={{
+                            background: '#10B981',
+                            color: '#FFFFFF',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <Upload size={13} />
+                          {isUploadingScreenshot === card.id ? 'Uploading...' : 'Upload Photo'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            disabled={isUploadingScreenshot === card.id}
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUploadScreenshot(card.id, file);
+                            }}
+                          />
+                        </label>
+
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
                           <input
                             type="checkbox"
@@ -812,10 +832,10 @@ export default function LandingPageControl() {
                           />
                         </div>
 
-                        {/* Image Upload & URL */}
+                        {/* Real Photo Upload & URL */}
                         <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 10, border: '1px solid #E2E8F0' }}>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 8, color: '#1E293B' }}>
-                            Card Visual Screenshot (Supabase Storage: radymate-gallery)
+                            Card Real Photo Upload (Auto-Saves &amp; Syncs to Landing Page)
                           </label>
 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
@@ -833,7 +853,7 @@ export default function LandingPageControl() {
 
                             <div>
                               <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4 }}>
-                                OR Upload Screenshot from Device
+                                OR Upload Real Photo from Device
                               </label>
                               <input
                                 type="file"
@@ -847,60 +867,21 @@ export default function LandingPageControl() {
                               />
                               {isUploadingScreenshot === card.id && (
                                 <span style={{ fontSize: 11, color: '#4F46E5', marginTop: 4, display: 'block' }}>
-                                  Uploading to Supabase storage...
+                                  Uploading &amp; syncing photo to Landing Page...
                                 </span>
                               )}
                             </div>
                           </div>
 
                           {card.image && (
-                            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <img src={card.image} alt="Preview" style={{ height: 48, borderRadius: 6, objectFit: 'cover' }} />
-                              <button
-                                type="button"
-                                onClick={() => handleCardFieldChange(card.id, 'image', '')}
-                                style={{ background: 'transparent', border: 'none', color: '#EF4444', fontSize: 11, cursor: 'pointer' }}
-                              >
-                                Remove Image (Use Mini Metric Mockup)
-                              </button>
+                            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <img src={card.image} alt="Preview" style={{ height: 64, width: 96, borderRadius: 8, objectFit: 'cover', border: '1px solid #CBD5E1' }} />
+                              <span style={{ fontSize: 12, color: '#059669', fontWeight: 700 }}>
+                                ✓ Real photo active on card
+                              </span>
                             </div>
                           )}
                         </div>
-
-                        {/* Mini Widgets (Used when no screenshot is uploaded) */}
-                        {!card.image && (
-                          <div style={{ background: '#EEF2FF', padding: 14, borderRadius: 10, border: '1px solid #C7D2FE' }}>
-                            <label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 8, color: '#4338CA' }}>
-                              3-Pill Mockup Metrics (Shown in Card Screen)
-                            </label>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                              {[0, 1, 2].map(wIdx => {
-                                const w = (card.widgets && card.widgets[wIdx]) || { label: '', value: '' };
-                                return (
-                                  <div key={wIdx} style={{ background: '#FFF', padding: 8, borderRadius: 8, border: '1px solid #CBD5E1' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', marginBottom: 2 }}>
-                                      Pill #{wIdx + 1}
-                                    </div>
-                                    <input
-                                      className="input"
-                                      style={{ marginBottom: 4, padding: '4px 8px', fontSize: 12 }}
-                                      value={w.value}
-                                      onChange={e => handleWidgetChange(card.id, wIdx, 'value', e.target.value)}
-                                      placeholder="Value (e.g. ৳ 28K)"
-                                    />
-                                    <input
-                                      className="input"
-                                      style={{ padding: '4px 8px', fontSize: 11 }}
-                                      value={w.label}
-                                      onChange={e => handleWidgetChange(card.id, wIdx, 'label', e.target.value)}
-                                      placeholder="Label (e.g. Sales)"
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -921,7 +902,7 @@ export default function LandingPageControl() {
                   ⚡ Landing Page Hero &amp; Announcement Banner
                 </h3>
                 <p style={{ margin: '2px 0 0', color: '#64748B', fontSize: 12 }}>
-                  Directly customize the top announcement badge, hero headline, and marketing copy in real-time.
+                  Directly customize the top announcement badge, hero headline, showcase photo, and marketing copy in real-time.
                 </p>
               </div>
               <button
@@ -996,6 +977,52 @@ export default function LandingPageControl() {
                   placeholder="Payment gateway automation, POS billing, inventory and digital ledger for businesses in Bangladesh..."
                   style={{ fontFamily: 'inherit' }}
                 />
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', background: '#F8FAFC', padding: 14, borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 8, color: '#1E293B' }}>
+                  Hero / Platform Showcase Real Photo (Replaces Simulated Graphs &amp; Mockups)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4 }}>
+                      Direct Image URL
+                    </label>
+                    <input
+                      className="input"
+                      value={landingConfig.hero_showcase_image || ''}
+                      onChange={e => setLandingConfig({ ...landingConfig, hero_showcase_image: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4 }}>
+                      Upload Real Showcase Photo from Device
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="input"
+                      disabled={isUploadingScreenshot === 'hero-showcase'}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadHeroPhoto(file);
+                      }}
+                    />
+                  </div>
+                </div>
+                {landingConfig.hero_showcase_image && (
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <img
+                      src={landingConfig.hero_showcase_image}
+                      alt="Hero Showcase Preview"
+                      style={{ height: 72, width: 120, borderRadius: 8, objectFit: 'cover', border: '1px solid #CBD5E1' }}
+                    />
+                    <span style={{ fontSize: 12, color: '#059669', fontWeight: 700 }}>
+                      ✓ Real showcase photo active on Landing Page
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
