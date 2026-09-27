@@ -13,6 +13,16 @@ object SupabaseConnectionRepository {
 
     data class OrganizationItem(val id: String, val name: String, val slug: String)
     data class ProjectItem(val id: String, val name: String, val organizationId: String, val region: String, val status: String)
+    data class AutoConnectedProject(
+        val projectRef: String,
+        val projectUrl: String,
+        val publishableKey: String,
+        val dbPassword: String,
+        val databaseUrl: String
+    )
+
+    @Volatile var lastAutoConnectedProject: AutoConnectedProject? = null
+    @Volatile var lastProvisionedDbPassword: String = ""
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -117,6 +127,25 @@ object SupabaseConnectionRepository {
                                 status = obj.optString("status", "")
                             )
                         )
+                    }
+
+                    val autoObj = json.optJSONObject("auto_connected_project")
+                    if (autoObj != null) {
+                        val autoRef = autoObj.optString("project_ref", "")
+                        val autoUrl = autoObj.optString("project_url", "")
+                        val autoKey = autoObj.optString("publishable_key", autoObj.optString("anon_key", ""))
+                        val autoPass = autoObj.optString("db_password", "")
+                        val autoDbUrl = autoObj.optString("database_url", "")
+                        if (autoUrl.isNotBlank() && autoKey.isNotBlank()) {
+                            lastAutoConnectedProject = AutoConnectedProject(
+                                projectRef = autoRef,
+                                projectUrl = autoUrl,
+                                publishableKey = autoKey,
+                                dbPassword = autoPass,
+                                databaseUrl = autoDbUrl
+                            )
+                            if (autoPass.isNotBlank()) lastProvisionedDbPassword = autoPass
+                        }
                     }
 
                     onSuccess(orgs, projs)
@@ -255,6 +284,10 @@ object SupabaseConnectionRepository {
                     var pubKey = json.optString("publishable_key", "")
                     if (pubKey.isBlank()) pubKey = json.optString("anon_key", "")
                     if (pubKey.isBlank()) pubKey = json.optString("key", "")
+                    val returnedDbPass = json.optString("db_password", "")
+                    if (returnedDbPass.isNotBlank()) {
+                        lastProvisionedDbPassword = returnedDbPass
+                    }
 
                     if (projectUrl.isNotBlank() && pubKey.isNotBlank()) {
                         onSuccess(projectUrl, pubKey)

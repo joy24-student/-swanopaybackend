@@ -1,4 +1,4 @@
-import { getAdminClient } from './adminSupabase.js'
+import { getAdminClient, inMemoryMerchantGatewaySettings } from './adminSupabase.js'
 
 export const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '')
 export const databaseOrigin = value => {
@@ -42,14 +42,16 @@ export async function lookupMerchantInAdminDb(email, userId, admin = getAdminCli
     connection = requireData(await admin.from('supabase_connections').select('*')
       .eq('user_id', merchantId).maybeSingle(), 'Load legacy connection')
   }
+  const memSettings = inMemoryMerchantGatewaySettings.get(merchantId) || inMemoryMerchantGatewaySettings.get(userId) || null
   const platformOrigin = databaseOrigin(process.env.ADMIN_SUPABASE_URL)
   const candidates = [
     { url: merchant?.supabase_url, key: merchant?.supabase_anon_key },
     { url: gateway?.supabase_url, key: gateway?.supabase_anon_key },
     { url: connection?.project_url, key: connection?.publishable_key },
+    { url: memSettings?.supabase_url, key: memSettings?.supabase_anon_key },
   ]
   const own = candidates.find(({ url, key }) => key && databaseOrigin(url) && databaseOrigin(url) !== platformOrigin)
-  const name = merchant?.business_name || gateway?.merchant_name || ''
+  const name = merchant?.business_name || gateway?.merchant_name || memSettings?.merchant_name || ''
   const placeholder = /^(my store|my business|google user|facebook user|demo store|business setup required)$/i.test(name.trim())
   const hasValidName = Boolean(name.trim() && !placeholder)
   const onboarded = Boolean(
@@ -109,17 +111,24 @@ export async function lookupMerchantInAdminDb(email, userId, admin = getAdminCli
   if (kycStatus === 'APPROVED') kycStatus = 'VERIFIED'
 
   return {
-    exists: Boolean(merchant || gateway || connection), isOnboarded: onboarded, isNewUser: !onboarded,
+    exists: Boolean(merchant || gateway || connection || memSettings), isOnboarded: onboarded, isNewUser: !onboarded,
     merchantId,
     merchant: {
       id: merchantId, user_id: userId, business_name: name, email: merchant?.email || cleanEmail,
       phone: merchant?.phone || '', business_type: merchant?.business_type || 'Retail Store',
-      photo_url: facePhoto || merchant?.photo_url || gateway?.merchant_logo_url || '',
+      photo_url: facePhoto || merchant?.photo_url || gateway?.merchant_logo_url || memSettings?.merchant_logo_url || '',
       account_holder: merchant?.account_holder || name, status: merchant?.status || 'PENDING_VERIFICATION',
       kyc_status: kycStatus, kyc_rejection_reason: rejectionReason,
       nid_number: nidNumber, nid_front_url: nidFront, nid_back_url: nidBack,
     },
-    database: { has_own_database: Boolean(own), supabase_url: own?.url || '', supabase_anon_key: own?.key || '', project_ref: connection?.selected_project_ref || '' },
+    database: {
+      has_own_database: Boolean(own),
+      supabase_url: own?.url || '',
+      supabase_anon_key: own?.key || '',
+      project_ref: connection?.selected_project_ref || memSettings?.project_ref || '',
+      db_password: memSettings?.db_password || '',
+      database_url: memSettings?.database_url || '',
+    },
   }
 }
 

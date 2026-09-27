@@ -419,7 +419,10 @@ fun EmployeeMonitorScreen(viewModel: AppViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Box(
                                         modifier = Modifier
                                             .size(40.dp)
@@ -450,10 +453,10 @@ fun EmployeeMonitorScreen(viewModel: AppViewModel) {
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(item.invoiceNo, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryText)
-                                        Text("${item.employeeName} • ${item.customerName}", fontSize = 11.sp, color = secondaryText)
-                                        Text(item.createdAt.ifBlank { "এখনই" }, fontSize = 10.sp, color = secondaryText)
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                                        Text(item.invoiceNo, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${item.employeeName} • ${item.customerName}", fontSize = 11.sp, color = secondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(item.createdAt.ifBlank { "এখনই" }, fontSize = 10.sp, color = secondaryText, maxLines = 1)
                                     }
                                 }
 
@@ -462,7 +465,9 @@ fun EmployeeMonitorScreen(viewModel: AppViewModel) {
                                         "৳ ${String.format("%,.2f", item.netTotal)}",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = primaryText
+                                        color = primaryText,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Box(

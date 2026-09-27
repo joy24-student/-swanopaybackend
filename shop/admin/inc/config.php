@@ -27,6 +27,8 @@ if ($runtimeRoot) {
 
     // Fallback: path-based tenant lookup (e.g. https://shop.swapnopay.top/<slug>/...)
     if (!$runtime) {
+        $rawUri = $_SERVER['REQUEST_URI'] ?? '/';
+        $requestPath = strtok($rawUri, '?');  // strip query string
         $pathTrimmed = trim($requestPath, '/');
         $segments = explode('/', $pathTrimmed);
         $candidateSlug = !empty($segments[0]) ? strtolower($segments[0]) : '';
@@ -112,6 +114,9 @@ try {
         PDO::ATTR_EMULATE_PREPARES => true,
         PDO::ATTR_PERSISTENT => true
     ]);
+    if (!empty($db['schema']) && preg_match('/\A[a-z0-9_]+\z/', (string)$db['schema'])) {
+        $pdo->exec('SET search_path TO "' . $db['schema'] . '", public, pg_catalog');
+    }
 } catch (Throwable $error) {
     error_log('Store database unavailable: ' . $error->getMessage());
     http_response_code(503); header('Retry-After: 30'); exit('The store is temporarily unavailable. Please try again shortly. (Database error: ' . htmlspecialchars($error->getMessage()) . ')');
@@ -119,11 +124,11 @@ try {
 define('DB_DRIVER_NAME',$db_driver);
 define('SQL_RAND',$db_driver === 'pgsql' ? 'RANDOM()' : 'RAND()');
 // Never expose platform service-role credentials to a hosted PHP storefront.
-define('SUPABASE_URL',$runtime ? '' : (getenv('SUPABASE_URL') ?: ''));
-define('SUPABASE_ANON_KEY',$runtime ? '' : (getenv('SUPABASE_ANON_KEY') ?: ''));
+define('SUPABASE_URL',!empty($runtime['supabase_url']) ? $runtime['supabase_url'] : ($runtime ? '' : (getenv('SUPABASE_URL') ?: '')));
+define('SUPABASE_ANON_KEY',!empty($runtime['supabase_anon_key']) ? $runtime['supabase_anon_key'] : ($runtime ? '' : (getenv('SUPABASE_ANON_KEY') ?: '')));
 define('SUPABASE_SERVICE_KEY',$runtime ? '' : (getenv('SUPABASE_SERVICE_ROLE_KEY') ?: ''));
 define('MERCHANT_ID',$runtime['merchant_id'] ?? (getenv('MERCHANT_ID') ?: ''));
-define('SWAPNOPAY_API_URL',rtrim($runtime['api_url'] ?? (getenv('SWAPNOPAY_API_URL') ?: 'https://api.swapnopay.top'),'/'));
+define('SWAPNOPAY_API_URL',rtrim($runtime['backend_url'] ?? $runtime['api_url'] ?? (getenv('SWAPNOPAY_API_URL') ?: 'https://api.swapnopay.top'),'/'));
 $BASE_URL = $runtime['base_url'] ?? (getenv('STORE_BASE_URL') ?: '');
 if (!$BASE_URL) {
     $column = $db_driver === 'pgsql' ? '"BASE_URL"' : '`BASE_URL`';

@@ -5284,132 +5284,6 @@ fun LoginScreen(viewModel: AppViewModel) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // Footer Features Row (3 Columns)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isDarkMode) Color(0xFF12100C).copy(alpha = 0.85f) else Color(0xFFFFFFFF))
-                        .border(1.dp, borderGold, RoundedCornerShape(16.dp))
-                        .padding(vertical = 16.dp, horizontal = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Feature 1
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(iconBoxBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.VerifiedUser,
-                                contentDescription = "Secure Login",
-                                tint = goldAccent,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "নিরাপদ লগইন",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color.White else Color(0xFF0F172A),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "আপনার তথ্য সম্পূর্ণ সুরক্ষিত",
-                            fontSize = 10.sp,
-                            color = textSub,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Box(modifier = Modifier.width(1.dp).height(48.dp).background(borderGold))
-
-                    // Feature 2
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(iconBoxBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.WorkspacePremium,
-                                contentDescription = "Enterprise Grade",
-                                tint = goldAccent,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "এন্টারপ্রাইজ গ্রেড",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color.White else Color(0xFF0F172A),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "ব্যবসার জন্য তৈরি",
-                            fontSize = 10.sp,
-                            color = textSub,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Box(modifier = Modifier.width(1.dp).height(48.dp).background(borderGold))
-
-                    // Feature 3
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(iconBoxBg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.CloudDone,
-                                contentDescription = "Automatic Backup",
-                                tint = goldAccent,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "অটোমেটিক ব্যাকআপ",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDarkMode) Color.White else Color(0xFF0F172A),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "তথ্য কখনো হারাবে না",
-                            fontSize = 10.sp,
-                            color = textSub,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
@@ -15764,7 +15638,32 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                     }
                 }
 
-               
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (gatewayOperational) greenColor.copy(alpha = 0.15f) else goldColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, if (gatewayOperational) greenColor.copy(alpha = 0.4f) else goldColor.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(if (gatewayOperational) greenColor else goldColor)
+                        )
+                        Text(
+                            text = if (gatewayOperational) "Active" else "Standby",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (gatewayOperational) greenColor else goldColor
+                        )
+                    }
+                }
+            }
+
             // ── SCROLLABLE CONTENT BODY ──────────────────────────────────────────
             Column(
                 modifier = Modifier
@@ -16965,7 +16864,6 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
             )
         }
     }
-}
 }
 
 data class DashActionItem(

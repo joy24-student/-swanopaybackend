@@ -4,9 +4,9 @@
 
 import { Router } from 'express'
 import crypto from 'crypto'
-import { getAdminClient } from '../services/adminSupabase.js'
+import { getAdminClient, setMerchantGatewayConfig } from '../services/adminSupabase.js'
 import { lookupMerchantInAdminDb, requirePlatformUser, requireData } from '../services/merchantAccount.js'
-import { provisionProject } from '../services/provisionService.js'
+import { provisionProject, getDefaultProjectDbPassword, saveDefaultProjectCredentials } from '../services/provisionService.js'
 
 const router = Router()
 
@@ -435,6 +435,30 @@ async function handleOAuthCallback(req, res) {
       console.warn('[oauth-callback] Connection DB upsert notice (persisted in-memory):', connErr.message)
     }
 
+    // 4b. Automatically discover active project and save default db_password & anon_key in background
+    ;(async () => {
+      try {
+        const pRes = await fetch('https://api.supabase.com/v1/projects', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        })
+        if (pRes.ok) {
+          const projects = await pRes.json()
+          if (Array.isArray(projects) && projects.length > 0) {
+            const activeProj = projects.find(p => p.status === 'ACTIVE_HEALTHY' || p.status === 'READY') || projects[0]
+            if (activeProj?.id) {
+              await saveDefaultProjectCredentials({
+                userId: tx.user_id,
+                projectRef: activeProj.id,
+                accessToken: tokenData.access_token,
+              })
+            }
+          }
+        }
+      } catch (autoErr) {
+        console.warn('[oauth-callback] Auto credential discovery notice:', autoErr.message)
+      }
+    })()
+
     // 5. Determine Redirect Target
     const deepLink = `swapnopay://supabase-connected?tx_id=${tx.id}`
     const rawTarget = tx.redirect_back
@@ -510,6 +534,18 @@ async function handleProjects(req, res) {
     const orgs = orgsRes.ok ? await orgsRes.json() : []
     const projects = projectsRes.ok ? await projectsRes.json() : []
 
+    // Automatically pre-save default db_password & anon_key for the primary project
+    if (Array.isArray(projects) && projects.length > 0) {
+      const primaryProj = projects.find(p => p.status === 'ACTIVE_HEALTHY' || p.status === 'READY') || projects[0]
+      if (primaryProj?.id) {
+        saveDefaultProjectCredentials({
+          userId: userId || txId,
+          projectRef: primaryProj.id,
+          accessToken,
+        }).catch(() => {})
+      }
+    }
+
     return res.json({
       organizations: orgs,
       projects: projects.map((p) => ({
@@ -536,6 +572,7 @@ async function handleProvision(req, res) {
     const accessToken = await getValidAccessToken(userId, txId)
 
     if (action === 'CREATE_PROJECT') {
+      const defaultPass = getDefaultProjectDbPassword(userId || projectName || 'merchant', dbPassword)
       const resp = await fetch('https://api.supabase.com/v1/projects', {
         method: 'POST',
         headers: {
@@ -545,7 +582,7 @@ async function handleProvision(req, res) {
         body: JSON.stringify({
           name: projectName || 'SwapnoPay Merchant Store',
           organization_id: orgSlug,
-          db_pass: dbPassword || `${crypto.randomUUID().slice(0, 16)}Aa1!`,
+          db_pass: defaultPass,
           region: 'ap-southeast-1', // Singapore (fastest for Bangladesh & South Asia)
           plan: 'free',
         }),
@@ -556,7 +593,15 @@ async function handleProvision(req, res) {
         return res.status(resp.status).json({ error: projData.message || 'Project creation failed' })
       }
 
-      return res.json({ project_ref: projData.id, status: 'COMING_UP' })
+      // Immediately persist the generated db_password and project_ref by default
+      saveDefaultProjectCredentials({
+        userId,
+        projectRef: projData.id,
+        accessToken,
+        dbPassword: defaultPass,
+      }).catch(() => {})
+
+      return res.json({ project_ref: projData.id, status: 'COMING_UP', db_password: defaultPass })
     }
 
     if (action === 'CHECK_HEALTH') {
@@ -586,7 +631,7 @@ async function handleProvision(req, res) {
       if (!projectRef) return res.status(400).json({ error: 'project_ref is required' })
 
       console.log(`[oauth-provision] Running 100% automated provisioning pipeline for ${projectRef} (${action})...`)
-      const provisionResult = await provisionProject({ projectRef, accessToken, userId })
+      const provisionResult = await provisionProject({ projectRef, accessToken, userId, dbPassword })
       return res.json(provisionResult)
     }
 
@@ -629,6 +674,8 @@ async function handleCheckUser(req, res) {
         is_own_database: lookup.database.has_own_database,
         project_url: lookup.database.supabase_url,
         anon_key: lookup.database.supabase_anon_key,
+        db_password: lookup.database.db_password || '',
+        database_url: lookup.database.database_url || '',
         user_id: lookup.merchantId
       }
     })
@@ -653,7 +700,9 @@ async function handleSyncMerchantSetup(req, res) {
       photo_url,
       supabase_url,
       supabase_anon_key,
-      project_ref
+      project_ref,
+      db_password,
+      database_url,
     } = req.body || {}
 
     const user = req.platformUser
@@ -663,6 +712,15 @@ async function handleSyncMerchantSetup(req, res) {
     if (!business_name?.trim() || !phone?.trim()) {
       return res.status(400).json({ error: 'Business name and phone are required' })
     }
+
+    const inferredRef = project_ref || (supabase_url && supabase_url.includes('.supabase.co')
+      ? supabase_url.replace(/^https?:\/\//i, '').split('.supabase.co')[0].trim()
+      : '')
+    const effectiveDbPassword = db_password || (inferredRef ? getDefaultProjectDbPassword(inferredRef) : '')
+    const effectiveDatabaseUrl = database_url || (inferredRef && effectiveDbPassword
+      ? `postgresql://${encodeURIComponent(`postgres.${inferredRef}`)}:${encodeURIComponent(effectiveDbPassword)}@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require`
+      : '')
+
     let saved = null
     try {
       saved = requireData(await admin.rpc('save_platform_merchant_setup', {
@@ -686,6 +744,8 @@ async function handleSyncMerchantSetup(req, res) {
         onboarded_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
+      if (supabase_url) profileData.supabase_url = supabase_url
+      if (supabase_anon_key) profileData.supabase_anon_key = supabase_anon_key
       if (req.body?.pin_hash) {
         profileData.app_pin_hash = req.body.pin_hash
       }
@@ -706,12 +766,27 @@ async function handleSyncMerchantSetup(req, res) {
         }).catch(() => {})
         await admin.from('supabase_connections').upsert({
           user_id: user.id,
+          selected_project_ref: inferredRef || undefined,
           project_url: supabase_url,
           publishable_key: supabase_anon_key,
           updated_at: new Date().toISOString()
         }).catch(() => {})
       }
     }
+
+    // Always persist to setMerchantGatewayConfig (memory + disk + merchants table) so anon_key & db_password are saved by default
+    if (supabase_url || supabase_anon_key || effectiveDbPassword) {
+      await setMerchantGatewayConfig(targetId, {
+        merchant_name: business_name.trim(),
+        merchant_logo_url: photo_url || undefined,
+        supabase_url: supabase_url || undefined,
+        supabase_anon_key: supabase_anon_key || undefined,
+        db_password: effectiveDbPassword || undefined,
+        database_url: effectiveDatabaseUrl || undefined,
+        project_ref: inferredRef || undefined,
+      }).catch(() => {})
+    }
+
     if (!saved?.id) saved = { id: targetId }
 
     console.log(`[sync-merchant-setup] Successfully synced setup for merchant ${targetId} (${business_name}, ownDb: ${Boolean(supabase_url)})`)
@@ -720,6 +795,8 @@ async function handleSyncMerchantSetup(req, res) {
       ok: true,
       message: 'Merchant setup and own database credentials synced successfully',
       merchant_id: targetId,
+      db_password: effectiveDbPassword,
+      database_url: effectiveDatabaseUrl,
       has_own_database: Boolean(supabase_url && supabase_anon_key && !supabase_url.includes('tldubojeokgyoclxnzkb'))
     })
   } catch (err) {
@@ -733,7 +810,7 @@ async function handleSyncMerchantSetup(req, res) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleBootstrap(req, res) {
   try {
-    const { user_id: userId, tx_id: txId, project_ref: projectRef } = req.body || {}
+    const { user_id: userId, tx_id: txId, project_ref: projectRef, db_password: dbPassword } = req.body || {}
     const accessToken = await getValidAccessToken(userId, txId)
 
     let targetRef = projectRef
@@ -752,7 +829,7 @@ async function handleBootstrap(req, res) {
     }
 
     console.log(`[oauth-bootstrap] Bootstrapping project ${targetRef} for user ${userId || 'anonymous'}...`)
-    const result = await provisionProject({ projectRef: targetRef, accessToken, userId })
+    const result = await provisionProject({ projectRef: targetRef, accessToken, userId, dbPassword })
     return res.json(result)
   } catch (err) {
     console.error('[oauth-bootstrap] Error:', err)
@@ -768,6 +845,7 @@ async function handleOAuthExchange(req, res) {
     const code = req.body?.code || req.query?.code
     const codeVerifier = req.body?.code_verifier || req.query?.code_verifier || ''
     const redirectUri = req.body?.redirect_uri || req.query?.redirect_uri || DEFAULT_REDIRECT_URI
+    const userId = req.body?.user_id || req.query?.user_id || req.headers['x-merchant-id'] || ''
 
     if (!code) {
       return res.status(400).json({ error: 'Missing code parameter' })
@@ -799,7 +877,33 @@ async function handleOAuthExchange(req, res) {
       return res.status(tokenResponse.status).json(tokenData)
     }
 
-    return res.json(tokenData)
+    // Automatically discover project and save default db_password & anon_key on code exchange
+    let autoCredentials = null
+    try {
+      const pRes = await fetch('https://api.supabase.com/v1/projects', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      })
+      if (pRes.ok) {
+        const projects = await pRes.json()
+        if (Array.isArray(projects) && projects.length > 0) {
+          const activeProj = projects.find(p => p.status === 'ACTIVE_HEALTHY' || p.status === 'READY') || projects[0]
+          if (activeProj?.id) {
+            autoCredentials = await saveDefaultProjectCredentials({
+              userId: userId || 'default',
+              projectRef: activeProj.id,
+              accessToken: tokenData.access_token,
+            })
+          }
+        }
+      }
+    } catch (autoErr) {
+      console.warn('[oauth-exchange] Auto credential discovery notice:', autoErr.message)
+    }
+
+    return res.json({
+      ...tokenData,
+      auto_credentials: autoCredentials,
+    })
   } catch (err) {
     console.error('[oauth-exchange] Exception:', err)
     return res.status(500).json({ error: err.message })

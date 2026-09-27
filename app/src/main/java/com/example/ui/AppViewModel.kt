@@ -2948,13 +2948,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 logFirebaseStatus("Supabase direct sync notice: ${e.message}")
             }
 
-            // Backend sync
+            // Backend sync (automatically saves anon_key, db_password, and links Web Shop database by default)
             try {
-                platformRequest("/v1/oauth/sync-merchant-setup", org.json.JSONObject()
+                val savedDbPass = runCatching { securityPrefs.getString("supabase_db_password", "") ?: "" }.getOrDefault("")
+                val inferredRef = if (supabaseUrl.contains(".supabase.co")) {
+                    supabaseUrl.substringAfter("https://").substringBefore(".supabase.co").trim()
+                } else ""
+                val syncResp = platformRequest("/v1/oauth/sync-merchant-setup", org.json.JSONObject()
                     .put("business_name", businessName).put("phone", phone).put("business_type", businessType)
                     .put("website", website).put("photo_url", photoUrl)
-                    .put("supabase_url", supabaseUrl).put("supabase_anon_key", supabaseAnonKey))
-                logFirebaseStatus("Business profile saved to the platform.")
+                    .put("supabase_url", supabaseUrl).put("supabase_anon_key", supabaseAnonKey)
+                    .put("project_ref", inferredRef).put("db_password", savedDbPass))
+                val backendDbPass = syncResp.optString("db_password", "")
+                if (backendDbPass.isNotBlank() && savedDbPass.isBlank()) {
+                    runCatching { securityPrefs.edit().putString("supabase_db_password", backendDbPass).apply() }
+                }
+                if (supabaseUrl.isNotBlank() && supabaseAnonKey.isNotBlank() && !supabaseUrl.contains("tldubojeokgyoclxnzkb")) {
+                    runCatching {
+                        val shopPayload = org.json.JSONObject()
+                            .put("merchant_id", merchantId)
+                            .put("supabase_url", supabaseUrl.trim())
+                            .put("supabase_anon_key", supabaseAnonKey.trim())
+                        val shopReq = buildWebShopRequest("https://api.swapnopay.top/v1/shop/connect-database")
+                            .post(shopPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                            .build()
+                        webShopHttpClient.newCall(shopReq).execute().close()
+                    }
+                }
+                logFirebaseStatus("Business profile and default database credentials saved to the platform.")
             } catch (error: Exception) {
                 logFirebaseStatus("Platform cloud sync deferred: ${error.message}")
             }
@@ -4653,7 +4674,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         controlPlaneOrgs.value = orgs
                         controlPlaneProjects.value = projects
                         if (projects.isNotEmpty()) {
-                            selectedControlPlaneProjectRef.value = projects.first().id
+                            val primaryProj = projects.find { it.status.equals("ACTIVE_HEALTHY", ignoreCase = true) } ?: projects.first()
+                            selectedControlPlaneProjectRef.value = primaryProj.id
+                            val autoConnected = com.example.data.repository.SupabaseConnectionRepository.lastAutoConnectedProject
+                            if (autoConnected != null && autoConnected.projectUrl.isNotBlank() && autoConnected.publishableKey.isNotBlank()) {
+                                if (autoConnected.dbPassword.isNotBlank()) {
+                                    try { securityPrefs.edit().putString("supabase_db_password", autoConnected.dbPassword).apply() } catch (_: Exception) {}
+                                }
+                                setSupabaseUrlInput(autoConnected.projectUrl)
+                                setSupabaseAnonKeyInput(autoConnected.publishableKey)
+                                supabaseUrl.value = autoConnected.projectUrl
+                                supabaseAnonKey.value = autoConnected.publishableKey
+                                connectSupabase(
+                                    url = autoConnected.projectUrl,
+                                    anonKey = autoConnected.publishableKey,
+                                    name = primaryProj.name.ifBlank { "Supabase Project (${autoConnected.projectRef})" }
+                                )
+                                oauthStep.value = OAuthStep.COMPLETE
+                                logFirebaseStatus("Auto-connected Supabase project (${autoConnected.projectRef}) with default DB password & anon key!")
+                            }
                         }
                     }
                 },
@@ -4725,6 +4764,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val orgId = controlPlaneOrgs.value.firstOrNull()?.id ?: orgSlug
                 val name = projectName.ifBlank { "SwapnoPay Merchant ${System.currentTimeMillis() % 10000}" }
                 val dbPass = java.util.UUID.randomUUID().toString().replace("-", "").take(16) + "Aa1!"
+                try { securityPrefs.edit().putString("supabase_db_password", dbPass).apply() } catch (_: Exception) {}
 
                 if (orgId.isNotBlank()) {
                     var createError: String? = null
@@ -4848,6 +4888,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 txId = txId,
                 onSuccess = { projectUrl, publishableKey ->
                     viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                        val provisionedPass = com.example.data.repository.SupabaseConnectionRepository.lastProvisionedDbPassword
+                        if (provisionedPass.isNotBlank()) {
+                            try { securityPrefs.edit().putString("supabase_db_password", provisionedPass).apply() } catch (_: Exception) {}
+                        }
                         provisioningProgress.value = 1.0f
                         provisioningStatusText.value = "SwapnoPay Cloud Ready!"
                         oauthStep.value = OAuthStep.COMPLETE
@@ -5016,25 +5060,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     )
                                 }
                                 if (projects.isNotEmpty()) {
-                                    selectedControlPlaneProjectRef.value = projects.first().id
-                                    if (projects.size == 1) {
-                                        val onlyProj = projects.first()
-                                        connectViaManagementApi(
-                                            token = accessToken,
-                                            targetProject = onlyProj,
-                                            onSuccess = { url, anon ->
-                                                oauthStep.value = OAuthStep.COMPLETE
-                                                logFirebaseStatus("Authorized via Supabase OAuth 2.0 & connected to project: ${onlyProj.name}")
-                                                runSupabaseSystemTest()
-                                            },
-                                            onFailure = { err ->
-                                                managementApiError.value = err
-                                                oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
-                                            }
-                                        )
-                                    } else {
-                                        oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
-                                    }
+                                    val primaryProj = projects.find { it.status.equals("ACTIVE_HEALTHY", ignoreCase = true) } ?: projects.first()
+                                    selectedControlPlaneProjectRef.value = primaryProj.id
+                                    connectViaManagementApi(
+                                        token = accessToken,
+                                        targetProject = primaryProj,
+                                        onSuccess = { url, anon ->
+                                            oauthStep.value = OAuthStep.COMPLETE
+                                            logFirebaseStatus("Authorized via Supabase OAuth 2.0 & auto-connected project: ${primaryProj.name}")
+                                            runSupabaseSystemTest()
+                                        },
+                                        onFailure = { err ->
+                                            managementApiError.value = err
+                                            oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
+                                        }
+                                    )
                                 } else {
                                     oauthStep.value = OAuthStep.ACCOUNT_CONNECTED
                                     managementApiError.value = "No projects found under authorized Supabase account."

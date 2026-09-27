@@ -2,10 +2,11 @@
 // Automatically provisions database tables, atomic RPC procedures, RLS security policies,
 // storage buckets, realtime publications, and edge functions with ZERO manual setup.
 
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { getAdminClient } from './adminSupabase.js'
+import { getAdminClient, setMerchantGatewayConfig, inMemoryMerchantGatewaySettings } from './adminSupabase.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -495,9 +496,187 @@ export async function fetchProjectApiKeys(projectRef, accessToken) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Default Database Password & Pooler URL Helpers (Zero Manual Input)
+// ──────────────────────────────────────────────────────────────────────────────
+export function getDefaultProjectDbPassword(projectRef = 'default', customPassword = '') {
+  if (customPassword && String(customPassword).trim().length >= 8) {
+    return String(customPassword).trim()
+  }
+  // Check if a password is already saved for this projectRef in memory/disk
+  for (const [, record] of inMemoryMerchantGatewaySettings.entries()) {
+    if (record?.project_ref === projectRef && record?.db_password) {
+      return record.db_password
+    }
+  }
+  const secret = process.env.ADMIN_SECRET || 'swapnopay_platform_admin_master_secret_2026_super_key_32'
+  const digest = crypto.createHmac('sha256', secret).update(`supabase_db_pass_${projectRef}`).digest('hex')
+  return `SpDb_${digest.slice(0, 16)}!1Aa`
+}
+
+export async function configureAndFetchProjectDatabase(projectRef, accessToken, customPassword = '') {
+  const dbPassword = getDefaultProjectDbPassword(projectRef, customPassword)
+  let dbHost = 'aws-0-ap-southeast-1.pooler.supabase.com'
+  let dbPort = 5432
+  let dbUser = `postgres.${projectRef}`
+  let dbName = 'postgres'
+
+  if (projectRef && accessToken) {
+    // 1. Sync the default database password to Supabase via Management API so direct/pooler connections work automatically
+    try {
+      const passRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/password`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: dbPassword }),
+      })
+      if (passRes.ok) {
+        console.log(`[provision-db] Automatically configured default database password for ${projectRef}`)
+      }
+    } catch (e) {
+      console.warn(`[provision-db] Database password sync notice for ${projectRef}:`, e.message)
+    }
+
+    // 2. Fetch pooler host & region from Management API
+    try {
+      const poolerRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/database/pooler`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (poolerRes.ok) {
+        const poolerData = await poolerRes.json()
+        const firstPool = Array.isArray(poolerData) ? poolerData[0] : poolerData
+        if (firstPool?.db_host) dbHost = firstPool.db_host
+        if (firstPool?.db_user) dbUser = firstPool.db_user
+        if (firstPool?.db_name) dbName = firstPool.db_name
+        if (firstPool?.connection_string) {
+          try {
+            const parsed = new URL(firstPool.connection_string)
+            if (parsed.hostname) dbHost = parsed.hostname
+            if (parsed.username) dbUser = decodeURIComponent(parsed.username)
+          } catch (_) {}
+        }
+      } else {
+        const projRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (projRes.ok) {
+          const proj = await projRes.json()
+          if (proj?.region) {
+            dbHost = `aws-0-${proj.region}.pooler.supabase.com`
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  const databaseUrl = `postgresql://${encodeURIComponent(dbUser)}:${encodeURIComponent(dbPassword)}@${dbHost}:${dbPort}/${dbName}?sslmode=require`
+  return { dbPassword, databaseUrl, dbHost, dbPort, dbUser, dbName }
+}
+
+export async function saveDefaultProjectCredentials({
+  userId,
+  merchantId,
+  projectRef,
+  accessToken,
+  anonKey = '',
+  serviceRoleKey = '',
+  dbPassword = '',
+  databaseUrl = '',
+  dbHost = '',
+  dbPort = 5432,
+  dbUser = '',
+  dbName = 'postgres',
+}) {
+  if (!projectRef) return null
+  const projectUrl = `https://${projectRef}.supabase.co`
+
+  let resolvedAnonKey = anonKey
+  let resolvedServiceKey = serviceRoleKey
+  if ((!resolvedAnonKey || !resolvedServiceKey) && accessToken) {
+    const keys = await fetchProjectApiKeys(projectRef, accessToken)
+    if (!resolvedAnonKey) resolvedAnonKey = keys.anonKey
+    if (!resolvedServiceKey) resolvedServiceKey = keys.serviceRoleKey
+  }
+
+  let resolvedDb = {
+    dbPassword,
+    databaseUrl,
+    dbHost: dbHost || 'aws-0-ap-southeast-1.pooler.supabase.com',
+    dbPort: dbPort || 5432,
+    dbUser: dbUser || `postgres.${projectRef}`,
+    dbName: dbName || 'postgres',
+  }
+  if (!resolvedDb.dbPassword || !resolvedDb.databaseUrl) {
+    resolvedDb = await configureAndFetchProjectDatabase(projectRef, accessToken, dbPassword)
+  }
+
+  const targetId = merchantId || userId || 'default'
+  try {
+    await setMerchantGatewayConfig(targetId, {
+      supabase_url: projectUrl,
+      supabase_anon_key: resolvedAnonKey,
+      supabase_service_role_key: resolvedServiceKey,
+      db_password: resolvedDb.dbPassword,
+      database_url: resolvedDb.databaseUrl,
+      db_host: resolvedDb.dbHost,
+      db_port: resolvedDb.dbPort,
+      db_user: resolvedDb.dbUser,
+      db_name: resolvedDb.dbName,
+      project_ref: projectRef,
+    })
+  } catch (e) {
+    console.warn('[provision-save] setMerchantGatewayConfig notice:', e.message)
+  }
+
+  try {
+    const admin = getAdminClient()
+    if (userId) {
+      await admin
+        .from('supabase_connections')
+        .upsert({
+          user_id: userId,
+          selected_project_ref: projectRef,
+          publishable_key: resolvedAnonKey,
+          project_url: projectUrl,
+          provisioning_status: 'COMPLETE',
+          connection_status: 'ACTIVE',
+          last_verified_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' })
+        .catch(() => {})
+    }
+    if (targetId && targetId !== 'default') {
+      await admin
+        .from('merchants')
+        .update({
+          supabase_url: projectUrl,
+          supabase_anon_key: resolvedAnonKey,
+          updated_at: new Date().toISOString(),
+        })
+        .or(`id.eq.${targetId},user_id.eq.${targetId}`)
+        .catch(() => {})
+    }
+  } catch (_) {}
+
+  if (!process.env.SHOP_DATABASE_URL && resolvedDb.databaseUrl) {
+    process.env.SHOP_DATABASE_URL = resolvedDb.databaseUrl
+  }
+
+  console.log(`[provision-save] Saved default Supabase anon_key & db_password for ${targetId} (${projectRef})`)
+  return {
+    projectRef,
+    projectUrl,
+    anonKey: resolvedAnonKey,
+    serviceRoleKey: resolvedServiceKey,
+    ...resolvedDb,
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Main Automated Provisioning Pipeline
 // ──────────────────────────────────────────────────────────────────────────────
-export async function provisionProject({ projectRef, accessToken, userId }) {
+export async function provisionProject({ projectRef, accessToken, userId, dbPassword = '' }) {
   if (!projectRef) throw new Error('projectRef is required')
   if (!accessToken) throw new Error('accessToken is required')
 
@@ -608,9 +787,16 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
     console.warn('[provision-webhook] Notice: Could not set SMS webhook trigger automatically:', webhookErr.message)
   }
 
-  // 5. Retrieve API Keys
-  console.log(`[provision] 5/5 Retrieving API keys...`)
-  const { anonKey, serviceRoleKey } = await fetchProjectApiKeys(projectRef, accessToken)
+  // 5. Retrieve API Keys & Configure/Save Default DB Password & Pooler URL
+  console.log(`[provision] 5/5 Retrieving API keys and saving default DB password...`)
+  const savedCreds = await saveDefaultProjectCredentials({
+    userId,
+    projectRef,
+    accessToken,
+    dbPassword,
+  })
+  const anonKey = savedCreds?.anonKey || ''
+  const serviceRoleKey = savedCreds?.serviceRoleKey || ''
   summary.keysFound = Boolean(anonKey)
 
   // 6. Verify Tables Existence in Database
@@ -633,40 +819,6 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
 
   const projectUrl = `https://${projectRef}.supabase.co`
 
-  // 7. Update Platform Admin Database Connections
-  try {
-    const admin = getAdminClient()
-    if (userId) {
-      await admin
-        .from('supabase_connections')
-        .update({
-          selected_project_ref: projectRef,
-          publishable_key: anonKey,
-          project_url: projectUrl,
-          provisioning_status: 'COMPLETE',
-          connection_status: 'ACTIVE',
-          last_verified_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-
-      await admin
-        .from('merchant_gateway_settings')
-        .upsert(
-          {
-            merchant_id: userId,
-            supabase_url: projectUrl,
-            supabase_anon_key: anonKey,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'merchant_id' }
-        )
-      console.log(`[provision] Updated supabase_connections and merchant_gateway_settings for user ${userId}`)
-    }
-  } catch (err) {
-    console.warn('[provision] Admin DB sync notice (non-fatal):', err.message)
-  }
-
   console.log(`[provision] ✅ Project ${projectRef} provisioning complete! (Tables: ${summary.tableCount || 'ready'})`)
   return {
     ok: true,
@@ -676,6 +828,8 @@ export async function provisionProject({ projectRef, accessToken, userId }) {
     publishable_key: anonKey,
     anon_key: anonKey,
     service_role_key: serviceRoleKey,
+    db_password: savedCreds?.dbPassword || '',
+    database_url: savedCreds?.databaseUrl || '',
     summary,
   }
 }

@@ -42,7 +42,7 @@ export function shopConfiguration(env = process.env) {
   }
 
   let connectionString = ''
-  let dbHost = '127.0.0.1', dbPort = 5432, dbName = 'swapnopay_shop'
+  let dbHost = '127.0.0.1', dbPort = 5432, dbName = 'swapnopay_shop', dbUser = '', dbPass = ''
 
   if (rawDbUrl) {
     try {
@@ -52,6 +52,8 @@ export function shopConfiguration(env = process.env) {
         dbHost = env.SHOP_PHP_DB_HOST || url.hostname
         dbPort = Number(env.SHOP_PHP_DB_PORT || url.port || 5432)
         dbName = decodeURIComponent(url.pathname.slice(1)) || 'swapnopay_shop'
+        dbUser = decodeURIComponent(url.username || '')
+        dbPass = decodeURIComponent(url.password || '')
       } else {
         throw new ShopError(503, 'SHOP_NOT_CONFIGURED', 'Website hosting database is not configured: must be PostgreSQL')
       }
@@ -67,7 +69,7 @@ export function shopConfiguration(env = process.env) {
     key, addresses,
     baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shop.swapnopay.top'),
     runtime, sites, template,
-    dbHost, dbPort, dbName,
+    dbHost, dbPort, dbName, dbUser, dbPass,
     sslmode: env.SHOP_DB_SSLMODE || 'require',
     group: env.SHOP_RUNTIME_GID ? Number(env.SHOP_RUNTIME_GID) : undefined,
     backendUrl: env.SHOP_BACKEND_URL || 'https://api.swapnopay.top',
@@ -78,6 +80,13 @@ export function shopConfiguration(env = process.env) {
 export class ShopService {
   constructor(config, dependencies = {}) {
     this.config = config
+    this.hasInjectedPool = Boolean(dependencies.pool)
+    this.tenantPools = new Map()
+    this.getMerchantCredentials = dependencies.getMerchantCredentials || (async merchantId => {
+      if (this.hasInjectedPool) return null
+      const { getMerchantCredentials } = await import('./adminSupabase.js')
+      return getMerchantCredentials(merchantId)
+    })
     this.dns = dependencies.dns || ((host, addresses, lookup) => checkShopDns(host, addresses, lookup, config.baseDomain))
     this.probe = dependencies.probe || probeStore
     this.getMerchantApiKey = dependencies.getMerchantApiKey || (async merchantId => {
@@ -162,6 +171,69 @@ export class ShopService {
     `).catch(error => { this.initialized = null; throw error })
     await this.initialized
   }
+  async resolveMerchantDbConfig(id, secrets = {}) {
+    const schema = schemaName(id)
+    let creds = null
+    try { creds = await this.getMerchantCredentials(id) } catch (_) {}
+
+    let dbUrl = creds?.database_url || ''
+    const supabaseUrl = creds?.supabase_url || process.env.ADMIN_SUPABASE_URL || ''
+    const supabaseAnonKey = creds?.supabase_anon_key || process.env.ADMIN_SUPABASE_ANON_KEY || ''
+    const projectRef = creds?.project_ref || (supabaseUrl.match(/^https:\/\/([a-z0-9-]+)\.supabase\.co/i)?.[1] || '')
+    const dbPass = creds?.db_password || ''
+
+    if (!dbUrl && projectRef && dbPass) {
+      const poolerHost = creds?.db_host || process.env.SUPABASE_DEFAULT_POOLER_HOST || 'aws-0-ap-southeast-1.pooler.supabase.com'
+      const poolerPort = creds?.db_port || 5432
+      const poolerUser = creds?.db_user || `postgres.${projectRef}`
+      const poolerName = creds?.db_name || 'postgres'
+      dbUrl = `postgresql://${poolerUser}:${encodeURIComponent(dbPass)}@${poolerHost}:${poolerPort}/${poolerName}`
+    }
+
+    if (dbUrl) {
+      try {
+        const parsed = new URL(dbUrl)
+        const host = parsed.hostname
+        const port = Number(parsed.port || 5432)
+        const database = decodeURIComponent(parsed.pathname.slice(1)) || 'postgres'
+        const user = decodeURIComponent(parsed.username || '')
+        const password = decodeURIComponent(parsed.password || '')
+        return {
+          connectionString: parsed.href,
+          host, port, database, user, password,
+          schema, sslmode: 'require',
+          supabaseUrl, supabaseAnonKey,
+        }
+      } catch (_) {}
+    }
+
+    const isSupabasePooler = /supabase\.(com|co)$/i.test(this.config.dbHost || '') && Boolean(this.config.dbUser && this.config.dbPass)
+    return {
+      connectionString: this.config.connectionString || '',
+      host: this.config.dbHost,
+      port: this.config.dbPort,
+      database: this.config.dbName,
+      user: isSupabasePooler ? this.config.dbUser : schema,
+      password: isSupabasePooler ? this.config.dbPass : (secrets.dbPassword || ''),
+      schema,
+      sslmode: this.config.sslmode,
+      supabaseUrl,
+      supabaseAnonKey,
+    }
+  }
+  async getTenantPool(id) {
+    if (this.hasInjectedPool) return this.pool
+    const resolved = await this.resolveMerchantDbConfig(id)
+    if (resolved.connectionString && resolved.connectionString !== this.config.connectionString) {
+      let pool = this.tenantPools.get(resolved.connectionString)
+      if (!pool) {
+        pool = new Pool({ connectionString: resolved.connectionString, max: 4, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 })
+        this.tenantPools.set(resolved.connectionString, pool)
+      }
+      return pool
+    }
+    return this.pool
+  }
   async row(id) {
     if (!this.pool) return null
     await this.initialize()
@@ -217,7 +289,8 @@ export class ShopService {
     }
     if (!row?.schema_ready) return this.publicStatus(row)
     const s = identifier(schemaName(id))
-    const { rows } = await this.pool.query(`SELECT
+    const tenantPool = await this.getTenantPool(id)
+    const { rows } = await tenantPool.query(`SELECT
       (SELECT count(*)::int FROM ${s}.tbl_product WHERE p_is_active=1) AS products_count,
       (SELECT count(*)::int FROM ${s}.tbl_payment) AS orders_count,
       (SELECT coalesce(sum(paid_amount),0) FROM ${s}.tbl_payment WHERE payment_status='Completed') AS total_revenue`)
@@ -315,15 +388,26 @@ export class ShopService {
       // An incomplete staging directory never becomes the public document root.
       await fs.rename(stage, tenantDir)
     }
-    const schema = schemaName(row.merchant_id)
     const keyRecord = await this.getMerchantApiKey(row.merchant_id)
     if (!keyRecord?.api_key) throw new Error('A merchant API key is required to connect the storefront checkout.')
+
+    const resolvedDb = await this.resolveMerchantDbConfig(row.merchant_id, secrets)
     const runtime = {
       merchant_id: row.merchant_id,
       gateway_api_key: keyRecord.api_key,
       base_url: row.custom_domain ? `https://${row.custom_domain}/` : `https://${this.config.baseDomain}/${row.shop_slug}/`,
       store_name: row.store_name,
-      db: { host: this.config.dbHost, port: this.config.dbPort, database: this.config.dbName, user: schema, password: secrets.dbPassword, sslmode: this.config.sslmode },
+      supabase_url: resolvedDb.supabaseUrl,
+      supabase_anon_key: resolvedDb.supabaseAnonKey,
+      db: {
+        host: resolvedDb.host,
+        port: resolvedDb.port,
+        database: resolvedDb.database,
+        user: resolvedDb.user,
+        password: resolvedDb.password,
+        schema: resolvedDb.schema,
+        sslmode: resolvedDb.sslmode,
+      },
       backend_url: this.config.backendUrl,
     }
 
@@ -365,35 +449,52 @@ export class ShopService {
   async provision(client, row) {
     const schema = schemaName(row.merchant_id), quoted = identifier(schema)
     const secrets = decryptConfig(row.secret_config,this.config.key)
-    await client.query('BEGIN')
+    const tenantPool = await this.getTenantPool(row.merchant_id)
+    const useSeparateTenantDb = tenantPool && tenantPool !== this.pool
+    const dbClient = useSeparateTenantDb ? await tenantPool.connect() : client
+    await dbClient.query('BEGIN')
     try {
       if (!row.schema_ready) {
-        await client.query(`CREATE SCHEMA IF NOT EXISTS ${quoted}; REVOKE ALL ON SCHEMA ${quoted} FROM PUBLIC`)
-        await client.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
-        await client.query(await fs.readFile(schemaFile,'utf8'))
+        await dbClient.query(`CREATE SCHEMA IF NOT EXISTS ${quoted}; REVOKE ALL ON SCHEMA ${quoted} FROM PUBLIC`)
+        await dbClient.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
+        await dbClient.query(await fs.readFile(schemaFile,'utf8'))
         try {
-          const role = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
-          if (!role.rowCount) await client.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
-          await client.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
+          const role = await dbClient.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
+          if (!role.rowCount) await dbClient.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
+          await dbClient.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
             GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};
             GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};
             GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`)
         } catch (roleErr) {
           console.warn('[shop/provision] Role creation notice:', roleErr.message)
         }
+      } else if (useSeparateTenantDb) {
+        await dbClient.query(`CREATE SCHEMA IF NOT EXISTS ${quoted}; REVOKE ALL ON SCHEMA ${quoted} FROM PUBLIC`)
+        await dbClient.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
+        const hasSettings = await dbClient.query("SELECT 1 FROM information_schema.tables WHERE table_schema=$1 AND table_name='tbl_settings'", [schema])
+        if (!hasSettings.rows?.length) {
+          await dbClient.query(await fs.readFile(schemaFile,'utf8'))
+        }
       }
-      await client.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
+      await dbClient.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
       const storeBaseUrl = row.custom_domain
         ? `https://${row.custom_domain}/`
         : `https://${this.config.baseDomain}/${row.shop_slug}/`
-      await client.query(`UPDATE tbl_settings SET meta_title_home=$1,meta_description_home=$2,contact_email=$3,receive_email=$3,"BASE_URL"=$4,theme_color=$5,currency_code=$6 WHERE id=1`,
+      await dbClient.query(`UPDATE tbl_settings SET meta_title_home=$1,meta_description_home=$2,contact_email=$3,receive_email=$3,"BASE_URL"=$4,theme_color=$5,currency_code=$6 WHERE id=1`,
         [row.store_name,`Shop online with ${row.store_name}.`,row.admin_email,storeBaseUrl,row.theme_color,row.currency])
-      if (!row.schema_ready || row.status === 'QUEUED' && secrets.resetAdminPassword) await client.query(`INSERT INTO tbl_user(id,full_name,email,phone,password,role,status) VALUES(1,$1,$2,'',$3,'Top Admin','Active')
+      if (!row.schema_ready || row.status === 'QUEUED' && secrets.resetAdminPassword) await dbClient.query(`INSERT INTO tbl_user(id,full_name,email,phone,password,role,status) VALUES(1,$1,$2,'',$3,'Top Admin','Active')
         ON CONFLICT(id) DO UPDATE SET full_name=$1,email=$2,password=$3,role='Top Admin',status='Active'`,[`${row.store_name} Administrator`,row.admin_email,secrets.adminHash])
-      else await client.query('UPDATE tbl_user SET email=$1 WHERE id=1',[row.admin_email])
-      await client.query(`UPDATE shop_control.launches SET schema_ready=true WHERE merchant_id=$1`,[row.merchant_id])
-      await client.query('COMMIT')
-    } catch(error) { await client.query('ROLLBACK'); throw error }
+      else await dbClient.query('UPDATE tbl_user SET email=$1 WHERE id=1',[row.admin_email])
+      if (!useSeparateTenantDb) {
+        await client.query(`UPDATE shop_control.launches SET schema_ready=true WHERE merchant_id=$1`,[row.merchant_id])
+      }
+      await dbClient.query('COMMIT')
+      if (useSeparateTenantDb) {
+        await client.query(`UPDATE shop_control.launches SET schema_ready=true WHERE merchant_id=$1`,[row.merchant_id])
+      }
+    } catch(error) { await dbClient.query('ROLLBACK'); throw error } finally {
+      if (useSeparateTenantDb) dbClient.release()
+    }
     await this.publishFiles(row,secrets)
 
     // Never report a successful launch unless its canonical merchant record is linked to the URL.
@@ -453,7 +554,8 @@ export class ShopService {
   async tenant(id, fn) {
     const row = await this.row(id)
     if (!row?.schema_ready) throw new ShopError(409,'STORE_NOT_READY','Launch your storefront before managing its catalog.')
-    const client = await this.pool.connect()
+    const tenantPool = await this.getTenantPool(id)
+    const client = await tenantPool.connect()
     try {
       await client.query('BEGIN')
       await client.query(`SET LOCAL search_path TO ${identifier(schemaName(id))},pg_catalog`)

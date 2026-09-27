@@ -84,13 +84,29 @@ export function createShopRouter({ service = getShopService, authenticate = requ
       }
     }
     if (!req.isAdmin && req.merchantUser?.id !== id(req)) throw new ShopError(403, 'MERCHANT_MISMATCH', 'Database credentials must belong to this merchant.')
-    const { getAdminClient } = await import('../services/adminSupabase.js')
+    const cleanProjectUrl = parsed.href.replace(/\/$/, '')
+    const extractedRef = parsed.hostname.endsWith('.supabase.co') ? parsed.hostname.replace(/\.supabase\.co$/i, '') : (req.body.project_ref || '')
+    const { getAdminClient, getMerchantCredentials, setMerchantGatewayConfig } = await import('../services/adminSupabase.js')
+    const { getDefaultProjectDbPassword } = await import('../services/provisionService.js')
+    const existingCreds = await getMerchantCredentials(id(req)).catch(() => null)
+    const dbPassword = req.body.db_password || existingCreds?.db_password || (extractedRef ? getDefaultProjectDbPassword(extractedRef) : '')
+    const poolerHost = req.body.db_host || existingCreds?.db_host || process.env.SUPABASE_DEFAULT_POOLER_HOST || 'aws-0-ap-southeast-1.pooler.supabase.com'
+    const databaseUrl = req.body.database_url || existingCreds?.database_url || (extractedRef && dbPassword
+      ? `postgresql://postgres.${extractedRef}:${encodeURIComponent(dbPassword)}@${poolerHost}:5432/postgres`
+      : '')
+    await setMerchantGatewayConfig(id(req), {
+      supabase_url: cleanProjectUrl,
+      supabase_anon_key: anonKey,
+      project_ref: extractedRef,
+      ...(dbPassword ? { db_password: dbPassword } : {}),
+      ...(databaseUrl ? { database_url: databaseUrl, db_host: poolerHost, db_port: 5432, db_user: `postgres.${extractedRef}`, db_name: 'postgres' } : {}),
+    })
     const { data, error } = await getAdminClient().from('merchants')
-      .update({ supabase_url: parsed.href.replace(/\/$/, ''), supabase_anon_key: anonKey, updated_at: new Date().toISOString() })
+      .update({ supabase_url: cleanProjectUrl, supabase_anon_key: anonKey, updated_at: new Date().toISOString() })
       .eq('id', id(req)).select('id').maybeSingle()
-    if (error) throw error
-    if (!data) throw new ShopError(404, 'MERCHANT_NOT_FOUND', 'The signed-in merchant account was not found.')
-    res.json({ ok: true, merchant_id: id(req), connected: true, project_url: parsed.href.replace(/\/$/, '') })
+    if (error && !existingCreds) throw error
+    if (!data && !existingCreds) throw new ShopError(404, 'MERCHANT_NOT_FOUND', 'The signed-in merchant account was not found.')
+    res.json({ ok: true, merchant_id: id(req), connected: true, project_url: cleanProjectUrl, database_url_configured: Boolean(databaseUrl) })
   }))
   router.post('/deploy', rateLimit({windowMs:60000,limit:10,standardHeaders:'draft-8',legacyHeaders:false}), wrap(async (req,res) => {
     const result = await service().enqueue(req.body)

@@ -366,7 +366,7 @@ export function developerRouter(io, heartbeatMap = new Map()) {
         key_id: keyId,
         api_key: rawKey,
         key_preview: keyPreview,
-        sandbox_key: `sk_sandbox_${rawKey.replace(/^sk_live_/, '')}`,
+        sandbox_key: `sk_sandbox_${rawKey.replace(/^(sp|sk)_live_/, '')}`,
         merchant_id,
         message: 'API Key regenerated successfully. Update your application environment variables.',
       })

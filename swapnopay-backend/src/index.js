@@ -32,7 +32,6 @@ import { subscriptionRouter } from './routes/subscription.js'
 import employeeRouter from './routes/employee.js'
 import { pinRouter } from './routes/pin.js'
 import { aiFormRouter } from './routes/aiForm.js'
-import { developerRouter } from './routes/developer.js'
 import { safeCompare as safeSecretCompare } from './middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -521,10 +520,6 @@ app.use('/v1/pin', pinRouter)
 
 // AI Form Generator (Gemini LLM) API
 app.use('/v1/ai', aiFormRouter)
-
-// Enterprise Developer Console & Real Sandbox API
-app.use('/v1/developer', developerRouter(io, merchantHeartbeatMap))
-app.use('/v1/sandbox', developerRouter(io, merchantHeartbeatMap))
 
 // 404
 app.use((_req, res) => {

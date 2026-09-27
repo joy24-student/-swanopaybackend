@@ -171,7 +171,10 @@ fun ReportsMainScreen(viewModel: AppViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .size(42.dp)
@@ -189,24 +192,33 @@ fun ReportsMainScreen(viewModel: AppViewModel) {
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
 
-                                Column {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
                                     Text(
                                         text = if (isBangla) "ব্যবসা এনালিটিক্স ও রিপোর্ট" else "Executive Financial Report",
-                                        fontSize = 20.sp,
+                                        fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = primaryText
+                                        color = primaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = if (isBangla) "রিয়েলটাইম হিসাব, লাভ-ক্ষতি ও লেজার" else "Real-time LEDGER, POS & P&L Insights",
                                         fontSize = 11.sp,
-                                        color = secondaryText
+                                        color = secondaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 // Refresh Action
                                 Box(
                                     modifier = Modifier
@@ -721,7 +733,10 @@ fun ReportsMainScreen(viewModel: AppViewModel) {
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
                                                 Box(
                                                     modifier = Modifier
                                                         .size(10.dp)
@@ -737,11 +752,14 @@ fun ReportsMainScreen(viewModel: AppViewModel) {
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             }
+                                            Spacer(modifier = Modifier.width(8.dp))
                                             Text(
                                                 text = formatMoney(entry.value),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = secondaryText
+                                                color = secondaryText,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -975,7 +993,10 @@ private fun ReportKpiCard(
                     text = title,
                     fontSize = 11.sp,
                     color = secondaryText,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
 
                 Box(
@@ -1168,54 +1189,67 @@ private fun ReportAuditRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(if (isIncome) greenSuccess.copy(alpha = 0.15f) else goldAccent.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isIncome) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                        contentDescription = null,
-                        tint = if (isIncome) greenSuccess else goldAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = title,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = primaryText
-                    )
-                    Text(
-                        text = subtitle,
-                        fontSize = 11.sp,
-                        color = secondaryText
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (isIncome) greenSuccess.copy(alpha = 0.15f) else goldAccent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isIncome) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                    contentDescription = null,
+                    tint = if (isIncome) greenSuccess else goldAccent,
+                    modifier = Modifier.size(18.dp)
+                )
             }
 
-            Column(horizontalAlignment = Alignment.End) {
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = primaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = secondaryText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
                 Text(
                     text = amount,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isIncome) greenSuccess else primaryText
+                    color = if (isIncome) greenSuccess else primaryText,
+                    maxLines = 1,
+                    softWrap = false
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = date,
                     fontSize = 10.sp,
-                    color = secondaryText
+                    color = secondaryText,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

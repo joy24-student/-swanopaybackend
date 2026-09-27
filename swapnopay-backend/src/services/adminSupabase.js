@@ -194,18 +194,28 @@ export async function getMerchantCredentials(merchantId) {
     } catch (_) {}
   }
 
-  const effectiveName = data?.merchant_name || merchantRow?.business_name || null
-  const effectiveLogo = data?.merchant_logo_url || merchantRow?.photo_url || null
-  const receiving = data?.receiving_numbers || (merchantRow?.default_number ? { bKash: merchantRow.default_number } : {})
+  const memSettings =
+    inMemoryMerchantGatewaySettings.get(merchantId) ||
+    (merchantRow?.id && inMemoryMerchantGatewaySettings.get(merchantRow.id)) ||
+    (merchantRow?.user_id && inMemoryMerchantGatewaySettings.get(merchantRow.user_id)) ||
+    null
+
+  const effectiveName = data?.merchant_name || merchantRow?.business_name || memSettings?.merchant_name || null
+  const effectiveLogo = data?.merchant_logo_url || merchantRow?.photo_url || memSettings?.merchant_logo_url || null
+  const receiving = data?.receiving_numbers || memSettings?.receiving_numbers || (merchantRow?.default_number ? { bKash: merchantRow.default_number } : {})
   const mStatus = merchantRow?.status || 'ACTIVE'
 
-  const effectiveSupabaseUrl = data?.supabase_url || merchantRow?.supabase_url || null
-  const effectiveSupabaseAnonKey = data?.supabase_anon_key || merchantRow?.supabase_anon_key || null
+  const effectiveSupabaseUrl = data?.supabase_url || merchantRow?.supabase_url || memSettings?.supabase_url || null
+  const effectiveSupabaseAnonKey = data?.supabase_anon_key || merchantRow?.supabase_anon_key || memSettings?.supabase_anon_key || null
 
   if (effectiveSupabaseUrl && effectiveSupabaseAnonKey) {
     return {
       supabase_url: effectiveSupabaseUrl,
       supabase_anon_key: effectiveSupabaseAnonKey,
+      supabase_service_role_key: memSettings?.supabase_service_role_key || null,
+      db_password: memSettings?.db_password || null,
+      database_url: memSettings?.database_url || null,
+      project_ref: memSettings?.project_ref || null,
       merchant_name: effectiveName,
       merchant_logo_url: effectiveLogo,
       receiving_numbers: receiving,
@@ -222,7 +232,7 @@ export async function getMerchantCredentials(merchantId) {
 
     const { data: conn } = await admin
       .from('supabase_connections')
-      .select('project_url, publishable_key')
+      .select('project_url, publishable_key, selected_project_ref')
       .in('user_id', userIds)
       .limit(1)
       .maybeSingle()
@@ -231,6 +241,10 @@ export async function getMerchantCredentials(merchantId) {
       return {
         supabase_url: conn.project_url,
         supabase_anon_key: conn.publishable_key,
+        supabase_service_role_key: memSettings?.supabase_service_role_key || null,
+        db_password: memSettings?.db_password || null,
+        database_url: memSettings?.database_url || null,
+        project_ref: conn.selected_project_ref || memSettings?.project_ref || null,
         merchant_name: effectiveName,
         merchant_logo_url: effectiveLogo,
         receiving_numbers: receiving,
@@ -242,10 +256,14 @@ export async function getMerchantCredentials(merchantId) {
     // Ignore fallback failure
   }
 
-  if (merchantRow || data) {
+  if (merchantRow || data || memSettings) {
     return {
-      supabase_url: data?.supabase_url || null,
-      supabase_anon_key: data?.supabase_anon_key || null,
+      supabase_url: data?.supabase_url || memSettings?.supabase_url || null,
+      supabase_anon_key: data?.supabase_anon_key || memSettings?.supabase_anon_key || null,
+      supabase_service_role_key: memSettings?.supabase_service_role_key || null,
+      db_password: memSettings?.db_password || null,
+      database_url: memSettings?.database_url || null,
+      project_ref: memSettings?.project_ref || null,
       merchant_name: effectiveName,
       merchant_logo_url: effectiveLogo,
       receiving_numbers: receiving,
@@ -754,11 +772,22 @@ export async function setMerchantGatewayConfig(merchantId, settings) {
   if (settings.supabase_url)      row.supabase_url      = settings.supabase_url
   if (settings.supabase_anon_key) row.supabase_anon_key = settings.supabase_anon_key
 
+  const extraDbFields = {}
+  if (settings.supabase_service_role_key) extraDbFields.supabase_service_role_key = settings.supabase_service_role_key
+  if (settings.db_password)               extraDbFields.db_password               = settings.db_password
+  if (settings.database_url)              extraDbFields.database_url              = settings.database_url
+  if (settings.db_host)                   extraDbFields.db_host                   = settings.db_host
+  if (settings.db_port)                   extraDbFields.db_port                   = settings.db_port
+  if (settings.db_user)                   extraDbFields.db_user                   = settings.db_user
+  if (settings.db_name)                   extraDbFields.db_name                   = settings.db_name
+  if (settings.project_ref)               extraDbFields.project_ref               = settings.project_ref
+
   // Always update memory and disk immediately
   const prev = inMemoryMerchantGatewaySettings.get(merchantId) || {}
   const merged = {
     ...prev,
     ...row,
+    ...extraDbFields,
     receiving_numbers: { ...(prev.receiving_numbers || {}), ...receiving },
     account_types: { ...(prev.account_types || {}), ...accountTypes },
     qr_codes: { ...(prev.qr_codes || {}), ...qrCodes },
@@ -774,9 +803,10 @@ export async function setMerchantGatewayConfig(merchantId, settings) {
       .select('*')
       .single()
     if (!error && dbData) {
-      data = dbData
+      data = { ...merged, ...dbData }
       inMemoryMerchantGatewaySettings.set(merchantId, {
-        ...data,
+        ...merged,
+        ...dbData,
         receiving_numbers: { ...(prev.receiving_numbers || {}), ...receiving },
         account_types: { ...(prev.account_types || {}), ...accountTypes },
         qr_codes: { ...(prev.qr_codes || {}), ...qrCodes }
@@ -787,12 +817,14 @@ export async function setMerchantGatewayConfig(merchantId, settings) {
     console.warn('[setMerchantGatewayConfig] DB sync notice, retained in memory & disk:', err.message)
   }
 
-  // Asynchronously mirror branding to merchants table if present
-  if (settings.merchant_name || settings.merchant_logo_url) {
+  // Asynchronously mirror branding & database credentials to merchants table if present
+  if (settings.merchant_name || settings.merchant_logo_url || settings.supabase_url || settings.supabase_anon_key) {
     try {
       const updateData = {}
       if (settings.merchant_name) updateData.business_name = settings.merchant_name
       if (settings.merchant_logo_url) updateData.photo_url = settings.merchant_logo_url
+      if (settings.supabase_url) updateData.supabase_url = settings.supabase_url
+      if (settings.supabase_anon_key) updateData.supabase_anon_key = settings.supabase_anon_key
       getAdminClient()
         .from('merchants')
         .update(updateData)
