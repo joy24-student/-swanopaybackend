@@ -9,6 +9,8 @@ import {
   upsertShowcaseConfig,
   fetchSubscriptionConfig,
   saveSubscriptionConfig,
+  getBackendBaseUrl,
+  getAdminHeaders,
 } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 import {
@@ -497,7 +499,20 @@ export default function SystemSettings() {
 
       await upsertShowcaseConfig('system_config', payload);
 
-      setStatusMsg('SUCCESS: Successfully saved and broadcasted via Supabase Realtime!');
+      // Real-time broadcast dispatch via backend API (Socket.io -> all merchant dashboards)
+      try {
+        const baseUrl = getBackendBaseUrl();
+        const headers = await getAdminHeaders();
+        await fetch(`${baseUrl}/v1/admin/showcase`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ key: 'system_config', value: payload }),
+        });
+      } catch (backendErr) {
+        console.warn('[SystemSettings] Backend API broadcast notice:', backendErr);
+      }
+
+      setStatusMsg('SUCCESS: Successfully saved and broadcasted via Supabase Realtime & Socket.io!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save: ' + err.message);
@@ -625,7 +640,7 @@ export default function SystemSettings() {
     });
   };
 
-  const navTabs: { key: SettingsTab; label: string; icon: React.ComponentType<{ size?: number; color?: string }>; count?: number }[] = [
+  const navTabs: { key: SettingsTab; label: string; icon: React.ComponentType<{ size?: number | string; color?: string }>; count?: number }[] = [
     { key: 'links', label: 'Developer Portal Links', icon: Globe },
     { key: 'subscription', label: 'Subscription & Pricing', icon: CreditCard },
     { key: 'api_docs', label: 'API Documentation CMS', icon: Code2 },

@@ -877,7 +877,7 @@ X-SwapnoPay-Signature: t=1727445000,v1=4f6a9e1029c8b3...
 
     renderVideoTutorials(defaultVideos);
 
-    // Live Supabase Sync
+    // Live Announcement & Remote Config Sync
     (async function initSupabaseSync() {
       try {
         const supaUrl = localStorage.getItem('swapnopay_admin_url') || 'https://swapnopay.supabase.co';
@@ -888,10 +888,27 @@ X-SwapnoPay-Signature: t=1727445000,v1=4f6a9e1029c8b3...
           if (data && data.value) {
             applyRemoteConfig(data.value);
           }
+          // Real-time Postgres changes subscription
+          client.channel('docs_portal_system_notice')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.system_config' }, (payload) => {
+              if (payload?.new?.value) applyRemoteConfig(payload.new.value);
+            })
+            .subscribe();
         }
       } catch (err) {
         console.warn('[DocsPortal] Remote config fallback:', err.message);
       }
+
+      // Backend HTTP fallback poll
+      try {
+        const res = await fetch('https://api.swapnopay.top/v1/system-notice');
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.system_notice !== undefined) {
+            applyRemoteConfig({ system_notice: json.system_notice });
+          }
+        }
+      } catch (_) {}
     })();
 
     function applyRemoteConfig(config) {
@@ -901,12 +918,14 @@ X-SwapnoPay-Signature: t=1727445000,v1=4f6a9e1029c8b3...
       if (Array.isArray(config.video_tutorials) && config.video_tutorials.length > 0) {
         renderVideoTutorials(config.video_tutorials);
       }
-      if (config.system_notice && config.system_notice.trim()) {
-        const banner = document.getElementById('admin-broadcast-banner');
-        const msg = document.getElementById('broadcast-message');
-        if (banner && msg) {
+      const banner = document.getElementById('admin-broadcast-banner');
+      const msg = document.getElementById('broadcast-message');
+      if (banner && msg) {
+        if (config.system_notice && config.system_notice.trim()) {
           msg.innerText = config.system_notice;
           banner.classList.remove('hidden');
+        } else if (config.system_notice === '') {
+          banner.classList.add('hidden');
         }
       }
     }

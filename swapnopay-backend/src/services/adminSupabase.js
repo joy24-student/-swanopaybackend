@@ -3232,10 +3232,10 @@ export async function broadcastNotification({
 
   // 6. Update live dashboard announcement banner & latest_broadcast in system_config
   // so Android Merchant App checkAdminNoticeFromBackend() (/v1/system-notice) delivers popup + banner
+  const formattedNotice = cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage
+  const shouldSetNotice = Boolean(updateBanner) || target === 'ALL' || target === 'ACTIVE'
   try {
     const current = await getShowcaseConfig('system_config') || {}
-    const formattedNotice = cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage
-    const shouldSetNotice = Boolean(updateBanner) || target === 'ALL' || target === 'ACTIVE'
     await upsertShowcaseConfig('system_config', {
       ...current,
       ...(shouldSetNotice ? { system_notice: formattedNotice } : {}),
@@ -3266,6 +3266,7 @@ export async function broadcastNotification({
     title: cleanTitle,
     message: cleanMessage,
     banner_updated: Boolean(updateBanner),
+    system_notice: shouldSetNotice ? formattedNotice : '',
     created_at: nowIso,
   }
 }
@@ -3369,6 +3370,7 @@ export async function deleteBroadcastBatch(batchId, adminJwt = null) {
   saveNotificationsToDisk()
 
   // 2. Clear from system_config if it was the active banner/broadcast
+  let noticeCleared = false
   try {
     const current = await getShowcaseConfig('system_config') || {}
     if (
@@ -3382,6 +3384,7 @@ export async function deleteBroadcastBatch(batchId, adminJwt = null) {
         latest_broadcast: null,
         updated_at: new Date().toISOString(),
       })
+      noticeCleared = true
     }
   } catch (_) {}
 
@@ -3396,7 +3399,7 @@ export async function deleteBroadcastBatch(batchId, adminJwt = null) {
     } catch (_) {}
   }
 
-  return { ok: true, batch_id: batchId }
+  return { ok: true, batch_id: batchId, notice_cleared: noticeCleared }
 }
 
 

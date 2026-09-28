@@ -17,13 +17,15 @@ import LandingPageControl from './pages/LandingPageControl'
 import BroadcastNotifications from './pages/BroadcastNotifications'
 import { AuthProvider, RequireAdmin } from './auth'
 import { ToastProvider } from './components/ToastProvider'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import AdminLayout from './components/AdminLayout'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <Routes>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <Routes>
           <Route path="/login" element={<Login />} />
           
           <Route path="/dashboard" element={
@@ -140,5 +142,6 @@ export default function App() {
         </Routes>
       </ToastProvider>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }

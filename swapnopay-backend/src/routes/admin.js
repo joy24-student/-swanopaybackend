@@ -275,6 +275,15 @@ router.post('/showcase', async (req, res) => {
     let saved
     if (payload.key && typeof payload.key === 'string' && payload.value !== undefined) {
       saved = await upsertShowcaseConfig(payload.key, payload.value)
+      if (payload.key === 'system_config' && req.io) {
+        const notice = payload.value?.system_notice || ''
+        req.io.emit('system_notice', {
+          system_notice: notice,
+          title: 'System Notice',
+          message: notice,
+          updated_at: new Date().toISOString()
+        })
+      }
     } else {
       saved = await setShowcaseConfig(payload)
     }
@@ -472,6 +481,15 @@ router.post('/notifications/broadcast', async (req, res) => {
     // Real-time distribution via Socket.io
     if (req.io) {
       req.io.emit('broadcast:notification', result)
+      const bannerText = result.system_notice || (Boolean(updateBanner) ? (title.trim() ? `${title.trim()} — ${message.trim()}` : message.trim()) : '')
+      req.io.emit('system_notice', {
+        system_notice: bannerText,
+        title: cleanType,
+        message: message.trim(),
+        severity: cleanSeverity,
+        banner_updated: Boolean(updateBanner),
+        created_at: result.created_at || new Date().toISOString(),
+      })
       if (target && target !== 'ALL' && target !== 'ACTIVE') {
         req.io.to(`merchant:${target}`).emit('merchant:notification', result)
       }
@@ -510,6 +528,18 @@ router.delete('/notifications/broadcasts/:batchId', async (req, res) => {
       return res.status(400).json({ error: 'Broadcast batch ID is required' })
     }
     const result = await deleteBroadcastBatch(batchId, req.adminJwt || null)
+    if (req.io) {
+      req.io.emit('broadcast:deleted', { batch_id: batchId })
+      if (result?.notice_cleared) {
+        req.io.emit('system_notice', {
+          system_notice: '',
+          title: '',
+          message: '',
+          deleted_batch_id: batchId,
+          updated_at: new Date().toISOString()
+        })
+      }
+    }
     res.json(result)
   } catch (err) {
     console.error('[admin/notifications/broadcasts/:batchId DELETE]', err.message)

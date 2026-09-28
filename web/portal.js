@@ -91,6 +91,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Real-time Socket.io Connection
   initSocketConnection();
 
+  // Initialize Live Dashboard Announcement Banner
+  fetchLiveAnnouncementNotice();
+  setInterval(fetchLiveAnnouncementNotice, 30000);
+
   // Initial Telemetry Fetch & Periodic Polling
   fetchLiveTelemetry();
   telemetryTimer = setInterval(fetchLiveTelemetry, 25000);
@@ -588,6 +592,63 @@ async function saveDashboardWebhookUrl() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Live Dashboard Announcement Banner (system_notice marquee)
+// ─────────────────────────────────────────────────────────────────────────────
+let currentAnnouncementNotice = '';
+
+function updateDashboardAnnouncementBanner(noticeText) {
+  const banner = document.getElementById('merchant-dashboard-announcement-banner');
+  const textEl = document.getElementById('merchant-dashboard-announcement-text');
+  if (!banner || !textEl) return;
+
+  const clean = typeof noticeText === 'string' ? noticeText.trim() : '';
+  if (!clean) {
+    banner.classList.add('hidden');
+    currentAnnouncementNotice = '';
+    return;
+  }
+
+  // Check if this exact notice was dismissed during this session
+  const dismissed = sessionStorage.getItem('dismissed_announcement_notice');
+  if (dismissed === clean) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  currentAnnouncementNotice = clean;
+  textEl.innerText = clean;
+  banner.classList.remove('hidden');
+
+  // Adjust marquee speed dynamically based on content length
+  const duration = Math.max(16, Math.min(60, Math.round(clean.length * 0.3)));
+  textEl.style.animationDuration = `${duration}s`;
+}
+
+function dismissDashboardAnnouncement() {
+  const banner = document.getElementById('merchant-dashboard-announcement-banner');
+  if (banner) banner.classList.add('hidden');
+  if (currentAnnouncementNotice) {
+    sessionStorage.setItem('dismissed_announcement_notice', currentAnnouncementNotice);
+  }
+}
+
+async function fetchLiveAnnouncementNotice() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/v1/system-notice`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.system_notice) {
+        updateDashboardAnnouncementBanner(data.system_notice);
+      } else if (data && data.system_notice === '') {
+        updateDashboardAnnouncementBanner('');
+      }
+    }
+  } catch (err) {
+    console.warn('[portal] Live announcement notice fetch notice:', err.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Real Socket.io Real-Time Connection
 // ─────────────────────────────────────────────────────────────────────────────
 function initSocketConnection() {
@@ -611,9 +672,30 @@ function initSocketConnection() {
     if (statusText) statusText.innerText = 'Gateway Online';
     logToConsole('OK', `Gateway Socket connected: ${socket.id} (Real-time telemetry active)`);
 
+    // Query active announcement banner immediately upon socket connect
+    socket.emit('get_system_notice');
+
     if (activeOrder?.order_id) {
       socket.emit('join_order', { order_id: activeOrder.order_id });
     }
+  });
+
+  // Real-time Announcement Marquee Banner Events
+  socket.on('system_notice', (data) => {
+    const notice = data?.system_notice || '';
+    logToConsole('INFO', `Live Announcement received via Socket: ${notice || '(cleared)'}`);
+    updateDashboardAnnouncementBanner(notice);
+  });
+
+  socket.on('broadcast:notification', (data) => {
+    if (data?.banner_updated || data?.system_notice) {
+      const notice = data.system_notice || (data.title ? `${data.title} — ${data.message}` : data.message);
+      updateDashboardAnnouncementBanner(notice);
+    }
+  });
+
+  socket.on('broadcast:deleted', () => {
+    updateDashboardAnnouncementBanner('');
   });
 
   socket.on('room_joined', (data) => {

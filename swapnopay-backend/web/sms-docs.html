@@ -976,26 +976,52 @@ Inspect throughput and Android device online heartbeat.
       }
     }
 
-    // Live Supabase Sync for Broadcast Announcements
+    // Live Supabase Sync & Realtime for Broadcast Announcements
     (async function initSupabaseSync() {
+      function applyNotice(noticeText) {
+        const banner = document.getElementById('admin-broadcast-banner');
+        const msg = document.getElementById('broadcast-message');
+        if (!banner || !msg) return;
+        if (noticeText && noticeText.trim()) {
+          msg.innerText = noticeText.trim();
+          banner.classList.remove('hidden');
+        } else if (noticeText === '') {
+          banner.classList.add('hidden');
+        }
+      }
+
       try {
         const supaUrl = localStorage.getItem('swapnopay_admin_url') || 'https://swapnopay.supabase.co';
         const supaKey = localStorage.getItem('swapnopay_admin_anon') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder';
         if (window.supabase && supaUrl && supaKey && !supaUrl.includes('placeholder') && !supaKey.includes('placeholder')) {
           const client = window.supabase.createClient(supaUrl, supaKey);
           const { data } = await client.from('showcase_config').select('value').eq('key', 'system_config').single();
-          if (data && data.value && data.value.system_notice) {
-            const banner = document.getElementById('admin-broadcast-banner');
-            const msg = document.getElementById('broadcast-message');
-            if (banner && msg) {
-              msg.innerText = data.value.system_notice;
-              banner.classList.remove('hidden');
-            }
+          if (data && data.value && data.value.system_notice !== undefined) {
+            applyNotice(data.value.system_notice);
           }
+          // Real-time Postgres changes subscription
+          client.channel('sms_docs_system_notice')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.system_config' }, (payload) => {
+              if (payload?.new?.value && payload.new.value.system_notice !== undefined) {
+                applyNotice(payload.new.value.system_notice);
+              }
+            })
+            .subscribe();
         }
       } catch (err) {
         console.warn('[SmsDocsPortal] Remote config notice fallback:', err.message);
       }
+
+      // Backend HTTP fallback poll
+      try {
+        const res = await fetch('https://api.swapnopay.top/v1/system-notice');
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.system_notice !== undefined) {
+            applyNotice(json.system_notice);
+          }
+        }
+      } catch (_) {}
     })();
   </script>
 </body>

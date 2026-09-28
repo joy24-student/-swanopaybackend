@@ -925,13 +925,13 @@ export interface BroadcastHistoryItem {
   read_count: number
 }
 
-function getBackendBaseUrl(): string {
+export function getBackendBaseUrl(): string {
   const envUrl = (import.meta as any).env?.VITE_BACKEND_URL
   if (envUrl && typeof envUrl === 'string') return envUrl.replace(/\/$/, '')
   return 'https://api.swapnopay.top'
 }
 
-async function getAdminHeaders(): Promise<Record<string, string>> {
+export async function getAdminHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const masterSecret =
     (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null) ||
@@ -1077,8 +1077,8 @@ export async function broadcastMerchantNotification(payload: BroadcastPayload): 
     }
   }
 
-  // Dual delivery: update dashboard banner if requested
-  if (payload.updateBanner && !backendResult) {
+  // Dual delivery: update dashboard banner if requested (always sync directly with Supabase showcase_config)
+  if (payload.updateBanner) {
     try {
       const { data: currentNotice } = await adminSupabase
         .from('showcase_config')
@@ -1087,9 +1087,20 @@ export async function broadcastMerchantNotification(payload: BroadcastPayload): 
         .maybeSingle()
 
       const currentVal = currentNotice?.value || {}
+      const noticeText = cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage
       await upsertShowcaseConfig('system_config', {
         ...currentVal,
-        system_notice: cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage,
+        system_notice: noticeText,
+        latest_broadcast: {
+          id: batchId,
+          batch_id: batchId,
+          title: cleanTitle,
+          message: cleanMessage,
+          type: cleanType,
+          severity: cleanSeverity,
+          target: payload.target,
+          created_at: nowIso,
+        },
         updated_at: nowIso,
       })
     } catch (bannerErr) {
@@ -1225,6 +1236,28 @@ export async function deleteBroadcastBatch(batchId: string): Promise<void> {
   try {
     await adminSupabase.from('merchant_notifications').delete().eq('metadata->>batch_id', batchId)
   } catch {}
+
+  // Also clear banner in showcase_config if this broadcast was active
+  try {
+    const { data: currentNotice } = await adminSupabase
+      .from('showcase_config')
+      .select('value')
+      .eq('key', 'system_config')
+      .maybeSingle()
+
+    const currentVal = currentNotice?.value || {}
+    if (
+      currentVal.latest_broadcast?.batch_id === batchId ||
+      currentVal.latest_broadcast?.id === batchId
+    ) {
+      await upsertShowcaseConfig('system_config', {
+        ...currentVal,
+        system_notice: '',
+        latest_broadcast: null,
+        updated_at: new Date().toISOString(),
+      })
+    }
+  } catch (_) {}
 
   if (!backendDeleted) {
     // Already attempted direct Supabase cleanup above

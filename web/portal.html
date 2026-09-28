@@ -1083,7 +1083,92 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 10px;
+    /* Live Announcement Marquee Banner across top of Merchant Dashboard */
+    .announcement-marquee-banner {
+      width: 100%;
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.18) 50%, rgba(245, 158, 11, 0.12) 100%);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+      position: sticky;
+      top: 68px;
+      z-index: 99;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.08);
+      transition: all 0.3s ease;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .announcement-marquee-banner.hidden {
+      display: none !important;
+    }
+    .announcement-marquee-inner {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 7px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .announcement-marquee-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #0b0f19;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(245, 158, 11, 0.25);
+    }
+    .announcement-marquee-badge .material-symbols-outlined {
+      font-size: 15px;
+    }
+    .announcement-marquee-track {
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      position: relative;
+      mask-image: linear-gradient(90deg, transparent 0%, black 2%, black 98%, transparent 100%);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 2%, black 98%, transparent 100%);
+    }
+    .announcement-marquee-text {
+      display: inline-block;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #b45309;
+      padding-left: 100%;
+      animation: marquee-scroll-anim 25s linear infinite;
+    }
+    .announcement-marquee-track:hover .announcement-marquee-text {
+      animation-play-state: paused;
+    }
+    @keyframes marquee-scroll-anim {
+      0% { transform: translate3d(0, 0, 0); }
+      100% { transform: translate3d(-100%, 0, 0); }
+    }
+    .announcement-dismiss-btn {
+      background: transparent;
+      border: none;
+      color: #78350f;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 6px;
+      opacity: 0.75;
+      transition: opacity 0.2s, background 0.2s;
+      flex-shrink: 0;
+    }
+    .announcement-dismiss-btn:hover {
+      opacity: 1;
+      background: rgba(245, 158, 11, 0.2);
+    }
+    .announcement-dismiss-btn .material-symbols-outlined {
+      font-size: 18px;
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap" rel="stylesheet">
@@ -1148,6 +1233,22 @@
       </div>
     </div>
   </header>
+
+  <!-- Live Dashboard Announcement Marquee Banner (Across top of Merchant Dashboard) -->
+  <div id="merchant-dashboard-announcement-banner" class="announcement-marquee-banner hidden" role="alert" aria-live="polite">
+    <div class="announcement-marquee-inner">
+      <div class="announcement-marquee-badge">
+        <span class="material-symbols-outlined">campaign</span>
+        <span>📢 Notice</span>
+      </div>
+      <div class="announcement-marquee-track">
+        <span id="merchant-dashboard-announcement-text" class="announcement-marquee-text"></span>
+      </div>
+      <button type="button" class="announcement-dismiss-btn" onclick="dismissDashboardAnnouncement()" aria-label="Dismiss banner" title="Dismiss announcement">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+  </div>
 
   <!-- Main Console Layout Frame -->
   <div class="console-layout">

@@ -92,6 +92,7 @@ type TabKey = 'methods' | 'urls' | 'limits' | 'keys' | 'receipts' | 'maintenance
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function GatewaySettings() {
+  const { session } = useAuth();
   const [config, setConfig] = useState<GatewayConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<TabKey>('methods');
   const [loading, setLoading] = useState(true);

@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { initAdminSupabase } from './services/adminSupabase.js'
+import { initAdminSupabase, getShowcaseConfig } from './services/adminSupabase.js'
 import { initMailer } from './services/mailer.js'
 import { paymentRouter } from './routes/payment.js'
 import { adminRouter } from './routes/admin.js'
@@ -254,6 +254,34 @@ io.use(async (socket, next) => {
 
 io.on('connection', (socket) => {
   console.log(`[socket.io] Client connected: ${socket.id}`)
+
+  // ── Emit current system notice immediately upon connection ──
+  getShowcaseConfig('system_config').then(cfg => {
+    if (cfg && cfg.system_notice) {
+      socket.emit('system_notice', {
+        system_notice: cfg.system_notice,
+        latest_broadcast: cfg.latest_broadcast || null,
+        updated_at: cfg.updated_at || new Date().toISOString()
+      })
+    }
+  }).catch(() => {})
+
+  // ── Allow client to query current system notice on demand ──
+  socket.on('get_system_notice', async (cb) => {
+    try {
+      const cfg = await getShowcaseConfig('system_config')
+      const notice = cfg?.system_notice || ''
+      const res = {
+        system_notice: notice,
+        latest_broadcast: cfg?.latest_broadcast || null,
+        updated_at: cfg?.updated_at || new Date().toISOString()
+      }
+      if (typeof cb === 'function') cb(res)
+      else socket.emit('system_notice', res)
+    } catch (_) {
+      if (typeof cb === 'function') cb({ system_notice: '' })
+    }
+  })
 
   // ── Widget joins a room for a specific order ──
   socket.on('join_order', ({ order_id } = {}) => {
