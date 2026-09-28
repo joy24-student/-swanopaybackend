@@ -84,23 +84,32 @@ if [ -n "$BACKEND_APP_DIR" ]; then
     fi
 fi
 
-# 5. Build Admin Panel if present
+# 5. Build / Verify Admin Panel if present
 if [ -d "$TARGET_DIR/admin" ]; then
     echo -e "${YELLOW}🖥️  Verifying Admin Control Panel...${NC}"
     cd "$TARGET_DIR/admin"
+    # Remove legacy Sept 19 broken bundle if new bundle exists
+    if [ -f "$TARGET_DIR/admin/dist/assets/index-ClHhjPzG.js" ] && [ $(ls "$TARGET_DIR/admin/dist/assets"/index-*.css 2>/dev/null | wc -l) -gt 0 ]; then
+        rm -f "$TARGET_DIR/admin/dist/assets/index-ClHhjPzG.js" 2>/dev/null || true
+    fi
     if [ -f package.json ]; then
-        if [ ! -f dist/index.html ]; then
+        if [ ! -f dist/index.html ] || grep -q 'href="/assets/"' dist/index.html 2>/dev/null; then
             npm install --no-audit --no-fund 2>/dev/null || true
             npm run build 2>/dev/null || true
         fi
     fi
-    # If dist/index.html is missing, auto-generate it from dist/assets
-    if [ -d "$TARGET_DIR/admin/dist/assets" ] && [ ! -f "$TARGET_DIR/admin/dist/index.html" ]; then
-        JS_FILE=$(basename $(ls "$TARGET_DIR/admin/dist/assets"/*.js 2>/dev/null | head -n 1) 2>/dev/null || true)
-        CSS_FILE=$(basename $(ls "$TARGET_DIR/admin/dist/assets"/*.css 2>/dev/null | head -n 1) 2>/dev/null || true)
-        if [ -n "$JS_FILE" ]; then
-            echo -e "${YELLOW}Auto-generating missing dist/index.html for Admin panel...${NC}"
-            cat << EOF > "$TARGET_DIR/admin/dist/index.html"
+    # If dist/index.html is missing or has broken empty /assets/ href, auto-generate it from dist/assets
+    if [ -d "$TARGET_DIR/admin/dist/assets" ]; then
+        if [ ! -f "$TARGET_DIR/admin/dist/index.html" ] || grep -q 'href="/assets/"' "$TARGET_DIR/admin/dist/index.html" 2>/dev/null; then
+            JS_FILE=$(basename $(ls -t "$TARGET_DIR/admin/dist/assets"/*.js 2>/dev/null | head -n 1) 2>/dev/null || true)
+            CSS_FILE=$(basename $(ls -t "$TARGET_DIR/admin/dist/assets"/*.css 2>/dev/null | head -n 1) 2>/dev/null || true)
+            if [ -n "$JS_FILE" ]; then
+                echo -e "${YELLOW}Repairing dist/index.html for Admin panel...${NC}"
+                CSS_LINK=""
+                if [ -n "$CSS_FILE" ]; then
+                    CSS_LINK="<link rel=\"stylesheet\" crossorigin href=\"/assets/${CSS_FILE}\">"
+                fi
+                cat << EOF > "$TARGET_DIR/admin/dist/index.html"
 <!doctype html>
 <html>
   <head>
@@ -108,13 +117,14 @@ if [ -d "$TARGET_DIR/admin" ]; then
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SwapnoPay Admin</title>
     <script type="module" crossorigin src="/assets/${JS_FILE}"></script>
-    <link rel="stylesheet" crossorigin href="/assets/${CSS_FILE}">
+    ${CSS_LINK}
   </head>
   <body>
     <div id="root"></div>
   </body>
 </html>
 EOF
+            fi
         fi
     fi
     chown -R www-data:www-data "$TARGET_DIR/admin" 2>/dev/null || true
