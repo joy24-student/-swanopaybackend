@@ -295,23 +295,90 @@ export async function getMerchantCredentials(merchantId) {
 export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
   if (!merchantId) return { active: null, last_seen: null, device_count: 0 }
 
-  // Fast path: check in-memory heartbeat map first (15-minute window for stable mobile uptime)
-  const FIFTEEN_MIN = 15 * 60 * 1000
-  if (heartbeatMap && heartbeatMap.has(merchantId)) {
-    const hb = heartbeatMap.get(merchantId)
-    const ageMs = Date.now() - hb.ts
-    if (ageMs < FIFTEEN_MIN) {
-      return { active: true, last_seen: new Date(hb.ts).toISOString(), device_count: 1, source: 'heartbeat' }
+  const THIRTY_MIN = 30 * 60 * 1000
+
+  // 1. Fast path: check in-memory heartbeat map first across merchantId and possible aliases
+  const creds = await getMerchantCredentials(merchantId)
+  const candidateKeys = [merchantId, creds?.merchant_id, creds?.user_id].filter(Boolean)
+
+  if (heartbeatMap) {
+    for (const key of candidateKeys) {
+      if (heartbeatMap.has(key)) {
+        const hb = heartbeatMap.get(key)
+        const ageMs = Date.now() - hb.ts
+        if (ageMs < THIRTY_MIN) {
+          return { active: true, last_seen: new Date(hb.ts).toISOString(), device_count: 1, source: 'heartbeat' }
+        }
+      }
     }
   }
 
-  // Check merchant credentials and account status
-  const creds = await getMerchantCredentials(merchantId)
-  // Slow path: query merchant's Supabase devices table
+  // 2. Check Admin Supabase devices table & merchants table
+  let admin = null
+  try {
+    admin = getAdminClient()
+  } catch (_) {}
+  if (admin) {
+    try {
+      const { data: adminDevs } = await admin
+        .from('devices')
+        .select('id, online, last_sync, disabled, created_at, merchant_id')
+        .in('merchant_id', candidateKeys)
+
+      if (adminDevs && adminDevs.length > 0) {
+        const now = Date.now()
+        let lastSeen = null
+        const hasActiveDevice = adminDevs.some(d => {
+          if (d.disabled === true) return false
+          const syncTime = d.last_sync || d.created_at
+          const syncTs = syncTime ? new Date(syncTime).getTime() : 0
+          const isRecent = syncTs > 0 && (now - syncTs) < THIRTY_MIN
+          if (syncTime && (!lastSeen || syncTs > new Date(lastSeen).getTime())) {
+            lastSeen = syncTime
+          }
+          return d.online === true || isRecent
+        })
+
+        if (hasActiveDevice) {
+          return {
+            active: true,
+            last_seen: lastSeen,
+            device_count: adminDevs.length,
+            source: 'admin_devices',
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Check merchant row last_sync or status in admin DB
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(merchantId)
+      let mQuery = admin.from('merchants').select('id, user_id, status, last_sync, created_at')
+      if (isUuid) {
+        mQuery = mQuery.or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+      } else {
+        mQuery = mQuery.eq('id', merchantId)
+      }
+      const { data: mRow } = await mQuery.maybeSingle()
+      if (mRow) {
+        const now = Date.now()
+        const syncTime = mRow.last_sync
+        const syncTs = syncTime ? new Date(syncTime).getTime() : 0
+        if (syncTs > 0 && (now - syncTs) < THIRTY_MIN) {
+          return { active: true, last_seen: syncTime, device_count: 1, source: 'merchant_sync' }
+        }
+        // If merchant account is active, do NOT lock customer out with false offline curtain
+        if (mRow.status === 'ACTIVE') {
+          return { active: null, last_seen: syncTime || mRow.created_at || null, device_count: 0, source: 'merchant_active' }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Query merchant's self-hosted Supabase devices table if credentials configured
   try {
     if (!creds?.supabase_url || !creds?.supabase_anon_key) {
-      // A platform merchant with no recent authenticated device heartbeat is offline.
-      return { active: false, last_seen: null, device_count: 0, source: 'no_device_heartbeat' }
+      return { active: null, last_seen: null, device_count: 0, source: 'no_device_telemetry' }
     }
 
     const merchantClient = createMerchantClient(creds.supabase_url, creds.supabase_anon_key)
@@ -320,13 +387,9 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
       .from('devices')
       .select('id, online, last_sync, disabled, created_at, merchant_id')
 
-    if (error) {
-      console.warn(`[device-status] Merchant DB query notice for ${merchantId}:`, error.message)
-      return { active: false, last_seen: null, device_count: 0, source: 'db_unavailable' }
-    }
-
-    if (!devices || devices.length === 0) {
-      return { active: false, last_seen: null, device_count: 0, source: 'no_devices' }
+    if (error || !devices || devices.length === 0) {
+      // Do not hard-block checkout if custom DB table is absent or has no devices registered
+      return { active: null, last_seen: null, device_count: 0, source: 'db_devices_skipped' }
     }
 
     const now = Date.now()
@@ -336,7 +399,7 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
       if (d.disabled === true) return false
       const syncTime = d.last_sync || d.created_at
       const syncTs = syncTime ? new Date(syncTime).getTime() : 0
-      const isRecent = syncTs > 0 && (now - syncTs) < FIFTEEN_MIN
+      const isRecent = syncTs > 0 && (now - syncTs) < THIRTY_MIN
       if (syncTime && (!lastSeen || syncTs > new Date(lastSeen).getTime())) {
         lastSeen = syncTime
       }
@@ -344,14 +407,14 @@ export async function getMerchantDeviceStatus(merchantId, heartbeatMap = null) {
     })
 
     return {
-      active: hasActiveDevice,
+      active: hasActiveDevice ? true : null,
       last_seen: lastSeen,
       device_count: devices.length,
       source: 'merchant_db',
     }
   } catch (err) {
-    console.error(`[device-status] Error checking merchant ${merchantId}:`, err.message)
-    return { active: false, last_seen: null, device_count: 0, source: 'error_fail_closed' }
+    console.warn(`[device-status] Error checking merchant ${merchantId}:`, err.message)
+    return { active: null, last_seen: null, device_count: 0, source: 'devices_skipped' }
   }
 }
 
@@ -695,6 +758,15 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
 
   const hasNumbers = Object.values(effectiveReceiving).some(Boolean)
 
+  // If merchant account is ACTIVE in database or has configured receiving numbers, never falsely declare offline
+  let finalDeviceActive = deviceStatus.active
+  if (finalDeviceActive === false) {
+    const isMerchantActive = (mStatus === 'ACTIVE' || !merchantRow)
+    if (isMerchantActive || hasNumbers) {
+      finalDeviceActive = null // Never lock out customer when account is active or numbers are configured
+    }
+  }
+
   const effectiveName = merchantRow?.merchant_name || memSettings?.merchant_name || creds?.merchant_name || null
   const effectiveLogo = merchantRow?.merchant_logo_url || memSettings?.merchant_logo_url || creds?.merchant_logo_url || null
   const effectiveUrl  = merchantRow?.supabase_url || memSettings?.supabase_url || creds?.supabase_url || null
@@ -722,7 +794,7 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
     supabase_url:         effectiveUrl,
     supabase_anon_key:    effectiveKey,
     // Device status from merchant's own DB
-    device_active:        deviceStatus.active,
+    device_active:        finalDeviceActive,
     device_last_seen:     deviceStatus.last_seen,
     device_count:         deviceStatus.device_count,
     device_source:        deviceStatus.source,

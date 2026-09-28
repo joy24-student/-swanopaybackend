@@ -33,6 +33,12 @@ class MainActivity : FragmentActivity() {
     private var isRequestingPermission = false
     private var showPermissionConsent by mutableStateOf(false)
 
+    private val requestNotificationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        android.util.Log.d("MainActivity", "POST_NOTIFICATIONS granted: $isGranted")
+    }
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -40,8 +46,17 @@ class MainActivity : FragmentActivity() {
         // Start service if RECEIVE_SMS or SEND_SMS was granted (either unlocks gateway functionality)
         val smsReceivedGranted = permissions[Manifest.permission.RECEIVE_SMS] ?: false
         val smsSendGranted = permissions[Manifest.permission.SEND_SMS] ?: false
-        if (smsReceivedGranted || smsSendGranted) {
+        val hasSms = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        if (smsReceivedGranted || smsSendGranted || hasSms) {
             startSmsService()
+        }
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -66,8 +81,13 @@ class MainActivity : FragmentActivity() {
         }
         enableEdgeToEdge()
 
+        // Initialize channels early so status bar notifications appear reliably
+        NotificationHelper.initNotificationChannels(this)
+        checkNotificationPermission()
+
         // Handle deep link callback from Supabase email confirmation or reset links
         handleDeepLinkIntent(intent)
+        handleNotificationIntent(intent)
 
         val isEmployeeFlavor = try {
             com.example.BuildConfig.APP_FLAVOR_ROLE == "EMPLOYEE"
@@ -122,11 +142,17 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleDeepLinkIntent(intent)
+        handleNotificationIntent(intent)
     }
 
     private fun handleDeepLinkIntent(intent: Intent?) {
         val uri = intent?.data ?: return
         viewModel.handleAuthDeepLink(uri)
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        val targetScreen = intent?.getStringExtra("target_screen") ?: return
+        viewModel.navigateTo(targetScreen)
     }
 
     private var isAppInBackground = false
@@ -145,9 +171,16 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun checkAndRequestPermissions() {
+        val hasSms = ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        if (hasSms) {
+            startSmsService()
+        }
+
         val missingPermissions = getMissingPermissions()
         if (missingPermissions.isEmpty()) {
-            startSmsService()
+            if (hasSms) {
+                startSmsService()
+            }
         } else {
             val prefs = getSharedPreferences("swapnopay_policy_prefs", Context.MODE_PRIVATE)
             val hasSeenConsent = prefs.getBoolean("has_seen_permission_disclosure", false)

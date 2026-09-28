@@ -346,6 +346,16 @@ class AppRepository(private val context: Context) {
                         orderId = if (obj.isNull("matched_order_id")) null else obj.getString("matched_order_id")
                     )
                     dao.insertPayment(payment)
+                    if (System.currentTimeMillis() - payment.timestamp < 10 * 60 * 1000L &&
+                        !com.example.NotificationHelper.hasBeenNotified(context, payment.id)) {
+                        com.example.NotificationHelper.showPaymentNotification(
+                            context = context,
+                            amount = payment.amount,
+                            method = payment.method,
+                            sender = payment.sender,
+                            trxId = payment.id
+                        )
+                    }
                 }
                 didSyncAny = true
             }
@@ -385,6 +395,16 @@ class AppRepository(private val context: Context) {
                                     orderId = if (obj.isNull("order_id")) null else obj.optString("order_id")
                                 )
                                 dao.insertPayment(payment)
+                                if (System.currentTimeMillis() - payment.timestamp < 10 * 60 * 1000L &&
+                                    !com.example.NotificationHelper.hasBeenNotified(context, payment.id)) {
+                                    com.example.NotificationHelper.showPaymentNotification(
+                                        context = context,
+                                        amount = payment.amount,
+                                        method = payment.method,
+                                        sender = payment.sender,
+                                        trxId = payment.id
+                                    )
+                                }
                             }
                         }
                         didSyncAny = true
@@ -668,6 +688,19 @@ class AppRepository(private val context: Context) {
         if (insertedId == null) {
             android.util.Log.d("AppRepository", "SMS rejected: duplicate transaction detected (TrxID ${parsed.trxId}).")
             return false
+        }
+
+        // Instantly notify payment in statusbar / notification drawer (works even when user is not in app)
+        try {
+            com.example.NotificationHelper.showPaymentNotification(
+                context = context,
+                amount = parsed.amount,
+                method = parsed.method,
+                sender = parsed.senderPhone,
+                trxId = parsed.trxId
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "Failed to post payment notification: ${e.message}", e)
         }
 
         // 1. Immediately report verified payment to SwapnoPay central gateway for instant verification

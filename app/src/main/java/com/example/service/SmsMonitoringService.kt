@@ -18,6 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import com.example.NotificationHelper
+import com.example.R
 
 class SmsMonitoringService : Service() {
 
@@ -145,7 +148,7 @@ class SmsMonitoringService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("SwapnoPay Merchant SMS Active")
             .setContentText("Automated bKash, Nagad, and Rocket monitoring is running")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -174,6 +177,9 @@ class SmsMonitoringService : Service() {
                     val p = repository.getActiveSupabaseProfile()
                     val mId = p?.id ?: "00000000-0000-0000-0000-000000000001"
                     SmsGatewayEngine.syncExternalGatewayJobs(applicationContext, mId, "")
+
+                    // Background check for new admin broadcast notices and form submissions when user not in app
+                    checkBackgroundAdminNoticesAndForms(applicationContext, repository)
 
                     // Daily Automated Due Reminder Background Trigger
                     val prefs = applicationContext.getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
@@ -223,6 +229,94 @@ class SmsMonitoringService : Service() {
                 } catch (e: Exception) {
                     Log.w("SmsMonitoringService", "Periodic device heartbeat error: ${e.message}")
                 }
+            }
+        }
+    }
+
+    private suspend fun checkBackgroundAdminNoticesAndForms(context: Context, repository: AppRepository) {
+        withContext(Dispatchers.IO) {
+            try {
+                // 1. Check central admin notices / broadcast alerts
+                val noticeUrl = java.net.URL("https://api.swapnopay.top/v1/system-notice")
+                val conn = noticeUrl.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    if (body.isNotBlank()) {
+                        val json = org.json.JSONObject(body)
+                        val latestObj = json.optJSONObject("latest_broadcast")
+                        val systemNotice = json.optString("system_notice").takeIf { it.isNotBlank() }
+
+                        if (latestObj != null) {
+                            val bId = latestObj.optString("batch_id").ifBlank { latestObj.optString("id") }.ifBlank { "broadcast_${latestObj.hashCode()}" }
+                            val bTitle = latestObj.optString("title").ifBlank { "📢 অ্যাডমিন নোটিশ" }
+                            val bMsg = latestObj.optString("message").ifBlank { systemNotice ?: "" }
+                            val bSev = latestObj.optString("severity", "INFO")
+                            if (bMsg.isNotBlank() && !NotificationHelper.hasBeenNotified(context, bId)) {
+                                NotificationHelper.showAdminNotification(
+                                    context = context,
+                                    title = bTitle,
+                                    message = bMsg,
+                                    noticeId = bId,
+                                    severity = bSev
+                                )
+                            }
+                        } else if (systemNotice != null) {
+                            val noticeId = "notice_${systemNotice.hashCode()}"
+                            if (!NotificationHelper.hasBeenNotified(context, noticeId)) {
+                                NotificationHelper.showAdminNotification(
+                                    context = context,
+                                    title = "📢 অ্যাডমিন নোটিশ",
+                                    message = systemNotice,
+                                    noticeId = noticeId,
+                                    severity = "INFO"
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Background network check notice
+            }
+
+            try {
+                // 2. Check form submissions from central API for active merchant
+                val activeProfile = repository.getActiveSupabaseProfile()
+                val mId = activeProfile?.id ?: "00000000-0000-0000-0000-000000000001"
+                if (mId.isNotBlank() && mId != "00000000-0000-0000-0000-000000000001") {
+                    val formSubUrl = java.net.URL("https://api.swapnopay.top/v1/forms/recent-submissions?merchant_id=${java.net.URLEncoder.encode(mId, "UTF-8")}")
+                    val formConn = formSubUrl.openConnection() as java.net.HttpURLConnection
+                    formConn.requestMethod = "GET"
+                    formConn.connectTimeout = 6000
+                    formConn.readTimeout = 6000
+                    if (formConn.responseCode in 200..299) {
+                        val body = formConn.inputStream.bufferedReader().use { it.readText() }
+                        if (body.isNotBlank()) {
+                            val json = org.json.JSONObject(body)
+                            val subs = json.optJSONArray("submissions")
+                            if (subs != null && subs.length() > 0) {
+                                for (i in 0 until subs.length()) {
+                                    val item = subs.getJSONObject(i)
+                                    val sId = item.optString("id").ifBlank { continue }
+                                    if (!NotificationHelper.hasBeenNotified(context, sId)) {
+                                        val formTitle = item.optString("form_title", item.optString("title", "Online Form"))
+                                        val customer = item.optString("customer_name", item.optString("phone", "New Submission"))
+                                        NotificationHelper.showFormSubmissionNotification(
+                                            context = context,
+                                            formTitle = formTitle,
+                                            customerInfo = "Submission by $customer",
+                                            submissionId = sId
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Background network check notice
             }
         }
     }

@@ -2895,40 +2895,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendLocalNotification(title: String, message: String) {
         try {
             val context = getApplication<Application>().applicationContext
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channelId = "FirebaseAlertChannel"
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    channelId,
-                    "Firebase Alerts",
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Dynamic Alerts & Notice Alerts from Firebase"
-                }
-                notificationManager.createNotificationChannel(channel)
-            }
-            
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            val noticeId = "local_${System.currentTimeMillis()}_${(1000..9999).random()}"
+            com.example.NotificationHelper.showAdminNotification(
+                context = context,
+                title = title,
+                message = message,
+                noticeId = noticeId,
+                severity = "HIGH"
             )
-            
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .build()
-                
-            notificationManager.notify((1000..9999).random(), notification)
             logFirebaseStatus("Sent system notification: $title")
         } catch (e: Exception) {
             logFirebaseStatus("Notification permission or setup error: ${e.message}")
@@ -4656,6 +4630,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
         val rows = fetched ?: return false
         repository.upsertMerchantNotifications(rows)
+
+        // Post status bar notification for any new unread notices
+        try {
+            val context = getApplication<Application>().applicationContext
+            for (item in rows) {
+                if (item.readAt == null && !com.example.NotificationHelper.hasBeenNotified(context, item.id)) {
+                    com.example.NotificationHelper.showAdminNotification(
+                        context = context,
+                        title = item.title.ifBlank { "SwapnoPay Notice" },
+                        message = item.message,
+                        noticeId = item.id,
+                        severity = item.severity
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AppViewModel", "Notice statusbar delivery error: ${e.message}")
+        }
 
         // Automatically detect new broadcast notices from Admin Panel
         try {
@@ -11756,6 +11748,7 @@ function executePayment() {
                         if (cache.isNotEmpty()) {
                             viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 repository.upsertFormSubmissionCaches(cache)
+                                notifyNewSubmissions(cache, targetFormId)
                             }
                         }
                     },
@@ -11814,6 +11807,7 @@ function executePayment() {
                         if (cache.isNotEmpty()) {
                             repository.upsertFormSubmissionCaches(cache)
                             logFirebaseStatus("Loaded ${cache.size} submissions from SwapnoPay central gateway.")
+                            notifyNewSubmissions(cache, targetFormId)
                         }
                         break
                     }
@@ -11821,6 +11815,37 @@ function executePayment() {
                     android.util.Log.w("AppViewModel", "Failed fetching submissions from $endpoint: ${e.message}")
                 }
             }
+        }
+    }
+
+    private fun notifyNewSubmissions(submissions: List<FormSubmissionCacheEntity>, fallbackFormId: String) {
+        try {
+            val context = getApplication<Application>().applicationContext
+            val currentForm = hostedFormsList.value.find { it.id == fallbackFormId }
+            val formName = currentForm?.title?.ifBlank { "অনলাইন ফর্ম" } ?: "অনলাইন ফর্ম"
+
+            for (sub in submissions) {
+                if (!com.example.NotificationHelper.hasBeenNotified(context, sub.id)) {
+                    val isRecent = System.currentTimeMillis() - sub.submittedAt < 3600_000L
+                    if (isRecent) {
+                        val payload = runCatching { org.json.JSONObject(sub.payloadJson) }.getOrNull()
+                        val customerName = payload?.optString("name")?.takeIf { it.isNotBlank() }
+                            ?: payload?.optString("customer_name")?.takeIf { it.isNotBlank() }
+                            ?: payload?.optString("phone")?.takeIf { it.isNotBlank() }
+                            ?: "নতুন গ্রাহক"
+                        com.example.NotificationHelper.showFormSubmissionNotification(
+                            context = context,
+                            formTitle = formName,
+                            customerInfo = "গ্রাহক: $customerName",
+                            submissionId = sub.id
+                        )
+                    } else {
+                        com.example.NotificationHelper.markAsNotified(context, sub.id)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AppViewModel", "Form submission statusbar notification error: ${e.message}")
         }
     }
 
@@ -16720,20 +16745,33 @@ function executePayment() {
                                 val item = notifArr.optJSONObject(i) ?: continue
                                 val bId = item.optString("batch_id").ifBlank { item.optString("id") }.ifBlank { continue }
                                 val createdTs = parseRemoteTimestamp(item.optString("created_at"))
+                                val nTitle = item.optString("title", "অ্যাডমিন নোটিশ")
+                                val nMsg = item.optString("message", "")
+                                val nSev = item.optString("severity", "INFO")
                                 entities.add(
                                     MerchantNotificationEntity(
                                         id = bId,
                                         merchantId = activeProfile.value.id,
                                         type = item.optString("type", "ANNOUNCEMENT"),
-                                        title = item.optString("title", "অ্যাডমিন নোটিশ"),
-                                        message = item.optString("message", ""),
-                                        severity = item.optString("severity", "INFO"),
+                                        title = nTitle,
+                                        message = nMsg,
+                                        severity = nSev,
                                         entityType = "BROADCAST",
                                         entityId = bId,
                                         createdAt = createdTs,
                                         readAt = if (dismissed.contains(bId)) createdTs else null
                                     )
                                 )
+                                val context = getApplication<Application>().applicationContext
+                                if (!dismissed.contains(bId) && !com.example.NotificationHelper.hasBeenNotified(context, bId) && nMsg.isNotBlank()) {
+                                    com.example.NotificationHelper.showAdminNotification(
+                                        context = context,
+                                        title = nTitle,
+                                        message = nMsg,
+                                        noticeId = bId,
+                                        severity = nSev
+                                    )
+                                }
                             }
                             if (entities.isNotEmpty()) {
                                 repository.upsertMerchantNotifications(entities)
@@ -16752,31 +16790,49 @@ function executePayment() {
                             val bMsg = latestObj.optString("message").ifBlank { notice ?: "" }
                             val bSev = latestObj.optString("severity", "INFO")
                             val bType = latestObj.optString("type", "ANNOUNCEMENT")
-                            if (bMsg.isNotBlank() && !dismissed.contains(bId) && _adminNoticePopup.value == null) {
-                                withContext(Dispatchers.Main) {
-                                    _adminNoticePopup.value = AdminNoticePopup(
-                                        id = bId,
-                                        title = bTitle,
-                                        message = bMsg,
-                                        severity = bSev,
-                                        type = bType,
-                                        timestamp = parseRemoteTimestamp(latestObj.optString("created_at"))
-                                    )
+                            if (bMsg.isNotBlank() && !dismissed.contains(bId)) {
+                                if (_adminNoticePopup.value == null) {
+                                    withContext(Dispatchers.Main) {
+                                        _adminNoticePopup.value = AdminNoticePopup(
+                                            id = bId,
+                                            title = bTitle,
+                                            message = bMsg,
+                                            severity = bSev,
+                                            type = bType,
+                                            timestamp = parseRemoteTimestamp(latestObj.optString("created_at"))
+                                        )
+                                    }
                                 }
+                                com.example.NotificationHelper.showAdminNotification(
+                                    context = getApplication(),
+                                    title = bTitle,
+                                    message = bMsg,
+                                    noticeId = bId,
+                                    severity = bSev
+                                )
                             }
                         } else if (notice != null) {
                             val noticeId = "notice_${notice.hashCode()}"
-                            if (!dismissed.contains(noticeId) && _adminNoticePopup.value == null) {
-                                withContext(Dispatchers.Main) {
-                                    _adminNoticePopup.value = AdminNoticePopup(
-                                        id = noticeId,
-                                        title = "📢 অ্যাডমিন নোটিশ",
-                                        message = notice,
-                                        severity = "INFO",
-                                        type = "ANNOUNCEMENT",
-                                        timestamp = System.currentTimeMillis()
-                                    )
+                            if (!dismissed.contains(noticeId)) {
+                                if (_adminNoticePopup.value == null) {
+                                    withContext(Dispatchers.Main) {
+                                        _adminNoticePopup.value = AdminNoticePopup(
+                                            id = noticeId,
+                                            title = "📢 অ্যাডমিন নোটিশ",
+                                            message = notice,
+                                            severity = "INFO",
+                                            type = "ANNOUNCEMENT",
+                                            timestamp = System.currentTimeMillis()
+                                        )
+                                    }
                                 }
+                                com.example.NotificationHelper.showAdminNotification(
+                                    context = getApplication(),
+                                    title = "📢 অ্যাডমিন নোটিশ",
+                                    message = notice,
+                                    noticeId = noticeId,
+                                    severity = "INFO"
+                                )
                             }
                         }
                     }

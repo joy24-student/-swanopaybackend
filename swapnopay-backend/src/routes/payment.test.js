@@ -127,4 +127,25 @@ test('SwapnoPay Payment Gateway & Production Security Suite', async (t) => {
       }
     )
   })
+
+  await t.test('7. POST /v1/payment/heartbeat records mobile device heartbeat and returns device_active', async () => {
+    const res = await fetch(`${baseUrl}/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        merchant_id: '00000000-0000-0000-0000-000000000001',
+        device_id: 'test-device-android-1',
+        battery_level: 95,
+        status: 'ONLINE',
+        device_model: 'Samsung Galaxy A52',
+        os_version: 'Android 14',
+      })
+    })
+
+    assert.equal(res.status, 200)
+    const json = await res.json()
+    assert.equal(json.ok, true)
+    assert.equal(json.device_active, true)
+    assert.equal(json.merchant_id, '00000000-0000-0000-0000-000000000001')
+  })
 })
