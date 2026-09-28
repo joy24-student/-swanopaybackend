@@ -129,7 +129,8 @@ object NotificationHelper {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentSet = prefs.getStringSet(KEY_NOTIFIED_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()
         if (currentSet.size > MAX_TRACKED_IDS) {
-            val trimmed = currentSet.takeLast(MAX_TRACKED_IDS / 2).toMutableSet()
+            val list = currentSet.toList()
+            val trimmed = list.subList(list.size / 2, list.size).toMutableSet()
             trimmed.add(id)
             prefs.edit().putStringSet(KEY_NOTIFIED_IDS, trimmed).apply()
         } else {

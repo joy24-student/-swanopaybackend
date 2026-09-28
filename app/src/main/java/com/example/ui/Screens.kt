@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
@@ -17931,10 +17932,10 @@ fun DashboardScreen(viewModel: AppViewModel) {
                             border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF4338CA) else Color(0xFFC7D2FE)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.showAdminNoticeManual() }
+                                .shadow(if (isDarkMode) 2.dp else 4.dp, RoundedCornerShape(16.dp), ambientColor = Color(0xFF4F46E5).copy(alpha = 0.15f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -17952,25 +17953,31 @@ fun DashboardScreen(viewModel: AppViewModel) {
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { viewModel.showAdminNoticeManual() }
+                                ) {
                                     Text(
-                                        text = "📢 অ্যাডমিন নোটিশ",
+                                        text = "📢 লাইভ অ্যাডমিন নোটিশ",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         color = Color(0xFF4F46E5)
                                     )
                                     Text(
                                         text = marqueeText!!,
                                         fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Medium,
                                         color = if (isDarkMode) Color(0xFFE0E7FF) else Color(0xFF1E293B),
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     color = Color(0xFF4F46E5),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable { viewModel.showAdminNoticeManual() }
                                 ) {
                                     Text(
                                         text = "বিস্তারিত",
@@ -17978,6 +17985,18 @@ fun DashboardScreen(viewModel: AppViewModel) {
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { viewModel.clearMarqueeNotice() },
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Dismiss notice",
+                                        tint = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }

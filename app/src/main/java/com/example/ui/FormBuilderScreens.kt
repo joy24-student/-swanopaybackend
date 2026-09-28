@@ -89,7 +89,7 @@ fun FormBuilderStudioScreen(viewModel: AppViewModel) {
             val newId = java.util.UUID.randomUUID().toString()
             val currentTitle = viewModel.formTitle.value
             val newTitle = "${currentTitle.ifEmpty { "Form" }} (Copy)"
-            val newSlug = "pay-${newTitle.lowercase().replace(" ", "-").replace(Regex("[^a-z0-9-]"), "")}-${System.currentTimeMillis().toString().takeLast(4)}"
+            val newSlug = "pay-${newTitle.replace(" ", "-").replace(Regex("[^a-zA-Z0-9-]"), "")}-${System.currentTimeMillis().toString().takeLast(4)}"
             val snapshot = (current ?: HostedFormModel(id = currentId)).copy(
                 id = newId,
                 title = newTitle,
@@ -726,6 +726,7 @@ fun FormBuilderStudioScreen(viewModel: AppViewModel) {
                 tint = goldText,
                 onClick = { showMoreOptionsModal = false; showEditTitleModal = true }
             ),
+
             FormOptionCard(
                 title = "Duplicate Form Project",
                 subtitle = "Create an exact clone of this form with all fields & products",
@@ -1302,6 +1303,7 @@ private fun FormBuilderTab(
     var formErrors by remember { mutableStateOf(mapOf<String, String>()) }
     var expandedFieldId by remember { mutableStateOf<String?>(null) }
     var isShowcaseEditorExpanded by remember { mutableStateOf(false) }
+    var showcaseActiveTab by remember { mutableStateOf("DETAILS") }
     var showAddProductDialog by remember { mutableStateOf(false) }
     var showRenamePageDialog by remember { mutableStateOf<Int?>(null) }
     var renamePageTitle by remember { mutableStateOf("") }
@@ -1719,7 +1721,11 @@ private fun FormBuilderTab(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            modifier = Modifier.weight(1f, fill = false),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
                                             Icon(Icons.Outlined.Storefront, null, tint = goldText, modifier = Modifier.size(18.dp))
                                             Surface(
                                                 shape = RoundedCornerShape(4.dp),
@@ -1734,38 +1740,74 @@ private fun FormBuilderTab(
                                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                                 )
                                             }
-                                            Text("Product Showcase Hero", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textPrimary)
+                                            Text(
+                                                "Product Showcase",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = formPrimaryColor.copy(alpha = 0.15f)
                                             ) {
                                                 Text(
                                                     "Live Storefront",
-                                                    fontSize = 10.5.sp,
+                                                    fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = formPrimaryColor,
+                                                    maxLines = 1,
+                                                    softWrap = false,
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
                                             }
-                                            IconButton(
-                                                onClick = { isShowcaseEditorExpanded = !isShowcaseEditorExpanded },
-                                                modifier = Modifier.size(28.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isShowcaseEditorExpanded) goldPrimary.copy(alpha = 0.22f) else (if (isDark) Color(0xFF281E0A) else Color(0xFFFEF3C7)),
+                                                border = BorderStroke(1.dp, goldPrimary.copy(alpha = 0.6f)),
+                                                modifier = Modifier.clickable {
+                                                    if (!isShowcaseEditorExpanded) showcaseActiveTab = "DETAILS"
+                                                    isShowcaseEditorExpanded = !isShowcaseEditorExpanded
+                                                }
                                             ) {
-                                                Icon(
-                                                    imageVector = if (isShowcaseEditorExpanded) Icons.Default.Close else Icons.Outlined.Tune,
-                                                    contentDescription = if (isShowcaseEditorExpanded) "Close Editor" else "Edit Product Showcase",
-                                                    tint = goldText,
-                                                    modifier = Modifier.size(17.dp)
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isShowcaseEditorExpanded) Icons.Default.Close else Icons.Outlined.Edit,
+                                                        contentDescription = if (isShowcaseEditorExpanded) "Close Editor" else "Edit Showcase",
+                                                        tint = goldText,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (isShowcaseEditorExpanded) "Close" else "Edit",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = goldText
+                                                    )
+                                                }
                                             }
                                         }
                                     }
 
-                                    // Image & Upload Row
+                                    // Image & Info Row (Tapping opens Details editor)
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                showcaseActiveTab = "DETAILS"
+                                                isShowcaseEditorExpanded = true
+                                            }
+                                            .padding(2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1786,13 +1828,19 @@ private fun FormBuilderTab(
                                                     contentScale = ContentScale.Crop
                                                 )
                                             } else {
-                                                Icon(Icons.Outlined.AddPhotoAlternate, null, tint = textSecondary, modifier = Modifier.size(28.dp))
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(Icons.Outlined.AddPhotoAlternate, null, tint = textSecondary, modifier = Modifier.size(26.dp))
+                                                    Text("Add Photo", fontSize = 9.sp, color = textSecondary)
+                                                }
                                             }
                                         }
 
-                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             if (themeConfig.eyebrowText.isNotBlank()) {
-                                                Text(themeConfig.eyebrowText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText)
+                                                Text(themeConfig.eyebrowText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
                                             Text(
                                                 text = formHeaderTitle.ifBlank { "Flagship Product" },
@@ -1807,6 +1855,8 @@ private fun FormBuilderTab(
                                                 val curr = if (themeConfig.currencyCode == "USD") "$" else "৳"
                                                 if (displayPriceVal > 0) {
                                                     Text("$curr${displayPriceVal.toInt()}", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = textPrimary)
+                                                } else {
+                                                    Text("${curr}0", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = textSecondary)
                                                 }
                                                 if (themeConfig.wasPrice > displayPriceVal && displayPriceVal > 0) {
                                                     Text(
@@ -1816,6 +1866,18 @@ private fun FormBuilderTab(
                                                         textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
                                                     )
                                                 }
+                                            }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.Edit, contentDescription = null, tint = goldText, modifier = Modifier.size(12.dp))
+                                                Text(
+                                                    "Tap to edit details, price & photos",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = goldText
+                                                )
                                             }
                                         }
 
@@ -1827,11 +1889,57 @@ private fun FormBuilderTab(
                                         }
                                     }
 
-                                    // Gallery previews if present
+                                    // Prominent Full-Width Edit Button
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isShowcaseEditorExpanded) (if (isDark) Color(0xFF281E0A) else Color(0xFFFEF3C7)) else (if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)),
+                                        border = BorderStroke(1.dp, if (isShowcaseEditorExpanded) goldPrimary else cardBorder),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                if (!isShowcaseEditorExpanded) showcaseActiveTab = "DETAILS"
+                                                isShowcaseEditorExpanded = !isShowcaseEditorExpanded
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isShowcaseEditorExpanded) Icons.Default.Close else Icons.Outlined.Edit,
+                                                contentDescription = null,
+                                                tint = if (isShowcaseEditorExpanded) goldText else textPrimary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isShowcaseEditorExpanded) "Close Product Editor ▲" else "Edit Product Information & Showcase Details ▼",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isShowcaseEditorExpanded) goldText else textPrimary
+                                            )
+                                        }
+                                    }
+
+                                    // Gallery previews if present (clickable to open Gallery editor)
                                     val currentHeroProd = formProducts.firstOrNull()
                                     if (currentHeroProd != null && currentHeroProd.galleryUrls.isNotEmpty()) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("Gallery (${currentHeroProd.galleryUrls.size} photos):", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.clickable {
+                                                showcaseActiveTab = "GALLERY"
+                                                isShowcaseEditorExpanded = true
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Gallery (${currentHeroProd.galleryUrls.size} photos):", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                                Text("Manage Gallery ✎", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = goldText)
+                                            }
                                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 items(currentHeroProd.galleryUrls) { gUrl ->
                                                     Box(
@@ -1852,10 +1960,23 @@ private fun FormBuilderTab(
                                         }
                                     }
 
-                                    // Variants preview chips (Variant instead of color)
+                                    // Variants preview chips (clickable to open Variants editor)
                                     if (currentHeroProd != null && currentHeroProd.productVariants.isNotEmpty() && !themeConfig.hideSwatches) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("Product Variants (${currentHeroProd.productVariants.size}):", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.clickable {
+                                                showcaseActiveTab = "VARIANTS"
+                                                isShowcaseEditorExpanded = true
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Product Variants (${currentHeroProd.productVariants.size}):", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                                Text("Manage Variants ✎", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = goldText)
+                                            }
                                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 items(currentHeroProd.productVariants) { pv ->
                                                     Surface(
@@ -1880,7 +2001,7 @@ private fun FormBuilderTab(
                                         }
                                     }
 
-                                    // Quick visibility badges summary
+                                    // Quick visibility badges summary (clickable to open Visibility settings)
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -1897,7 +2018,11 @@ private fun FormBuilderTab(
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = if (active) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFF6B7280).copy(alpha = 0.12f),
-                                                border = BorderStroke(0.6.dp, if (active) Color(0xFF10B981).copy(alpha = 0.3f) else cardBorder)
+                                                border = BorderStroke(0.6.dp, if (active) Color(0xFF10B981).copy(alpha = 0.3f) else cardBorder),
+                                                modifier = Modifier.clickable {
+                                                    showcaseActiveTab = "VISIBILITY"
+                                                    isShowcaseEditorExpanded = true
+                                                }
                                             ) {
                                                 Text(
                                                     text = if (active) "✓ $label" else "✕ $label",
@@ -1918,6 +2043,7 @@ private fun FormBuilderTab(
                                             formProducts = formProducts,
                                             isDark = isDark,
                                             viewModel = viewModel,
+                                            initialTab = showcaseActiveTab,
                                             onClose = { isShowcaseEditorExpanded = false }
                                         )
                                     }
@@ -3021,6 +3147,7 @@ private fun ProductShowcaseSettingsEditor(
     formProducts: List<FormProductItem>,
     isDark: Boolean,
     viewModel: AppViewModel,
+    initialTab: String = "DETAILS",
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -3036,7 +3163,7 @@ private fun ProductShowcaseSettingsEditor(
         imageUrl = themeConfig.productImageUrl
     )
 
-    var activeTab by remember { mutableStateOf("DETAILS") } // "DETAILS", "GALLERY", "VARIANTS", "VISIBILITY"
+    var activeTab by remember(initialTab) { mutableStateOf(initialTab) } // "DETAILS", "GALLERY", "VARIANTS", "VISIBILITY"
 
     // Details states
     var titleInput by remember(primaryProduct.title, viewModel.formTitle.value) {
@@ -8290,691 +8417,5 @@ private fun LivePreviewModal(
                                                             fontSize = 12.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = parsedPrimaryColor
-                                                        )
-                                                    }
-                                                    Checkbox(
-                                                        checked = isSelected,
-                                                        enabled = !field.isRequired,
-                                                        onCheckedChange = { checked ->
-                                                            previewDynamicValues = previewDynamicValues + (field.id to if (checked) "selected" else "unselected")
-                                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                                        }
-                                                    )
-                                                }
-
-                                                if (allMedia.size > 1) {
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        modifier = Modifier.horizontalScroll(rememberScrollState())
-                                                    ) {
-                                                        allMedia.forEachIndexed { idx, url ->
-                                                            val isImgSel = idx == activeImgIdx
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(36.dp)
-                                                                    .clip(RoundedCornerShape(6.dp))
-                                                                    .border(
-                                                                        width = if (isImgSel) 2.dp else 1.dp,
-                                                                        color = if (isImgSel) parsedPrimaryColor else cardBorder,
-                                                                        shape = RoundedCornerShape(6.dp)
-                                                                    )
-                                                                    .clickable { activeImgIdx = idx }
-                                                            ) {
-                                                                AsyncImage(
-                                                                    model = url,
-                                                                    contentDescription = null,
-                                                                    modifier = Modifier.fillMaxSize(),
-                                                                    contentScale = ContentScale.Crop
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                if (field.productVariants.isNotEmpty()) {
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text("SELECT VARIANT:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textSecondary)
-                                                        Row(
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                            modifier = Modifier.horizontalScroll(rememberScrollState())
-                                                        ) {
-                                                            field.productVariants.forEach { pv ->
-                                                                val isVarSel = pv.id == selectedVariantId
-                                                                Surface(
-                                                                    onClick = {
-                                                                        selectedVariantId = pv.id
-                                                                        previewDynamicValues = previewDynamicValues + (field.id to "selected")
-                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant" to pv.name)
-                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant_price" to pv.price.toString())
-                                                                    },
-                                                                    shape = RoundedCornerShape(8.dp),
-                                                                    color = if (isVarSel) parsedPrimaryColor.copy(alpha = 0.15f) else Color.Transparent,
-                                                                    border = BorderStroke(1.dp, if (isVarSel) parsedPrimaryColor else cardBorder)
-                                                                ) {
-                                                                    Text(
-                                                                        text = "${pv.name} • BDT ${pv.price.toInt()}",
-                                                                        fontSize = 11.sp,
-                                                                        fontWeight = if (isVarSel) FontWeight.Bold else FontWeight.Normal,
-                                                                        color = if (isVarSel) parsedPrimaryColor else textSecondary,
-                                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    FormFieldType.CUSTOM_CODE -> {
-                                        val fieldHtml = remember(field.customCodeHtml, previewDynamicValues) {
-                                            var content = field.customCodeHtml.ifBlank { field.defaultValue }
-                                            content = content.replace("{{form_title}}", formTitle)
-                                            content = content.replace("{{form_description}}", formDescription)
-                                            formFields.forEach { f ->
-                                                val v = previewDynamicValues[f.id] ?: f.defaultValue
-                                                content = content.replace("{{${f.id}}}", v)
-                                                val key = f.label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
-                                                content = content.replace("{{field_$key}}", v)
-                                            }
-                                            unescapeHtmlString(content)
-                                        }
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
-                                            border = BorderStroke(1.dp, cardBorder),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                if (field.label.isNotBlank() && field.label != "Custom Code Block" && field.label != "Custom Code" && field.label != "HTML/CSS block") {
-                                                    Text(field.label, fontWeight = FontWeight.Bold, color = textPrimary, fontSize = 13.sp)
-                                                }
-                                                if (fieldHtml.isBlank()) {
-                                                    Text("Custom HTML/CSS Block (Empty)", fontSize = 11.sp, color = textSecondary)
-                                                } else {
-                                                    FormHtmlPreview(
-                                                        htmlContent = fieldHtml,
-                                                        cssContent = field.customCodeCss,
-                                                        isDark = isDark,
-                                                        modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp, max = 350.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                FormFieldType.CHECKBOX -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            val isChecked = currentVal == "true"
-                                            Checkbox(
-                                                checked = isChecked,
-                                                onCheckedChange = { checked ->
-                                                    previewDynamicValues = previewDynamicValues + (field.id to checked.toString())
-                                                    if (fieldError != null) previewErrors = previewErrors - field.id
-                                                }
-                                            )
-                                            Text(
-                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                                fontSize = 12.5.sp,
-                                                color = textPrimary
-                                            )
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.DATE -> {
-                                    val calendar = Calendar.getInstance()
-                                    val datePickerDialog = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            val formattedDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-                                            previewDynamicValues = previewDynamicValues + (field.id to formattedDate)
-                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                        },
-                                        calendar.get(Calendar.YEAR),
-                                        calendar.get(Calendar.MONTH),
-                                        calendar.get(Calendar.DAY_OF_MONTH)
-                                    )
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Surface(
-                                            onClick = { datePickerDialog.show() },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = cardBg,
-                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.CalendarToday,
-                                                        contentDescription = null,
-                                                        tint = if (currentVal.isNotBlank()) goldPrimary else textSecondary,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                    Text(
-                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select Date (YYYY-MM-DD)" }),
-                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
-                                                        fontSize = 14.sp
-                                                    )
-                                                }
-                                                if (currentVal.isNotBlank()) {
-                                                    IconButton(
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues - field.id
-                                                        },
-                                                        modifier = Modifier.size(24.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Clear,
-                                                            contentDescription = "Clear",
-                                                            tint = textSecondary,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.FILE_UPLOAD, FormFieldType.CAMERA_UPLOAD -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Surface(
-                                            onClick = {
-                                                activeUploadFieldId = field.id
-                                                previewFileLauncher.launch("*/*")
-                                            },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isDark) Color(0xFF19140C) else Color(0xFFFBFBFE),
-                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(16.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isDark) Color(0xFF281E0A) else Color(0xFFFFFBEB)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = if (field.type == FormFieldType.CAMERA_UPLOAD) Icons.Outlined.PhotoCamera else Icons.Outlined.CloudUpload,
-                                                        contentDescription = null,
-                                                        tint = goldPrimary,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                                if (currentVal.isNotBlank()) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.CheckCircle,
-                                                            contentDescription = null,
-                                                            tint = Color(0xFF10B981),
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Text(
-                                                            text = currentVal,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            fontSize = 13.sp,
-                                                            color = textPrimary,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                    TextButton(
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues - field.id
-                                                        },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text("Remove File", color = Color(0xFFEF4444), fontSize = 12.sp)
-                                                    }
-                                                } else {
-                                                    Text(
-                                                        text = field.placeholder.ifBlank { "Tap to choose file / document" },
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = textPrimary,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Text(
-                                                        text = "PDF, DOCX, PNG, JPG up to 10MB",
-                                                        fontSize = 11.sp,
-                                                        color = textSecondary
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.DROPDOWN -> {
-                                    var expandedDropdown by remember { mutableStateOf(false) }
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            Surface(
-                                                onClick = { expandedDropdown = true },
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = cardBg,
-                                                border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(
-                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select option" }),
-                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
-                                                        fontSize = 14.sp
-                                                    )
-                                                    Icon(
-                                                        imageVector = if (expandedDropdown) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                                        contentDescription = null,
-                                                        tint = textSecondary
-                                                    )
-                                                }
-                                            }
-                                            DropdownMenu(
-                                                expanded = expandedDropdown,
-                                                onDismissRequest = { expandedDropdown = false }
-                                            ) {
-                                                options.forEach { option ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(option, fontSize = 13.5.sp) },
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                                            expandedDropdown = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.RADIO -> {
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        options.forEach { option ->
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                RadioButton(
-                                                    selected = currentVal == option,
-                                                    onClick = {
-                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                )
-                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.MULTI_SELECT -> {
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    val selectedSet = remember(currentVal) {
-                                        if (currentVal.isBlank()) emptySet()
-                                        else currentVal.split(", ").filter { it.isNotBlank() }.toSet()
-                                    }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        options.forEach { option ->
-                                            val isSelected = option in selectedSet
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        val newSet = if (isSelected) selectedSet - option else selectedSet + option
-                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Checkbox(
-                                                    checked = isSelected,
-                                                    onCheckedChange = { checked ->
-                                                        val newSet = if (checked) selectedSet + option else selectedSet - option
-                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                )
-                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.TOGGLE -> {
-                                    val isToggled = currentVal == "true"
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = textPrimary
-                                            )
-                                            Switch(
-                                                checked = isToggled,
-                                                onCheckedChange = { toggled ->
-                                                    previewDynamicValues = previewDynamicValues + (field.id to toggled.toString())
-                                                    if (fieldError != null) previewErrors = previewErrors - field.id
-                                                }
-                                            )
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.COUPON -> {
-                                    Card(
-                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
-                                        border = BorderStroke(1.dp, if (isDark) Color(0xFF332918) else Color(0xFFE2E8F0)),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    "🎟️ ${field.label.ifBlank { "Promo / Coupon Code" }}",
-                                                    fontSize = 12.5.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = textPrimary
-                                                )
-                                                val hint = field.options.firstOrNull()?.substringBefore(':') ?: "SAVE10"
-                                                Text("e.g. $hint", fontSize = 11.sp, color = textSecondary)
-                                            }
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                OutlinedTextField(
-                                                    value = currentVal,
-                                                    onValueChange = { previewDynamicValues = previewDynamicValues + (field.id to it) },
-                                                    placeholder = { Text(field.placeholder.ifBlank { "Enter code" }, fontSize = 12.sp, color = textSecondary) },
-                                                    modifier = Modifier.weight(1f),
-                                                    singleLine = true,
-                                                    shape = RoundedCornerShape(8.dp)
-                                                )
-                                                Button(
-                                                    onClick = { /* simulated apply in builder */ },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = goldPrimary),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                                ) {
-                                                    Text("Apply", fontSize = 12.sp, color = Color.White)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                else -> {
-                                    OutlinedTextField(
-                                        value = currentVal,
-                                        onValueChange = { inputVal ->
-                                            previewDynamicValues = previewDynamicValues + (field.id to inputVal)
-                                            if (fieldError != null) previewErrors = previewErrors - field.id
-
-                                            // CSV Backend Frontend Autofill
-                                            if (themeConfig.enableCsvBackend && inputVal.length >= 2) {
-                                                val isLookupField = field.label.contains(themeConfig.csvLookupColumn, ignoreCase = true) ||
-                                                        themeConfig.csvLookupColumn.contains(field.label, ignoreCase = true) ||
-                                                        field.placeholder.contains(themeConfig.csvLookupColumn, ignoreCase = true)
-                                                if (isLookupField) {
-                                                    val matched = viewModel.lookupCsvRecord(inputVal)
-                                                    if (matched != null) {
-                                                        val newMap = previewDynamicValues.toMutableMap()
-                                                        formFields.forEach { f ->
-                                                            if (f.id != field.id) {
-                                                                matched.forEach { (col, v) ->
-                                                                    if (f.label.equals(col, ignoreCase = true) || f.label.contains(col, ignoreCase = true) || col.contains(f.label, ignoreCase = true)) {
-                                                                        newMap[f.id] = v
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        previewDynamicValues = newMap
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        isError = fieldError != null,
-                                        supportingText = {
-                                            if (fieldError != null) {
-                                                Text(fieldError, color = Color(0xFFEF4444), fontSize = 11.5.sp)
-                                            }
-                                        },
-                                        label = { Text("${field.label}${if (field.isRequired) " *" else ""}") },
-                                        placeholder = { Text(field.placeholder.ifBlank { "Enter value" }, color = textSecondary) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text("This form has no fields yet.", fontSize = 13.sp, color = textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            }
-
-            val isClosedForm = viewModel.isFormClosed()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (formPages.size > 1 && previewPageIndex > 0) {
-                    OutlinedButton(
-                        onClick = { previewPageIndex = (previewPageIndex - 1).coerceAtLeast(0) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        border = BorderStroke(1.dp, cardBorder)
-                    ) {
-                        Text("← Back", color = textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                }
-
-                if (formPages.size > 1 && previewPageIndex < formPages.size - 1) {
-                    Button(
-                        onClick = {
-                            val curPageFields = formFields.filter { it.pageIndex == previewPageIndex }
-                            val pageValidation = FormValidationEngine.validateFormSubmission(
-                                fields = curPageFields,
-                                values = previewDynamicValues,
-                                enforceRequiredFields = themeConfig.enforceRequiredFields,
-                                strictFormatValidation = themeConfig.strictFormatValidation,
-                                enforceQuantityRange = themeConfig.enforceQuantityRange
-                            )
-                            if (!pageValidation.isValid) {
-                                previewErrors = pageValidation.errors
-                                Toast.makeText(context, pageValidation.summaryMessage, Toast.LENGTH_SHORT).show()
-                            } else {
-                                previewErrors = emptyMap()
-                                previewPageIndex++
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = parsedPrimaryColor,
-                            contentColor = Color.Black
-                        )
-                    ) {
-                        Text("Next Page →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                } else {
-                     Button(
-                        onClick = {
-                            if (isClosedForm) {
-                                Toast.makeText(context, themeConfig.closedMessage, Toast.LENGTH_LONG).show()
-                                return@Button
-                            }
-                            val validation = FormValidationEngine.validateFormSubmission(
-                                fields = formFields,
-                                values = previewDynamicValues,
-                                enforceRequiredFields = themeConfig.enforceRequiredFields,
-                                strictFormatValidation = themeConfig.strictFormatValidation,
-                                enforceQuantityRange = themeConfig.enforceQuantityRange
-                            )
-                            if (!validation.isValid) {
-                                previewErrors = validation.errors
-                                Toast.makeText(context, validation.summaryMessage as CharSequence, Toast.LENGTH_SHORT).show()
-                            } else {
-                                previewErrors = emptyMap()
-                                // C6 Fix: Submit real form data to Room DB + Supabase instead of just showing a Toast
-                                val formId = viewModel.activeFormId.value
-                                viewModel.submitFormFieldAnswers(
-                                    formId = formId,
-                                    answers = previewDynamicValues
-                                ) { success, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                    if (success) onDismiss()
-                                }
-                            }
-                        },
-                        enabled = !isClosedForm,
-                        modifier = Modifier
-                            .weight(if (formPages.size > 1 && previewPageIndex > 0) 1.5f else 1f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isClosedForm) Color.Gray else parsedPrimaryColor,
-                            contentColor = if (isClosedForm) Color.White else Color.Black
-                        )
-                    ) {
-                        Text(
-                            text = if (isClosedForm) "Form Closed (সময়সীমা শেষ)" else "Submit / Complete Form",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.5.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
+                                               
+... [truncated for diff preview]
