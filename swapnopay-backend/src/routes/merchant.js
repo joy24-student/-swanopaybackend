@@ -49,8 +49,12 @@ merchantRouter.post('/support/chat', async (req, res) => {
     }
     const saved = await saveChatMessage({
       merchant_id: merchantId,
+      session_id: body.session_id || '',
       sender: body.sender || 'MERCHANT',
       message: msg.trim(),
+      attachment_name: body.attachment_name || '',
+      attachment_type: body.attachment_type || '',
+      attachment_base64: body.attachment_base64 || '',
     })
     res.status(201).json({ ok: true, record: saved })
   } catch (error) {

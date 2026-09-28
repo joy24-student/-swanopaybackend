@@ -1484,10 +1484,40 @@ export async function updateMerchantStatus(merchantId, status) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Showcase Config
+// Showcase Config (with durable disk persistence fallback)
 // ──────────────────────────────────────────────────────────────────────────────
 
+const SHOWCASE_FILE = path.join(DATA_DIR, 'showcase_config.json')
+const inMemoryShowcaseConfig = new Map()
+
+function loadShowcaseFromDisk() {
+  try {
+    if (fs.existsSync(SHOWCASE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(SHOWCASE_FILE, 'utf8'))
+      if (parsed && typeof parsed === 'object') {
+        for (const [k, v] of Object.entries(parsed)) {
+          inMemoryShowcaseConfig.set(k, v)
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+function saveShowcaseToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+    const obj = {}
+    for (const [k, v] of inMemoryShowcaseConfig.entries()) {
+      obj[k] = v
+    }
+    fs.writeFileSync(SHOWCASE_FILE, JSON.stringify(obj, null, 2), 'utf8')
+  } catch (_) {}
+}
+
+loadShowcaseFromDisk()
+
 export async function getShowcaseConfig(key = 'main_showcase') {
+  const localVal = inMemoryShowcaseConfig.get(key) || null
   try {
     const { data, error } = await getAdminClient()
       .from('showcase_config')
@@ -1497,20 +1527,29 @@ export async function getShowcaseConfig(key = 'main_showcase') {
 
     if (error) {
       console.warn('[showcase] Admin DB query notice:', error.message)
-      return null
+      return localVal
     }
-    return data ? data.value : null
+    if (data && data.value) {
+      if (localVal && localVal.updated_at && data.value.updated_at && new Date(localVal.updated_at) > new Date(data.value.updated_at)) {
+        return { ...data.value, ...localVal }
+      }
+      return localVal ? { ...localVal, ...data.value } : data.value
+    }
+    return localVal
   } catch (e) {
     console.warn('[showcase] getShowcaseConfig fallback:', e.message)
-    return null
+    return localVal
   }
 }
 
 export async function upsertShowcaseConfig(key, valueData) {
-  const admin = getAdminClient()
   const now = new Date().toISOString()
+  const enriched = { ...(valueData || {}), updated_at: valueData?.updated_at || now }
+  inMemoryShowcaseConfig.set(key, enriched)
+  saveShowcaseToDisk()
 
   try {
+    const admin = getAdminClient()
     const { data: existing } = await admin
       .from('showcase_config')
       .select('id, key')
@@ -1520,34 +1559,33 @@ export async function upsertShowcaseConfig(key, valueData) {
     if (existing) {
       const { data, error } = await admin
         .from('showcase_config')
-        .update({ value: valueData, updated_at: now })
+        .update({ value: enriched, updated_at: now })
         .eq('key', key)
         .select('*')
         .single()
-      if (!error) return data.value
-      if (error && error.code !== 'PGRST116') throw error
+      if (!error && data) return data.value
     }
 
     const { data, error } = await admin
       .from('showcase_config')
-      .upsert({ key, value: valueData, updated_at: now }, { onConflict: 'key' })
+      .upsert({ key, value: enriched, updated_at: now }, { onConflict: 'key' })
       .select('*')
       .single()
 
-    if (!error) return data.value
+    if (!error && data) return data.value
 
     const { data: updateData, error: updateError } = await admin
       .from('showcase_config')
-      .update({ value: valueData, updated_at: now })
+      .update({ value: enriched, updated_at: now })
       .eq('key', key)
       .select('*')
       .single()
 
-    if (updateError) throw updateError
-    return updateData.value
+    if (!updateError && updateData) return updateData.value
   } catch (err) {
-    throw new Error(`Failed to save showcase config '${key}': ${err.message}`)
+    console.warn(`[showcase] Supabase upsert fallback to disk for '${key}':`, err.message)
   }
+  return enriched
 }
 
 export async function setShowcaseConfig(valueData) {
@@ -2846,10 +2884,52 @@ export async function requestPinReset(merchantId, userEmail = null, userId = nul
 // MERCHANT NOTIFICATIONS BROADCAST (Admin Panel to Merchant App)
 // ──────────────────────────────────────────────────────────────────────────────
 
+const NOTIFICATIONS_FILE = path.join(DATA_DIR, 'merchant_notifications.json')
+let inMemoryBroadcasts = []
+
+function loadNotificationsFromDisk() {
+  try {
+    if (fs.existsSync(NOTIFICATIONS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(NOTIFICATIONS_FILE, 'utf8'))
+      if (Array.isArray(parsed)) {
+        inMemoryBroadcasts = parsed
+      }
+    }
+  } catch (_) {}
+}
+
+function saveNotificationsToDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.writeFileSync(NOTIFICATIONS_FILE, JSON.stringify(inMemoryBroadcasts, null, 2), 'utf8')
+  } catch (_) {}
+}
+
+loadNotificationsFromDisk()
+
+function getScopedOrAdminClient(adminJwt = null) {
+  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    return null
+  }
+  if (adminJwt) {
+    try {
+      return createClient(
+        process.env.ADMIN_SUPABASE_URL,
+        process.env.ADMIN_SUPABASE_ANON_KEY || process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: { persistSession: false, autoRefreshToken: false },
+          global: { headers: { Authorization: `Bearer ${adminJwt}` } },
+        }
+      )
+    } catch (_) {}
+  }
+  return getAdminClient()
+}
+
 /**
  * Broadcast an announcement, alert, or system notification to merchant apps.
- * Writes to public.merchant_notifications, optionally pushes to tenant databases,
- * and optionally updates system_notice marquee banner.
+ * Writes to public.merchant_notifications, persists to durable disk store,
+ * optionally pushes to tenant databases, and updates system_notice marquee banner.
  */
 export async function broadcastNotification({
   title,
@@ -2859,6 +2939,7 @@ export async function broadcastNotification({
   target = 'ALL',
   updateBanner = false,
   entityType = 'BROADCAST',
+  adminJwt = null,
 }) {
   if (!title || !title.trim()) throw new Error('Notification title is required')
   if (!message || !message.trim()) throw new Error('Notification message body is required')
@@ -2872,33 +2953,17 @@ export async function broadcastNotification({
   const batchId = randomUUID()
   const nowIso = new Date().toISOString()
 
-  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn('[broadcastNotification] DB notice: ADMIN_SUPABASE_URL and ADMIN_SUPABASE_SERVICE_ROLE_KEY are required.')
-    return {
-      ok: true,
-      batch_id: batchId,
-      recipients_count: 0,
-      target,
-      type: cleanType,
-      severity: cleanSeverity,
-      title: cleanTitle,
-      message: cleanMessage,
-      banner_updated: Boolean(updateBanner),
-      created_at: nowIso,
-      warning: 'Admin Supabase credentials not configured',
-    }
-  }
-
-  const admin = getAdminClient()
+  const admin = process.env.ADMIN_SUPABASE_URL && process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY
+    ? getAdminClient()
+    : null
+  const dbClient = getScopedOrAdminClient(adminJwt) || admin
 
   // 1. Resolve recipient merchants
   let recipientList = []
 
   if (target && target !== 'ALL' && target !== 'ACTIVE') {
-    // Single targeted merchant ID
     recipientList = [{ id: target }]
-  } else {
-    // Multi-merchant broadcast: query all registered merchants
+  } else if (admin) {
     try {
       let query = admin.from('merchants').select('id, business_name, status, email')
       if (target === 'ACTIVE') {
@@ -2912,7 +2977,6 @@ export async function broadcastNotification({
       console.warn('[broadcastNotification] Querying merchants table notice:', e.message)
     }
 
-    // Fallback: check merchant_gateway_settings if merchants table was empty
     if (recipientList.length === 0) {
       try {
         const { data: gwMerchants } = await admin
@@ -2929,12 +2993,30 @@ export async function broadcastNotification({
     }
   }
 
-  // If still no merchants found and target is a specific ID, use it directly
   if (recipientList.length === 0 && target && target !== 'ALL') {
     recipientList = [{ id: target }]
   }
 
-  // 2. Prepare notification rows
+  const recipientCount = recipientList.length > 0 ? recipientList.length : 1
+
+  // 2. Persist to durable local broadcast store immediately
+  const broadcastRecord = {
+    batch_id: batchId,
+    title: cleanTitle,
+    message: cleanMessage,
+    type: cleanType,
+    severity: cleanSeverity,
+    target,
+    recipients_count: recipientCount,
+    read_count: 0,
+    banner_updated: Boolean(updateBanner),
+    created_at: nowIso,
+  }
+  inMemoryBroadcasts = [broadcastRecord, ...inMemoryBroadcasts.filter(b => b.batch_id !== batchId)].slice(0, 200)
+  saveNotificationsToDisk()
+
+  // 3. Prepare notification rows matching public.merchant_notifications schema:
+  // (id, merchant_id, title, message, type, severity, read, metadata, created_at)
   const rows = recipientList.map(m => ({
     id: randomUUID(),
     merchant_id: m.id || m.merchant_id,
@@ -2942,34 +3024,57 @@ export async function broadcastNotification({
     title: cleanTitle,
     message: cleanMessage,
     severity: cleanSeverity,
-    entity_type: entityType,
-    entity_id: batchId,
+    read: false,
+    metadata: {
+      entity_type: entityType,
+      batch_id: batchId,
+      target,
+      recipients_count: recipientCount,
+    },
     created_at: nowIso,
-    read_at: null,
   }))
 
-  // 3. Bulk insert rows into public.merchant_notifications
+  // Also include a global 'ALL' row when broadcasting to ALL or ACTIVE so public RLS policy
+  // (merchant_id = 'ALL' OR merchant_id = auth.uid()::text) exposes it to all merchant devices
+  if (target === 'ALL' || target === 'ACTIVE') {
+    rows.unshift({
+      id: batchId,
+      merchant_id: 'ALL',
+      type: cleanType,
+      title: cleanTitle,
+      message: cleanMessage,
+      severity: cleanSeverity,
+      read: false,
+      metadata: {
+        entity_type: entityType,
+        batch_id: batchId,
+        target,
+        recipients_count: recipientCount,
+      },
+      created_at: nowIso,
+    })
+  }
+
+  // 4. Bulk insert rows into public.merchant_notifications (try scoped client first, then admin client)
   let insertedCount = 0
-  if (rows.length > 0) {
+  if (dbClient && rows.length > 0) {
     const CHUNK_SIZE = 50
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE)
-      const { error: insErr } = await admin.from('merchant_notifications').insert(chunk)
+      let { error: insErr } = await dbClient.from('merchant_notifications').insert(chunk)
+      if (insErr && admin && dbClient !== admin) {
+        const retryAdmin = await admin.from('merchant_notifications').insert(chunk)
+        insErr = retryAdmin.error
+      }
       if (insErr) {
-        console.error('[broadcastNotification] Bulk insert chunk error:', insErr.message)
-        // If entity_type/entity_id column issue or uuid mismatch, retry without entity_id
-        if (insErr.message?.includes('entity_id') || insErr.message?.includes('invalid input syntax for type uuid')) {
-          const fallbackChunk = chunk.map(({ entity_id, ...rest }) => rest)
-          const { error: fbErr } = await admin.from('merchant_notifications').insert(fallbackChunk)
-          if (!fbErr) insertedCount += fallbackChunk.length
-        }
+        console.warn('[broadcastNotification] Supabase insert notice:', insErr.message)
       } else {
         insertedCount += chunk.length
       }
     }
   }
 
-  // 4. Also replicate to merchant's custom connected Supabase database if configured
+  // 5. Replicate to merchant's custom connected Supabase database if configured
   for (const m of recipientList) {
     const mId = m.id || m.merchant_id
     if (!mId) continue
@@ -2984,8 +3089,11 @@ export async function broadcastNotification({
             title: cleanTitle,
             message: cleanMessage,
             severity: cleanSeverity,
-            entity_type: entityType,
-            entity_id: batchId,
+            read: false,
+            metadata: {
+              entity_type: entityType,
+              batch_id: batchId,
+            },
             created_at: nowIso,
           }])
         } catch {
@@ -2995,24 +3103,36 @@ export async function broadcastNotification({
     }).catch(() => {})
   }
 
-  // 5. Optionally update live dashboard announcement banner (system_notice)
-  if (updateBanner) {
-    try {
-      const current = await getShowcaseConfig('system_config') || {}
-      await upsertShowcaseConfig('system_config', {
-        ...current,
-        system_notice: cleanMessage,
-        updated_at: nowIso,
-      })
-    } catch (bannerErr) {
-      console.warn('[broadcastNotification] Could not update system_notice banner:', bannerErr.message)
-    }
+  // 6. Update live dashboard announcement banner & latest_broadcast in system_config
+  // so Android Merchant App checkAdminNoticeFromBackend() (/v1/system-notice) delivers popup + banner
+  try {
+    const current = await getShowcaseConfig('system_config') || {}
+    const formattedNotice = cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage
+    const shouldSetNotice = Boolean(updateBanner) || target === 'ALL' || target === 'ACTIVE'
+    await upsertShowcaseConfig('system_config', {
+      ...current,
+      ...(shouldSetNotice ? { system_notice: formattedNotice } : {}),
+      latest_broadcast: {
+        id: batchId,
+        batch_id: batchId,
+        title: cleanTitle,
+        message: cleanMessage,
+        type: cleanType,
+        severity: cleanSeverity,
+        target,
+        created_at: nowIso,
+      },
+      updated_at: nowIso,
+    })
+  } catch (bannerErr) {
+    console.warn('[broadcastNotification] Could not update system_config:', bannerErr.message)
   }
 
   return {
     ok: true,
     batch_id: batchId,
-    recipients_count: insertedCount || rows.length,
+    recipients_count: recipientCount,
+    supabase_inserted: insertedCount,
     target,
     type: cleanType,
     severity: cleanSeverity,
@@ -3024,69 +3144,132 @@ export async function broadcastNotification({
 }
 
 /**
- * List broadcast history grouped by batchId.
+ * List broadcast history grouped by batchId (merges Supabase + durable disk store).
  */
-export async function listBroadcastHistory(limit = 50) {
-  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
-    return []
-  }
-  const admin = getAdminClient()
-  try {
-    const { data, error } = await admin
-      .from('merchant_notifications')
-      .select('id, merchant_id, type, title, message, severity, entity_type, entity_id, created_at, read_at')
-      .eq('entity_type', 'BROADCAST')
-      .order('created_at', { ascending: false })
-      .limit(Math.min(limit * 25, 500))
+export async function listBroadcastHistory(limit = 50, adminJwt = null) {
+  const batchMap = new Map()
 
-    if (error) {
-      console.warn('[listBroadcastHistory] Notice:', error.message)
-      return []
+  // 1. Seed from durable local store first
+  for (const item of inMemoryBroadcasts) {
+    if (item && item.batch_id) {
+      batchMap.set(item.batch_id, {
+        batch_id: item.batch_id,
+        title: item.title,
+        message: item.message,
+        type: item.type || 'ANNOUNCEMENT',
+        severity: item.severity || 'INFO',
+        created_at: item.created_at,
+        recipients_count: Number(item.recipients_count) || 1,
+        read_count: Number(item.read_count) || 0,
+      })
     }
+  }
 
-    // Group by entity_id (batchId)
-    const batchMap = new Map()
-    for (const row of (data || [])) {
-      const key = row.entity_id || row.id
-      if (!batchMap.has(key)) {
-        batchMap.set(key, {
-          batch_id: key,
-          title: row.title,
-          message: row.message,
-          type: row.type,
-          severity: row.severity,
-          created_at: row.created_at,
-          recipients_count: 0,
-          read_count: 0,
-        })
+  // 2. Merge from Supabase public.merchant_notifications
+  if (process.env.ADMIN_SUPABASE_URL && process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    const dbClient = getScopedOrAdminClient(adminJwt)
+    try {
+      const { data, error } = await dbClient
+        .from('merchant_notifications')
+        .select('id, merchant_id, type, title, message, severity, read, metadata, created_at')
+        .order('created_at', { ascending: false })
+        .limit(Math.min(limit * 25, 500))
+
+      if (!error && Array.isArray(data)) {
+        const supaCounts = new Map()
+        for (const row of data) {
+          const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {}
+          const key = meta.batch_id || row.id
+          if (!supaCounts.has(key)) {
+            supaCounts.set(key, {
+              batch_id: key,
+              title: row.title,
+              message: row.message,
+              type: row.type || 'ANNOUNCEMENT',
+              severity: row.severity || 'INFO',
+              created_at: row.created_at,
+              recipients_count: Number(meta.recipients_count) || 0,
+              row_count: 0,
+              read_count: 0,
+            })
+          }
+          const entry = supaCounts.get(key)
+          if (row.merchant_id !== 'ALL') {
+            entry.row_count++
+          }
+          if (row.read) entry.read_count++
+        }
+
+        for (const [key, entry] of supaCounts.entries()) {
+          const finalRecipients = Math.max(entry.recipients_count, entry.row_count, 1)
+          if (!batchMap.has(key)) {
+            batchMap.set(key, {
+              batch_id: entry.batch_id,
+              title: entry.title,
+              message: entry.message,
+              type: entry.type,
+              severity: entry.severity,
+              created_at: entry.created_at,
+              recipients_count: finalRecipients,
+              read_count: entry.read_count,
+            })
+          } else {
+            const existing = batchMap.get(key)
+            existing.recipients_count = Math.max(existing.recipients_count, finalRecipients)
+            existing.read_count = Math.max(existing.read_count, entry.read_count)
+          }
+        }
       }
-      const b = batchMap.get(key)
-      b.recipients_count++
-      if (row.read_at) b.read_count++
+    } catch (err) {
+      console.warn('[listBroadcastHistory] Supabase query notice:', err.message)
     }
-
-    return Array.from(batchMap.values()).slice(0, limit)
-  } catch (err) {
-    console.warn('[listBroadcastHistory] Error:', err.message)
-    return []
   }
+
+  return Array.from(batchMap.values())
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+    .slice(0, limit)
 }
 
 /**
  * Delete / Recall a broadcast by its batch ID.
  */
-export async function deleteBroadcastBatch(batchId) {
+export async function deleteBroadcastBatch(batchId, adminJwt = null) {
   if (!batchId) throw new Error('batchId is required')
-  if (!process.env.ADMIN_SUPABASE_URL || !process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: true, batch_id: batchId, deleted: false, warning: 'Admin Supabase credentials not configured' }
-  }
-  const admin = getAdminClient()
-  const { error } = await admin
-    .from('merchant_notifications')
-    .delete()
-    .eq('entity_id', batchId)
 
-  if (error) throw new Error('Failed to delete broadcast: ' + error.message)
+  // 1. Remove from durable local store
+  const removedItem = inMemoryBroadcasts.find(b => b.batch_id === batchId)
+  inMemoryBroadcasts = inMemoryBroadcasts.filter(b => b.batch_id !== batchId)
+  saveNotificationsToDisk()
+
+  // 2. Clear from system_config if it was the active banner/broadcast
+  try {
+    const current = await getShowcaseConfig('system_config') || {}
+    if (
+      current.latest_broadcast?.batch_id === batchId ||
+      current.latest_broadcast?.id === batchId ||
+      (removedItem && current.system_notice && current.system_notice.includes(removedItem.message))
+    ) {
+      await upsertShowcaseConfig('system_config', {
+        ...current,
+        system_notice: '',
+        latest_broadcast: null,
+        updated_at: new Date().toISOString(),
+      })
+    }
+  } catch (_) {}
+
+  // 3. Delete from Supabase public.merchant_notifications
+  if (process.env.ADMIN_SUPABASE_URL && process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
+    const dbClient = getScopedOrAdminClient(adminJwt)
+    try {
+      await dbClient.from('merchant_notifications').delete().eq('id', batchId)
+    } catch (_) {}
+    try {
+      await dbClient.from('merchant_notifications').delete().eq('metadata->>batch_id', batchId)
+    } catch (_) {}
+  }
+
   return { ok: true, batch_id: batchId }
 }
+
 

@@ -48,7 +48,7 @@ export default function BroadcastNotifications() {
   const [severity, setSeverity] = useState<NotificationSeverity>('INFO')
   const [targetMode, setTargetMode] = useState<'ALL' | 'ACTIVE' | 'SINGLE'>('ALL')
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>('')
-  const [updateBanner, setUpdateBanner] = useState(false)
+  const [updateBanner, setUpdateBanner] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
   // Data State

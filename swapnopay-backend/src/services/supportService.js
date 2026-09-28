@@ -59,8 +59,12 @@ function mergeById(primary = [], secondary = []) {
 
 export async function saveChatMessage({
   merchant_id,
+  session_id = '',
   sender = 'MERCHANT',
   message,
+  attachment_name = '',
+  attachment_type = '',
+  attachment_base64 = '',
   created_at = new Date().toISOString(),
 } = {}) {
   if (!merchant_id) throw new Error('merchant_id is required')
@@ -69,7 +73,7 @@ export async function saveChatMessage({
   }
 
   loadStoreFromDisk()
-  const record = {
+  const dbRecord = {
     id: crypto.randomUUID(),
     merchant_id: String(merchant_id).trim(),
     sender: String(sender || 'MERCHANT').toUpperCase(),
@@ -82,13 +86,21 @@ export async function saveChatMessage({
     try {
       const { data, error } = await admin
         .from('live_chat_messages')
-        .insert(record)
+        .insert(dbRecord)
         .select('*')
         .single()
       if (!error && data) {
-        Object.assign(record, data)
+        Object.assign(dbRecord, data)
       }
     } catch (_) {}
+  }
+
+  const record = {
+    ...dbRecord,
+    ...(session_id ? { session_id: String(session_id).trim() } : {}),
+    ...(attachment_name ? { attachment_name: String(attachment_name).trim() } : {}),
+    ...(attachment_type ? { attachment_type: String(attachment_type).trim() } : {}),
+    ...(attachment_base64 ? { attachment_base64: String(attachment_base64) } : {}),
   }
 
   memoryStore.messages = [

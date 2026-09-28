@@ -1134,7 +1134,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 else -> {
                     _isAppLocked.value = false
-                    "PaymentForms"
+                    "Main"
                 }
             }
 
@@ -1274,15 +1274,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     data class SupportChatMessage(
         val id: String = java.util.UUID.randomUUID().toString(),
+        val sessionId: String = "",
         val merchantId: String = "",
         val sender: String = "MERCHANT", // "MERCHANT", "PLATFORM_OWNER", "AI_SUPPORT"
         val message: String = "",
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
+        val attachmentUri: String = "",
+        val attachmentName: String = "",
+        val attachmentType: String = "", // "IMAGE", "FILE", or ""
+        val attachmentBase64: String = ""
     )
 
     data class SupportChatSession(
         val id: String = java.util.UUID.randomUUID().toString(),
         val title: String = "Support Conversation",
+        val createdAt: Long = System.currentTimeMillis(),
         val timestamp: Long = System.currentTimeMillis(),
         val messages: List<SupportChatMessage> = emptyList(),
         val status: String = "ACTIVE"
@@ -1291,16 +1297,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val obj = JSONObject()
             obj.put("id", id)
             obj.put("title", title)
+            obj.put("createdAt", createdAt)
             obj.put("timestamp", timestamp)
             obj.put("status", status)
             val msgArr = JSONArray()
             for (m in messages) {
                 val mObj = JSONObject().apply {
                     put("id", m.id)
+                    put("sessionId", m.sessionId.ifBlank { id })
                     put("merchantId", m.merchantId)
                     put("sender", m.sender)
                     put("message", m.message)
                     put("timestamp", m.timestamp)
+                    if (m.attachmentUri.isNotBlank()) put("attachmentUri", m.attachmentUri)
+                    if (m.attachmentName.isNotBlank()) put("attachmentName", m.attachmentName)
+                    if (m.attachmentType.isNotBlank()) put("attachmentType", m.attachmentType)
+                    if (m.attachmentBase64.isNotBlank()) put("attachmentBase64", m.attachmentBase64)
                 }
                 msgArr.put(mObj)
             }
@@ -1314,6 +1326,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val id = obj.optString("id", java.util.UUID.randomUUID().toString())
                     val title = obj.optString("title", "Support Conversation")
                     val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    val createdAt = obj.optLong("createdAt", timestamp)
                     val status = obj.optString("status", "ACTIVE")
                     val msgArr = obj.optJSONArray("messages") ?: JSONArray()
                     val messages = mutableListOf<SupportChatMessage>()
@@ -1322,14 +1335,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         messages.add(
                             SupportChatMessage(
                                 id = mObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                sessionId = mObj.optString("sessionId", id),
                                 merchantId = mObj.optString("merchantId", ""),
                                 sender = mObj.optString("sender", "MERCHANT"),
                                 message = mObj.optString("message", ""),
-                                timestamp = mObj.optLong("timestamp", System.currentTimeMillis())
+                                timestamp = mObj.optLong("timestamp", System.currentTimeMillis()),
+                                attachmentUri = mObj.optString("attachmentUri", ""),
+                                attachmentName = mObj.optString("attachmentName", ""),
+                                attachmentType = mObj.optString("attachmentType", ""),
+                                attachmentBase64 = mObj.optString("attachmentBase64", "")
                             )
                         )
                     }
-                    SupportChatSession(id, title, timestamp, messages, status)
+                    val actualCreatedAt = messages.minOfOrNull { it.timestamp }?.coerceAtMost(createdAt) ?: createdAt
+                    SupportChatSession(id, title, actualCreatedAt, timestamp, messages, status)
                 } catch (e: Exception) {
                     null
                 }
@@ -1461,14 +1480,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _mySupportTicketsList = MutableStateFlow<List<SupportTicket>>(emptyList())
     val mySupportTicketsList: StateFlow<List<SupportTicket>> = _mySupportTicketsList.asStateFlow()
 
-    private val _supportChatList = MutableStateFlow<List<SupportChatMessage>>(emptyList())
-    val supportChatList: StateFlow<List<SupportChatMessage>> = _supportChatList.asStateFlow()
-
-    private val _currentSupportSessionId = MutableStateFlow<String>(java.util.UUID.randomUUID().toString())
-    val currentSupportSessionId: StateFlow<String> = _currentSupportSessionId.asStateFlow()
-
     private val _savedSupportChatSessions = MutableStateFlow<List<SupportChatSession>>(loadSavedSupportChatSessions())
     val savedSupportChatSessions: StateFlow<List<SupportChatSession>> = _savedSupportChatSessions.asStateFlow()
+
+    private val _currentSupportSessionId = MutableStateFlow<String>(resolveInitialSupportSessionId())
+    val currentSupportSessionId: StateFlow<String> = _currentSupportSessionId.asStateFlow()
+
+    private val _supportChatList = MutableStateFlow<List<SupportChatMessage>>(
+        _savedSupportChatSessions.value.find { it.id == _currentSupportSessionId.value }?.messages ?: emptyList()
+    )
+    val supportChatList: StateFlow<List<SupportChatMessage>> = _supportChatList.asStateFlow()
 
     private val _isGatewayPermissionGranted = MutableStateFlow(true)
     val isGatewayPermissionGranted: StateFlow<Boolean> = _isGatewayPermissionGranted.asStateFlow()
@@ -1700,6 +1721,137 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun resolveInitialSupportSessionId(): String {
+        val savedActiveId = securityPrefs.getString("active_support_session_id_v1", null)
+        val isBlankNew = securityPrefs.getBoolean("support_blank_new_session_v1", false)
+        if (isBlankNew && !savedActiveId.isNullOrBlank()) {
+            return savedActiveId
+        }
+        val sessions = _savedSupportChatSessions.value
+        if (!savedActiveId.isNullOrBlank() && sessions.any { it.id == savedActiveId }) {
+            return savedActiveId
+        }
+        if (sessions.isNotEmpty()) {
+            val firstId = sessions.first().id
+            securityPrefs.edit().putString("active_support_session_id_v1", firstId).apply()
+            return firstId
+        }
+        val newId = java.util.UUID.randomUUID().toString()
+        securityPrefs.edit().putString("active_support_session_id_v1", newId).apply()
+        return newId
+    }
+
+    private fun getSupportDeletedRemoteIds(): MutableSet<String> {
+        return (securityPrefs.getStringSet("support_deleted_remote_ids_v1", emptySet()) ?: emptySet()).toMutableSet()
+    }
+
+    private fun saveSupportDeletedRemoteIds(ids: Set<String>) {
+        securityPrefs.edit().putStringSet("support_deleted_remote_ids_v1", ids).apply()
+    }
+
+    private fun getSupportArchivedRemoteIds(): MutableSet<String> {
+        return (securityPrefs.getStringSet("support_archived_remote_ids_v1", emptySet()) ?: emptySet()).toMutableSet()
+    }
+
+    private fun saveSupportArchivedRemoteIds(ids: Set<String>) {
+        securityPrefs.edit().putStringSet("support_archived_remote_ids_v1", ids).apply()
+    }
+
+    private fun mergeRemoteSupportMessagesIntoCurrentSession(fetched: List<SupportChatMessage>) {
+        if (fetched.isEmpty()) return
+        val currentId = _currentSupportSessionId.value
+        val sessions = _savedSupportChatSessions.value
+        val currentSessionObj = sessions.find { it.id == currentId }
+        val cutoffTs = securityPrefs.getLong("support_session_cutoff_ts_v1", 0L)
+        val isBlankNew = securityPrefs.getBoolean("support_blank_new_session_v1", false)
+
+        // If user is currently viewing an older historical session (there is a newer session created after it),
+        // do not dump newer messages from other sessions into this historical session.
+        if (currentSessionObj != null) {
+            val hasNewerSession = sessions.any { it.id != currentId && it.createdAt > currentSessionObj.createdAt + 1000L }
+            if (hasNewerSession) {
+                return
+            }
+        }
+
+        val deletedIds = getSupportDeletedRemoteIds()
+        val archivedIds = getSupportArchivedRemoteIds()
+        val otherSessionMsgIds = sessions
+            .filter { it.id != currentId }
+            .flatMap { s -> s.messages.map { it.id } }
+            .toSet()
+
+        val currentList = _supportChatList.value.toMutableList()
+        var changed = false
+        var archivedChanged = false
+
+        for (remote in fetched) {
+            if (remote.id in deletedIds) continue
+            if (remote.id in otherSessionMsgIds) continue
+
+            // If remote message explicitly carries a different sessionId, route it to that session instead
+            if (remote.sessionId.isNotBlank() && remote.sessionId != currentId) {
+                continue
+            }
+
+            val alreadyInCurrentById = currentList.indexOfFirst { it.id == remote.id }
+            if (alreadyInCurrentById >= 0) {
+                continue
+            }
+
+            // Check if this remote message is an echo of an optimistic local message in currentList
+            val optimisticIdx = currentList.indexOfFirst { local ->
+                local.sender.equals(remote.sender, ignoreCase = true) &&
+                    kotlin.math.abs(local.timestamp - remote.timestamp) < 180_000L &&
+                    (local.message == remote.message ||
+                        (local.attachmentName.isNotBlank() && remote.message.contains(local.attachmentName)))
+            }
+            if (optimisticIdx >= 0) {
+                val existingLocal = currentList[optimisticIdx]
+                if (existingLocal.id != remote.id) {
+                    currentList[optimisticIdx] = existingLocal.copy(
+                        id = remote.id,
+                        sessionId = currentId
+                    )
+                    changed = true
+                }
+                continue
+            }
+
+            // Exclude messages that were archived before a "Start New Chat" or "Clear" action
+            if (remote.id in archivedIds) continue
+            if (cutoffTs > 0L && remote.timestamp < cutoffTs - 1500L) {
+                archivedIds.add(remote.id)
+                archivedChanged = true
+                continue
+            }
+
+            // If user explicitly started a blank new session and hasn't sent anything yet,
+            // ignore old merchant messages from server
+            if (isBlankNew && currentList.isEmpty() && remote.sender.equals("MERCHANT", ignoreCase = true)) {
+                archivedIds.add(remote.id)
+                archivedChanged = true
+                continue
+            }
+
+            currentList.add(remote.copy(sessionId = currentId))
+            changed = true
+        }
+
+        if (archivedChanged) {
+            saveSupportArchivedRemoteIds(archivedIds)
+        }
+
+        if (changed) {
+            val sorted = currentList.sortedBy { it.timestamp }
+            _supportChatList.value = sorted
+            if (sorted.isNotEmpty()) {
+                securityPrefs.edit().putBoolean("support_blank_new_session_v1", false).apply()
+                saveOrUpdateCurrentSupportChatSession()
+            }
+        }
+    }
+
     private suspend fun refreshPlatformSupport() {
         val merchantId = _activeProfile.value.id.ifBlank { "default_merchant" }
 
@@ -1727,16 +1879,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 val m = messages.getJSONObject(index)
                                 SupportChatMessage(
                                     id = m.optString("id", java.util.UUID.randomUUID().toString()),
+                                    sessionId = m.optString("session_id", ""),
                                     merchantId = m.optString("merchant_id", merchantId),
                                     sender = m.optString("sender", "PLATFORM_OWNER"),
                                     message = m.optString("message", ""),
-                                    timestamp = parseRemoteTimestamp(m.optString("created_at"))
+                                    timestamp = parseRemoteTimestamp(m.optString("created_at")),
+                                    attachmentName = m.optString("attachment_name", ""),
+                                    attachmentType = m.optString("attachment_type", ""),
+                                    attachmentBase64 = m.optString("attachment_base64", "")
                                 )
                             }
-                            _supportChatList.value = fetched
-                            if (fetched.isNotEmpty()) {
-                                saveOrUpdateCurrentSupportChatSession()
-                            }
+                            mergeRemoteSupportMessagesIntoCurrentSession(fetched)
                         }
                     }
                 }
@@ -1805,15 +1958,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     val messages = response.optJSONArray("messages")
-                    if (messages != null && _supportChatList.value.isEmpty()) {
-                        _supportChatList.value = (0 until messages.length()).map { index ->
+                    if (messages != null) {
+                        val fetchedFallback = (0 until messages.length()).map { index ->
                             val m = messages.getJSONObject(index)
                             SupportChatMessage(
-                                id = m.getString("id"), merchantId = merchantId,
-                                sender = m.getString("sender"), message = m.getString("message"),
+                                id = m.getString("id"),
+                                sessionId = m.optString("session_id", ""),
+                                merchantId = merchantId,
+                                sender = m.getString("sender"),
+                                message = m.getString("message"),
                                 timestamp = parseRemoteTimestamp(m.optString("created_at"))
                             )
                         }
+                        mergeRemoteSupportMessagesIntoCurrentSession(fetchedFallback)
                     }
                 } catch (error: Exception) {
                     logFirebaseStatus("Support refresh fallback notice: ${error.message}")
@@ -1824,33 +1981,65 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun listenToMerchantSupportTickets() = listenToSupportChatFromPlatformOwner()
 
-    fun sendSupportChatMessage(messageText: String) {
+    fun sendSupportChatMessage(
+        messageText: String,
+        attachmentUri: String = "",
+        attachmentName: String = "",
+        attachmentType: String = "",
+        attachmentBase64: String = ""
+    ) {
         val trimmed = messageText.trim()
-        if (trimmed.isBlank()) return
+        if (trimmed.isBlank() && attachmentUri.isBlank() && attachmentBase64.isBlank() && attachmentName.isBlank()) return
         val merchantId = _activeProfile.value.id.ifBlank { "default_merchant" }
+        val activeSessionId = _currentSupportSessionId.value
 
-        // Optimistic UI update so the merchant's real message appears immediately
+        val remoteFormattedText = when {
+            trimmed.isNotBlank() && attachmentName.isNotBlank() ->
+                "$trimmed\n[Attachment: $attachmentName]"
+            trimmed.isNotBlank() -> trimmed
+            attachmentType.equals("IMAGE", ignoreCase = true) ->
+                "📷 Photo: ${attachmentName.ifBlank { "Image" }}"
+            attachmentName.isNotBlank() ->
+                "📎 File: $attachmentName"
+            else -> "📎 Attachment"
+        }
+
+        // Optimistic UI update so the merchant's real message & photo/file appear immediately
         val tempId = java.util.UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
         val userMsg = SupportChatMessage(
             id = tempId,
+            sessionId = activeSessionId,
             merchantId = merchantId,
             sender = "MERCHANT",
             message = trimmed,
-            timestamp = System.currentTimeMillis()
+            timestamp = now,
+            attachmentUri = attachmentUri,
+            attachmentName = attachmentName,
+            attachmentType = attachmentType,
+            attachmentBase64 = attachmentBase64
         )
+        securityPrefs.edit().putBoolean("support_blank_new_session_v1", false).apply()
         _supportChatList.value = _supportChatList.value + userMsg
         saveOrUpdateCurrentSupportChatSession()
 
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 var sent = false
+                var assignedRemoteId = ""
 
                 // 1. Send via direct live support chat route to save in Supabase live_chat_messages
                 try {
                     val url = "https://api.swapnopay.top/v1/merchant/support/chat"
                     val payload = org.json.JSONObject().apply {
                         put("merchant_id", merchantId)
-                        put("message", trimmed)
+                        put("session_id", activeSessionId)
+                        put("message", remoteFormattedText)
+                        if (attachmentName.isNotBlank()) put("attachment_name", attachmentName)
+                        if (attachmentType.isNotBlank()) put("attachment_type", attachmentType)
+                        if (attachmentBase64.isNotBlank() && attachmentBase64.length < 180_000) {
+                            put("attachment_base64", attachmentBase64)
+                        }
                     }
                     val reqBuilder = okhttp3.Request.Builder()
                         .url(url)
@@ -1865,8 +2054,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     platformHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                        val respBody = response.body?.string().orEmpty()
                         if (response.isSuccessful) {
                             sent = true
+                            runCatching {
+                                val respJson = org.json.JSONObject(respBody)
+                                assignedRemoteId = respJson.optJSONObject("record")?.optString("id", "").orEmpty()
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -1876,14 +2070,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 2. Fallback via platformRequest if direct route was not reached
                 if (!sent) {
                     try {
-                        platformRequest("/v1/merchant/support/messages", org.json.JSONObject().put("message", trimmed))
+                        val saved = platformRequest("/v1/merchant/support/messages", org.json.JSONObject().put("message", remoteFormattedText))
+                        assignedRemoteId = saved.optJSONObject("record")?.optString("id", "").orEmpty()
                         sent = true
                     } catch (e: Exception) {
                         logFirebaseStatus("Support message fallback error: ${e.message}")
                     }
                 }
 
-                // Refresh immediately to sync the persisted server message and timestamp
+                // Update local message ID to match server ID while keeping attachment & session metadata
+                if (assignedRemoteId.isNotBlank()) {
+                    val updatedList = _supportChatList.value.map { msg ->
+                        if (msg.id == tempId) msg.copy(id = assignedRemoteId) else msg
+                    }
+                    _supportChatList.value = updatedList
+                    saveOrUpdateCurrentSupportChatSession()
+                }
+
+                // Refresh immediately to sync any new replies
                 runCatching { refreshPlatformSupport() }
             }
         }
@@ -1894,11 +2098,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return try {
             val arr = JSONArray(jsonStr)
             val list = mutableListOf<SupportChatSession>()
+            val seenMessageSignatures = mutableSetOf<String>()
             for (i in 0 until arr.length()) {
                 val item = arr.optJSONObject(i) ?: continue
-                SupportChatSession.fromJson(item)?.let { list.add(it) }
+                val session = SupportChatSession.fromJson(item) ?: continue
+                if (session.messages.isEmpty()) continue
+                // Deduplicate corrupted identical sessions that were previously created by flat-list overwrite
+                val signature = session.messages.joinToString("|") { "${it.sender}:${it.message}:${it.attachmentName}" }
+                if (signature.isNotBlank() && !seenMessageSignatures.add(signature)) {
+                    continue
+                }
+                list.add(session)
             }
-            list
+            list.sortedByDescending { it.timestamp }
         } catch (e: Exception) {
             emptyList()
         }
@@ -1910,23 +2122,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         for (session in list) {
             arr.put(session.toJson())
         }
-        securityPrefs.edit().putString("saved_support_chat_sessions_v1", arr.toString()).apply()
+        securityPrefs.edit()
+            .putString("saved_support_chat_sessions_v1", arr.toString())
+            .putString("active_support_session_id_v1", _currentSupportSessionId.value)
+            .apply()
     }
 
     fun saveOrUpdateCurrentSupportChatSession() {
         val messages = _supportChatList.value
         if (messages.isEmpty()) return
-        val firstUserMsg = messages.firstOrNull { it.sender.equals("MERCHANT", ignoreCase = true) || it.sender.equals("USER", ignoreCase = true) }?.message?.trim()
-            ?: messages.firstOrNull()?.message?.trim() ?: "Support Chat"
-        val sessionTitle = if (firstUserMsg.length > 45) firstUserMsg.take(42) + "..." else firstUserMsg
+        val firstUserMsgObj = messages.firstOrNull { it.sender.equals("MERCHANT", ignoreCase = true) || it.sender.equals("USER", ignoreCase = true) }
+            ?: messages.firstOrNull()
+        val rawTitle = when {
+            !firstUserMsgObj?.message.isNullOrBlank() -> firstUserMsgObj!!.message.trim()
+            !firstUserMsgObj?.attachmentName.isNullOrBlank() -> "📎 ${firstUserMsgObj!!.attachmentName}"
+            else -> "Support Chat"
+        }
+        val sessionTitle = if (rawTitle.length > 45) rawTitle.take(42) + "..." else rawTitle
         val currentId = _currentSupportSessionId.value
         val list = _savedSupportChatSessions.value.toMutableList()
         val existingIndex = list.indexOfFirst { it.id == currentId }
+        val existingCreatedAt = if (existingIndex >= 0) list[existingIndex].createdAt else (messages.minOfOrNull { it.timestamp } ?: System.currentTimeMillis())
         val updatedSession = SupportChatSession(
             id = currentId,
             title = sessionTitle,
-            timestamp = System.currentTimeMillis(),
-            messages = messages,
+            createdAt = existingCreatedAt,
+            timestamp = messages.maxOfOrNull { it.timestamp } ?: System.currentTimeMillis(),
+            messages = messages.map { if (it.sessionId.isBlank()) it.copy(sessionId = currentId) else it },
             status = "ACTIVE"
         )
         if (existingIndex >= 0) {
@@ -1934,45 +2156,108 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             list.add(0, updatedSession)
         }
-        _savedSupportChatSessions.value = list
+        _savedSupportChatSessions.value = list.sortedByDescending { it.timestamp }
         persistSupportChatSessions()
     }
 
     fun startNewSupportChatSession() {
-        saveOrUpdateCurrentSupportChatSession()
-        _currentSupportSessionId.value = java.util.UUID.randomUUID().toString()
+        if (_supportChatList.value.isNotEmpty()) {
+            saveOrUpdateCurrentSupportChatSession()
+        }
+        // Archive all existing message IDs so polling never dumps previous session messages into the new session
+        val archived = getSupportArchivedRemoteIds()
+        _supportChatList.value.forEach { archived.add(it.id) }
+        _savedSupportChatSessions.value.forEach { s -> s.messages.forEach { archived.add(it.id) } }
+        saveSupportArchivedRemoteIds(archived)
+
+        val newId = java.util.UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        _currentSupportSessionId.value = newId
         _supportChatList.value = emptyList()
+        securityPrefs.edit()
+            .putString("active_support_session_id_v1", newId)
+            .putLong("support_session_cutoff_ts_v1", now)
+            .putBoolean("support_blank_new_session_v1", true)
+            .apply()
     }
 
     fun loadSupportChatSession(sessionId: String) {
-        saveOrUpdateCurrentSupportChatSession()
+        if (_supportChatList.value.isNotEmpty()) {
+            saveOrUpdateCurrentSupportChatSession()
+        }
         val session = _savedSupportChatSessions.value.find { it.id == sessionId } ?: return
         _currentSupportSessionId.value = session.id
         _supportChatList.value = session.messages
+        securityPrefs.edit()
+            .putString("active_support_session_id_v1", session.id)
+            .putBoolean("support_blank_new_session_v1", false)
+            .apply()
     }
 
     fun deleteSupportChatSession(sessionId: String) {
+        val target = _savedSupportChatSessions.value.find { it.id == sessionId }
+        if (target != null) {
+            val deleted = getSupportDeletedRemoteIds()
+            target.messages.forEach { deleted.add(it.id) }
+            saveSupportDeletedRemoteIds(deleted)
+        }
         val list = _savedSupportChatSessions.value.filterNot { it.id == sessionId }
         _savedSupportChatSessions.value = list
-        persistSupportChatSessions()
         if (_currentSupportSessionId.value == sessionId) {
-            _currentSupportSessionId.value = java.util.UUID.randomUUID().toString()
-            _supportChatList.value = emptyList()
+            if (list.isNotEmpty()) {
+                val nextSession = list.first()
+                _currentSupportSessionId.value = nextSession.id
+                _supportChatList.value = nextSession.messages
+                securityPrefs.edit()
+                    .putString("active_support_session_id_v1", nextSession.id)
+                    .putBoolean("support_blank_new_session_v1", false)
+                    .apply()
+            } else {
+                val newId = java.util.UUID.randomUUID().toString()
+                _currentSupportSessionId.value = newId
+                _supportChatList.value = emptyList()
+                securityPrefs.edit()
+                    .putString("active_support_session_id_v1", newId)
+                    .putLong("support_session_cutoff_ts_v1", System.currentTimeMillis())
+                    .putBoolean("support_blank_new_session_v1", true)
+                    .apply()
+            }
         }
+        persistSupportChatSessions()
     }
 
     fun clearAllSupportChatSessions() {
+        val deleted = getSupportDeletedRemoteIds()
+        _supportChatList.value.forEach { deleted.add(it.id) }
+        _savedSupportChatSessions.value.forEach { s -> s.messages.forEach { deleted.add(it.id) } }
+        saveSupportDeletedRemoteIds(deleted)
+
+        val newId = java.util.UUID.randomUUID().toString()
         _savedSupportChatSessions.value = emptyList()
-        securityPrefs.edit().remove("saved_support_chat_sessions_v1").apply()
-        _currentSupportSessionId.value = java.util.UUID.randomUUID().toString()
+        _currentSupportSessionId.value = newId
         _supportChatList.value = emptyList()
+        securityPrefs.edit()
+            .remove("saved_support_chat_sessions_v1")
+            .putString("active_support_session_id_v1", newId)
+            .putLong("support_session_cutoff_ts_v1", System.currentTimeMillis())
+            .putBoolean("support_blank_new_session_v1", true)
+            .apply()
     }
 
     fun clearSupportChat() {
-        _supportChatList.value = emptyList()
         val currentId = _currentSupportSessionId.value
+        val deleted = getSupportDeletedRemoteIds()
+        _supportChatList.value.forEach { deleted.add(it.id) }
+        _savedSupportChatSessions.value.find { it.id == currentId }?.messages?.forEach { deleted.add(it.id) }
+        saveSupportDeletedRemoteIds(deleted)
+
+        _supportChatList.value = emptyList()
         val list = _savedSupportChatSessions.value.filterNot { it.id == currentId }
         _savedSupportChatSessions.value = list
+        securityPrefs.edit()
+            .putLong("support_session_cutoff_ts_v1", System.currentTimeMillis())
+            .putBoolean("support_blank_new_session_v1", true)
+            .apply()
         persistSupportChatSessions()
     }
 
@@ -4103,6 +4388,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // Sync payment forms & submissions
                 fetchPaymentForms()
                 fetchFormSubmissions()
+                checkAdminNoticeFromBackend()
 
                 if (ordersSynced && paymentsSynced && appealsSynced && devicesSynced && financeSynced && notificationsSynced && productsSynced && businessPullFailures == 0) {
                     logFirebaseStatus("All database-backed screens synchronized successfully.")
@@ -4123,6 +4409,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 repository.sendDeviceHeartbeat(getApplication())
                 fetchPaymentForms()
                 fetchFormSubmissions()
+                checkAdminNoticeFromBackend()
                 val mId = activeProfile.value.id
                 if (mId.isNotBlank() && mId != "00000000-0000-0000-0000-000000000001") {
                     repository.reassignMerchantData("00000000-0000-0000-0000-000000000001", mId)
@@ -4150,14 +4437,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             onSuccess = { rows ->
                 val parsed = List(rows.length()) { index ->
                     val row = rows.getJSONObject(index)
+                    val meta = row.optJSONObject("metadata")
+                    val createdTs = parseRemoteTimestamp(row.optString("created_at"))
+                    val readAtTs = row.optString("read_at").takeIf { it.isNotBlank() && it != "null" }?.let(::parseRemoteTimestamp)
+                        ?: if (row.optBoolean("read", false)) createdTs else null
                     MerchantNotificationEntity(
                         id = row.getString("id"), merchantId = activeProfile.value.id,
                         type = row.optString("type", "INFO"), title = row.optString("title", "Notification"),
                         message = row.optString("message"), severity = row.optString("severity", "INFO"),
-                        entityType = row.optString("entity_type").ifBlank { null },
-                        entityId = row.optString("entity_id").ifBlank { null },
-                        createdAt = parseRemoteTimestamp(row.optString("created_at")),
-                        readAt = row.optString("read_at").takeIf { it.isNotBlank() && it != "null" }?.let(::parseRemoteTimestamp)
+                        entityType = row.optString("entity_type").ifBlank { meta?.optString("entity_type").orEmpty() }.ifBlank { null },
+                        entityId = row.optString("entity_id").ifBlank { meta?.optString("batch_id").orEmpty() }.ifBlank { null },
+                        createdAt = createdTs,
+                        readAt = readAtTs
                     )
                 }
                 fetched = parsed
@@ -16051,11 +16342,62 @@ function executePayment() {
                     val body = response.body?.string()
                     if (response.isSuccessful && !body.isNullOrBlank()) {
                         val json = JSONObject(body)
+                        val dismissed = getDismissedNoticeIds()
+
+                        // Sync broadcast notifications list into local Room database so they appear in Notification Feed
+                        val notifArr = json.optJSONArray("notifications")
+                        if (notifArr != null && notifArr.length() > 0) {
+                            val entities = mutableListOf<MerchantNotificationEntity>()
+                            for (i in 0 until notifArr.length()) {
+                                val item = notifArr.optJSONObject(i) ?: continue
+                                val bId = item.optString("batch_id").ifBlank { item.optString("id") }.ifBlank { continue }
+                                val createdTs = parseRemoteTimestamp(item.optString("created_at"))
+                                entities.add(
+                                    MerchantNotificationEntity(
+                                        id = bId,
+                                        merchantId = activeProfile.value.id,
+                                        type = item.optString("type", "ANNOUNCEMENT"),
+                                        title = item.optString("title", "অ্যাডমিন নোটিশ"),
+                                        message = item.optString("message", ""),
+                                        severity = item.optString("severity", "INFO"),
+                                        entityType = "BROADCAST",
+                                        entityId = bId,
+                                        createdAt = createdTs,
+                                        readAt = if (dismissed.contains(bId)) createdTs else null
+                                    )
+                                )
+                            }
+                            if (entities.isNotEmpty()) {
+                                repository.upsertMerchantNotifications(entities)
+                            }
+                        }
+
+                        val latestObj = json.optJSONObject("latest_broadcast")
                         val notice = json.optString("system_notice").takeIf { it.isNotBlank() }
                         if (notice != null) {
                             _marqueeNotice.value = notice
+                        }
+
+                        if (latestObj != null) {
+                            val bId = latestObj.optString("batch_id").ifBlank { latestObj.optString("id") }.ifBlank { "notice_${notice.hashCode()}" }
+                            val bTitle = latestObj.optString("title").ifBlank { "📢 অ্যাডমিন নোটিশ" }
+                            val bMsg = latestObj.optString("message").ifBlank { notice ?: "" }
+                            val bSev = latestObj.optString("severity", "INFO")
+                            val bType = latestObj.optString("type", "ANNOUNCEMENT")
+                            if (bMsg.isNotBlank() && !dismissed.contains(bId) && _adminNoticePopup.value == null) {
+                                withContext(Dispatchers.Main) {
+                                    _adminNoticePopup.value = AdminNoticePopup(
+                                        id = bId,
+                                        title = bTitle,
+                                        message = bMsg,
+                                        severity = bSev,
+                                        type = bType,
+                                        timestamp = parseRemoteTimestamp(latestObj.optString("created_at"))
+                                    )
+                                }
+                            }
+                        } else if (notice != null) {
                             val noticeId = "notice_${notice.hashCode()}"
-                            val dismissed = getDismissedNoticeIds()
                             if (!dismissed.contains(noticeId) && _adminNoticePopup.value == null) {
                                 withContext(Dispatchers.Main) {
                                     _adminNoticePopup.value = AdminNoticePopup(

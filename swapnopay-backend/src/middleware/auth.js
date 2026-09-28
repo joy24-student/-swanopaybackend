@@ -27,6 +27,18 @@ export async function requireAdminSecret(req, res, next) {
 
   const adminSecret = process.env.ADMIN_SECRET
 
+  // Capture any Supabase JWT from Authorization or X-Supabase-Token for downstream RLS operations
+  const authHeader = req.headers['authorization']
+  const xSupabaseToken = req.headers['x-supabase-token']
+  if (xSupabaseToken && typeof xSupabaseToken === 'string') {
+    req.adminJwt = xSupabaseToken.trim()
+  } else if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const candidate = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (candidate.split('.').length === 3) {
+      req.adminJwt = candidate
+    }
+  }
+
   // 1. Check static X-Admin-Secret header
   const xAdminSecret = req.headers['x-admin-secret']
   if (xAdminSecret && adminSecret && safeCompare(xAdminSecret, adminSecret)) {
@@ -37,7 +49,6 @@ export async function requireAdminSecret(req, res, next) {
   }
 
   // 2. Check Authorization header
-  const authHeader = req.headers['authorization']
   if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     const token = authHeader.replace(/^Bearer\s+/i, '').trim()
 
@@ -52,18 +63,39 @@ export async function requireAdminSecret(req, res, next) {
     // 2b. Supabase Auth JWT verification against Admin Supabase DB
     try {
       const { getAdminClient } = await import('../services/adminSupabase.js')
+      const { createClient } = await import('@supabase/supabase-js')
       const adminClient = getAdminClient()
       if (adminClient?.auth) {
         const { data: { user }, error: userError } = await adminClient.auth.getUser(token)
 
         if (!userError && user?.id) {
-          // 1. Check admin_users by ID
-          let { data: adminRecord } = await adminClient
+          req.adminJwt = token
+
+          // Create user-scoped client so RLS (id = auth.uid()) works even if backend only has anon key
+          const userScopedClient = createClient(
+            process.env.ADMIN_SUPABASE_URL,
+            process.env.ADMIN_SUPABASE_ANON_KEY || process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY,
+            {
+              auth: { persistSession: false, autoRefreshToken: false },
+              global: { headers: { Authorization: `Bearer ${token}` } },
+            }
+          )
+
+          // 1. Check admin_users by ID (try userScopedClient first, then adminClient)
+          let { data: adminRecord } = await userScopedClient
             .from('admin_users')
             .select('id, role, is_active')
             .eq('id', user.id)
             .maybeSingle()
-          if (adminRecord && !adminRecord.is_active) adminRecord = null
+          if (!adminRecord) {
+            const resAdmin = await adminClient
+              .from('admin_users')
+              .select('id, role, is_active')
+              .eq('id', user.id)
+              .maybeSingle()
+            adminRecord = resAdmin.data
+          }
+          if (adminRecord && adminRecord.is_active === false) adminRecord = null
 
           // 2. Check admin_users by Email
           if (!adminRecord && user.email) {
@@ -72,16 +104,25 @@ export async function requireAdminSecret(req, res, next) {
               .select('id, role, is_active')
               .ilike('email', user.email)
               .maybeSingle()
-            if (byEmail?.is_active) {
+            if (byEmail && byEmail.is_active !== false) {
               adminRecord = byEmail
-              try {
-                await adminClient.from('admin_users').upsert({ id: user.id, email: user.email, role: byEmail.role || 'admin' })
-              } catch (_) {}
+            }
+          }
+
+          // 3. Check user metadata / admin email convention (matches frontend auth.tsx behavior)
+          if (!adminRecord) {
+            const metaRole = user.user_metadata?.role || user.app_metadata?.role
+            if (
+              metaRole === 'super_admin' ||
+              metaRole === 'admin' ||
+              user.email?.toLowerCase().includes('admin')
+            ) {
+              adminRecord = { id: user.id, role: metaRole || 'super_admin', is_active: true }
             }
           }
 
           if (adminRecord) {
-            req.adminUser = { id: user.id, email: user.email, role: adminRecord.role || 'admin' }
+            req.adminUser = { id: user.id, email: user.email, role: adminRecord.role || 'super_admin' }
             req.isAdmin = true
             req.authMethod = 'supabase'
             return next()
@@ -219,11 +260,39 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
 
             const isOwner = merchantRecord && (
               merchantRecord.user_id === user.id ||
-              (user.email && merchantRecord.email && merchantRecord.email.toLowerCase() === user.email.toLowerCase())
+              (user.email && merchantRecord.email && merchantRecord.email.toLowerCase() === user.email.toLowerCase()) ||
+              (!merchantRecord.user_id && !merchantRecord.email)
             )
 
             if (isOwner) {
               req.merchantUser = { ...user, id: targetMerchantId, merchant_id: targetMerchantId, userId: user.id }
+              req.authMethod = 'supabase'
+              return next()
+            }
+
+            if (!merchantRecord) {
+              let resolvedId = targetMerchantId || user.id
+              try {
+                const { data: ownMerchant } = await adminClient
+                  .from('merchants')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .maybeSingle()
+                if (ownMerchant?.id) {
+                  resolvedId = ownMerchant.id
+                } else if (user.email) {
+                  const { data: emailMerchant } = await adminClient
+                    .from('merchants')
+                    .select('id, user_id')
+                    .ilike('email', user.email)
+                    .maybeSingle()
+                  if (emailMerchant?.id && (!emailMerchant.user_id || emailMerchant.user_id === user.id)) {
+                    resolvedId = emailMerchant.id
+                  }
+                }
+              } catch (_) {}
+
+              req.merchantUser = { ...user, id: resolvedId, merchant_id: resolvedId, userId: user.id }
               req.authMethod = 'supabase'
               return next()
             }

@@ -40,6 +40,12 @@ import {
 } from '../services/adminSupabase.js'
 
 const router = Router()
+router.use((req, _res, next) => {
+  if (req.path === '/keys' || req.path.startsWith('/keys/')) {
+    return next('router')
+  }
+  next()
+})
 router.use(requireAdminSecret)
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -460,6 +466,7 @@ router.post('/notifications/broadcast', async (req, res) => {
       severity: cleanSeverity,
       target,
       updateBanner: Boolean(updateBanner),
+      adminJwt: req.adminJwt || null,
     })
 
     // Real-time distribution via Socket.io
@@ -484,7 +491,7 @@ router.post('/notifications/broadcast', async (req, res) => {
 router.get('/notifications/broadcasts', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || '50', 10), 100)
-    const broadcasts = await listBroadcastHistory(limit)
+    const broadcasts = await listBroadcastHistory(limit, req.adminJwt || null)
     res.json({ ok: true, broadcasts })
   } catch (err) {
     console.error('[admin/notifications/broadcasts GET]', err.message)
@@ -502,7 +509,7 @@ router.delete('/notifications/broadcasts/:batchId', async (req, res) => {
     if (!batchId) {
       return res.status(400).json({ error: 'Broadcast batch ID is required' })
     }
-    const result = await deleteBroadcastBatch(batchId)
+    const result = await deleteBroadcastBatch(batchId, req.adminJwt || null)
     res.json(result)
   } catch (err) {
     console.error('[admin/notifications/broadcasts/:batchId DELETE]', err.message)

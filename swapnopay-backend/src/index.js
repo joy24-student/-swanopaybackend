@@ -32,6 +32,7 @@ import { subscriptionRouter } from './routes/subscription.js'
 import employeeRouter from './routes/employee.js'
 import { pinRouter } from './routes/pin.js'
 import { aiFormRouter } from './routes/aiForm.js'
+import { developerRouter } from './routes/developer.js'
 import { safeCompare as safeSecretCompare } from './middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -476,26 +477,42 @@ app.get('/v1/showcase', async (_req, res) => {
 // Public System Notice / Announcement route (accessible by mobile apps without requiring user token)
 app.get('/v1/system-notice', async (_req, res) => {
   try {
-    const { getShowcaseConfig } = await import('./services/adminSupabase.js')
-    const config = await getShowcaseConfig('system_config') || {}
+    const { getShowcaseConfig, listBroadcastHistory } = await import('./services/adminSupabase.js')
+    const [config, broadcasts] = await Promise.all([
+      getShowcaseConfig('system_config').then(c => c || {}),
+      listBroadcastHistory(15).catch(() => []),
+    ])
+    const latestBroadcast = config.latest_broadcast || (Array.isArray(broadcasts) && broadcasts.length > 0 ? broadcasts[0] : null)
+    const fallbackNotice = latestBroadcast
+      ? (latestBroadcast.title ? `${latestBroadcast.title} — ${latestBroadcast.message}` : latestBroadcast.message)
+      : ''
     res.json({
       ok: true,
-      system_notice: config.system_notice || '',
+      system_notice: config.system_notice || fallbackNotice || '',
+      latest_broadcast: latestBroadcast,
+      notifications: Array.isArray(broadcasts) ? broadcasts : [],
       maintenance_mode: Boolean(config.maintenance_mode),
       maintenance_message: config.maintenance_message || '',
       support_hotline: config.support_hotline || '',
       support_email: config.support_email || '',
       support_whatsapp: config.support_whatsapp || '',
-      updated_at: config.updated_at || new Date().toISOString(),
+      updated_at: config.updated_at || latestBroadcast?.created_at || new Date().toISOString(),
     })
   } catch (err) {
-    res.json({ ok: true, system_notice: '', maintenance_mode: false })
+    res.json({ ok: true, system_notice: '', notifications: [], maintenance_mode: false })
   }
 })
 
+// API Key Management routes (must be mounted BEFORE /v1/admin so merchant key calls are not shadowed by requireAdminSecret)
+app.use('/v1/admin/keys', keysRouter)
+app.use('/v1/merchant/keys', keysRouter)
+app.use('/v1/keys', keysRouter)
+
+// Developer Console & Sandbox API
+app.use('/v1/developer', developerRouter(io, merchantHeartbeatMap))
+
 // Admin routes (protected by ADMIN_SECRET)
 app.use('/v1/admin', adminRouter)
-app.use('/v1/admin/keys', keysRouter)
 app.use('/v1/shop', shopRouter)
 startShopWorker()
 
