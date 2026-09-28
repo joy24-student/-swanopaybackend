@@ -23,6 +23,7 @@ object GeminiClient {
     private const val GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
     val GEMINI_MODELS = listOf(
+        "gemini-2.5-flash",
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
         "gemini-1.5-flash",
@@ -46,12 +47,29 @@ object GeminiClient {
             val msg = messages.getJSONObject(i)
             val role = msg.optString("role", "user")
             val content = msg.optString("content", "")
-            
+            val imageBase64 = msg.optString("image_base64", "")
+            val imageMimeType = msg.optString("image_mime_type", "image/jpeg")
+
+            val partsArray = JSONArray().apply {
+                if (content.isNotBlank()) {
+                    put(JSONObject().apply { put("text", content) })
+                }
+                if (imageBase64.isNotBlank()) {
+                    put(JSONObject().apply {
+                        put("inline_data", JSONObject().apply {
+                            put("mime_type", imageMimeType.ifBlank { "image/jpeg" })
+                            put("data", imageBase64)
+                        })
+                    })
+                }
+                if (length() == 0) {
+                    put(JSONObject().apply { put("text", " ") })
+                }
+            }
+
             val geminiMsg = JSONObject().apply {
                 put("role", if (role == "assistant") "model" else "user")
-                put("parts", JSONArray().apply {
-                    put(JSONObject().apply { put("text", content) })
-                })
+                put("parts", partsArray)
             }
             geminiMessages.put(geminiMsg)
         }
@@ -59,7 +77,7 @@ object GeminiClient {
         val payload = JSONObject().apply {
             put("contents", geminiMessages)
             put("generationConfig", JSONObject().apply {
-                put("temperature", 0.3)
+                put("temperature", 0.35)
                 put("maxOutputTokens", 2048)
             })
         }

@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
@@ -74,12 +75,25 @@ fun StructuredAiMessageBubble(
     val isUser = role == "user"
     val rawContent = message["content"] ?: ""
     val actionStr = message["action"]
+    val imageBase64 = message["image_base64"]
+    val attachmentName = message["attachment_name"]
 
     val textMain = if (isDarkMode) Color.White else Color(0xFF0F172A)
     val textMuted = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B)
     val cardBg = if (isDarkMode) Color(0xFF131722) else Color.White
     val cardBorder = if (isDarkMode) Color(0xFF232B3E) else Color(0xFFE2E8F0)
     val userBubbleBg = if (isDarkMode) Color(0xFF1E293B) else Color(0xFF0F172A)
+
+    val decodedBitmap = remember(imageBase64) {
+        if (!imageBase64.isNullOrBlank()) {
+            try {
+                val bytes = android.util.Base64.decode(imageBase64, android.util.Base64.DEFAULT)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+    }
 
     Column(
         modifier = Modifier
@@ -88,7 +102,7 @@ fun StructuredAiMessageBubble(
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         if (isUser) {
-            // USER MESSAGE BUBBLE: Crisp, compact, right-aligned with avatar
+            // USER MESSAGE BUBBLE: Crisp, compact, right-aligned with image/file preview
             Row(
                 modifier = Modifier.widthIn(max = 320.dp),
                 horizontalArrangement = Arrangement.End,
@@ -104,13 +118,41 @@ fun StructuredAiMessageBubble(
                     colors = CardDefaults.cardColors(containerColor = userBubbleBg),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
-                    Text(
-                        text = rawContent,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        if (decodedBitmap != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = decodedBitmap.asImageBitmap(),
+                                contentDescription = "Attached Image",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 180.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                        if (!attachmentName.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White.copy(alpha = 0.14f),
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            ) {
+                                Text(
+                                    text = "📎 $attachmentName",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFE2E8F0),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = rawContent,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
                 }
             }
         } else {
@@ -134,6 +176,132 @@ fun StructuredAiMessageBubble(
                         .fillMaxWidth()
                         .padding(14.dp)
                 ) {
+                    // Friendly Header Row with TTS, Copy & Save-to-Memory
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFFA855F7), Color(0xFF6366F1))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                            Text(
+                                text = "স্বপ্ন এআই • আপনার বিশ্বস্ত বন্ধু",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFA855F7)
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Speak aloud (TTS)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDarkMode) Color(0xFF1E2436) else Color(0xFFF3E8FF),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        if (onSpeak != null) {
+                                            onSpeak(rawContent)
+                                        } else {
+                                            ttsEngine?.speak(
+                                                rawContent.replace(Regex("[#*`|_]"), ""),
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                "ai_bubble_tts"
+                                            )
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
+                                        contentDescription = "Listen",
+                                        tint = Color(0xFFA855F7),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = "শুনুন",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFA855F7)
+                                    )
+                                }
+                            }
+
+                            // Save to AI Memory
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFECFDF5),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        val snippet = rawContent
+                                            .replace(Regex("[#*`|_]"), "")
+                                            .lines()
+                                            .map { it.trim() }
+                                            .firstOrNull { it.length > 10 }
+                                            ?.take(140) ?: rawContent.take(140)
+                                        viewModel.addAiMemoryItem(snippet)
+                                        Toast.makeText(context, "🧠 এআই মেমোরিতে সংরক্ষিত হয়েছে!", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Text(
+                                    text = "🧠 মেমোরি",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
+
+                            // Copy
+                            IconButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("AI Response", rawContent))
+                                    Toast.makeText(context, "কপি করা হয়েছে", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.ContentCopy,
+                                    contentDescription = "Copy",
+                                    tint = textMuted,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+                    }
+
                     // PARSED STRUCTURED CONTENT BLOCKS
                     val parsedBlocks = remember(rawContent) { parseMarkdownBlocks(rawContent) }
                     Column(

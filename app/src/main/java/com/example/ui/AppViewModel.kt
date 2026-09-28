@@ -27,6 +27,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 import com.example.data.remote.OpenRouterClient
 import com.example.data.remote.GeminiClient
+import com.example.data.remote.GeminiLiveSessionManager
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.messaging.FirebaseMessaging
 import okhttp3.MediaType.Companion.toMediaType
@@ -657,8 +658,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (_merchantApiKey.value.isNotBlank()) {
                     conn.setRequestProperty("x-api-key", _merchantApiKey.value)
                 }
-                if (active?.authSessionToken?.isNotBlank() == true) {
-                    conn.setRequestProperty("Authorization", "Bearer ${active.authSessionToken}")
+                val platformToken = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
+                if (platformToken.isNotBlank()) {
+                    conn.setRequestProperty("Authorization", "Bearer $platformToken")
                 }
                 conn.doOutput = true
                 conn.connectTimeout = 5000
@@ -784,8 +786,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         if (_merchantApiKey.value.isNotBlank()) {
                             setRequestProperty("x-api-key", _merchantApiKey.value)
                         }
-                        val token = _activeSupabaseProfile.value?.authSessionToken
-                        if (!token.isNullOrBlank()) {
+                        val token = resolvePlatformAuthToken().ifBlank { _activeSupabaseProfile.value?.authSessionToken.orEmpty() }
+                        if (token.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $token")
                         }
                     }
@@ -895,6 +897,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val candidateBases = listOf("https://api.swapnopay.top", "https://swapnopay.top", "https://pay.swapnopay.top")
                 var fetchedKey: String? = null
                 var fetchedPreview: String? = null
+                val token = resolvePlatformAuthToken()
 
                 for (backendBase in candidateBases) {
                     try {
@@ -905,9 +908,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             reqBuilder.header("x-device-id", devId)
                             reqBuilder.header("x-merchant-id", merchantId)
                         }
-                        val token = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
-                            ?: _sessionInfo.value.token?.takeIf { it.isNotBlank() }
-                        if (!token.isNullOrBlank()) reqBuilder.header("Authorization", "Bearer $token")
+                        if (_merchantApiKey.value.isNotBlank()) {
+                            reqBuilder.header("x-api-key", _merchantApiKey.value)
+                        }
+                        if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
 
                         webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
                             val bodyStr = response.body?.string()
@@ -930,12 +934,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (!fetchedKey.isNullOrBlank()) {
+                    val keyChanged = _merchantApiKey.value != fetchedKey
                     _merchantApiKey.value = fetchedKey!!
                     _merchantApiKeyPreview.value = fetchedPreview ?: (fetchedKey!!.take(14) + "****")
                     securityPrefs.edit()
                         .putString("merchant_api_key", fetchedKey)
                         .putString("merchant_api_key_preview", _merchantApiKeyPreview.value)
                         .apply()
+                    if (keyChanged && hostedFormsList.value.isNotEmpty()) {
+                        syncAllCachedFormsToVps()
+                    }
                 } else if (_merchantApiKey.value.isBlank()) {
                     val cached = securityPrefs.getString("merchant_api_key", "") ?: ""
                     if (cached.isNotBlank()) {
@@ -965,6 +973,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 var resultKey = ""
                 var resultPreview = ""
                 var lastErrMsg = "Failed to regenerate API key"
+                val token = resolvePlatformAuthToken()
 
                 for (backendBase in candidateBases) {
                     try {
@@ -974,9 +983,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             reqBuilder.header("x-device-id", devId)
                             reqBuilder.header("x-merchant-id", merchantId)
                         }
-                        val token = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
-                            ?: _sessionInfo.value.token?.takeIf { it.isNotBlank() }
-                        if (!token.isNullOrBlank()) reqBuilder.header("Authorization", "Bearer $token")
+                        if (_merchantApiKey.value.isNotBlank()) {
+                            reqBuilder.header("x-api-key", _merchantApiKey.value)
+                        }
+                        if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
 
                         webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
                             val bodyStr = response.body?.string()
@@ -1009,17 +1019,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         onResult(true, "Dynamic API Key regenerated successfully!")
                     }
                 } else {
-                    // Fallback to local cryptographic regeneration if network blocked
-                    val localRegen = "sp_live_" + java.util.UUID.randomUUID().toString().replace("-", "")
-                    val localPrev = localRegen.take(14) + "****"
-                    _merchantApiKey.value = localRegen
-                    _merchantApiKeyPreview.value = localPrev
-                    securityPrefs.edit()
-                        .putString("merchant_api_key", localRegen)
-                        .putString("merchant_api_key_preview", localPrev)
-                        .apply()
                     withContext(Dispatchers.Main) {
-                        onResult(true, "Dynamic API Key regenerated and saved securely!")
+                        onResult(false, lastErrMsg)
                     }
                 }
             } catch (e: Exception) {
@@ -2496,6 +2497,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .build()
     private val platformSessionMutex = kotlinx.coroutines.sync.Mutex()
 
+    private suspend fun resolvePlatformAuthToken(): String {
+        return try {
+            platformSessionMutex.withLock {
+                var profile = getOrCreatePlatformSupabaseProfile()
+                if (profile.authSessionToken.isNotBlank()) {
+                    if (profile.authRefreshToken.isNotBlank() && profile.authTokenExpiresAt in 1..(System.currentTimeMillis() + 60_000L)) {
+                        var refreshed: com.example.data.remote.SupabaseClient.AuthSession? = null
+                        com.example.data.remote.SupabaseClient.refreshSession(
+                            profile.supabaseUrl,
+                            profile.anonKey,
+                            profile.authRefreshToken,
+                            onSuccess = { refreshed = it },
+                            onFailure = {}
+                        )
+                        if (refreshed != null) {
+                            profile = profile.copy(
+                                authSessionToken = refreshed!!.accessToken,
+                                authRefreshToken = refreshed!!.refreshToken,
+                                authTokenExpiresAt = refreshed!!.expiresAtMillis,
+                                authEmail = refreshed!!.email.ifBlank { profile.authEmail }
+                            )
+                            repository.insertSupabaseProfile(profile)
+                            if (_activeSupabaseProfile.value?.id == profile.id) {
+                                _activeSupabaseProfile.value = profile
+                            }
+                        }
+                    }
+                    return@withLock profile.authSessionToken
+                }
+                val activeToken = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
+                if (activeToken != null) return@withLock activeToken
+                ""
+            }
+        } catch (_: Exception) {
+            _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() } ?: ""
+        }
+    }
+
     private suspend fun platformRequest(path: String, payload: org.json.JSONObject? = null): org.json.JSONObject {
         val token = platformSessionMutex.withLock {
             var profile = getOrCreatePlatformSupabaseProfile()
@@ -2748,9 +2787,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         startObservingPaymentFormsCache()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val token = resolvePlatformAuthToken()
                 val conn = java.net.URL("https://api.swapnopay.top/v1/forms?merchant_id=${restored.id}").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 6000
                 conn.readTimeout = 6000
+                conn.setRequestProperty("Accept", "application/json")
+                conn.setRequestProperty("x-merchant-id", restored.id)
+                conn.setRequestProperty("x-device-id", installationId)
+                if (_merchantApiKey.value.isNotBlank()) {
+                    conn.setRequestProperty("x-api-key", _merchantApiKey.value)
+                }
+                if (token.isNotBlank()) {
+                    conn.setRequestProperty("Authorization", "Bearer $token")
+                }
                 if (conn.responseCode in 200..299) {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val arr = org.json.JSONArray(body)
@@ -5785,6 +5834,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             payload = org.json.JSONObject().put("status", "DRAFT")
                         )
                     }
+                    val platformToken = resolvePlatformAuthToken().ifBlank { active.authSessionToken }
                     val candidateRouters = listOf(
                         hostedFormRouterOrigin,
                         "https://swapnopay.top",
@@ -5794,7 +5844,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     for (origin in candidateRouters) {
                         com.example.data.remote.SupabaseClient.unregisterHostedFormRoute(
                             routerBaseUrl = origin,
-                            token = active.authSessionToken,
+                            token = platformToken,
+                            apiKey = _merchantApiKey.value,
+                            merchantId = activeProfile.value.id,
+                            deviceId = installationId,
                             formId = targetId
                         )
                     }
@@ -5847,6 +5900,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // Unregister route from all candidate routers
+                val platformToken = resolvePlatformAuthToken().ifBlank { active.authSessionToken }
                 val candidateRouters = listOf(
                     hostedFormRouterOrigin,
                     "https://swapnopay.top",
@@ -5856,7 +5910,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 for (origin in candidateRouters) {
                     com.example.data.remote.SupabaseClient.unregisterHostedFormRoute(
                         routerBaseUrl = origin,
-                        token = active.authSessionToken,
+                        token = platformToken,
+                        apiKey = _merchantApiKey.value,
+                        merchantId = activeProfile.value.id,
+                        deviceId = installationId,
                         formId = targetId
                     )
                 }
@@ -5895,7 +5952,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         hostedFormRouteStatus.update { it + (form.id to "PENDING") }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val active = if (configuredProfile != null) validSupabaseSession(configuredProfile) else null
-            val token = active?.authSessionToken ?: ""
+            val token = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
             val payloadJson = hostedFormToJson(form)
             val candidateRouters = listOf(
                 "https://swapnopay.top",
@@ -5914,6 +5971,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     formId = form.id,
                     formSlug = form.slug,
                     merchantId = activeProfile.value.id,
+                    apiKey = _merchantApiKey.value,
+                    deviceId = installationId,
                     payloadJson = payloadJson,
                     onSuccess = { publicUrl -> completion.complete(true to publicUrl) },
                     onFailure = { message -> completion.complete(false to message) }
@@ -5939,6 +5998,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun syncAllCachedFormsToVps() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val configuredProfile = _activeSupabaseProfile.value
+                val fallbackUrl = PLATFORM_SUPABASE_URL
+                val fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
+                val projectUrl = configuredProfile?.supabaseUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
+                val publishableKey = configuredProfile?.anonKey?.ifBlank { fallbackKey } ?: fallbackKey
+                val active = if (configuredProfile != null) validSupabaseSession(configuredProfile) else null
+                val token = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
+
                 val cachedForms = repository.observePaymentFormCache(activeProfile.value.id).firstOrNull().orEmpty()
                 for (cached in cachedForms) {
                     try {
@@ -5954,12 +6021,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             val completion = kotlinx.coroutines.CompletableDeferred<Pair<Boolean, String>>()
                             com.example.data.remote.SupabaseClient.registerHostedFormRoute(
                                 routerBaseUrl = origin,
-                                projectUrl = PLATFORM_SUPABASE_URL,
-                                publishableKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0",
-                                token = "",
+                                projectUrl = projectUrl,
+                                publishableKey = publishableKey,
+                                token = token,
                                 formId = fId,
                                 formSlug = fSlug,
                                 merchantId = activeProfile.value.id,
+                                apiKey = _merchantApiKey.value,
+                                deviceId = installationId,
                                 payloadJson = json,
                                 onSuccess = { publicUrl -> completion.complete(true to publicUrl) },
                                 onFailure = { message -> completion.complete(false to message) }
@@ -7131,17 +7200,26 @@ function executePayment() {
     // ── Enterprise SMS Gateway & Campaign State ──
     private val _gatewayApiKey = MutableStateFlow(
         getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
-            .getString("api_key", null) ?: "sp_gw_${java.util.UUID.randomUUID().toString().replace("-", "").take(24)}".also {
-                getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
-                    .edit().putString("api_key", it).apply()
+            .getString("api_key", null) ?: run {
+                val mId = try { activeProfile.value.id.ifBlank { "default" } } catch (_: Exception) { "default" }
+                "sp_gw_m_${mId}_${java.util.UUID.randomUUID().toString().replace("-", "").take(16)}".also {
+                    getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+                        .edit().putString("api_key", it).apply()
+                }
             }
     )
     val gatewayApiKey: StateFlow<String> = _gatewayApiKey.asStateFlow()
 
-    private val _isGatewayActive = MutableStateFlow(true)
+    private val _isGatewayActive = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getBoolean("gateway_active", true)
+    )
     val isGatewayActive: StateFlow<Boolean> = _isGatewayActive.asStateFlow()
 
-    private val _selectedSimSlot = MutableStateFlow(0)
+    private val _selectedSimSlot = MutableStateFlow(
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .getInt("selected_sim_slot", 0)
+    )
     val selectedSimSlot: StateFlow<Int> = _selectedSimSlot.asStateFlow()
 
     private val _availableSimCards = MutableStateFlow<List<com.example.service.SimCardInfo>>(emptyList())
@@ -7196,6 +7274,11 @@ function executePayment() {
 
     fun setGatewayActive(active: Boolean) {
         _isGatewayActive.value = active
+        getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("gateway_active", active).apply()
+        if (active) {
+            syncGatewayPendingJobsNow()
+        }
     }
 
     fun setAutoPosReceiptEnabled(enabled: Boolean) {
@@ -7223,10 +7306,273 @@ function executePayment() {
     }
 
     fun generateNewGatewayApiKey() {
-        val newKey = "sp_gw_${java.util.UUID.randomUUID().toString().replace("-", "").take(24)}"
+        val mId = activeProfile.value.id.ifBlank { "default" }
+        val newKey = "sp_gw_m_${mId}_${java.util.UUID.randomUUID().toString().replace("-", "").take(16)}"
         getApplication<Application>().getSharedPreferences("sms_gateway_prefs", Context.MODE_PRIVATE)
             .edit().putString("api_key", newKey).apply()
         _gatewayApiKey.value = newKey
+    }
+
+    @Volatile
+    private var lastLocalTestOtpCode: String? = null
+    @Volatile
+    private var lastLocalTestOtpPhone: String? = null
+
+    fun syncGatewayPendingJobsNow(onResult: (Int, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val app = getApplication<Application>()
+                val merchantId = activeProfile.value.id
+                val apiKey = _gatewayApiKey.value
+                val slot = _selectedSimSlot.value
+                val count = com.example.service.SmsGatewayEngine.syncExternalGatewayJobs(
+                    context = app,
+                    merchantId = merchantId,
+                    apiKey = apiKey
+                )
+                if (count > 0 || _isGatewayActive.value) {
+                    com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                        context = app,
+                        merchantId = merchantId,
+                        throttleDelayMs = smsThrottleDelayMs.value
+                    )
+                }
+                val msg = if (count > 0) {
+                    "Synced $count pending SMS job(s) from cloud & dispatching via SIM ${slot + 1}"
+                } else {
+                    "Cloud queue synced (0 pending jobs in cloud)"
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(count, msg)
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(0, "Sync error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun sendGatewayTestOtp(
+        phone: String,
+        useCloudApi: Boolean = true,
+        onResult: (Boolean, String, String?) -> Unit
+    ) {
+        val cleaned = phone.trim().replace(Regex("[\\s\\-()]"), "")
+        if (!cleaned.matches(Regex("^(\\+?8801|01)[3-9]\\d{8}$")) && !cleaned.matches(Regex("^\\+?[0-9]{10,15}$"))) {
+            onResult(false, "Invalid phone number. Use 01XXXXXXXXX format.", null)
+            return
+        }
+
+        val normalizedPhone = when {
+            cleaned.startsWith("+8801") && cleaned.length == 14 -> cleaned.substring(3)
+            cleaned.startsWith("8801") && cleaned.length == 13 -> cleaned.substring(2)
+            else -> cleaned
+        }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val merchantId = activeProfile.value.id
+            val storeName = activeProfile.value.businessName.ifBlank { "SwapnoPay" }
+            val apiKey = _gatewayApiKey.value
+            val slot = _selectedSimSlot.value
+            val generatedOtp = (100000..999999).random().toString()
+
+            lastLocalTestOtpCode = generatedOtp
+            lastLocalTestOtpPhone = normalizedPhone
+
+            val candidateHosts = listOf(
+                "https://api.swapnopay.top",
+                "https://pay.swapnopay.top",
+                "http://10.0.2.2:4000",
+                "http://localhost:4000"
+            )
+
+            if (useCloudApi) {
+                var cloudSuccess = false
+                var returnedOtp = generatedOtp
+
+                for (baseUrl in candidateHosts) {
+                    try {
+                        val url = java.net.URL("${baseUrl.trimEnd('/')}/v1/sms-gateway/send-otp")
+                        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                            requestMethod = "POST"
+                            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                            setRequestProperty("X-API-Key", apiKey)
+                            setRequestProperty("X-Gateway-Key", apiKey)
+                            setRequestProperty("X-Merchant-Id", merchantId)
+                            connectTimeout = 6000
+                            readTimeout = 6000
+                            doOutput = true
+                        }
+                        val payload = org.json.JSONObject().apply {
+                            put("phone", normalizedPhone)
+                            put("brand_name", storeName)
+                            put("otp_length", 6)
+                            put("expiry_seconds", 300)
+                            put("sim_slot", slot + 1)
+                            put("is_test", true)
+                            put("test_otp_code", generatedOtp)
+                        }
+                        conn.outputStream.use { os ->
+                            os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                        }
+
+                        val code = conn.responseCode
+                        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                            ?.bufferedReader()?.readText().orEmpty()
+                        conn.disconnect()
+
+                        if (code in 200..299 && body.isNotBlank()) {
+                            val json = org.json.JSONObject(body)
+                            if (json.optBoolean("ok", false) || json.optBoolean("success", false)) {
+                                returnedOtp = json.optString("test_otp_code", generatedOtp).ifBlank { generatedOtp }
+                                lastLocalTestOtpCode = returnedOtp
+                                cloudSuccess = true
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("AppViewModel", "Cloud test OTP failed on $baseUrl: ${e.message}")
+                    }
+                }
+
+                if (cloudSuccess) {
+                    val synced = com.example.service.SmsGatewayEngine.syncExternalGatewayJobs(
+                        context = app,
+                        merchantId = merchantId,
+                        apiKey = apiKey
+                    )
+                    com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                        context = app,
+                        merchantId = merchantId,
+                        throttleDelayMs = smsThrottleDelayMs.value
+                    )
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(
+                            true,
+                            "Cloud Test OTP ($returnedOtp) queued & synced ($synced job) -> SIM ${slot + 1} ($normalizedPhone)",
+                            returnedOtp
+                        )
+                    }
+                    return@launch
+                }
+            }
+
+            // Direct SIM dispatch (or fallback if cloud unreachable)
+            try {
+                val messageBody = "[$storeName] Your Test verification OTP is $generatedOtp. Valid for 5 minutes. Do not share this code."
+                val entity = OutboxSmsEntity(
+                    merchantId = merchantId,
+                    recipientPhone = normalizedPhone,
+                    messageText = messageBody,
+                    smsType = "GATEWAY_OTP",
+                    simSlot = slot,
+                    status = "QUEUED",
+                    partsCount = (messageBody.length / 160) + 1
+                )
+                repository.queueOutboxSms(entity)
+                com.example.service.SmsGatewayEngine.startOutboxQueueProcessor(
+                    context = app,
+                    merchantId = merchantId,
+                    throttleDelayMs = smsThrottleDelayMs.value
+                )
+                val modeLabel = if (useCloudApi) "Local SIM Fallback (Cloud offline)" else "Direct SIM ${slot + 1}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(
+                        true,
+                        "Test OTP ($generatedOtp) queued via $modeLabel to $normalizedPhone",
+                        generatedOtp
+                    )
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(false, "Failed to dispatch Test OTP: ${e.message}", null)
+                }
+            }
+        }
+    }
+
+    fun verifyGatewayTestOtp(
+        phone: String,
+        otpCode: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val cleanedPhone = phone.trim().replace(Regex("[\\s\\-()]"), "").let {
+            when {
+                it.startsWith("+8801") && it.length == 14 -> it.substring(3)
+                it.startsWith("8801") && it.length == 13 -> it.substring(2)
+                else -> it
+            }
+        }
+        val cleanedCode = otpCode.trim()
+        if (cleanedCode.length < 4) {
+            onResult(false, "Enter a valid OTP code to verify.")
+            return
+        }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val apiKey = _gatewayApiKey.value
+            val merchantId = activeProfile.value.id
+            val candidateHosts = listOf(
+                "https://api.swapnopay.top",
+                "https://pay.swapnopay.top",
+                "http://10.0.2.2:4000",
+                "http://localhost:4000"
+            )
+
+            for (baseUrl in candidateHosts) {
+                try {
+                    val url = java.net.URL("${baseUrl.trimEnd('/')}/v1/sms-gateway/verify-otp")
+                    val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                        setRequestProperty("X-API-Key", apiKey)
+                        setRequestProperty("X-Gateway-Key", apiKey)
+                        setRequestProperty("X-Merchant-Id", merchantId)
+                        connectTimeout = 5000
+                        readTimeout = 5000
+                        doOutput = true
+                    }
+                    val payload = org.json.JSONObject().apply {
+                        put("phone", cleanedPhone)
+                        put("code", cleanedCode)
+                    }
+                    conn.outputStream.use { os ->
+                        os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                    }
+                    val code = conn.responseCode
+                    val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.readText().orEmpty()
+                    conn.disconnect()
+
+                    if (body.isNotBlank()) {
+                        val json = org.json.JSONObject(body)
+                        if (json.optBoolean("verified", false)) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                onResult(true, json.optString("message", "OTP verified via Cloud API!"))
+                            }
+                            return@launch
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+
+            // Fallback to local test OTP verification if direct SIM mode was used
+            if (lastLocalTestOtpCode != null && lastLocalTestOtpCode == cleanedCode &&
+                (lastLocalTestOtpPhone == null || lastLocalTestOtpPhone == cleanedPhone)
+            ) {
+                lastLocalTestOtpCode = null
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(true, "OTP verified locally (Direct SIM Test OTP match)!")
+                }
+            } else {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(false, "Invalid or expired OTP code for $cleanedPhone.")
+                }
+            }
+        }
     }
 
     fun sendDueReminderSms(
@@ -9569,6 +9915,7 @@ function executePayment() {
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", supplier.id)
+                    put("merchant_id", supplier.merchantId)
                     put("name", supplier.name)
                     put("phone", supplier.phone)
                     put("code", supplier.code)
@@ -9675,14 +10022,17 @@ function executePayment() {
                 try {
                     val base64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
                     val jsonPayload = org.json.JSONObject().apply {
+                        put("merchant_id", getEffectiveMerchantUuid())
                         put("image", "data:image/jpeg;base64,$base64")
                         put("filename", "logo_${merchantId}_${System.currentTimeMillis()}.jpg")
                     }
                     val body = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                    val endpoints = listOf(
+                    val customBase = controlPlaneUrl.value.trim().trimEnd('/').takeIf { it.isNotBlank() }
+                    val endpoints = listOfNotNull(
+                        customBase?.let { "$it/v1/forms/upload-image" },
                         "https://api.swapnopay.top/v1/forms/upload-image",
                         "https://swapnopay.top/v1/forms/upload-image"
-                    )
+                    ).distinct()
                     val client = okhttp3.OkHttpClient.Builder()
                         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -9690,7 +10040,7 @@ function executePayment() {
                         .build()
                     for (endpoint in endpoints) {
                         try {
-                            val request = okhttp3.Request.Builder().url(endpoint).post(body).build()
+                            val request = buildWebShopRequest(endpoint).post(body).build()
                             val response = client.newCall(request).execute()
                             val responseBody = response.body?.string().orEmpty()
                             if (response.isSuccessful) {
@@ -9707,7 +10057,7 @@ function executePayment() {
                     android.util.Log.w("AppViewModel", "Logo upload to CDN error: ${e.message}")
                 }
 
-                val finalPhotoUrl = publicUrl ?: "data:image/jpeg;base64,${android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)}"
+                val finalPhotoUrl = publicUrl ?: encodeCompactDataImageUri(imageBytes)
                 val updatedProfile = _activeProfile.value.copy(photoUrl = finalPhotoUrl)
                 repository.insertMerchantProfile(updatedProfile)
                 _activeProfile.value = updatedProfile
@@ -10132,6 +10482,7 @@ function executePayment() {
     private fun syncEmployeeToSupabase(item: EmployeeItem) {
         val json = org.json.JSONObject().apply {
             put("id", item.id)
+            put("merchant_id", activeProfile.value.id)
             put("name", item.name)
             put("designation", item.designation)
             put("role", item.role)
@@ -10277,6 +10628,7 @@ function executePayment() {
                 for (cust in customersList) {
                     val json = org.json.JSONObject().apply {
                         put("id", cust.id)
+                        put("merchant_id", cust.merchantId.ifBlank { merchantId })
                         put("name", cust.name)
                         put("phone", cust.phone)
                         put("email", cust.email ?: org.json.JSONObject.NULL)
@@ -10301,6 +10653,7 @@ function executePayment() {
                 for (sup in suppliersList) {
                     val json = org.json.JSONObject().apply {
                         put("id", sup.id)
+                        put("merchant_id", sup.merchantId.ifBlank { merchantId })
                         put("name", sup.name)
                         put("phone", sup.phone)
                         put("email", sup.email ?: org.json.JSONObject.NULL)
@@ -10324,6 +10677,7 @@ function executePayment() {
                 for (p in productsList) {
                     val json = org.json.JSONObject().apply {
                         put("id", p.id)
+                        put("merchant_id", p.merchantId.ifBlank { merchantId })
                         put("name", p.name)
                         put("code", p.code ?: org.json.JSONObject.NULL)
                         put("category", p.category ?: "General")
@@ -10352,6 +10706,7 @@ function executePayment() {
                 for (variant in variants) {
                     val json = org.json.JSONObject().apply {
                         put("id", variant.id)
+                        put("merchant_id", variant.merchantId.ifBlank { merchantId })
                         put("product_id", variant.productId)
                         put("variant_name", variant.variantName)
                         put("supplier_id", variant.supplierId ?: org.json.JSONObject.NULL)
@@ -10376,6 +10731,7 @@ function executePayment() {
                 for (movement in movements) {
                     val json = org.json.JSONObject().apply {
                         put("id", movement.id)
+                        put("merchant_id", movement.merchantId.ifBlank { merchantId })
                         put("product_id", movement.productId)
                         put("variant_id", movement.variantId ?: org.json.JSONObject.NULL)
                         put("type", movement.type)
@@ -10401,6 +10757,7 @@ function executePayment() {
                 for (tx in txList) {
                     val json = org.json.JSONObject().apply {
                         put("id", tx.id)
+                        put("merchant_id", tx.merchantId.ifBlank { merchantId })
                         put("customer_id", tx.customerId ?: org.json.JSONObject.NULL)
                         put("supplier_id", tx.supplierId ?: org.json.JSONObject.NULL)
                         put("type", tx.type)
@@ -10425,6 +10782,7 @@ function executePayment() {
                 for (s in salesList) {
                     val json = org.json.JSONObject().apply {
                         put("id", s.id)
+                        put("merchant_id", s.merchantId.ifBlank { merchantId })
                         put("invoice_no", s.invoiceNo)
                         put("customer_name", s.customerName)
                         put("customer_phone", s.customerPhone)
@@ -10455,6 +10813,7 @@ function executePayment() {
                 for (exp in expList) {
                     val json = org.json.JSONObject().apply {
                         put("id", exp.id)
+                        put("merchant_id", exp.merchantId.ifBlank { merchantId })
                         put("category", exp.category)
                         put("amount", exp.amount)
                         put("date", toIsoTimestamp(exp.date))
@@ -10486,6 +10845,7 @@ function executePayment() {
                 businessAnalytics.value?.let { analytics ->
                     val json = org.json.JSONObject().apply {
                         put("id", analytics.id)
+                        put("merchant_id", analytics.merchantId.ifBlank { merchantId })
                         put("total_revenue", analytics.totalRevenue)
                         put("cash_received", analytics.cashReceived)
                         put("total_dues", analytics.totalDues)
@@ -10509,6 +10869,7 @@ function executePayment() {
                 for (emp in empList) {
                     val json = org.json.JSONObject().apply {
                         put("id", emp.id)
+                        put("merchant_id", merchantId)
                         put("name", emp.name)
                         put("designation", emp.designation)
                         put("role", emp.role)
@@ -10649,14 +11010,19 @@ function executePayment() {
 
             // 2. Central VPS Router query: GET https://api.swapnopay.top/v1/forms?merchant_id=${activeProfile.value.id}
             try {
+                val platformToken = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
                 val vpsUrl = "https://api.swapnopay.top/v1/forms?merchant_id=${activeProfile.value.id}"
                 val conn = java.net.URL(vpsUrl).openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
                 conn.setRequestProperty("Accept", "application/json")
                 conn.setRequestProperty("x-merchant-id", activeProfile.value.id)
-                if (active?.authSessionToken?.isNotBlank() == true) {
-                    conn.setRequestProperty("Authorization", "Bearer ${active.authSessionToken}")
+                conn.setRequestProperty("x-device-id", installationId)
+                if (_merchantApiKey.value.isNotBlank()) {
+                    conn.setRequestProperty("x-api-key", _merchantApiKey.value)
+                }
+                if (platformToken.isNotBlank()) {
+                    conn.setRequestProperty("Authorization", "Bearer $platformToken")
                 }
                 if (conn.responseCode in 200..299) {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
@@ -10701,45 +11067,47 @@ function executePayment() {
                 .orEmpty().filter(FormSubmissionCacheEntity::isDirty).mapTo(mutableSetOf(), FormSubmissionCacheEntity::id)
 
             // 1. If merchant has custom Supabase DB configured, query it
-            if (configuredProfile != null && configuredProfile.supabaseUrl.isNotEmpty() && configuredProfile.anonKey.isNotEmpty()) {
-                val active = validSupabaseSession(configuredProfile)
-                if (active != null) {
-                    com.example.data.remote.SupabaseClient.fetchFormSubmissions(
-                        url = active.supabaseUrl,
-                        anonKey = active.anonKey,
-                        token = active.authSessionToken,
-                        formId = targetFormId,
-                        onSuccess = { jsonArray ->
-                            val cache = mutableListOf<FormSubmissionCacheEntity>()
-                            for (i in 0 until jsonArray.length()) {
-                                val item = jsonArray.getJSONObject(i)
-                                val subId = item.optString("id", java.util.UUID.randomUUID().toString())
-                                if (subId in dirtyIds) continue
-                                cache.add(
-                                    FormSubmissionCacheEntity(
-                                        id = subId,
-                                        merchantId = activeProfile.value.id,
-                                        formId = item.optString("form_id", targetFormId).ifBlank { targetFormId },
-                                        payloadJson = item.toString(),
-                                        submittedAt = parseRemoteTimestamp(item.optString("submitted_at", item.optString("created_at"))),
-                                        isDirty = false
-                                    )
+            val activeCustom = if (configuredProfile != null && configuredProfile.supabaseUrl.isNotEmpty() && configuredProfile.anonKey.isNotEmpty()) {
+                validSupabaseSession(configuredProfile)
+            } else null
+
+            if (activeCustom != null) {
+                com.example.data.remote.SupabaseClient.fetchFormSubmissions(
+                    url = activeCustom.supabaseUrl,
+                    anonKey = activeCustom.anonKey,
+                    token = activeCustom.authSessionToken,
+                    formId = targetFormId,
+                    onSuccess = { jsonArray ->
+                        val cache = mutableListOf<FormSubmissionCacheEntity>()
+                        for (i in 0 until jsonArray.length()) {
+                            val item = jsonArray.getJSONObject(i)
+                            val subId = item.optString("id", java.util.UUID.randomUUID().toString())
+                            if (subId in dirtyIds) continue
+                            cache.add(
+                                FormSubmissionCacheEntity(
+                                    id = subId,
+                                    merchantId = activeProfile.value.id,
+                                    formId = item.optString("form_id", targetFormId).ifBlank { targetFormId },
+                                    payloadJson = item.toString(),
+                                    submittedAt = parseRemoteTimestamp(item.optString("submitted_at", item.optString("created_at"))),
+                                    isDirty = false
                                 )
-                            }
-                            if (cache.isNotEmpty()) {
-                                viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    repository.upsertFormSubmissionCaches(cache)
-                                }
-                            }
-                        },
-                        onFailure = { err ->
-                            logFirebaseStatus("Notice loading merchant DB submissions: $err")
+                            )
                         }
-                    )
-                }
+                        if (cache.isNotEmpty()) {
+                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                repository.upsertFormSubmissionCaches(cache)
+                            }
+                        }
+                    },
+                    onFailure = { err ->
+                        logFirebaseStatus("Notice loading merchant DB submissions: $err")
+                    }
+                )
             }
 
             // 2. Query SwapnoPay Central Gateway & disk fallback (query by ID and Slug)
+            val platformToken = resolvePlatformAuthToken().ifBlank { activeCustom?.authSessionToken.orEmpty() }
             val endpoints = mutableListOf(
                 "https://api.swapnopay.top/v1/forms/$targetFormId/submissions",
                 "https://swapnopay.top/v1/forms/$targetFormId/submissions"
@@ -10752,7 +11120,15 @@ function executePayment() {
                 try {
                     val conn = java.net.URL(endpoint).openConnection() as java.net.HttpURLConnection
                     conn.requestMethod = "GET"
+                    conn.setRequestProperty("Accept", "application/json")
                     conn.setRequestProperty("x-merchant-id", activeProfile.value.id)
+                    conn.setRequestProperty("x-device-id", installationId)
+                    if (_merchantApiKey.value.isNotBlank()) {
+                        conn.setRequestProperty("x-api-key", _merchantApiKey.value)
+                    }
+                    if (platformToken.isNotBlank()) {
+                        conn.setRequestProperty("Authorization", "Bearer $platformToken")
+                    }
                     conn.connectTimeout = 8000
                     conn.readTimeout = 8000
                     if (conn.responseCode in 200..299) {
@@ -11046,44 +11422,48 @@ function executePayment() {
         for (index in 0 until length()) optJSONObject(index)?.let(block)
     }
 
+    suspend fun pullAllMerchantDataFromRemoteInternal(merchantId: String = activeProfile.value.id) {
+        try {
+            val effectiveMid = merchantId.ifBlank { activeProfile.value.id }
+            logFirebaseStatus("Pulling merchant data from cloud databases...")
+            // 1. Refresh merchant KYC status from backend and Supabase
+            refreshMerchantKycStatus()
+
+            // 2. Fetch payment forms and form submissions
+            fetchPaymentForms()
+            fetchFormSubmissions()
+
+            // 3. Pull merchant config and receiving numbers from SwapnoPay central backend
+            pullMerchantConfigFromBackendDirect(effectiveMid)
+
+            // 4. Pull business data from Supabase (customers, suppliers, products, ledgers, pos, etc.)
+            val rawTarget = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
+            val targetProfile = validSupabaseSession(rawTarget) ?: rawTarget
+            if (targetProfile.supabaseUrl.isNotBlank() && targetProfile.anonKey.isNotBlank()) {
+                pullAllBusinessDataFromSupabase(targetProfile, effectiveMid)
+            }
+
+            // 5. Also run repository sync routines as resilient fallbacks
+            repository.syncCustomersFromSupabase(effectiveMid)
+            repository.syncSuppliersFromSupabase(effectiveMid)
+            repository.syncProductsFromSupabase(effectiveMid)
+            repository.syncLedgerFromSupabase(effectiveMid)
+            repository.syncPosSalesFromSupabase(effectiveMid)
+            repository.syncMerchantNumbersFromSupabase(effectiveMid)
+            repository.syncOrdersFromSupabase(effectiveMid)
+            repository.syncPaymentsFromSupabase(effectiveMid)
+            repository.syncAppealsFromSupabase(effectiveMid)
+            repository.syncDevicesFromSupabase(effectiveMid)
+
+            logFirebaseStatus("Merchant data synchronization complete.")
+        } catch (e: Exception) {
+            logFirebaseStatus("Notice during merchant data pull: ${e.message}")
+        }
+    }
+
     fun pullAllMerchantDataFromRemote(merchantId: String = activeProfile.value.id) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val effectiveMid = merchantId.ifBlank { activeProfile.value.id }
-                logFirebaseStatus("Pulling merchant data from cloud databases...")
-                // 1. Refresh merchant KYC status from backend and Supabase
-                refreshMerchantKycStatus()
-
-                // 2. Fetch payment forms and form submissions
-                fetchPaymentForms()
-                fetchFormSubmissions()
-
-                // 3. Pull merchant config and receiving numbers from SwapnoPay central backend
-                pullMerchantConfigFromBackendDirect(effectiveMid)
-
-                // 4. Pull business data from Supabase (customers, suppliers, products, ledgers, pos, etc.)
-                val rawTarget = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-                val targetProfile = validSupabaseSession(rawTarget) ?: rawTarget
-                if (targetProfile.supabaseUrl.isNotBlank() && targetProfile.anonKey.isNotBlank()) {
-                    pullAllBusinessDataFromSupabase(targetProfile, effectiveMid)
-                }
-
-                // 5. Also run repository sync routines as resilient fallbacks
-                repository.syncCustomersFromSupabase(effectiveMid)
-                repository.syncSuppliersFromSupabase(effectiveMid)
-                repository.syncProductsFromSupabase(effectiveMid)
-                repository.syncLedgerFromSupabase(effectiveMid)
-                repository.syncPosSalesFromSupabase(effectiveMid)
-                repository.syncMerchantNumbersFromSupabase(effectiveMid)
-                repository.syncOrdersFromSupabase(effectiveMid)
-                repository.syncPaymentsFromSupabase(effectiveMid)
-                repository.syncAppealsFromSupabase(effectiveMid)
-                repository.syncDevicesFromSupabase(effectiveMid)
-
-                logFirebaseStatus("Merchant data synchronization complete.")
-            } catch (e: Exception) {
-                logFirebaseStatus("Notice during merchant data pull: ${e.message}")
-            }
+            pullAllMerchantDataFromRemoteInternal(merchantId)
         }
     }
 
@@ -11523,7 +11903,7 @@ function executePayment() {
             if (active != null) {
                 val payload = org.json.JSONObject().apply {
                     put("p_sale", org.json.JSONObject().apply {
-                        put("id", sale.id); put("invoice_no", sale.invoiceNo)
+                        put("id", sale.id); put("merchant_id", sale.merchantId); put("invoice_no", sale.invoiceNo)
                         put("customer_id", sale.customerId ?: org.json.JSONObject.NULL)
                         put("customer_name", sale.customerName); put("customer_phone", sale.customerPhone)
                         put("subtotal", sale.subtotal); put("discount", sale.discount); put("net_total", sale.netTotal)
@@ -11714,6 +12094,105 @@ function executePayment() {
         securityPrefs.edit().putString("ai_memory", memory).apply()
     }
 
+    fun getAiMemoryItems(): List<String> {
+        return _aiMemory.value
+            .lines()
+            .map { it.trim().removePrefix("- ").removePrefix("• ").trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    fun addAiMemoryItem(item: String) {
+        val clean = item.trim().removePrefix("- ").removePrefix("• ").trim()
+        if (clean.isEmpty()) return
+        val currentItems = getAiMemoryItems().toMutableList()
+        if (!currentItems.contains(clean)) {
+            currentItems.add(0, clean)
+            val joined = currentItems.joinToString("\n") { "• $it" }
+            updateAiMemory(joined)
+        }
+    }
+
+    fun removeAiMemoryItem(index: Int) {
+        val currentItems = getAiMemoryItems().toMutableList()
+        if (index in currentItems.indices) {
+            currentItems.removeAt(index)
+            val joined = currentItems.joinToString("\n") { "• $it" }
+            updateAiMemory(joined)
+        }
+    }
+
+    fun clearAiMemory() {
+        updateAiMemory("")
+    }
+
+    private val _latestAiVoiceResponse = MutableStateFlow<String?>(null)
+    val latestAiVoiceResponse: StateFlow<String?> = _latestAiVoiceResponse.asStateFlow()
+
+    val geminiLiveSession = com.example.data.remote.GeminiLiveSessionManager()
+
+    fun startGeminiLiveConversation() {
+        val liveSystemInstruction = """
+            You are "স্বপ্ন এআই (Swapno AI)", a warm, empathetic, deeply friendly, and intelligent real-time voice business partner for a retail merchant in Bangladesh.
+            You are speaking in a real-time native Gemini Live audio call.
+            Speak naturally, warmly, and concisely in conversational Bangla (using respectful words like "ভাইয়া/আপু", "অবশ্যই", "চিন্তা করবেন না", "মাশাআল্লাহ").
+            Keep spoken responses concise (1-3 sentences) so the live conversation flows naturally like a real phone call.
+            
+            Merchant's live business data snapshot:
+            ${getBusinessDataSnapshot()}
+            
+            [LONG-TERM AI MEMORY & MERCHANT PREFERENCES]
+            ${_aiMemory.value.ifBlank { "No custom preferences saved yet." }}
+            
+            You have real-time function tools:
+            - Call `add_customer_credit` when the merchant asks to record a customer due/credit sale (বাকি).
+            - Call `add_customer_payment` when the merchant asks to record a customer payment received (জমা/আদায়).
+            - Call `add_expense` when the merchant asks to record a shop expense (খরচ).
+            - Call `save_ai_memory` when the merchant asks you to remember a rule, note, or preference (মনে রাখবে).
+        """.trimIndent()
+
+        geminiLiveSession.startSession(
+            apiKey = _geminiApiKey.value,
+            systemInstruction = liveSystemInstruction,
+            onExecuteTool = { fnName, args, onResult ->
+                when (fnName) {
+                    "save_ai_memory" -> {
+                        val fact = args.optString("memory_fact", "").trim()
+                        if (fact.isNotBlank()) {
+                            addAiMemoryItem(fact)
+                            val msg = "🧠 মেমোরিতে সেভ হয়েছে: $fact"
+                            val updated = _aiChatHistory.value.toMutableList()
+                            updated.add(mapOf("role" to "assistant", "content" to "✅ [Gemini Live] $msg"))
+                            _aiChatHistory.value = updated
+                            saveOrUpdateCurrentChatSession()
+                            onResult(msg)
+                        } else {
+                            onResult("মেমোরি খালি ছিল")
+                        }
+                    }
+                    "add_customer_credit", "add_customer_payment", "add_expense" -> {
+                        val actionJson = JSONObject().apply {
+                            put("action", fnName)
+                            put("parameters", args)
+                        }.toString()
+                        executeCopilotAction(actionJson) { status ->
+                            val msg = "✅ $status"
+                            val updated = _aiChatHistory.value.toMutableList()
+                            updated.add(mapOf("role" to "assistant", "content" to "🎙️ [Gemini Live এন্ট্রি] $status"))
+                            _aiChatHistory.value = updated
+                            saveOrUpdateCurrentChatSession()
+                            onResult(msg)
+                        }
+                    }
+                    else -> onResult("Unknown tool: $fnName")
+                }
+            }
+        )
+    }
+
+    fun stopGeminiLiveConversation() {
+        geminiLiveSession.stopSession(resetLogs = false)
+    }
+
     private val _isAiThinking = MutableStateFlow(false)
     val isAiThinking: StateFlow<Boolean> = _isAiThinking.asStateFlow()
 
@@ -11729,8 +12208,8 @@ function executePayment() {
         val memoryLen = _aiMemory.value.length
         val historyLen = _aiChatHistory.value.size
         return when {
-            memoryLen > 1500 || historyLen > 20 -> "gemini-3-flash-preview"
-            memoryLen > 800 || historyLen > 10 -> "gemini-3.1-flash-lite"
+            memoryLen > 1500 || historyLen > 20 -> "gemini-2.5-flash"
+            memoryLen > 800 || historyLen > 10 -> "gemini-2.0-flash"
             else -> "gemini-2.5-flash"
         }
     }
@@ -11738,7 +12217,7 @@ function executePayment() {
     // AI Conversational Chat & Memory
     private val defaultCopilotGreeting = mapOf(
         "role" to "assistant",
-        "content" to "আসসালামু আলাইকুম! আমি আপনার ব্যবসা সহকারী এআই। আপনার লেজার খাতা, বেচাকেনা ও ঋণের হিসাব মেলাতে বা যেকোনো প্রশ্ন করতে বলুন।"
+        "content" to "আসসালামু আলাইকুম প্রিয় ভাই/বোন! 😊 আমি **স্বপ্ন এআই (Swapno AI)** — আপনার ব্যবসার বিশ্বস্ত ডিজিটাল বন্ধু।\n\nআপনি চাইলে আমার সাথে **সরাসরি ভয়েস চ্যাটে কথা বলতে পারেন**, **ভাউচার বা পণ্যের ছবি/ফাইল আপলোড** করতে পারেন, কিংবা **এআই মেমোরিতে** আপনার ব্যবসার বিশেষ নিয়ম সেভ করে রাখতে পারেন। আজ আপনার ব্যবসাকে কীভাবে সাহায্য করতে পারি?"
     )
 
     private val _currentSessionId = MutableStateFlow<String>(java.util.UUID.randomUUID().toString())
@@ -11954,6 +12433,7 @@ function executePayment() {
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", customer.id)
+                    put("merchant_id", customer.merchantId)
                     put("name", customer.name)
                     put("phone", customer.phone)
                     put("code", customer.code)
@@ -12004,6 +12484,7 @@ function executePayment() {
                 if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                     val json = org.json.JSONObject().apply {
                         put("id", customer.id)
+                        put("merchant_id", customer.merchantId)
                         put("name", customer.name)
                         put("phone", customer.phone)
                         put("code", customer.code)
@@ -12059,6 +12540,7 @@ function executePayment() {
                 if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                     val json = org.json.JSONObject().apply {
                         put("id", supplier.id)
+                        put("merchant_id", supplier.merchantId)
                         put("name", supplier.name)
                         put("phone", supplier.phone)
                         put("code", supplier.code)
@@ -12116,6 +12598,7 @@ function executePayment() {
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", tx.id)
+                    put("merchant_id", tx.merchantId)
                     put("customer_id", tx.customerId ?: org.json.JSONObject.NULL)
                     put("supplier_id", tx.supplierId ?: org.json.JSONObject.NULL)
                     put("type", tx.type)
@@ -12188,6 +12671,7 @@ function executePayment() {
             try {
                 val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                 val jsonPayload = org.json.JSONObject().apply {
+                    put("merchant_id", getEffectiveMerchantUuid())
                     put("image", "data:image/jpeg;base64,$base64")
                     put("filename", fileName)
                 }
@@ -12200,14 +12684,15 @@ function executePayment() {
 
                 val body = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
-                val endpoints = listOf(
+                val customBase = controlPlaneUrl.value.trim().trimEnd('/').takeIf { it.isNotBlank() }
+                val endpoints = listOfNotNull(
+                    customBase?.let { "$it/v1/forms/upload-image" },
                     "https://api.swapnopay.top/v1/forms/upload-image",
                     "https://swapnopay.top/v1/forms/upload-image"
-                )
+                ).distinct()
                 for (endpoint in endpoints) {
                     try {
-                        val request = okhttp3.Request.Builder()
-                            .url(endpoint)
+                        val request = buildWebShopRequest(endpoint)
                             .post(body)
                             .build()
 
@@ -12231,8 +12716,8 @@ function executePayment() {
                 logFirebaseStatus("uploadProductImageToBackend error: ${e.message}")
             }
 
-            // Universal offline fallback: inline Base64 data URI (displays in all browsers)
-            val base64Fallback = "data:image/jpeg;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
+            // Universal offline fallback: compact inline Base64 data URI (displays in Coil via resolveCoilImageModel and all browsers)
+            val base64Fallback = encodeCompactDataImageUri(bytes)
             withContext(Dispatchers.Main) {
                 onResult(true, "Saved as responsive image", base64Fallback)
             }
@@ -12260,6 +12745,16 @@ function executePayment() {
             return
         }
         val finalImage = imageUrl?.trim()?.ifBlank { null } ?: storefront.featuredImage?.preview
+        val effectiveStorefront = if (storefront.featuredImage == null && !finalImage.isNullOrBlank()) {
+            storefront.copy(
+                featuredImage = com.example.data.local.ProductMedia(
+                    reference = finalImage,
+                    url = if (finalImage.startsWith("http", ignoreCase = true)) finalImage else ""
+                )
+            )
+        } else {
+            storefront
+        }
         viewModelScope.launch {
             val normalizedCode = code?.trim()?.ifBlank { null } ?: "PRD-${System.currentTimeMillis() % 1000000}"
             if (repository.getProductByCode(normalizedCode, activeProfile.value.id) != null) {
@@ -12279,7 +12774,7 @@ function executePayment() {
                     costPrice = purchasePrice,
                     askingPrice = salePrice,
                     imageUrl = finalImage,
-                    storefrontDetailsJson = storefront.json().toString()
+                    storefrontDetailsJson = effectiveStorefront.json().toString()
                 )
                 val openingMovement = if (stock > 0.0) StockTransactionEntity(
                     merchantId = prod.merchantId, productId = prod.id, type = "in", quantity = stock,
@@ -12308,7 +12803,7 @@ function executePayment() {
                 costPrice = purchasePrice,
                 askingPrice = salePrice,
                 imageUrl = finalImage,
-                storefrontDetailsJson = storefront.json().toString()
+                storefrontDetailsJson = effectiveStorefront.json().toString()
             )
             val openingMovement = if (stock > 0.0) StockTransactionEntity(
                 merchantId = prod.merchantId, productId = prod.id, type = "in", quantity = stock,
@@ -12326,7 +12821,7 @@ function executePayment() {
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val payload = org.json.JSONObject().apply {
                     put("p_product", org.json.JSONObject().apply {
-                        put("id", prod.id); put("name", prod.name); put("code", prod.code ?: org.json.JSONObject.NULL)
+                        put("id", prod.id); put("merchant_id", prod.merchantId); put("name", prod.name); put("code", prod.code ?: org.json.JSONObject.NULL)
                         put("qr_code", prod.qrCode ?: org.json.JSONObject.NULL); put("category", prod.category ?: "General")
                         put("purchase_price", prod.purchasePrice); put("sale_price", prod.salePrice)
                         put("cost_price", prod.costPrice); put("asking_price", prod.askingPrice)
@@ -12394,6 +12889,7 @@ function executePayment() {
                 val payload = org.json.JSONObject().apply {
                     put("p_product", org.json.JSONObject().apply {
                         put("id", normalizedProduct.id)
+                        put("merchant_id", normalizedProduct.merchantId)
                         put("name", normalizedProduct.name)
                         put("code", normalizedProduct.code ?: org.json.JSONObject.NULL)
                         put("qr_code", normalizedProduct.qrCode ?: org.json.JSONObject.NULL)
@@ -12526,6 +13022,7 @@ function executePayment() {
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", exp.id)
+                    put("merchant_id", exp.merchantId)
                     put("category", exp.category)
                     put("amount", exp.amount)
                     put("date", toIsoTimestamp(exp.date))
@@ -12931,11 +13428,33 @@ function executePayment() {
         """.trimIndent()
     }
 
-    // AI Conversational Chat Engine with auto-switching
-    fun sendOpenRouterCopilotMessage(userInput: String) {
-        if (userInput.trim().isEmpty()) return
+    // AI Conversational Chat Engine with multimodal, memory & voice chat support
+    fun sendOpenRouterCopilotMessage(
+        userInput: String,
+        imageBase64: String? = null,
+        imageMimeType: String? = null,
+        attachmentName: String? = null,
+        onResponse: ((String) -> Unit)? = null
+    ) {
+        if (userInput.trim().isEmpty() && imageBase64.isNullOrBlank() && attachmentName.isNullOrBlank()) return
+        val effectiveInput = userInput.trim().ifEmpty {
+            if (!attachmentName.isNullOrBlank()) "আমি একটি ফাইল/ছবি পাঠিয়েছি ($attachmentName)। এটি বিশ্লেষণ করে বিস্তারিত জানান।"
+            else "এই ছবিটি বিশ্লেষণ করে আমার ব্যবসার জন্য প্রয়োজনীয় তথ্য ও হিসাব বের করে দিন।"
+        }
+
         val currentHistory = _aiChatHistory.value.toMutableList()
-        currentHistory.add(mapOf("role" to "user", "content" to userInput))
+        val userMsgMap = mutableMapOf(
+            "role" to "user",
+            "content" to effectiveInput
+        )
+        if (!imageBase64.isNullOrBlank()) {
+            userMsgMap["image_base64"] = imageBase64
+            userMsgMap["image_mime_type"] = imageMimeType ?: "image/jpeg"
+        }
+        if (!attachmentName.isNullOrBlank()) {
+            userMsgMap["attachment_name"] = attachmentName
+        }
+        currentHistory.add(userMsgMap)
         _aiChatHistory.value = currentHistory.toList()
         saveOrUpdateCurrentChatSession()
         
@@ -12944,21 +13463,30 @@ function executePayment() {
         logFirebaseStatus("Sending prompt to ${if (provider == "Google AI Studio") "Gemini" else "OpenRouter"} assistant...")
 
         viewModelScope.launch {
+            // Auto-extract memory if user explicitly says "মনে রাখবে" / "remember that"
+            val lowerInput = effectiveInput.lowercase()
+            if (lowerInput.contains("মনে রাখবে") || lowerInput.contains("মনে রেখো") || lowerInput.startsWith("remember ")) {
+                addAiMemoryItem(effectiveInput)
+            }
+
             val systemContext = """
-                You are a smart, friendly, encouraging, and helpful AI Business Copilot assisting a retail shop owner in Bangladesh.
-                You explain trends, list debtors, and answer questions politely.
-                Always write in a friendly, supportive tone, encouraging the merchant.
-                You can format responses beautifully in Markdown. You can suggest business summaries, forecasts, and recommendations.
+                You are "স্বপ্ন এআই (Swapno AI)", a warm, empathetic, deeply friendly, and intelligent AI Business Partner & Friend for a retail merchant in Bangladesh.
+                Speak like a trusted, caring business partner (using respectful and warm Bangla like "ভাইয়া/আপু", "চিন্তা করবেন না", "মাশাআল্লাহ", "অবশ্যই!").
+                You explain trends clearly, list debtors, analyze uploaded receipts/vouchers/photos/files, and answer questions with genuine warmth and encouragement.
+                You can format responses beautifully in Markdown.
                 
-                You have access to the merchant's business data snapshot:
+                You have access to the merchant's live business data snapshot:
                 ${getBusinessDataSnapshot()}
                 
-                Your memory of previous work and updates is:
-                ${_aiMemory.value}
+                [LONG-TERM AI MEMORY & MERCHANT PREFERENCES]
+                ${_aiMemory.value.ifBlank { "No custom preferences saved yet." }}
+                Always honor the merchant's saved memories and business rules above!
                 
-                If the user asks you to write data (like adding a credit, payment, expense, etc.), you MUST generate a text response explaining what you are doing, and append a structured JSON block enclosed within [ACTION_START] and [ACTION_END] tags.
+                If an image, receipt, voucher, or document is attached, carefully read all items, amounts, names, and dates from it, summarize clearly, and offer or generate the appropriate ledger/expense action block.
+                
+                If the user asks you to write data (like adding a credit, payment, expense, etc.), you MUST generate a warm text response explaining what you are doing, and append a structured JSON block enclosed within [ACTION_START] and [ACTION_END] tags.
                 Example for customer credit:
-                "অবশ্যই, আমি রহিমের জন্য ৫০০ টাকা বাকি লিখে রাখছি।"
+                "অবশ্যই ভাইয়া! আমি রহিম ভাইয়ের নামে ৫০০ টাকা চালের বাকি হিসাব খাতায় তুলে রাখছি। 😊"
                 [ACTION_START]
                 {
                   "action": "add_customer_credit",
@@ -12982,7 +13510,7 @@ function executePayment() {
                 - `add_expense` (params: expense_category, amount, description)
                 
                 Ensure the JSON is strictly valid, and do not put any text inside the [ACTION_START] and [ACTION_END] tags except the raw JSON.
-                Respond in Bangla (mixed with common English retail terms) or English depending on user's language choice. Keep responses encouraging and professional.
+                Respond in warm, natural Bangla (or English if the user writes in English).
             """.trimIndent()
 
             val messages = JSONArray()
@@ -12996,19 +13524,30 @@ function executePayment() {
                 messages.put(JSONObject().apply {
                     put("role", msg["role"])
                     put("content", msg["content"])
+                    val imgB64 = msg["image_base64"]
+                    if (!imgB64.isNullOrBlank()) {
+                        put("image_base64", imgB64)
+                        put("image_mime_type", msg["image_mime_type"] ?: "image/jpeg")
+                    }
                 })
             }
 
             suspend fun tryProvider(currentProvider: String, switched: Boolean) {
-                when (currentProvider) {
+                // Prefer Gemini automatically when an image/PDF is attached and Gemini API key is available
+                val effectiveProvider = if (!imageBase64.isNullOrBlank() && _geminiApiKey.value.isNotBlank() && !switched) {
+                    "Google AI Studio"
+                } else {
+                    currentProvider
+                }
+                when (effectiveProvider) {
                     "Google AI Studio" -> {
                         val model = if (switched) _selectedGeminiModel.value else getAutoSelectedGeminiModel()
                         GeminiClient.getChatCompletion(
-                        apiKey = _geminiApiKey.value,
+                            apiKey = _geminiApiKey.value,
                             model = model,
                             messages = messages,
                             onSuccess = { response ->
-                                handleAiSuccess(response)
+                                handleAiSuccess(response, onResponse)
                                 if (switched) {
                                     logFirebaseStatus("Auto-switched to Gemini and succeeded.")
                                 }
@@ -13018,7 +13557,7 @@ function executePayment() {
                                     logFirebaseStatus("Gemini failed: $error. Auto-switching to OpenRouter...")
                                     viewModelScope.launch { tryProvider("OpenRouter", true) }
                                 } else {
-                                    handleAiFailure(error)
+                                    handleAiFailure(error, onResponse)
                                 }
                             }
                         )
@@ -13029,7 +13568,7 @@ function executePayment() {
                             keysCsv = keys,
                             messages = messages,
                             onSuccess = { response ->
-                                handleAiSuccess(response)
+                                handleAiSuccess(response, onResponse)
                                 if (switched) {
                                     logFirebaseStatus("Auto-switched to OpenRouter and succeeded.")
                                 }
@@ -13039,7 +13578,7 @@ function executePayment() {
                                     logFirebaseStatus("OpenRouter failed: $error. Auto-switching to Gemini...")
                                     viewModelScope.launch { tryProvider("Google AI Studio", true) }
                                 } else {
-                                    handleAiFailure(error)
+                                    handleAiFailure(error, onResponse)
                                 }
                             }
                         )
@@ -13051,7 +13590,7 @@ function executePayment() {
         }
     }
 
-    private fun handleAiSuccess(response: String) {
+    private fun handleAiSuccess(response: String, onResponse: ((String) -> Unit)? = null) {
         _isAiThinking.value = false
 
         val actionRegex = Regex("\\[ACTION_START\\](.*)\\[ACTION_END\\]", RegexOption.DOT_MATCHES_ALL)
@@ -13075,6 +13614,8 @@ function executePayment() {
         }
         updatedHistory.add(chatMessage.toMap())
         _aiChatHistory.value = updatedHistory.toList()
+        _latestAiVoiceResponse.value = chatText
+        onResponse?.invoke(chatText)
         saveOrUpdateCurrentChatSession()
         logFirebaseStatus("AI assistant response received.")
         
@@ -13091,11 +13632,13 @@ function executePayment() {
         }
     }
 
-    private fun handleAiFailure(error: String) {
+    private fun handleAiFailure(error: String, onResponse: ((String) -> Unit)? = null) {
         _isAiThinking.value = false
+        val fallbackReply = "দুঃখিত ভাইয়া, এই মুহূর্তে এআই সার্ভারে সংযোগ করতে একটু সমস্যা হচ্ছে। অনুগ্রহ করে সেটিংস থেকে আপনার Gemini বা OpenRouter API Key চেক করুন। ($error)"
         val updatedHistory = _aiChatHistory.value.toMutableList()
-        updatedHistory.add(mapOf("role" to "assistant", "content" to "দুঃখিত, এআই সংযোগ করতে সমস্যা হচ্ছে। ত্রুটি: $error"))
+        updatedHistory.add(mapOf("role" to "assistant", "content" to fallbackReply))
         _aiChatHistory.value = updatedHistory.toList()
+        onResponse?.invoke(fallbackReply)
         saveOrUpdateCurrentChatSession()
         logFirebaseStatus("AI provider failed: $error")
     }

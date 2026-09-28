@@ -229,42 +229,64 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
             }
           } catch (_) {}
 
-          // Not owner and not admin
-          return res.status(403).json({ error: 'Cannot access another merchant\'s account' })
-        }
-      }
-    } catch (err) {
-      console.warn('[auth] Merchant/Admin JWT verification error:', err.message)
-    }
-  }
+            // Not owner and not admin
+            return res.status(403).json({ error: 'Cannot access another merchant\'s account' })
+          }
 
-  // 3. Check dynamic merchant API key from X-API-Key, X-Merchant-Secret, or Bearer sp_...
-  const rawKey =
-    req.headers['x-api-key'] ||
-    req.headers['x-merchant-secret'] ||
-    (authHeader && (authHeader.startsWith('sp_') || authHeader.startsWith('sk_') || authHeader.toLowerCase().startsWith('bearer sp_') || authHeader.toLowerCase().startsWith('bearer sk_'))
-      ? authHeader.replace(/^Bearer\s+/i, '').trim()
-      : null)
-
-  if (rawKey && typeof rawKey === 'string') {
-    try {
-      const { validateApiKey } = await import('../services/adminSupabase.js')
-      const { apiKeyDigest } = await import('../utils/crypto.js')
-      const digest = apiKeyDigest(rawKey.trim())
-      const keyRecord = await validateApiKey(digest)
-      if (keyRecord && (!targetMerchantId || keyRecord.merchant_id === targetMerchantId)) {
-        req.merchantUser = {
-          id: keyRecord.merchant_id,
-          merchant_id: keyRecord.merchant_id,
-          name: keyRecord.merchant_name
+          // Fallback: if token is a JWT issued by the merchant's own connected Supabase project
+          if (targetMerchantId && !token.startsWith('sp_') && !token.startsWith('sk_') && !token.startsWith('SWAPNO_')) {
+            try {
+              const { getMerchantCredentials } = await import('../services/adminSupabase.js')
+              const creds = await getMerchantCredentials(targetMerchantId)
+              if (creds?.supabase_url && creds?.supabase_anon_key) {
+                const { createClient } = await import('@supabase/supabase-js')
+                const mClient = createClient(creds.supabase_url, creds.supabase_anon_key, {
+                  auth: { persistSession: false, autoRefreshToken: false },
+                })
+                const { data: { user: mUser }, error: mErr } = await mClient.auth.getUser(token)
+                if (!mErr && mUser?.id) {
+                  const effId = creds.merchant_id || targetMerchantId
+                  req.merchantUser = { ...mUser, id: effId, merchant_id: effId, userId: mUser.id }
+                  req.authMethod = 'supabase'
+                  return next()
+                }
+              }
+            } catch (_) {}
+          }
         }
-        req.authMethod = 'api_key'
-        return next()
+      } catch (err) {
+        console.warn('[auth] Merchant/Admin JWT verification error:', err.message)
       }
-    } catch (e) {
-      console.warn('[auth] API key verification notice:', e.message)
     }
-  }
+
+    // 3. Check dynamic merchant API key from X-API-Key, X-Merchant-Secret, or Bearer sp_...
+    const rawKey =
+      req.headers['x-api-key'] ||
+      req.headers['x-merchant-secret'] ||
+      (authHeader && (authHeader.startsWith('sp_') || authHeader.startsWith('sk_') || authHeader.toLowerCase().startsWith('bearer sp_') || authHeader.toLowerCase().startsWith('bearer sk_'))
+        ? authHeader.replace(/^Bearer\s+/i, '').trim()
+        : null)
+
+    if (rawKey && typeof rawKey === 'string') {
+      try {
+        const { validateApiKey } = await import('../services/adminSupabase.js')
+        const { apiKeyDigest } = await import('../utils/crypto.js')
+        const cleanKey = rawKey.trim()
+        const digest = apiKeyDigest(cleanKey)
+        const keyRecord = await validateApiKey(digest, cleanKey)
+        if (keyRecord && (!targetMerchantId || keyRecord.merchant_id === targetMerchantId)) {
+          req.merchantUser = {
+            id: keyRecord.merchant_id,
+            merchant_id: keyRecord.merchant_id,
+            name: keyRecord.merchant_name
+          }
+          req.authMethod = 'api_key'
+          return next()
+        }
+      } catch (e) {
+        console.warn('[auth] API key verification notice:', e.message)
+      }
+    }
 
   return res.status(401).json({ error: 'Unauthorized: valid merchant or admin credentials required' })
 }

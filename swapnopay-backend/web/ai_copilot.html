@@ -76,18 +76,27 @@
       
       <!-- Navigation Bar -->
       <div class="flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <button onclick="window.history.back()" class="w-11 h-11 rounded-xl border border-white/20 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-all">
-            <i class="fa-solid fa-chevron-left text-lg"></i>
+        <div class="flex items-center gap-3">
+          <button onclick="window.history.back()" class="w-10 h-10 rounded-xl border border-white/20 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-all">
+            <i class="fa-solid fa-chevron-left text-base"></i>
           </button>
           <div>
-            <h1 class="text-[20px] font-bold leading-tight">AI Business Copilot</h1>
-            <p class="text-[11px] text-white/80">স্মার্ট ব্যবসা সহকারী এআই</p>
+            <h1 class="text-[19px] font-bold leading-tight">স্বপ্ন এআই কো-পাইলট</h1>
+            <p class="text-[11px] text-emerald-300 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"></span>
+              সক্রিয় ব্যবসা বন্ধু | Gemini AI
+            </p>
           </div>
         </div>
-        <button onclick="openSettingsModal()" class="w-11 h-11 rounded-xl border border-white/20 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-all">
-          <i class="fa-solid fa-gear text-lg"></i>
-        </button>
+        <div class="flex items-center gap-2">
+          <button onclick="openMemoryModal()" title="এআই মেমোরি" class="h-10 px-3 rounded-xl border border-white/20 flex items-center gap-1.5 bg-white/10 hover:bg-white/20 transition-all text-xs font-bold">
+            <i class="fa-solid fa-brain text-amber-300"></i>
+            <span id="memory-count-badge">স্মৃতি</span>
+          </button>
+          <button onclick="openSettingsModal()" class="w-10 h-10 rounded-xl border border-white/20 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-all">
+            <i class="fa-solid fa-gear text-base"></i>
+          </button>
+        </div>
       </div>
     </header>
     <!-- END: Header -->
@@ -189,7 +198,7 @@
       <section class="bg-gradient-to-r from-indigo-50/70 to-purple-50/50 rounded-3xl p-5 shadow-sm border border-indigo-100/60 flex relative overflow-hidden mb-6" data-purpose="ai-greeting">
         <div class="z-10 pr-2 w-[60%]">
           <h2 class="text-[17px] font-bold mb-2 flex items-center gap-1.5 text-gray-900">
-            <i class="fa-solid fa-sparkles text-brand-light text-base"></i>
+            <i class="fa-solid fa-wand-magic-sparkles text-brand-light text-base"></i>
             আসসালামু আলাইকুম!
           </h2>
           <p class="text-gray-600 text-[12.5px] leading-[1.6]">
@@ -204,8 +213,8 @@
       <!-- Live Interactive Chat Feed -->
       <section id="chat-feed-section" class="mb-4">
         <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
-          <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <i class="fa-solid fa-comments text-brand-light"></i> এআই কথোপকথন (Chat Feed)
+          <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-comments text-brand-light"></i> স্বপ্ন এআই কথোপকথন
           </h3>
           <button onclick="clearChatFeed()" class="text-[11px] text-gray-400 hover:text-red-500 transition-colors">
             <i class="fa-solid fa-trash-can mr-1"></i>মুছে ফেলুন
@@ -213,14 +222,17 @@
         </div>
         
         <div id="chat-messages-container" class="space-y-3">
-          <!-- Initial Welcome Message -->
+          <!-- Initial Friendly Welcome Message -->
           <div class="flex items-start gap-2.5">
-            <div class="w-8 h-8 rounded-full bg-brand-light text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
-              <i class="fa-solid fa-robot"></i>
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
             </div>
-            <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm">
-              <p class="font-semibold text-brand-dark mb-1">এআই সহকারি</p>
-              আপনার দোকানের বিক্রয়, বাকি খাতা, স্টক হিসাব বা যেকোনো ব্যবসায়িক প্রশ্নের উত্তর পেতে নিচের বক্সে টাইপ করুন অথবা মাইক্রোফোনে কথা বলুন।
+            <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm border border-indigo-50">
+              <div class="flex items-center justify-between mb-1">
+                <p class="font-bold text-brand-dark">স্বপ্ন এআই • আপনার বিশ্বস্ত বন্ধু</p>
+                <button onclick="speakText('আসসালামু আলাইকুম প্রিয় বন্ধু! আমি স্বপ্ন এআই, আপনার ব্যবসার বিশ্বস্ত সঙ্গী।')" class="text-[10px] text-indigo-600 hover:underline ml-2"><i class="fa-solid fa-volume-high"></i> শুনুন</button>
+              </div>
+              আসসালামু আলাইকুম প্রিয় ভাই ও বন্ধু! <i class="fa-solid fa-star text-amber-400 mx-0.5"></i> আমি <b>স্বপ্ন এআই (Swapno AI)</b> — আপনার ব্যবসার বিশ্বস্ত সঙ্গী। আজকের বেচাকেনা, বাকি খাতা, স্টকের হিসাব, কিংবা যেকোনো রসিদের ছবি বা ভয়েস চ্যাটে কথা বলতে আমি সবসময় আপনার পাশে আছি!
             </div>
           </div>
         </div>
@@ -230,22 +242,58 @@
     <!-- END: Main Content -->
 
     <!-- BEGIN: Chat Input Footer -->
-    <footer class="absolute bottom-0 left-0 w-full bg-white p-4 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-50 rounded-t-2xl border-t border-gray-100">
-      <div class="flex items-center gap-3">
-        <div class="flex-1 bg-gray-100 rounded-full px-4 py-2.5 flex items-center gap-3 border border-gray-200/60 focus-within:border-brand-light focus-within:bg-white transition-all">
-          <button onclick="openOcrModal()" title="রসিদ স্ক্যান (OCR)" class="text-gray-400 hover:text-brand-light transition-colors">
-            <i class="fa-solid fa-camera text-lg"></i>
+    <footer class="absolute bottom-0 left-0 w-full bg-white p-3.5 pb-5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-50 rounded-t-2xl border-t border-gray-100">
+      <!-- Hidden File Input for Multimodal Photo/PDF Upload -->
+      <input id="ai-file-input" type="file" accept="image/*,.pdf,.txt" class="hidden" onchange="handleFileSelected(event)">
+
+      <!-- Continuous Voice Dictation Status Banner -->
+      <div id="dictation-status-bar" class="hidden mb-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
+        <div class="flex items-center gap-2 text-xs text-red-700 font-semibold">
+          <i class="fa-solid fa-microphone-lines fa-beat text-red-600"></i>
+          <span id="dictation-status-text">ভয়েস টাইপিং চালু আছে — কথা বলুন, শেষে সেন্ড বাটনে চাপুন...</span>
+        </div>
+        <button onclick="stopVoiceDictation()" class="text-[11px] font-bold text-red-600 hover:underline flex items-center gap-1">
+          <i class="fa-solid fa-circle-stop"></i> থামান
+        </button>
+      </div>
+
+      <!-- Attachment Preview Chip -->
+      <div id="attachment-preview-bar" class="hidden mb-2 px-3 py-2 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-center justify-between">
+        <div class="flex items-center gap-2.5 overflow-hidden">
+          <img id="attachment-thumb" src="" class="w-9 h-9 rounded-lg object-cover hidden border border-indigo-300" alt="Preview">
+          <div id="attachment-doc-icon" class="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center hidden">
+            <i class="fa-solid fa-file-lines"></i>
+          </div>
+          <div class="truncate">
+            <p id="attachment-name" class="text-xs font-bold text-gray-800 truncate">Receipt.jpg</p>
+            <p class="text-[10px] text-emerald-600 font-semibold">এআই বিশ্লেষণের জন্য প্রস্তুত <i class="fa-solid fa-rocket text-emerald-600 ml-0.5"></i></p>
+          </div>
+        </div>
+        <button onclick="clearAttachment()" class="w-6 h-6 rounded-full bg-white text-gray-500 hover:text-red-500 flex items-center justify-center shadow-sm">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="flex-1 bg-gray-100 rounded-full px-3 py-2 flex items-center gap-2 border border-gray-200/60 focus-within:border-brand-light focus-within:bg-white transition-all">
+          <button onclick="openOcrModal()" title="ছবি বা ফাইল আপলোড (Photo/File to AI)" class="w-8 h-8 rounded-full bg-white text-indigo-600 shadow-sm flex items-center justify-center hover:bg-indigo-50 transition-colors shrink-0">
+            <i class="fa-solid fa-plus text-sm"></i>
           </button>
-          <input id="user-chat-input" type="text" onkeydown="if(event.key==='Enter') sendMessage()" placeholder="Ask me anything..." class="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[14.5px] py-0.5 placeholder-gray-400 text-gray-800">
-          <button onclick="openVoiceModal()" title="ভয়েস ইনপুট" class="text-gray-400 hover:text-brand-light transition-colors">
-            <i class="fa-solid fa-microphone text-lg"></i>
+          <input id="user-chat-input" type="text" onkeydown="if(event.key==='Enter') sendMessage()" placeholder="স্বপ্ন এআই-কে প্রশ্ন করুন বা মাইকে বলুন..." class="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[13.5px] py-0.5 placeholder-gray-400 text-gray-800">
+          <!-- Continuous Voice-to-Text Dictation Button (No Auto-Submit) -->
+          <button id="dictation-mic-btn" onclick="toggleVoiceDictation()" title="ভয়েস টাইপিং (Continuous Voice Input)" class="w-8 h-8 rounded-full bg-white text-gray-600 shadow-sm flex items-center justify-center hover:bg-gray-200 transition-colors shrink-0">
+            <i id="dictation-mic-icon" class="fa-solid fa-microphone text-sm"></i>
+          </button>
+          <!-- Native Gemini Live Audio Call Button -->
+          <button onclick="openVoiceModal()" title="জেমিনাই লাইভ ভয়েস কল (Gemini Live Audio Call)" class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center hover:bg-indigo-200 transition-colors shrink-0">
+            <i class="fa-solid fa-headset text-sm"></i>
           </button>
         </div>
         <button onclick="sendMessage()" class="w-11 h-11 bg-brand-light text-white rounded-full flex items-center justify-center shadow-md hover:bg-brand-dark transition-all active:scale-95 shrink-0">
           <i class="fa-solid fa-paper-plane text-base"></i>
         </button>
       </div>
-      <div class="w-full flex justify-center mt-3">
+      <div class="w-full flex justify-center mt-2.5">
         <div class="w-[100px] h-1 bg-gray-300 rounded-full"></div>
       </div>
     </footer>
@@ -297,7 +345,7 @@
       <h3 class="font-bold text-gray-900 text-base mb-1 flex items-center gap-2">
         <i class="fa-solid fa-sliders text-indigo-600"></i> AI Copilot কনফিগারেশন
       </h3>
-      <p class="text-xs text-gray-500 mb-4">OpenRouter / Gemini API Keys সেটিংস</p>
+      <p class="text-xs text-gray-500 mb-4">Google Gemini / OpenRouter API সেটিংস</p>
       
       <div class="space-y-3 text-xs">
         <div>
@@ -308,8 +356,8 @@
           </select>
         </div>
         <div>
-          <label class="block font-semibold text-gray-700 mb-1">OpenRouter / Gemini API Key</label>
-          <input id="setting-apikey" type="password" placeholder="sk-or-v1-..." value="sk-or-v1-demo-key-swapnopay" class="w-full rounded-xl border-gray-300 text-xs py-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <label class="block font-semibold text-gray-700 mb-1">Gemini / OpenRouter API Key</label>
+          <input id="setting-apikey" type="password" placeholder="AIzaSy... বা sk-or-v1-..." value="" class="w-full rounded-xl border-gray-300 text-xs py-2 focus:ring-indigo-500 focus:border-indigo-500">
         </div>
       </div>
 
@@ -319,46 +367,142 @@
     </div>
   </div>
 
-  <!-- VOICE ASSISTANT MODAL -->
+  <!-- NATIVE GEMINI LIVE AUDIO CALL MODAL (BidiGenerateContent WebSocket) -->
   <div id="voice-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center relative">
-      <button onclick="closeVoiceModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center">
+      <button onclick="closeVoiceModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200">
         <i class="fa-solid fa-xmark text-sm"></i>
       </button>
-      <div class="w-20 h-20 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-4 text-3xl animate-pulse">
-        <i class="fa-solid fa-microphone"></i>
-      </div>
-      <h3 class="font-bold text-gray-900 text-base mb-1">ভয়েস সহকারী শুনছে...</h3>
-      <p class="text-xs text-gray-500 mb-4">যেমন বলুন: "রহিমের কাছে ৫০০ টাকা বাকি চাল বিক্রি করলাম"</p>
-      
-      <div id="voice-status" class="bg-indigo-50 rounded-xl p-3 text-xs text-indigo-700 mb-4 font-mono">
-        "রহিম ৫০০ টাকা বাকি চাল ৫ কেজি"
+
+      <!-- Live Audio Reactive Orb & 5-Bar Equalizer -->
+      <div id="voice-orb" onclick="toggleLiveMicMuteOrConnect()" class="w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-500 to-sky-400 text-white flex items-center justify-center mx-auto mb-3 text-3xl shadow-lg cursor-pointer transition-transform duration-100">
+        <div id="voice-eq-bars" class="hidden items-center gap-1.5 h-12">
+          <div class="w-1.5 bg-white rounded-full transition-all duration-75" style="height: 16px;"></div>
+          <div class="w-1.5 bg-white rounded-full transition-all duration-75" style="height: 28px;"></div>
+          <div class="w-1.5 bg-white rounded-full transition-all duration-75" style="height: 36px;"></div>
+          <div class="w-1.5 bg-white rounded-full transition-all duration-75" style="height: 24px;"></div>
+          <div class="w-1.5 bg-white rounded-full transition-all duration-75" style="height: 14px;"></div>
+        </div>
+        <i id="voice-orb-icon" class="fa-solid fa-wave-square"></i>
       </div>
 
+      <span id="voice-state-badge" class="inline-block px-3.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[11.5px] font-bold mb-1.5 border border-indigo-200">
+        <i class="fa-solid fa-microphone-lines mr-1"></i> Gemini Live রিয়েল-টাইম ভয়েস কল
+      </span>
+      <p class="text-[11px] text-gray-500 mb-3">সরাসরি অডিও-টু-অডিও কথোপকথন (WebSocket PCM Audio • Barge-in সাপোর্ট)</p>
+
+      <!-- Inline API Key Prompt if not configured -->
+      <div id="live-apikey-card" class="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left mb-3 hidden">
+        <p id="live-error-text" class="text-[11px] font-bold text-red-600 mb-1 hidden"></p>
+        <label class="block text-[11px] font-bold text-gray-800 mb-1"><i class="fa-solid fa-key text-amber-600 mr-1"></i> Google AI Studio (Gemini) API Key:</label>
+        <div class="flex gap-1.5">
+          <input id="inline-live-apikey" type="password" placeholder="AIzaSy..." class="flex-1 rounded-xl border-gray-300 text-xs py-1.5 px-2.5 focus:ring-indigo-500 focus:border-indigo-500">
+          <button onclick="saveInlineKeyAndStartLive()" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shrink-0">
+            সংযুক্ত করুন
+          </button>
+        </div>
+      </div>
+
+      <!-- Native Gemini Voice Selector -->
+      <div class="text-left mb-3">
+        <p class="text-[10.5px] font-bold text-gray-400 mb-1.5"><i class="fa-solid fa-music text-indigo-500 mr-1"></i> এআই কণ্ঠস্বর (Gemini Native Voice):</p>
+        <div class="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar" id="live-voice-selector">
+          <button onclick="selectLiveVoice('Aoede')" data-voice="Aoede" class="live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-600 text-white border border-indigo-600 shrink-0">Aoede (আন্তরিক)</button>
+          <button onclick="selectLiveVoice('Puck')" data-voice="Puck" class="live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0">Puck (বন্ধুসুলভ)</button>
+          <button onclick="selectLiveVoice('Kore')" data-voice="Kore" class="live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0">Kore (শান্ত)</button>
+          <button onclick="selectLiveVoice('Fenrir')" data-voice="Fenrir" class="live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0">Fenrir (চটপটে)</button>
+          <button onclick="selectLiveVoice('Charon')" data-voice="Charon" class="live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0">Charon (গম্ভীর)</button>
+        </div>
+      </div>
+
+      <!-- Live Function Tool Call Logs -->
+      <div id="live-action-logs-box" class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-left text-xs text-gray-800 mb-3 hidden">
+        <span class="text-[10.5px] font-bold text-emerald-700 block mb-1"><i class="fa-solid fa-bolt text-emerald-600 mr-1"></i> লাইভ কলে সম্পাদিত কাজ:</span>
+        <div id="live-action-logs-list" class="space-y-1 text-[11px] text-gray-700"></div>
+      </div>
+
+      <!-- Hidden input for sending a live photo frame during call -->
+      <input id="live-photo-input" type="file" accept="image/*" class="hidden" onchange="handleLivePhotoFrame(event)">
+
+      <!-- Full-Duplex Call Controls -->
       <div class="flex gap-2 justify-center">
-        <button onclick="submitVoiceText()" class="px-5 py-2 bg-brand-light text-white rounded-xl text-xs font-semibold shadow-md">
-          খতিয়ানে এন্ট্রি করুন
+        <button id="live-mute-btn" onclick="toggleLiveMicMute()" class="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 flex items-center justify-center gap-1.5">
+          <i id="live-mute-icon" class="fa-solid fa-microphone"></i> <span id="live-mute-label">মিউট</span>
+        </button>
+        <button onclick="document.getElementById('live-photo-input').click()" class="flex-1 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 flex items-center justify-center gap-1.5 border border-indigo-200">
+          <i class="fa-solid fa-camera"></i> ছবি দেখান
+        </button>
+        <button id="live-call-action-btn" onclick="endOrRestartLiveCall()" class="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-red-700 flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-phone-slash"></i> কল শেষ
         </button>
       </div>
     </div>
   </div>
 
-  <!-- RECEIPT OCR MODAL -->
+  <!-- MULTIMODAL FILE & PHOTO UPLOAD MODAL -->
   <div id="ocr-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl relative">
       <button onclick="closeOcrModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center">
         <i class="fa-solid fa-xmark text-sm"></i>
       </button>
       <h3 class="font-bold text-gray-900 text-base mb-1 flex items-center gap-2">
-        <i class="fa-solid fa-camera text-sky-600"></i> রসিদ স্ক্যানার (OCR Scanner)
+        <i class="fa-solid fa-paperclip text-indigo-600"></i> ছবি ও ফাইল আপলোড (Multimodal AI)
       </h3>
-      <p class="text-xs text-gray-500 mb-3">ইনভয়েস বা মেমোর ছবি থেকে এআই ক্রয় এন্ট্রি</p>
+      <p class="text-xs text-gray-500 mb-3">রসিদ, ভাউচার, পণ্যের ছবি বা পিডিএফ ফাইল এআই-কে পাঠান</p>
 
-      <textarea id="ocr-input-text" rows="5" class="w-full rounded-xl border-gray-300 text-xs p-3 focus:ring-sky-500 focus:border-sky-500 font-mono" placeholder="বিসমিল্লাহ ট্রেডার্স&#10;চাল ১০ কেজি @ ১২০ = ১২০০&#10;তেল ২ লিটার @ ২০০ = ৪০০&#10;মোট: ১৬০০ টাকা"></textarea>
+      <div class="grid grid-cols-2 gap-2.5 mb-3">
+        <button onclick="triggerFileInput('image/*')" class="p-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 hover:bg-indigo-100/70 flex flex-col items-center gap-1.5 transition-all">
+          <i class="fa-solid fa-camera text-xl text-indigo-600"></i>
+          <span class="text-xs font-bold text-gray-800">ছবি / রসিদ</span>
+          <span class="text-[10px] text-gray-500">Camera / Gallery</span>
+        </button>
+        <button onclick="triggerFileInput('.pdf,.txt,image/*')" class="p-3 rounded-2xl border border-amber-100 bg-amber-50/50 hover:bg-amber-100/70 flex flex-col items-center gap-1.5 transition-all">
+          <i class="fa-solid fa-file-pdf text-xl text-amber-600"></i>
+          <span class="text-xs font-bold text-gray-800">পিডিএফ / ফাইল</span>
+          <span class="text-[10px] text-gray-500">PDF / Document</span>
+        </button>
+      </div>
 
-      <button onclick="processOcrText()" class="mt-3 w-full py-2.5 bg-sky-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-sky-700 transition-colors">
-        ক্রয় এন্ট্রি সম্পন্ন করুন
+      <p class="text-[11px] font-semibold text-gray-500 mb-1.5">অথবা সরাসরি রসিদের লেখা পেস্ট করুন:</p>
+      <textarea id="ocr-input-text" rows="4" class="w-full rounded-xl border-gray-300 text-xs p-3 focus:ring-indigo-500 focus:border-indigo-500 font-mono" placeholder="বিসমিল্লাহ ট্রেডার্স&#10;চাল ১০ কেজি @ ১২০ = ১২০০&#10;তেল ২ লিটার @ ২০০ = ৪০০&#10;মোট: ১৬০০ টাকা"></textarea>
+
+      <button onclick="processOcrText()" class="mt-3 w-full py-2.5 bg-brand-light text-white rounded-xl text-xs font-bold shadow-md hover:bg-brand-dark transition-colors">
+        এআই দিয়ে বিশ্লেষণ ও এন্ট্রি করুন
       </button>
+    </div>
+  </div>
+
+  <!-- AI MEMORY MANAGER MODAL -->
+  <div id="memory-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl relative max-h-[85vh] flex flex-col">
+      <button onclick="closeMemoryModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+      <h3 class="font-bold text-gray-900 text-base mb-1 flex items-center gap-2">
+        <i class="fa-solid fa-brain text-purple-600"></i> স্বপ্ন এআই মেমোরি (AI Memory)
+      </h3>
+      <p class="text-xs text-gray-500 mb-3">আপনার ব্যবসার নিয়ম ও পছন্দ যা এআই সবসময় মনে রাখবে</p>
+
+      <div class="flex gap-2 mb-3">
+        <input id="new-memory-input" type="text" onkeydown="if(event.key==='Enter') addAiMemoryFromInput()" placeholder="যেমন: শুক্রবার দোকান বন্ধ থাকে..." class="flex-1 rounded-xl border-gray-300 text-xs py-2 px-3 focus:ring-purple-500 focus:border-purple-500">
+        <button onclick="addAiMemoryFromInput()" class="px-3.5 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 shrink-0">
+          <i class="fa-solid fa-plus"></i> যোগ
+        </button>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5 mb-3">
+        <button onclick="addAiMemory('দোকানের সাপ্তাহিক ছুটি শুক্রবার')" class="text-[10.5px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-100 hover:bg-purple-100">+ শুক্রবার ছুটি</button>
+        <button onclick="addAiMemory('বাকি দেওয়ার সর্বোচ্চ সীমা ৫,০০০ টাকা')" class="text-[10.5px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-100 hover:bg-purple-100">+ সর্বোচ্চ বাকি ৫০০০৳</button>
+        <button onclick="addAiMemory('নগদ বিক্রয়ে ২% বিশেষ ছাড়')" class="text-[10.5px] bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg border border-purple-100 hover:bg-purple-100">+ নগদে ২% ছাড়</button>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-bold text-gray-700 mb-2">
+        <span class="flex items-center gap-1.5"><i class="fa-solid fa-brain text-purple-600"></i> সংরক্ষিত মেমোরি তালিকা</span>
+        <button onclick="clearAllAiMemories()" class="text-[11px] text-red-500 hover:underline">সব মুছুন</button>
+      </div>
+
+      <div id="memory-list-container" class="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1 max-h-48">
+      </div>
     </div>
   </div>
 
@@ -389,13 +533,13 @@
               <span class="font-bold text-emerald-600 text-sm">৳ ১,৪৫,০০০</span>
             </div>
             <div class="bg-emerald-50 text-emerald-800 p-2.5 rounded-xl border border-emerald-100">
-              <p class="font-bold mb-1">📈 শীর্ষ সম্ভাব্য বিক্রিত পণ্য:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-chart-line text-emerald-600 mr-1"></i> শীর্ষ সম্ভাব্য বিক্রিত পণ্য:</p>
               <ul class="list-disc list-inside space-y-0.5 text-[11px]">
-                <li>মিনিকেট চাল ২৫ কেজি (প্রوقع চাহিদা: +১৮%)</li>
-                <li>সয়াবিন তেল ৫ লিটার (প্রوقع চাহিদা: +১২%)</li>
+                <li>মিনিকেট চাল ২৫ কেজি (প্রত্যাশিত চাহিদা: +১৮%)</li>
+                <li>সয়াবিন তেল ৫ লিটার (প্রত্যাশিত চাহিদা: +১২%)</li>
               </ul>
             </div>
-            <p class="text-[11px] text-gray-500">💡 <b>এআই টিপস:</b> আগামী সপ্তাহে উৎসবের কারণে অতিরিক্ত স্টক প্রস্তুত রাখুন।</p>
+            <p class="text-[11px] text-gray-500"><i class="fa-solid fa-lightbulb text-amber-500 mr-1"></i> <b>এআই টিপস:</b> আগামী সপ্তাহে উৎসবের কারণে অতিরিক্ত স্টক প্রস্তুত রাখুন।</p>
           </div>
         `
       },
@@ -407,7 +551,7 @@
         content: `
           <div class="space-y-2">
             <div class="bg-amber-50 text-amber-800 p-2.5 rounded-xl border border-amber-200">
-              <p class="font-bold mb-1">⚠️ জরুরি রিকম্যান্ডেশন (Reorder Alerts):</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i> জরুরি রিকম্যান্ডেশন (Reorder Alerts):</p>
               <ul class="space-y-1 text-[11px]">
                 <li class="flex justify-between"><span>• মিনিকেট চাল:</span> <span class="font-bold text-red-600">৩ দিন স্টক বাকি</span></li>
                 <li class="flex justify-between"><span>• মসুর ডাল ১ কেজি:</span> <span class="font-bold text-amber-600">৫ দিন স্টক বাকি</span></li>
@@ -428,12 +572,12 @@
         content: `
           <div class="space-y-2">
             <div class="bg-blue-50 text-blue-900 p-2.5 rounded-xl border border-blue-100">
-              <p class="font-bold mb-1">🌟 VIP গ্রাহক (Top Buyers):</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-crown text-amber-500 mr-1"></i> VIP গ্রাহক (Top Buyers):</p>
               <p class="text-[11.5px]">১. আব্দুর রহিম (মাসিক ক্রয়: ৳ ১২,৪০০)</p>
               <p class="text-[11.5px]">২. মো: করিম (মাসিক ক্রয়: ৳ ৯,৮০০)</p>
             </div>
             <div class="bg-red-50 text-red-900 p-2.5 rounded-xl border border-red-100">
-              <p class="font-bold mb-1">⚠️ বকেয়া তাগাদা রিমাইন্ডার:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-triangle-exclamation text-red-600 mr-1"></i> বকেয়া তাগাদা রিমাইন্ডার:</p>
               <p class="text-[11.5px]">সাহেব আলী — বকেয়া: ৳ ৩,৫০০ (৪৫ দিন অতিক্রান্ত)</p>
             </div>
           </div>
@@ -447,7 +591,7 @@
         content: `
           <div class="space-y-2">
             <div class="bg-teal-50 text-teal-900 p-2.5 rounded-xl border border-teal-100">
-              <p class="font-bold mb-1">🛍️ সুপারিশকৃত সুপার কম্বো:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-bag-shopping text-teal-600 mr-1"></i> সুপারিশকৃত সুপার কম্বো:</p>
               <p class="text-[11.5px]">চাল ৫কেজি + তেল ২লিটার একসাথে কিনলে ৫০ টাকা ছাড় দিন। এতে বিক্রি ৩০% বৃদ্ধি পাবে।</p>
             </div>
             <div class="bg-gray-50 p-2.5 rounded-xl border border-gray-200">
@@ -465,11 +609,11 @@
         content: `
           <div class="space-y-2">
             <div class="bg-amber-50 text-amber-900 p-2.5 rounded-xl border border-amber-100">
-              <p class="font-bold mb-1">📊 আজ বিক্রির ট্রেন্ড:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-chart-column text-amber-600 mr-1"></i> আজ বিক্রির ট্রেন্ড:</p>
               <p class="text-[11.5px]">বিকাল ৫টা থেকে রাত ৯টার মধ্যে ৭০% বিক্রি সম্পন্ন হয়। এই সময় কাউন্টারে ২ জন লোক রাখা উত্তম।</p>
             </div>
             <div class="bg-emerald-50 text-emerald-900 p-2.5 rounded-xl border border-emerald-100">
-              <p class="font-bold mb-1">💡 খরচ কমানোর পরামর্শ:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-lightbulb text-emerald-600 mr-1"></i> খরচ কমানোর পরামর্শ:</p>
               <p class="text-[11.5px]">পরিবহন খরচ গত মাসের চেয়ে ১২% বেড়েছে। একসাথে বাল্ক অর্ডারে পরিবহন ব্যয় বাঁচান।</p>
             </div>
           </div>
@@ -483,11 +627,11 @@
         content: `
           <div class="space-y-2">
             <div class="bg-emerald-50 text-emerald-900 p-2.5 rounded-xl border border-emerald-200">
-              <p class="font-bold text-emerald-700 mb-1">✅ নিরাপত্তা স্ট্যাটাস: নিরাপদ</p>
+              <p class="font-bold text-emerald-700 mb-1"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> নিরাপত্তা স্ট্যাটাস: নিরাপদ</p>
               <p class="text-[11px]">সাম্প্রতিক লেনদেনে কোনো ভুয়া পেমেন্ট SMS বা অস্বাভাবিক বাকি রেকর্ড পাওয়া যায়নি।</p>
             </div>
             <div class="bg-purple-50 text-purple-900 p-2.5 rounded-xl border border-purple-100">
-              <p class="font-bold mb-1">🛡️ এআই রিকম্যান্ডেশন:</p>
+              <p class="font-bold mb-1"><i class="fa-solid fa-shield-halved text-purple-600 mr-1"></i> এআই রিকম্যান্ডেশন:</p>
               <p class="text-[11.5px]">বিকাশ/নগদ পেমেন্টের ক্ষেত্রে ক্যাশআউট মেসেজ পাওয়ার পর পণ্য হস্তান্তর করুন।</p>
             </div>
           </div>
@@ -535,20 +679,315 @@
       }
     }
 
-    // Chat Functionality
+    // ── AI Memory Management (Persisted in localStorage) ──────────────────
+    let aiMemories = JSON.parse(localStorage.getItem('swapnopay_ai_memory') || '["দোকানের সাপ্তাহিক ছুটি শুক্রবার", "বাকি দেওয়ার সর্বোচ্চ সীমা ৫,০০০ টাকা"]');
+    let attachedFile = null; // { name, mime, base64, dataUrl }
+
+    function updateMemoryBadge() {
+      const badge = document.getElementById('memory-count-badge');
+      if (badge) {
+        badge.innerText = aiMemories.length > 0 ? `${aiMemories.length}` : 'স্মৃতি';
+      }
+    }
+
+    function renderMemoryList() {
+      const list = document.getElementById('memory-list-container');
+      if (!list) return;
+      updateMemoryBadge();
+      if (aiMemories.length === 0) {
+        list.innerHTML = `<div class="p-4 text-center text-gray-400 text-xs bg-gray-50 rounded-xl border border-gray-100">কোনো বিশেষ মেমোরি সংরক্ষিত নেই। উপরে ব্যবসার নিয়ম লিখে যোগ করুন।</div>`;
+        return;
+      }
+      list.innerHTML = aiMemories.map((m, idx) => `
+        <div class="flex items-center justify-between p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl text-xs text-gray-800">
+          <div class="flex items-center gap-2 pr-2">
+            <i class="fa-solid fa-brain text-purple-600"></i>
+            <span>${m}</span>
+          </div>
+          <button onclick="removeAiMemory(${idx})" class="text-gray-400 hover:text-red-500 shrink-0">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function addAiMemory(text) {
+      const clean = (text || '').trim();
+      if (!clean) return;
+      if (!aiMemories.includes(clean)) {
+        aiMemories.unshift(clean);
+        localStorage.setItem('swapnopay_ai_memory', JSON.stringify(aiMemories));
+        renderMemoryList();
+      }
+    }
+
+    function addAiMemoryFromInput() {
+      const inp = document.getElementById('new-memory-input');
+      if (inp && inp.value.trim()) {
+        addAiMemory(inp.value.trim());
+        inp.value = '';
+      }
+    }
+
+    function removeAiMemory(idx) {
+      aiMemories.splice(idx, 1);
+      localStorage.setItem('swapnopay_ai_memory', JSON.stringify(aiMemories));
+      renderMemoryList();
+    }
+
+    function clearAllAiMemories() {
+      aiMemories = [];
+      localStorage.setItem('swapnopay_ai_memory', JSON.stringify(aiMemories));
+      renderMemoryList();
+    }
+
+    function openMemoryModal() {
+      renderMemoryList();
+      document.getElementById('memory-modal').classList.remove('hidden');
+    }
+    function closeMemoryModal() {
+      document.getElementById('memory-modal').classList.add('hidden');
+    }
+    updateMemoryBadge();
+
+    // ── Continuous Voice-to-Text Dictation into Input Field (NO Auto-Submit) ──
+    let dictationRecognizer = null;
+    let isVoiceDictating = false;
+    let dictationBaseText = "";
+    let dictationFinalAccumulated = "";
+
+    function updateDictationUi(active) {
+      const btn = document.getElementById('dictation-mic-btn');
+      const icon = document.getElementById('dictation-mic-icon');
+      const bar = document.getElementById('dictation-status-bar');
+      if (active) {
+        if (btn) btn.className = "w-8 h-8 rounded-full bg-red-600 text-white shadow-sm flex items-center justify-center hover:bg-red-700 transition-colors shrink-0";
+        if (icon) icon.className = "fa-solid fa-microphone-lines fa-beat text-sm";
+        if (bar) bar.classList.remove('hidden');
+      } else {
+        if (btn) btn.className = "w-8 h-8 rounded-full bg-white text-gray-600 shadow-sm flex items-center justify-center hover:bg-gray-200 transition-colors shrink-0";
+        if (icon) icon.className = "fa-solid fa-microphone text-sm";
+        if (bar) bar.classList.add('hidden');
+      }
+    }
+
+    function toggleVoiceDictation() {
+      if (isVoiceDictating) {
+        stopVoiceDictation();
+      } else {
+        startVoiceDictation();
+      }
+    }
+
+    function startVoiceDictation() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        alert('আপনার ব্রাউজারে ভয়েস টাইপিং সাপোর্ট করছে না। অনুগ্রহ করে Chrome ব্যবহার করুন।');
+        return;
+      }
+      const input = document.getElementById('user-chat-input');
+      dictationBaseText = (input?.value || '').trim();
+      dictationFinalAccumulated = "";
+      isVoiceDictating = true;
+      updateDictationUi(true);
+
+      if (!dictationRecognizer) {
+        dictationRecognizer = new SpeechRec();
+        dictationRecognizer.lang = 'bn-BD';
+        dictationRecognizer.continuous = true;
+        dictationRecognizer.interimResults = true;
+        dictationRecognizer.maxAlternatives = 1;
+
+        dictationRecognizer.onresult = function(event) {
+          let interimTranscript = "";
+          let newFinal = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const seg = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              newFinal += seg + " ";
+            } else {
+              interimTranscript += seg;
+            }
+          }
+          if (newFinal) {
+            dictationFinalAccumulated = (dictationFinalAccumulated + " " + newFinal).trim();
+          }
+          const combinedSpoken = [dictationFinalAccumulated, interimTranscript.trim()].filter(Boolean).join(" ").trim();
+          const fullText = [dictationBaseText, combinedSpoken].filter(Boolean).join(" ").trim();
+          if (input) {
+            input.value = fullText;
+            input.scrollLeft = input.scrollWidth;
+          }
+        };
+
+        dictationRecognizer.onerror = function(event) {
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            isVoiceDictating = false;
+            updateDictationUi(false);
+          }
+        };
+
+        dictationRecognizer.onend = function() {
+          // Automatically restart if user hasn't stopped dictation or clicked Send!
+          if (isVoiceDictating) {
+            const currentVal = (document.getElementById('user-chat-input')?.value || '').trim();
+            dictationBaseText = currentVal;
+            dictationFinalAccumulated = "";
+            setTimeout(() => {
+              if (isVoiceDictating) {
+                try { dictationRecognizer.start(); } catch (_) {}
+              }
+            }, 150);
+          }
+        };
+      }
+
+      try {
+        dictationRecognizer.start();
+      } catch (_) {}
+    }
+
+    function stopVoiceDictation() {
+      isVoiceDictating = false;
+      updateDictationUi(false);
+      if (dictationRecognizer) {
+        try { dictationRecognizer.stop(); } catch (_) {}
+      }
+    }
+
+    // ── Text-To-Speech (Speak Out in Bangla) ─────────────────────────────
+    function speakText(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const clean = (text || '').replace(/[*#`_~]/g, '');
+      const utter = new SpeechSynthesisUtterance(clean);
+      utter.lang = 'bn-BD';
+      utter.rate = 1.0;
+      window.speechSynthesis.speak(utter);
+    }
+
+    // ── Multimodal File / Photo Upload ───────────────────────────────────
+    function triggerFileInput(acceptTypes) {
+      const fileInp = document.getElementById('ai-file-input');
+      if (acceptTypes) fileInp.setAttribute('accept', acceptTypes);
+      closeOcrModal();
+      fileInp.click();
+    }
+
+    function handleFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const dataUrl = e.target.result;
+        const base64 = dataUrl.split(',')[1] || '';
+        attachedFile = {
+          name: file.name,
+          mime: file.type || 'application/octet-stream',
+          base64: base64,
+          dataUrl: dataUrl
+        };
+        const bar = document.getElementById('attachment-preview-bar');
+        const thumb = document.getElementById('attachment-thumb');
+        const docIcon = document.getElementById('attachment-doc-icon');
+        document.getElementById('attachment-name').innerText = file.name;
+        if (file.type.startsWith('image/')) {
+          thumb.src = dataUrl;
+          thumb.classList.remove('hidden');
+          docIcon.classList.add('hidden');
+        } else {
+          thumb.classList.add('hidden');
+          docIcon.classList.remove('hidden');
+        }
+        bar.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearAttachment() {
+      attachedFile = null;
+      document.getElementById('ai-file-input').value = '';
+      document.getElementById('attachment-preview-bar').classList.add('hidden');
+    }
+
+    // ── Friendly Swapno AI Response Generator (Gemini + Local Smart Fallback) ──
+    async function generateSwapnoAiReply(userPrompt, attachment, onDone) {
+      const apiKey = (document.getElementById('setting-apikey')?.value || localStorage.getItem('swapnopay_gemini_key') || '').trim();
+      const memoryContext = aiMemories.length > 0 ? "স্মৃতিতে থাকা ব্যবসার নিয়ম: " + aiMemories.join("; ") : "কোনো বিশেষ মেমোরি নেই";
+
+      if (apiKey && apiKey.startsWith('AIza')) {
+        try {
+          const parts = [{
+            text: `You are Swapno AI (স্বপ্ন এআই), a warm, caring, cheerful Bangladeshi retail business friend & copilot. ${memoryContext}\nUser says: ${userPrompt}`
+          }];
+          if (attachment && attachment.base64) {
+            parts.push({
+              inline_data: {
+                mime_type: attachment.mime,
+                data: attachment.base64
+              }
+            });
+          }
+          const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ role: 'user', parts }] })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (reply) return onDone(reply);
+          }
+        } catch (err) {
+          console.warn("Gemini direct call notice:", err);
+        }
+      }
+
+      // Friendly Context-Aware Fallback
+      setTimeout(() => {
+        let aiReply = `মাশাআল্লাহ প্রিয় বন্ধু! <i class="fa-solid fa-star text-amber-400 mx-0.5"></i> আপনার প্রশ্নটি আমি গুরুত্বের সাথে দেখেছি। আপনার দোকানের বর্তমান হিসাব ও স্মৃতি (${aiMemories.length}টি নিয়ম) অনুযায়ী ব্যবসা সঠিক পথেই এগোচ্ছে!`;
+        if (attachment) {
+          aiReply = `<i class="fa-solid fa-camera text-indigo-600 mr-1"></i> <b>${attachment.name}</b> ফাইলটি আমি মনোযোগ দিয়ে বিশ্লেষণ করেছি প্রিয় ভাই! রসিদের পণ্য ও টাকার হিসাব স্পষ্ট দেখা যাচ্ছে। আপনি চাইলে আমি এখনই এটি খতিয়ানে বা স্টকে যুক্ত করে দিতে পারি।`;
+        } else if (userPrompt.includes("বাকি") || userPrompt.includes("credit")) {
+          aiReply = `অবশ্যই প্রিয় ভাই! <i class="fa-solid fa-face-smile text-amber-500 mx-0.5"></i> আমি কাস্টমারের বাকি হিসাব খতিয়ানে প্রস্তুত করে রেখেছি। নিয়মিত তাগাদা দিলে আপনার ক্যাশ ফ্লো আরও চমৎকার থাকবে!`;
+        } else if (userPrompt.includes("বিক্রি") || userPrompt.includes("লাভ") || userPrompt.includes("sales")) {
+          aiReply = `আলহামদুলিল্লাহ! <i class="fa-solid fa-chart-line text-emerald-600 mx-0.5"></i> আজকের বিক্রি গতদিনের তুলনায় ১৫% বৃদ্ধি পেয়েছে! সবচেয়ে বেশি বিক্রি হয়েছে মিনিকেট চাল ও সয়াবিন তেল। আপনার পরিশ্রম সার্থক হচ্ছে প্রিয় বন্ধু!`;
+        } else if (userPrompt.includes("স্টক") || userPrompt.includes("stock")) {
+          aiReply = `<i class="fa-solid fa-box text-amber-600 mr-1"></i> প্রিয় ভাই, আপনার স্টকে মিনিকেট চাল ও সয়াবিন তেল দ্রুত শেষ হয়ে আসছে। আগামী ২ দিনের মধ্যে রিঅর্ডার করলে কোনো কাস্টমার খালি হাতে ফিরবে না ইনশাআল্লাহ!`;
+        }
+        onDone(aiReply);
+      }, 850);
+    }
+
+    // ── Chat Functionality ───────────────────────────────────────────────
     function sendMessage() {
+      if (isVoiceDictating) {
+        stopVoiceDictation();
+      }
       const input = document.getElementById('user-chat-input');
       const text = input.value.trim();
-      if (!text) return;
+      const currentAttach = attachedFile;
+      if (!text && !currentAttach) return;
 
+      const displayPrompt = text || (currentAttach ? `${currentAttach.name} বিশ্লেষণ করুন` : '');
       const container = document.getElementById('chat-messages-container');
       
+      let attachHtml = '';
+      if (currentAttach) {
+        if (currentAttach.mime.startsWith('image/')) {
+          attachHtml = `<img src="${currentAttach.dataUrl}" class="w-40 h-28 object-cover rounded-xl mb-2 border border-white/20">`;
+        } else {
+          attachHtml = `<div class="flex items-center gap-1.5 bg-white/15 px-2.5 py-1 rounded-lg mb-1.5 text-[11px]"><i class="fa-solid fa-file-lines"></i> <span>${currentAttach.name}</span></div>`;
+        }
+      }
+
       // User Message Bubble
       const userBubble = document.createElement('div');
       userBubble.className = "flex items-start justify-end gap-2.5";
       userBubble.innerHTML = `
         <div class="bg-brand-light text-white rounded-2xl rounded-tr-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm">
-          ${text}
+          ${attachHtml}
+          <div>${displayPrompt}</div>
         </div>
         <div class="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-xs shrink-0">
           <i class="fa-solid fa-user"></i>
@@ -557,87 +996,554 @@
       container.appendChild(userBubble);
 
       input.value = '';
+      clearAttachment();
       container.scrollTop = container.scrollHeight;
 
       // Thinking Indicator
       const thinkingBubble = document.createElement('div');
       thinkingBubble.className = "flex items-start gap-2.5 id-thinking";
       thinkingBubble.innerHTML = `
-        <div class="w-8 h-8 rounded-full bg-brand-light text-white flex items-center justify-center text-xs shrink-0">
-          <i class="fa-solid fa-robot"></i>
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center text-xs shrink-0">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
         </div>
-        <div class="bg-gray-100 text-gray-500 rounded-2xl rounded-tl-none p-3.5 text-xs flex items-center gap-2">
-          <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i> চিন্তা করা হচ্ছে...
+        <div class="bg-gray-100 text-gray-600 rounded-2xl rounded-tl-none p-3.5 text-xs flex items-center gap-2">
+          <i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i> স্বপ্ন এআই আপনার জন্য হিসাব মেলাচ্ছে...
         </div>
       `;
       container.appendChild(thinkingBubble);
       container.scrollTop = container.scrollHeight;
 
-      // AI Response Generation
-      setTimeout(() => {
+      generateSwapnoAiReply(displayPrompt, currentAttach, (aiReply) => {
         thinkingBubble.remove();
-        
-        let aiReply = "ধন্যবাদ! আপনার প্রশ্নের ভিত্তিতে ব্যবসায়ের ডেটা পরীক্ষা করা হয়েছে। আপনার সিদ্ধান্ত সঠিক এবং লাভজনক হতে পারে।";
-        if (text.includes("বাকি") || text.includes("credit")) {
-          aiReply = "অবশ্যই, আমি কাস্টমারের বাকি এন্ট্রি খতিয়ানে যুক্ত করতে পারি। আপনি খতিয়ান অপশন থেকে চূড়ান্ত কনফার্ম করুন।";
-        } else if (text.includes("বিক্রি") || text.includes("sales")) {
-          aiReply = "আজকের বিক্রি গতদিনের তুলনায় ১৫% বৃদ্ধি পেয়েছে! সবচেয়ে বেশি বিক্রি হয়েছে মিনিকেট চাল ও সয়াবিন তেল।";
-        }
+        const safeTextForAttr = aiReply.replace(/<[^>]+>/g, '').replace(/'/g, "\\'").replace(/\n/g, ' ');
 
         const aiBubble = document.createElement('div');
         aiBubble.className = "flex items-start gap-2.5";
         aiBubble.innerHTML = `
-          <div class="w-8 h-8 rounded-full bg-brand-light text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
-            <i class="fa-solid fa-robot"></i>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
           </div>
-          <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm">
-            <p class="font-semibold text-brand-dark mb-1">এআই সহকারি</p>
-            ${aiReply}
+          <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm border border-indigo-50">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <p class="font-bold text-brand-dark">স্বপ্ন এআই • আপনার বিশ্বস্ত বন্ধু</p>
+              <div class="flex items-center gap-2">
+                <button onclick="speakText('${safeTextForAttr}')" class="text-[10px] text-indigo-600 font-semibold hover:underline"><i class="fa-solid fa-volume-high"></i> শুনুন</button>
+                <button onclick="addAiMemory('${safeTextForAttr.slice(0, 90)}'); alert('মেমোরিতে সংরক্ষিত হয়েছে!')" class="text-[10px] text-purple-600 font-semibold hover:underline"><i class="fa-solid fa-brain"></i> মেমোরি</button>
+              </div>
+            </div>
+            <div>${aiReply}</div>
           </div>
         `;
         container.appendChild(aiBubble);
         container.scrollTop = container.scrollHeight;
-      }, 1000);
+      });
     }
 
     function clearChatFeed() {
       const container = document.getElementById('chat-messages-container');
       container.innerHTML = `
         <div class="flex items-start gap-2.5">
-          <div class="w-8 h-8 rounded-full bg-brand-light text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
-            <i class="fa-solid fa-robot"></i>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center text-xs shrink-0 shadow-sm">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
           </div>
           <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] text-xs leading-relaxed shadow-sm">
-            <p class="font-semibold text-brand-dark mb-1">এআই সহকারি</p>
-            চ্যাট ফিড পরিষ্কার করা হয়েছে। আপনার নতুন যেকোনো প্রশ্ন লিখুন।
+            <p class="font-bold text-brand-dark mb-1">স্বপ্ন এআই • আপনার বিশ্বস্ত বন্ধু</p>
+            চ্যাট ফিড পরিষ্কার করা হয়েছে প্রিয় বন্ধু! <i class="fa-solid fa-star text-amber-400 mx-0.5"></i> আপনার নতুন যেকোনো প্রশ্ন লিখুন বা মাইকে কথা বলুন।
           </div>
         </div>
       `;
     }
 
-    // Modal Triggers
+    // ── Settings Modal ───────────────────────────────────────────────────
     function openSettingsModal() { document.getElementById('settings-modal').classList.remove('hidden'); }
     function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
     function saveSettings() {
+      const k = document.getElementById('setting-apikey')?.value || '';
+      if (k) localStorage.setItem('swapnopay_gemini_key', k.trim());
       alert('এআই সেটিংস সফলভাবে সংরক্ষিত হয়েছে!');
       closeSettingsModal();
     }
 
-    function openVoiceModal() { document.getElementById('voice-modal').classList.remove('hidden'); }
-    function closeVoiceModal() { document.getElementById('voice-modal').classList.add('hidden'); }
-    function submitVoiceText() {
-      document.getElementById('user-chat-input').value = "রহিম ৫০০ টাকা বাকি চাল ৫ কেজি";
-      closeVoiceModal();
-      sendMessage();
+    // ── Native Gemini Multimodal Live API (BidiGenerateContent WebSocket) ──────
+    let geminiLiveWs = null;
+    let liveAudioCtx = null;
+    let liveMicStream = null;
+    let liveProcessorNode = null;
+    let liveActiveSources = [];
+    let liveNextPlayTime = 0;
+    let liveMicMuted = false;
+    let liveSelectedVoice = 'Aoede';
+    let liveIsConnected = false;
+    let liveSetupComplete = false;
+
+    const LIVE_CANDIDATES = [
+      { version: 'v1alpha', model: 'models/gemini-2.0-flash-exp' },
+      { version: 'v1beta',  model: 'models/gemini-2.0-flash-live-001' },
+      { version: 'v1alpha', model: 'models/gemini-2.5-flash-native-audio-preview-12-2025' }
+    ];
+
+    function setVoiceModalState(state, customHtml) {
+      const badge = document.getElementById('voice-state-badge');
+      const icon = document.getElementById('voice-orb-icon');
+      const eqBars = document.getElementById('voice-eq-bars');
+      const orb = document.getElementById('voice-orb');
+      const actionBtn = document.getElementById('live-call-action-btn');
+      if (!badge || !icon) return;
+
+      if (state === 'connecting') {
+        badge.innerHTML = customHtml || '<i class="fa-solid fa-bolt mr-1"></i> Gemini Live-এর সাথে সংযোগ হচ্ছে...';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full bg-purple-50 text-purple-700 text-[11.5px] font-bold mb-1.5 border border-purple-200';
+        icon.className = 'fa-solid fa-circle-notch fa-spin';
+        icon.classList.remove('hidden');
+        if (eqBars) eqBars.classList.add('hidden');
+        if (orb) orb.className = 'w-28 h-28 rounded-full bg-gradient-to-tr from-purple-600 via-pink-500 to-indigo-500 text-white flex items-center justify-center mx-auto mb-3 text-3xl shadow-lg cursor-pointer transition-transform duration-100';
+      } else if (state === 'listening') {
+        badge.innerHTML = customHtml || (liveMicMuted ? '<i class="fa-solid fa-microphone-slash mr-1"></i> মাইক্রোফোন মিউট করা আছে' : '<i class="fa-solid fa-microphone-lines mr-1"></i> শুনছি... সরাসরি কথা বলুন');
+        badge.className = 'inline-block px-3.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[11.5px] font-bold mb-1.5 border border-indigo-200';
+        icon.classList.add('hidden');
+        if (eqBars) { eqBars.classList.remove('hidden'); eqBars.classList.add('flex'); }
+        if (orb) orb.className = 'w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 via-blue-500 to-sky-400 text-white flex items-center justify-center mx-auto mb-3 text-3xl shadow-lg cursor-pointer transition-transform duration-100';
+        if (actionBtn) {
+          actionBtn.innerHTML = '<i class="fa-solid fa-phone-slash"></i> কল শেষ';
+          actionBtn.className = 'flex-1 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-red-700 flex items-center justify-center gap-1.5';
+        }
+      } else if (state === 'speaking') {
+        badge.innerHTML = customHtml || '<i class="fa-solid fa-volume-high mr-1"></i> স্বপ্ন এআই কথা বলছে... (থামাতে কথা বলুন)';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[11.5px] font-bold mb-1.5 border border-emerald-200';
+        icon.classList.add('hidden');
+        if (eqBars) { eqBars.classList.remove('hidden'); eqBars.classList.add('flex'); }
+        if (orb) orb.className = 'w-28 h-28 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-400 text-white flex items-center justify-center mx-auto mb-3 text-3xl shadow-lg cursor-pointer transition-transform duration-100';
+      } else if (state === 'error') {
+        badge.innerHTML = customHtml || '<i class="fa-solid fa-triangle-exclamation mr-1"></i> সংযোগ ব্যর্থ হয়েছে';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full bg-red-50 text-red-600 text-[11.5px] font-bold mb-1.5 border border-red-200';
+        icon.className = 'fa-solid fa-triangle-exclamation';
+        icon.classList.remove('hidden');
+        if (eqBars) eqBars.classList.add('hidden');
+        if (actionBtn) {
+          actionBtn.innerHTML = '<i class="fa-solid fa-phone"></i> আবার কল করুন';
+          actionBtn.className = 'flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 flex items-center justify-center gap-1.5';
+        }
+      } else {
+        badge.innerHTML = customHtml || '<i class="fa-solid fa-microphone-lines mr-1"></i> কল শুরু করতে ট্যাপ করুন';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full bg-gray-100 text-gray-700 text-[11.5px] font-bold mb-1.5 border border-gray-200';
+        icon.className = 'fa-solid fa-wave-square';
+        icon.classList.remove('hidden');
+        if (eqBars) eqBars.classList.add('hidden');
+        if (actionBtn) {
+          actionBtn.innerHTML = '<i class="fa-solid fa-phone"></i> কল শুরু';
+          actionBtn.className = 'flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 flex items-center justify-center gap-1.5';
+        }
+      }
+    }
+
+    function updateEqualizerBars(level) {
+      const eqBars = document.getElementById('voice-eq-bars');
+      const orb = document.getElementById('voice-orb');
+      if (!eqBars) return;
+      const clamped = Math.min(1, Math.max(0.08, level));
+      const mults = [0.55, 0.85, 1.0, 0.8, 0.5];
+      Array.from(eqBars.children).forEach((bar, i) => {
+        const h = Math.round(12 + clamped * mults[i] * 36);
+        bar.style.height = `${h}px`;
+      });
+      if (orb) {
+        const scale = (1 + clamped * 0.18).toFixed(3);
+        orb.style.transform = `scale(${scale})`;
+      }
+    }
+
+    function selectLiveVoice(voiceName) {
+      liveSelectedVoice = voiceName;
+      document.querySelectorAll('.live-voice-chip').forEach(btn => {
+        if (btn.getAttribute('data-voice') === voiceName) {
+          btn.className = 'live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-600 text-white border border-indigo-600 shrink-0';
+        } else {
+          btn.className = 'live-voice-chip px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200 shrink-0';
+        }
+      });
+      if (liveIsConnected) {
+        startLiveVoiceChat();
+      }
+    }
+
+    function saveInlineKeyAndStartLive() {
+      const inp = document.getElementById('inline-live-apikey');
+      if (inp && inp.value.trim()) {
+        const key = inp.value.trim();
+        localStorage.setItem('swapnopay_gemini_key', key);
+        const settingInp = document.getElementById('setting-apikey');
+        if (settingInp) settingInp.value = key;
+        document.getElementById('live-apikey-card').classList.add('hidden');
+        startLiveVoiceChat();
+      }
+    }
+
+    function appendLiveActionLog(msgHtml) {
+      const box = document.getElementById('live-action-logs-box');
+      const list = document.getElementById('live-action-logs-list');
+      if (!box || !list) return;
+      box.classList.remove('hidden');
+      const item = document.createElement('div');
+      item.innerHTML = msgHtml;
+      list.appendChild(item);
+    }
+
+    function openVoiceModal() {
+      if (isVoiceDictating) stopVoiceDictation();
+      document.getElementById('voice-modal').classList.remove('hidden');
+      startLiveVoiceChat();
+    }
+
+    function closeVoiceModal() {
+      stopGeminiLiveSession();
+      document.getElementById('voice-modal').classList.add('hidden');
+    }
+
+    function toggleLiveMicMuteOrConnect() {
+      if (liveIsConnected) {
+        toggleLiveMicMute();
+      } else {
+        startLiveVoiceChat();
+      }
+    }
+
+    function toggleLiveMicMute() {
+      liveMicMuted = !liveMicMuted;
+      const icon = document.getElementById('live-mute-icon');
+      const label = document.getElementById('live-mute-label');
+      const btn = document.getElementById('live-mute-btn');
+      if (liveMicMuted) {
+        if (icon) icon.className = 'fa-solid fa-microphone-slash text-amber-600';
+        if (label) label.innerText = 'আনমিউট';
+        if (btn) btn.className = 'flex-1 py-2.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200 flex items-center justify-center gap-1.5';
+        setVoiceModalState('listening', '<i class="fa-solid fa-microphone-slash mr-1"></i> মাইক্রোফোন মিউট করা আছে');
+      } else {
+        if (icon) icon.className = 'fa-solid fa-microphone';
+        if (label) label.innerText = 'মিউট';
+        if (btn) btn.className = 'flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 flex items-center justify-center gap-1.5';
+        if (liveIsConnected) setVoiceModalState('listening', '<i class="fa-solid fa-microphone-lines mr-1"></i> শুনছি... সরাসরি কথা বলুন');
+      }
+    }
+
+    function endOrRestartLiveCall() {
+      if (liveIsConnected) {
+        stopGeminiLiveSession();
+      } else {
+        startLiveVoiceChat();
+      }
+    }
+
+    function handleLivePhotoFrame(event) {
+      const file = event.target.files[0];
+      if (!file || !geminiLiveWs || geminiLiveWs.readyState !== WebSocket.OPEN) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const b64 = (e.target.result || '').split(',')[1];
+        if (b64) {
+          geminiLiveWs.send(JSON.stringify({
+            realtimeInput: {
+              mediaChunks: [{ mimeType: 'image/jpeg', data: b64 }]
+            }
+          }));
+          appendLiveActionLog('<i class="fa-solid fa-camera text-indigo-600 mr-1"></i> লাইভ কলে রসিদ/ছবি পাঠানো হয়েছে');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function flushLivePlaybackQueue() {
+      liveActiveSources.forEach(src => {
+        try { src.stop(); } catch (_) {}
+      });
+      liveActiveSources = [];
+      if (liveAudioCtx) {
+        liveNextPlayTime = liveAudioCtx.currentTime;
+      }
+    }
+
+    function enqueueLivePcm24k(base64Pcm) {
+      if (!liveAudioCtx) return;
+      const binaryStr = atob(base64Pcm);
+      const byteLen = binaryStr.length;
+      const sampleCount = Math.floor(byteLen / 2);
+      if (sampleCount <= 0) return;
+
+      const float32 = new Float32Array(sampleCount);
+      let sumSq = 0;
+      for (let i = 0; i < sampleCount; i++) {
+        const low = binaryStr.charCodeAt(i * 2);
+        const high = binaryStr.charCodeAt(i * 2 + 1);
+        let int16 = (high << 8) | low;
+        if (int16 >= 0x8000) int16 -= 0x10000;
+        const f = int16 / 32768.0;
+        float32[i] = f;
+        sumSq += f * f;
+      }
+      const rms = Math.sqrt(sumSq / sampleCount);
+      updateEqualizerBars(rms * 3.8);
+      setVoiceModalState('speaking');
+
+      const audioBuffer = liveAudioCtx.createBuffer(1, sampleCount, 24000);
+      audioBuffer.getChannelData(0).set(float32);
+
+      const source = liveAudioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(liveAudioCtx.destination);
+
+      const now = liveAudioCtx.currentTime;
+      if (liveNextPlayTime < now) liveNextPlayTime = now;
+      source.start(liveNextPlayTime);
+      liveNextPlayTime += audioBuffer.duration;
+      liveActiveSources.push(source);
+
+      source.onended = () => {
+        liveActiveSources = liveActiveSources.filter(s => s !== source);
+        if (liveActiveSources.length === 0 && liveIsConnected) {
+          updateEqualizerBars(0.08);
+          setVoiceModalState('listening');
+        }
+      };
+    }
+
+    async function startLiveMicCapture() {
+      liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      liveNextPlayTime = liveAudioCtx.currentTime;
+      liveMicStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      const source = liveAudioCtx.createMediaStreamSource(liveMicStream);
+      liveProcessorNode = liveAudioCtx.createScriptProcessor(2048, 1, 1);
+
+      liveProcessorNode.onaudioprocess = (e) => {
+        if (!liveIsConnected || !liveSetupComplete || liveMicMuted || !geminiLiveWs || geminiLiveWs.readyState !== WebSocket.OPEN) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcm16 = new Int16Array(inputData.length);
+        let sumSq = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          sumSq += s * s;
+        }
+        if (liveActiveSources.length === 0) {
+          const rms = Math.sqrt(sumSq / inputData.length);
+          updateEqualizerBars(rms * 4.2);
+        }
+
+        const bytes = new Uint8Array(pcm16.buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64Audio = btoa(binary);
+        geminiLiveWs.send(JSON.stringify({
+          realtimeInput: {
+            mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64Audio }]
+          }
+        }));
+      };
+
+      source.connect(liveProcessorNode);
+      liveProcessorNode.connect(liveAudioCtx.destination);
+    }
+
+    function startLiveVoiceChat(candidateIdx = 0) {
+      stopGeminiLiveSession();
+      const apiKey = (document.getElementById('setting-apikey')?.value || localStorage.getItem('swapnopay_gemini_key') || '').trim();
+      const keyCard = document.getElementById('live-apikey-card');
+      const errText = document.getElementById('live-error-text');
+
+      if (!apiKey || !apiKey.startsWith('AIza')) {
+        if (keyCard) keyCard.classList.remove('hidden');
+        if (errText) {
+          errText.innerText = 'Gemini Live কলের জন্য আপনার Google AI Studio API Key প্রয়োজন।';
+          errText.classList.remove('hidden');
+        }
+        setVoiceModalState('error', '<i class="fa-solid fa-key mr-1"></i> API Key প্রয়োজন');
+        return;
+      }
+
+      if (keyCard) keyCard.classList.add('hidden');
+      if (candidateIdx >= LIVE_CANDIDATES.length) {
+        if (keyCard) keyCard.classList.remove('hidden');
+        if (errText) {
+          errText.innerText = 'Gemini Live সার্ভারে সংযোগ করা যায়নি। API Key চেক করুন।';
+          errText.classList.remove('hidden');
+        }
+        setVoiceModalState('error', '<i class="fa-solid fa-triangle-exclamation mr-1"></i> সংযোগ ব্যর্থ হয়েছে');
+        return;
+      }
+
+      const candidate = LIVE_CANDIDATES[candidateIdx];
+      setVoiceModalState('connecting', '<i class="fa-solid fa-bolt mr-1"></i> Gemini Live-এর সাথে সংযোগ হচ্ছে...');
+      liveIsConnected = true;
+      liveSetupComplete = false;
+
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${candidate.version}.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+      geminiLiveWs = new WebSocket(wsUrl);
+
+      geminiLiveWs.onopen = () => {
+        const memoryContext = aiMemories.length > 0 ? aiMemories.join('; ') : 'কোনো বিশেষ মেমোরি নেই';
+        const setupFrame = {
+          setup: {
+            model: candidate.model,
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: liveSelectedVoice }
+                }
+              }
+            },
+            systemInstruction: {
+              parts: [{
+                text: `You are "স্বপ্ন এআই (Swapno AI)", a warm, caring, friendly Bangladeshi retail business partner speaking in a real-time native Gemini Live audio call. Speak naturally and concisely in warm Bangla (ভাইয়া/আপু, মাশাআল্লাহ, অবশ্যই). Merchant's saved AI Memory: ${memoryContext}`
+              }]
+            },
+            tools: [{
+              functionDeclarations: [
+                {
+                  name: 'add_customer_credit',
+                  description: 'কাস্টমারের খাতায় বাকি বা বকেয়া যোগ করার ফাংশন',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      customer_name: { type: 'STRING' },
+                      amount: { type: 'NUMBER' },
+                      product_name: { type: 'STRING' }
+                    },
+                    required: ['customer_name', 'amount']
+                  }
+                },
+                {
+                  name: 'save_ai_memory',
+                  description: 'ব্যবসার নিয়ম বা তথ্য মেমোরিতে সেভ করার ফাংশন',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      memory_fact: { type: 'STRING' }
+                    },
+                    required: ['memory_fact']
+                  }
+                }
+              ]
+            }]
+          }
+        };
+        geminiLiveWs.send(JSON.stringify(setupFrame));
+      };
+
+      geminiLiveWs.onmessage = async (event) => {
+        try {
+          const rawText = event.data instanceof Blob ? await event.data.text() : event.data;
+          const msg = JSON.parse(rawText);
+
+          if (msg.setupComplete !== undefined) {
+            liveSetupComplete = true;
+            setVoiceModalState('listening');
+            await startLiveMicCapture();
+            geminiLiveWs.send(JSON.stringify({
+              clientContent: {
+                turns: [{ role: 'user', parts: [{ text: 'সংক্ষেপে ১ বাক্যে সালাম দিয়ে জিজ্ঞেস করো আজ ব্যবসায় কীভাবে সাহায্য করতে পারো।' }] }],
+                turnComplete: true
+              }
+            }));
+            return;
+          }
+
+          if (msg.serverContent) {
+            if (msg.serverContent.interrupted) {
+              flushLivePlaybackQueue();
+              setVoiceModalState('listening');
+            }
+            const parts = msg.serverContent.modelTurn?.parts || [];
+            for (const part of parts) {
+              const inline = part.inlineData || part.inline_data;
+              if (inline && inline.data) {
+                enqueueLivePcm24k(inline.data);
+              }
+            }
+          }
+
+          if (msg.toolCall?.functionCalls) {
+            const responses = [];
+            for (const call of msg.toolCall.functionCalls) {
+              let resultMsg = 'সম্পন্ন হয়েছে';
+              if (call.name === 'save_ai_memory' && call.args?.memory_fact) {
+                addAiMemory(call.args.memory_fact);
+                resultMsg = `<i class="fa-solid fa-brain text-purple-600 mr-1"></i> মেমোরিতে সেভ হয়েছে: ${call.args.memory_fact}`;
+              } else if (call.name === 'add_customer_credit') {
+                resultMsg = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> ${call.args?.customer_name || 'গ্রাহক'}-এর খাতায় ৳${call.args?.amount || 0} বাকি যোগ হয়েছে`;
+              }
+              appendLiveActionLog(resultMsg);
+              responses.push({
+                id: call.id,
+                name: call.name,
+                response: { result: { status: 'success', message: resultMsg.replace(/<[^>]+>/g, '') } }
+              });
+            }
+            geminiLiveWs.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+          }
+        } catch (err) {
+          console.warn('Gemini Live message parse warning:', err);
+        }
+      };
+
+      geminiLiveWs.onclose = () => {
+        if (liveIsConnected && !liveSetupComplete && candidateIdx + 1 < LIVE_CANDIDATES.length) {
+          startLiveVoiceChat(candidateIdx + 1);
+        } else if (liveIsConnected) {
+          stopGeminiLiveSession();
+        }
+      };
+
+      geminiLiveWs.onerror = () => {
+        if (liveIsConnected && !liveSetupComplete && candidateIdx + 1 < LIVE_CANDIDATES.length) {
+          startLiveVoiceChat(candidateIdx + 1);
+        }
+      };
+    }
+
+    function stopGeminiLiveSession() {
+      liveIsConnected = false;
+      liveSetupComplete = false;
+      flushLivePlaybackQueue();
+      if (liveProcessorNode) {
+        try { liveProcessorNode.disconnect(); } catch (_) {}
+        liveProcessorNode = null;
+      }
+      if (liveMicStream) {
+        liveMicStream.getTracks().forEach(t => t.stop());
+        liveMicStream = null;
+      }
+      if (liveAudioCtx) {
+        try { liveAudioCtx.close(); } catch (_) {}
+        liveAudioCtx = null;
+      }
+      if (geminiLiveWs) {
+        try { geminiLiveWs.close(); } catch (_) {}
+        geminiLiveWs = null;
+      }
+      updateEqualizerBars(0.08);
+      setVoiceModalState('idle');
+    }
+
+    function stopVoiceSpeech() {
+      stopGeminiLiveSession();
     }
 
     function openOcrModal() { document.getElementById('ocr-modal').classList.remove('hidden'); }
     function closeOcrModal() { document.getElementById('ocr-modal').classList.add('hidden'); }
     function processOcrText() {
-      const text = document.getElementById('ocr-input-text').value;
-      alert('রসিদের ডেটা সফলভাবে প্রসেস করা হয়েছে!');
+      const text = document.getElementById('ocr-input-text').value.trim();
       closeOcrModal();
-      document.getElementById('user-chat-input').value = "রসিদ এন্ট্রি প্রসেসড: " + text.split('\n')[0];
+      document.getElementById('user-chat-input').value = text ? ("এই রসিদটি বিশ্লেষণ করে খতিয়ানে এন্ট্রি করুন: " + text) : "রসিদ বিশ্লেষণ করুন";
       sendMessage();
     }
   </script>

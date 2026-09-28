@@ -49,6 +49,15 @@ if (!process.env.ADMIN_SUPABASE_ANON_KEY) {
 if (!process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY) {
   process.env.ADMIN_SUPABASE_SERVICE_ROLE_KEY = process.env.ADMIN_SUPABASE_ANON_KEY
 }
+if (!process.env.SUPABASE_OAUTH_CLIENT_ID) {
+  process.env.SUPABASE_OAUTH_CLIENT_ID = '5d3dcd9b-1acf-4e31-96d2-d673af42a18b'
+}
+if (!process.env.SUPABASE_OAUTH_CLIENT_SECRET) {
+  process.env.SUPABASE_OAUTH_CLIENT_SECRET = 'sba_db474448667fb0eea9ab0b36d2395a29c9149b61'
+}
+if (!process.env.SUPABASE_OAUTH_REDIRECT_URI) {
+  process.env.SUPABASE_OAUTH_REDIRECT_URI = 'https://api.swapnopay.top/v1/oauth/callback'
+}
 if (!process.env.ADMIN_SECRET || process.env.ADMIN_SECRET.length < 32) {
   process.env.ADMIN_SECRET = 'swapnopay_platform_admin_master_secret_2026_super_key_32'
 }

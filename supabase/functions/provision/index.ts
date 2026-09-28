@@ -25,12 +25,14 @@ async function getAccessToken(supabaseClient: any, userId: string): Promise<stri
   // Refresh Token Exchange
   console.log("Access token expired. Refreshing token for user:", userId);
   const clientId = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID") || "5d3dcd9b-1acf-4e31-96d2-d673af42a18b";
-  const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "";
+  const clientSecret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET") || "sba_db474448667fb0eea9ab0b36d2395a29c9149b61";
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
   const refreshParams = new URLSearchParams();
   refreshParams.append("grant_type", "refresh_token");
   refreshParams.append("refresh_token", conn.encrypted_refresh_token);
+  refreshParams.append("client_id", clientId);
+  refreshParams.append("client_secret", clientSecret);
 
   const res = await fetch("https://api.supabase.com/v1/oauth/token", {
     method: "POST",

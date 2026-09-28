@@ -4,26 +4,63 @@
 
 import { Router } from 'express'
 import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { getAdminClient, setMerchantGatewayConfig } from '../services/adminSupabase.js'
 import { lookupMerchantInAdminDb, requirePlatformUser, requireData } from '../services/merchantAccount.js'
 import { provisionProject, getDefaultProjectDbPassword, saveDefaultProjectCredentials } from '../services/provisionService.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const router = Router()
 
 // Default Configuration
 const DEFAULT_CLIENT_ID = '5d3dcd9b-1acf-4e31-96d2-d673af42a18b'
+const DEFAULT_CLIENT_SECRET = 'sba_db474448667fb0eea9ab0b36d2395a29c9149b61'
 const DEFAULT_REDIRECT_URI = 'https://api.swapnopay.top/v1/oauth/callback'
 
-function getOAuthCredentials() {
-  const clientId = process.env.SUPABASE_OAUTH_CLIENT_ID || DEFAULT_CLIENT_ID
-  const clientSecret = process.env.SUPABASE_OAUTH_CLIENT_SECRET || ''
-  const redirectUri = process.env.SUPABASE_OAUTH_REDIRECT_URI || DEFAULT_REDIRECT_URI
+export function getOAuthCredentials() {
+  const clientId = (process.env.SUPABASE_OAUTH_CLIENT_ID || DEFAULT_CLIENT_ID).trim()
+  const clientSecret = (process.env.SUPABASE_OAUTH_CLIENT_SECRET || DEFAULT_CLIENT_SECRET).trim()
+  const redirectUri = (process.env.SUPABASE_OAUTH_REDIRECT_URI || DEFAULT_REDIRECT_URI).trim()
   return { clientId, clientSecret, redirectUri }
 }
 
-// In-memory fallback caches (ensure reliability if RLS policy limits DB direct writes)
+// In-memory + disk fallback caches (ensure reliability across PM2 restarts or if RLS limits DB writes)
 const oauthTxCache = new Map()
 const connectionsCache = new Map()
+const OAUTH_CACHE_FILE = path.resolve(__dirname, '../../data/oauth-state.json')
+
+function loadOAuthDiskCache() {
+  try {
+    if (!fs.existsSync(OAUTH_CACHE_FILE)) return
+    const raw = JSON.parse(fs.readFileSync(OAUTH_CACHE_FILE, 'utf8') || '{}')
+    if (raw.transactions && typeof raw.transactions === 'object') {
+      for (const [k, v] of Object.entries(raw.transactions)) {
+        if (v && !oauthTxCache.has(k)) oauthTxCache.set(k, v)
+      }
+    }
+    if (raw.connections && typeof raw.connections === 'object') {
+      for (const [k, v] of Object.entries(raw.connections)) {
+        if (v && !connectionsCache.has(k)) connectionsCache.set(k, v)
+      }
+    }
+  } catch (_) {}
+}
+
+function saveOAuthDiskCache() {
+  try {
+    const dir = path.dirname(OAUTH_CACHE_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    const transactions = Object.fromEntries(oauthTxCache.entries())
+    const connections = Object.fromEntries(connectionsCache.entries())
+    fs.writeFileSync(OAUTH_CACHE_FILE, JSON.stringify({ transactions, connections }, null, 2), 'utf8')
+  } catch (_) {}
+}
+
+loadOAuthDiskCache()
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers: PKCE & State
@@ -53,8 +90,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;')
 }
 
-// Fetch or refresh access token with robust fallback lookup (user_id -> tx_id -> latest active connection)
-async function getValidAccessToken(userId, txId) {
+// Fetch or refresh access token with robust fallback lookup (directToken -> user_id -> tx_id -> latest active connection)
+async function getValidAccessToken(userId, txId, directAccessToken = '') {
+  if (directAccessToken && String(directAccessToken).trim().length >= 10) {
+    return String(directAccessToken).trim()
+  }
+
+  loadOAuthDiskCache()
   const admin = getAdminClient()
   let conn = null
 
@@ -106,6 +148,11 @@ async function getValidAccessToken(userId, txId) {
     }
   }
 
+  // 4. Fallback to latest active connection if user_id changed between onboarding and profile setup
+  if (!conn && connectionsCache.has('latest')) {
+    conn = connectionsCache.get('latest')
+  }
+
   if (!conn) {
     throw new Error('No active Supabase connection found for user.')
   }
@@ -123,6 +170,10 @@ async function getValidAccessToken(userId, txId) {
   const refreshParams = new URLSearchParams()
   refreshParams.append('grant_type', 'refresh_token')
   refreshParams.append('refresh_token', conn.encrypted_refresh_token)
+  refreshParams.append('client_id', clientId)
+  if (clientSecret) {
+    refreshParams.append('client_secret', clientSecret)
+  }
 
   const res = await fetch('https://api.supabase.com/v1/oauth/token', {
     method: 'POST',
@@ -135,19 +186,32 @@ async function getValidAccessToken(userId, txId) {
 
   const refreshed = await res.json()
   if (!res.ok || !refreshed.access_token) {
-    throw new Error(`Token Refresh Failed: ${refreshed.error_description || 'Invalid refresh token'}`)
+    throw new Error(`Token Refresh Failed: ${refreshed.error_description || refreshed.message || 'Invalid refresh token'}`)
   }
 
   const newExpiresAt = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString()
-  await admin
-    .from('supabase_connections')
-    .update({
-      encrypted_access_token: refreshed.access_token,
-      encrypted_refresh_token: refreshed.refresh_token || conn.encrypted_refresh_token,
-      access_token_expires_at: newExpiresAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', conn.user_id)
+  const updatedConn = {
+    ...conn,
+    encrypted_access_token: refreshed.access_token,
+    encrypted_refresh_token: refreshed.refresh_token || conn.encrypted_refresh_token,
+    access_token_expires_at: newExpiresAt,
+    updated_at: new Date().toISOString(),
+  }
+  if (conn.user_id) connectionsCache.set(conn.user_id, updatedConn)
+  connectionsCache.set('latest', updatedConn)
+  saveOAuthDiskCache()
+
+  try {
+    await admin
+      .from('supabase_connections')
+      .update({
+        encrypted_access_token: refreshed.access_token,
+        encrypted_refresh_token: refreshed.refresh_token || conn.encrypted_refresh_token,
+        access_token_expires_at: newExpiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', conn.user_id)
+  } catch (_) {}
 
   return refreshed.access_token
 }
@@ -157,7 +221,7 @@ async function getValidAccessToken(userId, txId) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleOAuthStart(req, res) {
   try {
-    const userId = req.body?.user_id || req.query?.user_id || `user_${crypto.randomUUID().slice(0, 8)}`
+    const userId = req.body?.user_id || req.query?.user_id || 'user_default'
     const organizationSlug = req.body?.organization_slug || req.query?.organization_slug
     const redirectBack = req.body?.redirect_back || req.query?.redirect_back
 
@@ -184,6 +248,7 @@ async function handleOAuthStart(req, res) {
     }
     oauthTxCache.set(stateHash, txData)
     oauthTxCache.set(txId, txData)
+    saveOAuthDiskCache()
 
     try {
       const admin = getAdminClient()
@@ -222,7 +287,12 @@ async function handleOAuthStart(req, res) {
       return res.redirect(authorizeUrl)
     }
 
-    return res.json({ authorize_url: authorizeUrl, state: rawState })
+    return res.json({
+      authorize_url: authorizeUrl,
+      state: rawState,
+      tx_id: txId,
+      code_verifier: codeVerifier,
+    })
   } catch (err) {
     console.error('[oauth-start] Exception:', err)
     return res.status(500).json({ error: err.message })
@@ -296,11 +366,11 @@ async function handleOAuthCallback(req, res) {
   }
 
   try {
+    loadOAuthDiskCache()
     const admin = getAdminClient()
     const stateHash = hashState(rawState)
 
-    // 1. Lookup transaction in DB
-    // 1. Lookup transaction in memory first, then DB
+    // 1. Lookup transaction in memory/disk first, then DB
     let tx = oauthTxCache.get(stateHash) || null
     if (!tx) {
       try {
@@ -374,6 +444,7 @@ async function handleOAuthCallback(req, res) {
 
     // 2. Mark consumed in memory and DB
     tx.consumed = true
+    saveOAuthDiskCache()
     try {
       await admin
         .from('control_oauth_transactions')
@@ -387,6 +458,10 @@ async function handleOAuthCallback(req, res) {
 
     const tokenParams = new URLSearchParams()
     tokenParams.append('grant_type', 'authorization_code')
+    tokenParams.append('client_id', clientId)
+    if (clientSecret) {
+      tokenParams.append('client_secret', clientSecret)
+    }
     tokenParams.append('code', code)
     tokenParams.append('redirect_uri', redirectUri)
     if (tx.pkce_verifier_encrypted) {
@@ -409,13 +484,13 @@ async function handleOAuthCallback(req, res) {
         <!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
           <div style="background:#1e293b;max-width:440px;margin:0 auto;padding:32px;border-radius:16px;border:1px solid #ef4444;">
             <h2 style="color:#ef4444;">OAuth Token Exchange Failed</h2>
-            <p style="color:#94a3b8;">${tokenData.error_description || tokenData.message || 'Token exchange failed'}</p>
+            <p style="color:#94a3b8;">${escapeHtml(tokenData.error_description || tokenData.message || 'Token exchange failed')}</p>
           </div>
         </body></html>
       `)
     }
 
-    // 4. Save tokens to memory cache and supabase_connections table
+    // 4. Save tokens to memory/disk cache and supabase_connections table
     const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString()
     const connRecord = {
       user_id: tx.user_id,
@@ -428,6 +503,8 @@ async function handleOAuthCallback(req, res) {
     }
     connectionsCache.set(tx.user_id, connRecord)
     connectionsCache.set(tx.id, connRecord)
+    connectionsCache.set('latest', connRecord)
+    saveOAuthDiskCache()
 
     try {
       await admin.from('supabase_connections').upsert(connRecord, { onConflict: 'user_id' })
@@ -460,12 +537,13 @@ async function handleOAuthCallback(req, res) {
     })()
 
     // 5. Determine Redirect Target
-    const deepLink = `swapnopay://supabase-connected?tx_id=${tx.id}`
+    const tokenQuery = `tx_id=${encodeURIComponent(tx.id)}&access_token=${encodeURIComponent(tokenData.access_token)}&refresh_token=${encodeURIComponent(tokenData.refresh_token || '')}`
+    const deepLink = `swapnopay://supabase-connected?${tokenQuery}`
     const rawTarget = tx.redirect_back
-      ? `${tx.redirect_back}${tx.redirect_back.includes('?') ? '&' : '?'}tx_id=${tx.id}&status=connected`
+      ? `${tx.redirect_back}${tx.redirect_back.includes('?') ? '&' : '?'}${tokenQuery}&status=connected`
       : deepLink
     const isSafeTarget = /^(https?:\/\/|swapnopay:\/\/)/i.test(rawTarget)
-    const redirectTarget = isSafeTarget ? encodeURI(rawTarget) : deepLink
+    const redirectTarget = isSafeTarget ? rawTarget : deepLink
 
     // 6. Return Clean Branded HTML
     return res.send(`
@@ -505,7 +583,7 @@ async function handleOAuthCallback(req, res) {
       <!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
         <div style="background:#1e293b;max-width:440px;margin:0 auto;padding:32px;border-radius:16px;border:1px solid #ef4444;">
           <h2 style="color:#ef4444;">Server Error</h2>
-          <p style="color:#94a3b8;">${err.message}</p>
+          <p style="color:#94a3b8;">${escapeHtml(err.message)}</p>
         </div>
       </body></html>
     `)
@@ -519,8 +597,9 @@ async function handleProjects(req, res) {
   try {
     const userId = req.body?.user_id || req.query?.user_id
     const txId = req.body?.tx_id || req.query?.tx_id
+    const directToken = req.body?.access_token || req.query?.access_token || ''
 
-    const accessToken = await getValidAccessToken(userId, txId)
+    const accessToken = await getValidAccessToken(userId, txId, directToken)
 
     const [orgsRes, projectsRes] = await Promise.all([
       fetch('https://api.supabase.com/v1/organizations', {
@@ -535,14 +614,27 @@ async function handleProjects(req, res) {
     const projects = projectsRes.ok ? await projectsRes.json() : []
 
     // Automatically pre-save default db_password & anon_key for the primary project
+    let autoConnectedProject = null
     if (Array.isArray(projects) && projects.length > 0) {
       const primaryProj = projects.find(p => p.status === 'ACTIVE_HEALTHY' || p.status === 'READY') || projects[0]
       if (primaryProj?.id) {
-        saveDefaultProjectCredentials({
-          userId: userId || txId,
-          projectRef: primaryProj.id,
-          accessToken,
-        }).catch(() => {})
+        try {
+          const saved = await saveDefaultProjectCredentials({
+            userId: userId || txId || 'user_default',
+            projectRef: primaryProj.id,
+            accessToken,
+          })
+          if (saved?.projectUrl && saved?.anonKey) {
+            autoConnectedProject = {
+              project_ref: saved.projectRef,
+              project_url: saved.projectUrl,
+              publishable_key: saved.anonKey,
+              anon_key: saved.anonKey,
+              db_password: saved.dbPassword || '',
+              database_url: saved.databaseUrl || '',
+            }
+          }
+        } catch (_) {}
       }
     }
 
@@ -555,6 +647,7 @@ async function handleProjects(req, res) {
         region: p.region,
         status: p.status,
       })),
+      auto_connected_project: autoConnectedProject,
     })
   } catch (err) {
     console.error('[oauth-projects] Error:', err)
@@ -567,9 +660,9 @@ async function handleProjects(req, res) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleProvision(req, res) {
   try {
-    const { action, user_id: userId, tx_id: txId, project_ref: projectRef, organization_slug: orgSlug, project_name: projectName, db_password: dbPassword } = req.body || {}
+    const { action, user_id: userId, tx_id: txId, access_token: directToken, project_ref: projectRef, organization_slug: orgSlug, project_name: projectName, db_password: dbPassword } = req.body || {}
 
-    const accessToken = await getValidAccessToken(userId, txId)
+    const accessToken = await getValidAccessToken(userId, txId, directToken)
 
     if (action === 'CREATE_PROJECT') {
       const defaultPass = getDefaultProjectDbPassword(userId || projectName || 'merchant', dbPassword)
@@ -810,8 +903,8 @@ async function handleSyncMerchantSetup(req, res) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleBootstrap(req, res) {
   try {
-    const { user_id: userId, tx_id: txId, project_ref: projectRef, db_password: dbPassword } = req.body || {}
-    const accessToken = await getValidAccessToken(userId, txId)
+    const { user_id: userId, tx_id: txId, access_token: directToken, project_ref: projectRef, db_password: dbPassword } = req.body || {}
+    const accessToken = await getValidAccessToken(userId, txId, directToken)
 
     let targetRef = projectRef
     if (!targetRef && userId) {
@@ -842,13 +935,24 @@ async function handleBootstrap(req, res) {
 // ──────────────────────────────────────────────────────────────────────────────
 async function handleOAuthExchange(req, res) {
   try {
+    loadOAuthDiskCache()
     const code = req.body?.code || req.query?.code
     const codeVerifier = req.body?.code_verifier || req.query?.code_verifier || ''
+    const rawState = req.body?.state || req.query?.state || ''
     const redirectUri = req.body?.redirect_uri || req.query?.redirect_uri || DEFAULT_REDIRECT_URI
-    const userId = req.body?.user_id || req.query?.user_id || req.headers['x-merchant-id'] || ''
+    const userId = req.body?.user_id || req.query?.user_id || req.headers['x-merchant-id'] || 'user_default'
 
     if (!code) {
       return res.status(400).json({ error: 'Missing code parameter' })
+    }
+
+    let effectiveVerifier = codeVerifier ? String(codeVerifier).trim() : ''
+    if (!effectiveVerifier && rawState) {
+      const sh = hashState(String(rawState).trim())
+      const cachedTx = oauthTxCache.get(sh)
+      if (cachedTx?.pkce_verifier_encrypted) {
+        effectiveVerifier = cachedTx.pkce_verifier_encrypted
+      }
     }
 
     const { clientId, clientSecret } = getOAuthCredentials()
@@ -856,10 +960,14 @@ async function handleOAuthExchange(req, res) {
 
     const tokenParams = new URLSearchParams()
     tokenParams.append('grant_type', 'authorization_code')
-    tokenParams.append('code', code.trim())
-    tokenParams.append('redirect_uri', redirectUri.trim())
-    if (codeVerifier && codeVerifier.trim()) {
-      tokenParams.append('code_verifier', codeVerifier.trim())
+    tokenParams.append('client_id', clientId)
+    if (clientSecret) {
+      tokenParams.append('client_secret', clientSecret)
+    }
+    tokenParams.append('code', String(code).trim())
+    tokenParams.append('redirect_uri', String(redirectUri).trim())
+    if (effectiveVerifier) {
+      tokenParams.append('code_verifier', effectiveVerifier)
     }
 
     const tokenResponse = await fetch('https://api.supabase.com/v1/oauth/token', {
@@ -877,6 +985,25 @@ async function handleOAuthExchange(req, res) {
       return res.status(tokenResponse.status).json(tokenData)
     }
 
+    const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString()
+    const connRecord = {
+      user_id: userId,
+      encrypted_access_token: tokenData.access_token,
+      encrypted_refresh_token: tokenData.refresh_token || '',
+      access_token_expires_at: expiresAt,
+      connection_status: 'CONNECTED',
+      provisioning_status: 'ACCOUNT_CONNECTED',
+      updated_at: new Date().toISOString(),
+    }
+    connectionsCache.set(userId, connRecord)
+    connectionsCache.set('latest', connRecord)
+    saveOAuthDiskCache()
+
+    try {
+      const admin = getAdminClient()
+      await admin.from('supabase_connections').upsert(connRecord, { onConflict: 'user_id' })
+    } catch (_) {}
+
     // Automatically discover project and save default db_password & anon_key on code exchange
     let autoCredentials = null
     try {
@@ -889,7 +1016,7 @@ async function handleOAuthExchange(req, res) {
           const activeProj = projects.find(p => p.status === 'ACTIVE_HEALTHY' || p.status === 'READY') || projects[0]
           if (activeProj?.id) {
             autoCredentials = await saveDefaultProjectCredentials({
-              userId: userId || 'default',
+              userId: userId || 'user_default',
               projectRef: activeProj.id,
               accessToken: tokenData.access_token,
             })

@@ -23,6 +23,8 @@ object SupabaseConnectionRepository {
 
     @Volatile var lastAutoConnectedProject: AutoConnectedProject? = null
     @Volatile var lastProvisionedDbPassword: String = ""
+    @Volatile var lastPkceVerifier: String = ""
+    @Volatile var lastTxId: String = ""
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -58,6 +60,10 @@ object SupabaseConnectionRepository {
                 if (response.isSuccessful && bodyStr != null) {
                     val jsonObj = JSONObject(bodyStr)
                     val authUrl = jsonObj.optString("authorize_url", "")
+                    val verifier = jsonObj.optString("code_verifier", "")
+                    val txId = jsonObj.optString("tx_id", "")
+                    if (verifier.isNotBlank()) lastPkceVerifier = verifier
+                    if (txId.isNotBlank()) lastTxId = txId
                     if (authUrl.isNotBlank()) {
                         onSuccess(authUrl)
                         return
@@ -69,8 +75,10 @@ object SupabaseConnectionRepository {
         }
 
         // Direct Supabase OAuth 2.0 PKCE Authorize fallback URL
+        val pkce = com.example.data.remote.SupabaseClient.generatePkcePair()
+        lastPkceVerifier = pkce.codeVerifier
         val fallbackState = java.util.UUID.randomUUID().toString().replace("-", "")
-        val directAuthorizeUrl = "https://api.supabase.com/v1/oauth/authorize?client_id=5d3dcd9b-1acf-4e31-96d2-d673af42a18b&redirect_uri=https://api.swapnopay.top/v1/oauth/callback&response_type=code&state=$fallbackState"
+        val directAuthorizeUrl = "https://api.supabase.com/v1/oauth/authorize?client_id=5d3dcd9b-1acf-4e31-96d2-d673af42a18b&redirect_uri=https://api.swapnopay.top/v1/oauth/callback&response_type=code&state=$fallbackState&code_challenge=${pkce.codeChallenge}&code_challenge_method=S256"
         onSuccess(directAuthorizeUrl)
     }
 

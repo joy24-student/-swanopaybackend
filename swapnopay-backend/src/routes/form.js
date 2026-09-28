@@ -28,6 +28,14 @@ export async function authenticateFormCaller(req) {
     return { isAdmin: true, merchantId: null }
   }
 
+  const requested = String(
+    req.headers['x-merchant-id'] ||
+    req.body?.merchant_id ||
+    req.body?.payload?.merchant_id ||
+    req.query?.merchant_id ||
+    ''
+  ).trim()
+
   const authHeader = req.headers['authorization']
   if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     const token = authHeader.replace(/^Bearer\s+/i, '').trim()
@@ -36,43 +44,103 @@ export async function authenticateFormCaller(req) {
     }
 
     // Supabase JWT verification and explicit admin/merchant ownership checks.
-    try {
-      const { getAdminClient } = await import('../services/adminSupabase.js')
-      const adminClient = getAdminClient()
-      if (adminClient?.auth) {
-        const { data: { user }, error: userError } = await adminClient.auth.getUser(token)
-        if (!userError && user?.id) {
-          const { data: adminRecord } = await adminClient
-            .from('admin_users')
-            .select('id, role, is_active')
-            .eq('id', user.id)
-            .maybeSingle()
-          if (adminRecord?.is_active) {
-            return { isAdmin: true, merchantId: user.id }
-          }
-          const { data: merchant } = await adminClient
-            .from('merchants')
-            .select('id, user_id')
-            .eq('user_id', user.id)
-            .maybeSingle()
-          const requested = String(req.headers['x-merchant-id'] || req.body?.merchant_id || req.query?.merchant_id || '').trim()
-          if (merchant?.id && (!requested || requested === merchant.id || requested === user.id)) {
-            return { isAdmin: false, merchantId: merchant.id, user }
+    if (!token.startsWith('sp_') && !token.startsWith('sk_') && !token.startsWith('SWAPNO_')) {
+      try {
+        const { getAdminClient } = await import('../services/adminSupabase.js')
+        const adminClient = getAdminClient()
+        if (adminClient?.auth) {
+          const { data: { user }, error: userError } = await adminClient.auth.getUser(token)
+          if (!userError && user?.id) {
+            let { data: adminRecord } = await adminClient
+              .from('admin_users')
+              .select('id, role, is_active')
+              .eq('id', user.id)
+              .maybeSingle()
+            if (!adminRecord && user.email) {
+              const { data: byEmail } = await adminClient
+                .from('admin_users')
+                .select('id, role, is_active')
+                .ilike('email', user.email)
+                .maybeSingle()
+              if (byEmail?.is_active) adminRecord = byEmail
+            }
+            if (adminRecord?.is_active) {
+              return { isAdmin: true, merchantId: requested || user.id }
+            }
+
+            if (!requested || requested === user.id) {
+              let resolvedId = user.id
+              try {
+                const { data: ownMerchant } = await adminClient
+                  .from('merchants')
+                  .select('id, user_id')
+                  .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+                  .limit(1)
+                  .maybeSingle()
+                if (ownMerchant?.id) resolvedId = requested || ownMerchant.id
+              } catch (_) {}
+              return { isAdmin: false, merchantId: resolvedId, user }
+            }
+
+            // Specific merchant requested: verify user owns this merchant
+            try {
+              const { data: merchant } = await adminClient
+                .from('merchants')
+                .select('id, user_id, email')
+                .eq('id', requested)
+                .maybeSingle()
+              const isOwner = merchant && (
+                merchant.id === user.id ||
+                merchant.user_id === user.id ||
+                (user.email && merchant.email && merchant.email.toLowerCase() === user.email.toLowerCase())
+              )
+              if (isOwner) {
+                return { isAdmin: false, merchantId: merchant.id, user }
+              }
+            } catch (_) {}
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+
+      // Fallback: verify against merchant's own connected Supabase project if credentials exist
+      try {
+        let projUrl = req.body?.project_url || null
+        let pubKey = req.body?.publishable_key || null
+        if ((!projUrl || !pubKey) && requested) {
+          const creds = await getMerchantCredentials(requested)
+          if (creds?.supabase_url && creds?.supabase_anon_key) {
+            projUrl = creds.supabase_url
+            pubKey = creds.supabase_anon_key
+          }
+        }
+        if (projUrl && pubKey) {
+          const { createClient } = await import('@supabase/supabase-js')
+          const mClient = createClient(projUrl, pubKey, {
+            auth: { persistSession: false, autoRefreshToken: false }
+          })
+          const { data: { user: mUser }, error: mErr } = await mClient.auth.getUser(token)
+          if (!mErr && mUser?.id) {
+            return { isAdmin: false, merchantId: requested || mUser.id, user: mUser }
+          }
+        }
+      } catch (_) {}
+    }
   }
 
-  // 2. Dynamic API Key
-  const rawKey = req.headers['x-api-key'] || req.headers['x-merchant-secret']
+  // 2. Dynamic API Key (X-API-Key, X-Merchant-Secret, or Bearer sp_...)
+  const rawKey =
+    req.headers['x-api-key'] ||
+    req.headers['x-merchant-secret'] ||
+    (authHeader && (authHeader.startsWith('sp_') || authHeader.startsWith('sk_') || authHeader.toLowerCase().startsWith('bearer sp_') || authHeader.toLowerCase().startsWith('bearer sk_'))
+      ? authHeader.replace(/^Bearer\s+/i, '').trim()
+      : null)
   if (rawKey && typeof rawKey === 'string') {
     try {
       const { validateApiKey } = await import('../services/adminSupabase.js')
       const { apiKeyDigest } = await import('../utils/crypto.js')
-      const digest = apiKeyDigest(rawKey.trim())
-      const keyRecord = await validateApiKey(digest)
-      const requested = String(req.headers['x-merchant-id'] || req.body?.merchant_id || req.query?.merchant_id || '').trim()
+      const cleanKey = rawKey.trim()
+      const digest = apiKeyDigest(cleanKey)
+      const keyRecord = await validateApiKey(digest, cleanKey)
       if (keyRecord?.merchant_id && (!requested || requested === keyRecord.merchant_id)) {
         return { isAdmin: false, merchantId: keyRecord.merchant_id }
       }
@@ -475,13 +543,15 @@ export function formRouter(io = null) {
           const recNumbers = formSnapshot.receiving_numbers || formSnapshot.gateway_config?.receiving_numbers
           const accTypes = formSnapshot.account_types || formSnapshot.gateway_config?.account_types
           const qrCodes = formSnapshot.qr_codes || formSnapshot.gateway_config?.qr_codes
-          if (recNumbers && typeof recNumbers === 'object' && Object.keys(recNumbers).length > 0) {
+          if ((recNumbers && typeof recNumbers === 'object' && Object.keys(recNumbers).length > 0) || (project_url && publishable_key)) {
             try {
               const { setMerchantGatewayConfig } = await import('../services/adminSupabase.js')
               setMerchantGatewayConfig(effectiveMerchantUuid, {
                 merchant_name: formSnapshot.merchant_name || formSnapshot.title,
                 merchant_logo_url: formSnapshot.logo_url || null,
-                receiving_numbers: recNumbers,
+                supabase_url: project_url || undefined,
+                supabase_anon_key: publishable_key || undefined,
+                receiving_numbers: recNumbers || {},
                 account_types: accTypes || {},
                 qr_codes: qrCodes || {}
               }).catch(e => console.warn('[form-router] setMerchantGatewayConfig notice:', e.message))

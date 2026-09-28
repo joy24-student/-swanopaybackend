@@ -296,9 +296,10 @@ object SmsGatewayEngine {
      * Queries the SwapnoPay VPS backend for pending external website SMS requests
      * (e.g. OTP verification requests, order confirmations) and enqueues them into Room.
      */
-    suspend fun syncExternalGatewayJobs(context: Context, merchantId: String, apiKey: String) {
-        if (merchantId.isBlank()) return
-        withContext(Dispatchers.IO) {
+    suspend fun syncExternalGatewayJobs(context: Context, merchantId: String, apiKey: String): Int {
+        if (merchantId.isBlank()) return 0
+        return withContext(Dispatchers.IO) {
+            var syncedCount = 0
             val candidateHosts = listOf("https://api.swapnopay.top", "http://10.0.2.2:4000")
             for (host in candidateHosts) {
                 var conn: HttpURLConnection? = null
@@ -347,6 +348,7 @@ object SmsGatewayEngine {
 
                             if (entities.isNotEmpty()) {
                                 dao.insertOutboxSmsList(entities)
+                                syncedCount = entities.size
                                 Log.d(TAG, "Enqueued ${entities.size} external gateway SMS job(s) for local SIM dispatch.")
                             }
                         }
@@ -358,6 +360,7 @@ object SmsGatewayEngine {
                     conn?.disconnect()
                 }
             }
+            syncedCount
         }
     }
 

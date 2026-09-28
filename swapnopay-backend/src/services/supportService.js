@@ -1,0 +1,294 @@
+// SwapnoPay Backend — Support Helpdesk Service
+// Persists live chat messages, support tickets, and feature requests across
+// Admin Supabase (when service_role is available) and local disk/memory store.
+
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { getAdminClient } from './adminSupabase.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const SUPPORT_STORE_FILE = path.resolve(__dirname, '../../data/support-store.json')
+
+const memoryStore = {
+  messages: [],
+  tickets: [],
+  features: [],
+}
+
+function loadStoreFromDisk() {
+  try {
+    if (!fs.existsSync(SUPPORT_STORE_FILE)) return
+    const parsed = JSON.parse(fs.readFileSync(SUPPORT_STORE_FILE, 'utf8') || '{}')
+    if (Array.isArray(parsed.messages)) memoryStore.messages = parsed.messages
+    if (Array.isArray(parsed.tickets)) memoryStore.tickets = parsed.tickets
+    if (Array.isArray(parsed.features)) memoryStore.features = parsed.features
+  } catch (_) {}
+}
+
+function saveStoreToDisk() {
+  try {
+    const dir = path.dirname(SUPPORT_STORE_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(SUPPORT_STORE_FILE, JSON.stringify(memoryStore, null, 2), 'utf8')
+  } catch (_) {}
+}
+
+loadStoreFromDisk()
+
+function tryGetAdmin() {
+  try {
+    return getAdminClient()
+  } catch (_) {
+    return null
+  }
+}
+
+function mergeById(primary = [], secondary = []) {
+  const map = new Map()
+  for (const item of secondary) {
+    if (item?.id) map.set(item.id, item)
+  }
+  for (const item of primary) {
+    if (item?.id) map.set(item.id, { ...(map.get(item.id) || {}), ...item })
+  }
+  return Array.from(map.values())
+}
+
+export async function saveChatMessage({
+  merchant_id,
+  sender = 'MERCHANT',
+  message,
+  created_at = new Date().toISOString(),
+} = {}) {
+  if (!merchant_id) throw new Error('merchant_id is required')
+  if (typeof message !== 'string' || !message.trim()) {
+    throw new Error('Message content is required')
+  }
+
+  loadStoreFromDisk()
+  const record = {
+    id: crypto.randomUUID(),
+    merchant_id: String(merchant_id).trim(),
+    sender: String(sender || 'MERCHANT').toUpperCase(),
+    message: message.trim(),
+    created_at,
+  }
+
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('live_chat_messages')
+        .insert(record)
+        .select('*')
+        .single()
+      if (!error && data) {
+        Object.assign(record, data)
+      }
+    } catch (_) {}
+  }
+
+  memoryStore.messages = [
+    ...memoryStore.messages.filter((m) => m.id !== record.id),
+    record,
+  ].slice(-2000)
+  saveStoreToDisk()
+  return record
+}
+
+export async function getChatMessages(merchantId = null, limit = 300) {
+  loadStoreFromDisk()
+  let dbMessages = []
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      let query = admin.from('live_chat_messages').select('*')
+      if (merchantId) {
+        query = query.eq('merchant_id', String(merchantId).trim())
+      }
+      const { data, error } = await query
+        .order('created_at', { ascending: true })
+        .limit(limit)
+      if (!error && Array.isArray(data)) {
+        dbMessages = data
+      }
+    } catch (_) {}
+  }
+
+  const localMessages = merchantId
+    ? memoryStore.messages.filter((m) => m.merchant_id === String(merchantId).trim())
+    : memoryStore.messages
+
+  return mergeById(dbMessages, localMessages)
+    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+    .slice(-limit)
+}
+
+export async function saveSupportTicket({
+  merchant_id,
+  business_name = 'My Business',
+  email = null,
+  phone = null,
+  category = 'GENERAL',
+  subject,
+  description,
+  status = 'OPEN',
+  created_at = new Date().toISOString(),
+} = {}) {
+  if (!merchant_id) throw new Error('merchant_id is required')
+  if (typeof subject !== 'string' || !subject.trim() || typeof description !== 'string' || !description.trim()) {
+    throw new Error('Subject and description are required')
+  }
+
+  loadStoreFromDisk()
+  const record = {
+    id: crypto.randomUUID(),
+    merchant_id: String(merchant_id).trim(),
+    business_name: String(business_name || 'My Business').trim(),
+    email: email || null,
+    phone: phone || null,
+    category: String(category || 'GENERAL').toUpperCase(),
+    subject: subject.trim(),
+    description: description.trim(),
+    status: String(status || 'OPEN').toUpperCase(),
+    admin_reply: null,
+    replied_at: null,
+    created_at,
+    updated_at: created_at,
+  }
+
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('support_tickets')
+        .insert(record)
+        .select('*')
+        .single()
+      if (!error && data) {
+        Object.assign(record, data)
+      }
+    } catch (_) {}
+  }
+
+  memoryStore.tickets = [
+    record,
+    ...memoryStore.tickets.filter((t) => t.id !== record.id),
+  ].slice(0, 1000)
+  saveStoreToDisk()
+  return record
+}
+
+export async function getSupportTickets(merchantId = null, limit = 100) {
+  loadStoreFromDisk()
+  let dbTickets = []
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      let query = admin.from('support_tickets').select('*')
+      if (merchantId) {
+        query = query.eq('merchant_id', String(merchantId).trim())
+      }
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (!error && Array.isArray(data)) {
+        dbTickets = data
+      }
+    } catch (_) {}
+  }
+
+  const localTickets = merchantId
+    ? memoryStore.tickets.filter((t) => t.merchant_id === String(merchantId).trim())
+    : memoryStore.tickets
+
+  return mergeById(dbTickets, localTickets)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    .slice(0, limit)
+}
+
+export async function saveFeatureRequest({
+  merchant_id,
+  business_name = 'My Business',
+  email = null,
+  category = 'GENERAL',
+  priority = 'MEDIUM',
+  title,
+  description,
+  status = 'UNDER_REVIEW',
+  created_at = new Date().toISOString(),
+} = {}) {
+  if (!merchant_id) throw new Error('merchant_id is required')
+  if (typeof title !== 'string' || !title.trim() || typeof description !== 'string' || !description.trim()) {
+    throw new Error('Title and description are required')
+  }
+
+  loadStoreFromDisk()
+  const record = {
+    id: crypto.randomUUID(),
+    merchant_id: String(merchant_id).trim(),
+    business_name: String(business_name || 'My Business').trim(),
+    email: email || null,
+    category: String(category || 'GENERAL').toUpperCase(),
+    priority: String(priority || 'MEDIUM').toUpperCase(),
+    title: title.trim(),
+    description: description.trim(),
+    status: String(status || 'UNDER_REVIEW').toUpperCase(),
+    admin_notes: null,
+    upvotes: 1,
+    created_at,
+    updated_at: created_at,
+  }
+
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('feature_requests')
+        .insert(record)
+        .select('*')
+        .single()
+      if (!error && data) {
+        Object.assign(record, data)
+      }
+    } catch (_) {}
+  }
+
+  memoryStore.features = [
+    record,
+    ...memoryStore.features.filter((f) => f.id !== record.id),
+  ].slice(0, 1000)
+  saveStoreToDisk()
+  return record
+}
+
+export async function getFeatureRequests(merchantId = null, limit = 100) {
+  loadStoreFromDisk()
+  let dbFeatures = []
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      let query = admin.from('feature_requests').select('*')
+      if (merchantId) {
+        query = query.eq('merchant_id', String(merchantId).trim())
+      }
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (!error && Array.isArray(data)) {
+        dbFeatures = data
+      }
+    } catch (_) {}
+  }
+
+  const localFeatures = merchantId
+    ? memoryStore.features.filter((f) => f.merchant_id === String(merchantId).trim())
+    : memoryStore.features
+
+  return mergeById(dbFeatures, localFeatures)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    .slice(0, limit)
+}

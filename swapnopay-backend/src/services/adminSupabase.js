@@ -956,7 +956,7 @@ export async function listApiKeyRecords() {
   }))
 }
 
-export async function validateApiKey(digest) {
+export async function validateApiKey(digest, rawKey = null) {
   let admin = null
   try { admin = getAdminClient() } catch (_) {}
   if (admin) {
@@ -965,15 +965,53 @@ export async function validateApiKey(digest) {
         .from('platform_api_keys')
         .select('id,merchant_id,merchant_name,label,key_preview,revoked')
         .eq('key_digest', digest)
-        .single()
+        .maybeSingle()
 
-      if (!error && data && !data.revoked) return data
+      if (!error && data) {
+        return data.revoked ? null : data
+      }
     } catch (_) {}
+
+    if (rawKey && typeof rawKey === 'string' && rawKey.trim().startsWith('sp_')) {
+      const cleanRaw = rawKey.trim()
+      try {
+        const { data: byRaw, error: rawErr } = await admin
+          .from('platform_api_keys')
+          .select('id,merchant_id,merchant_name,label,key_preview,revoked')
+          .eq('raw_key', cleanRaw)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (!rawErr && byRaw) {
+          return byRaw.revoked ? null : byRaw
+        }
+      } catch (_) {}
+
+      try {
+        const { data: mData, error: mErr } = await admin
+          .from('merchants')
+          .select('id,business_name,api_key')
+          .eq('api_key', cleanRaw)
+          .maybeSingle()
+
+        if (!mErr && mData?.id) {
+          return {
+            id: mData.id,
+            merchant_id: mData.id,
+            merchant_name: mData.business_name || 'Merchant',
+            label: 'Default Payment Gateway API Key',
+            key_preview: cleanRaw.slice(0, 14) + '****',
+            revoked: false,
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   // Check inMemoryApiKeys fallback
   for (const [mId, record] of inMemoryApiKeys.entries()) {
-    if (apiKeyDigest(record.rawKey) === digest && !record.revoked) {
+    if ((apiKeyDigest(record.rawKey) === digest || (rawKey && record.rawKey === rawKey.trim())) && !record.revoked) {
       return {
         id: record.id,
         merchant_id: mId,
@@ -1008,6 +1046,17 @@ export async function getOrCreateMerchantApiKey(merchantId, merchantName = 'Merc
         .maybeSingle()
 
       if (existing?.raw_key) {
+        inMemoryApiKeys.set(cleanId, {
+          id: existing.id,
+          merchant_id: cleanId,
+          merchant_name: existing.merchant_name || merchantName,
+          label: existing.label || 'Default API Key',
+          rawKey: existing.raw_key,
+          digest: apiKeyDigest(existing.raw_key),
+          preview: existing.key_preview || (existing.raw_key.slice(0, 14) + '****'),
+          revoked: false,
+          createdAt: existing.created_at || new Date().toISOString()
+        })
         return {
           id: existing.id,
           merchant_id: cleanId,
@@ -1033,12 +1082,25 @@ export async function getOrCreateMerchantApiKey(merchantId, merchantName = 'Merc
       }
 
       if (mData?.api_key && mData.api_key.startsWith('sp_live_')) {
+        const resolvedId = existing?.id || randomUUID()
+        const preview = mData.api_key.slice(0, 14) + '****'
+        inMemoryApiKeys.set(cleanId, {
+          id: resolvedId,
+          merchant_id: cleanId,
+          merchant_name: mData.business_name || merchantName,
+          label: 'Default Payment Gateway API Key',
+          rawKey: mData.api_key,
+          digest: apiKeyDigest(mData.api_key),
+          preview,
+          revoked: false,
+          createdAt: new Date().toISOString()
+        })
         return {
-          id: existing?.id || randomUUID(),
+          id: resolvedId,
           merchant_id: cleanId,
           merchant_name: mData.business_name || merchantName,
           api_key: mData.api_key,
-          key_preview: mData.api_key.slice(0, 14) + '****',
+          key_preview: preview,
           is_new: false,
         }
       }

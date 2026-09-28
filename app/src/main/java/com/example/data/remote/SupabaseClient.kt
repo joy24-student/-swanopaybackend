@@ -1666,6 +1666,8 @@ object SupabaseClient {
         formId: String,
         formSlug: String,
         merchantId: String? = null,
+        apiKey: String = "",
+        deviceId: String = "",
         payloadJson: JSONObject? = null,
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
@@ -1691,8 +1693,17 @@ object SupabaseClient {
                 .url(endpoint)
                 .addHeader("Content-Type", "application/json")
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            if (token.isNotBlank()) {
+            if (token.isNotBlank() && !token.startsWith("SWAPNO_")) {
                 builder.addHeader("Authorization", "Bearer $token")
+            }
+            if (apiKey.isNotBlank()) {
+                builder.addHeader("x-api-key", apiKey)
+            }
+            if (!effectiveMerchantId.isNullOrBlank()) {
+                builder.addHeader("x-merchant-id", effectiveMerchantId)
+            }
+            if (deviceId.isNotBlank()) {
+                builder.addHeader("x-device-id", deviceId)
             }
             builder.build()
         }.getOrElse {
@@ -1724,6 +1735,9 @@ object SupabaseClient {
     suspend fun unregisterHostedFormRoute(
         routerBaseUrl: String,
         token: String = "",
+        apiKey: String = "",
+        merchantId: String = "",
+        deviceId: String = "",
         formId: String,
         onSuccess: () -> Unit = {},
         onFailure: (String) -> Unit = {}
@@ -1733,8 +1747,17 @@ object SupabaseClient {
             val builder = Request.Builder()
                 .url(endpoint)
                 .delete()
-            if (token.isNotBlank()) {
+            if (token.isNotBlank() && !token.startsWith("SWAPNO_")) {
                 builder.addHeader("Authorization", "Bearer $token")
+            }
+            if (apiKey.isNotBlank()) {
+                builder.addHeader("x-api-key", apiKey)
+            }
+            if (merchantId.isNotBlank()) {
+                builder.addHeader("x-merchant-id", merchantId)
+            }
+            if (deviceId.isNotBlank()) {
+                builder.addHeader("x-device-id", deviceId)
             }
             builder.build()
         }.getOrElse {
@@ -2273,58 +2296,67 @@ object SupabaseClient {
         code: String,
         codeVerifier: String,
         redirectUri: String = "https://api.swapnopay.top/v1/oauth/callback",
+        state: String = "",
         onSuccess: (accessToken: String, refreshToken: String) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        // If clientSecret is empty, use the backend exchange proxy at api.swapnopay.top/v1/oauth/exchange
-        if (clientSecret.isBlank()) {
-            val proxyEndpoint = "https://api.swapnopay.top/v1/oauth/exchange"
-            val proxyJson = JSONObject().apply {
-                put("code", code.trim())
-                put("code_verifier", codeVerifier.trim())
-                put("redirect_uri", redirectUri.trim())
-            }.toString()
+        val effectiveClientId = clientId.ifBlank { "5d3dcd9b-1acf-4e31-96d2-d673af42a18b" }.trim()
+        val effectiveSecret = clientSecret.ifBlank { "sba_db474448667fb0eea9ab0b36d2395a29c9149b61" }.trim()
 
-            val proxyReq = Request.Builder()
-                .url(proxyEndpoint)
-                .post(proxyJson.toRequestBody(JSON_MEDIA_TYPE))
-                .build()
+        // Try the backend exchange proxy at api.swapnopay.top/v1/oauth/exchange first
+        val proxyEndpoint = "https://api.swapnopay.top/v1/oauth/exchange"
+        val proxyJson = JSONObject().apply {
+            put("code", code.trim())
+            put("code_verifier", codeVerifier.trim())
+            put("redirect_uri", redirectUri.trim())
+            if (state.isNotBlank()) put("state", state.trim())
+        }.toString()
 
-            try {
-                val executed = withContext(Dispatchers.IO) {
-                    client.newCall(proxyReq).execute().use { response ->
-                        val bodyStr = response.body?.string()
-                        if (response.isSuccessful && bodyStr != null) {
-                            val json = JSONObject(bodyStr)
-                            val access = json.optString("access_token", "")
-                            val refresh = json.optString("refresh_token", "")
-                            if (access.isNotBlank()) {
-                                onSuccess(access, refresh)
-                                true
-                            } else false
+        val proxyReq = Request.Builder()
+            .url(proxyEndpoint)
+            .post(proxyJson.toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        try {
+            val executed = withContext(Dispatchers.IO) {
+                client.newCall(proxyReq).execute().use { response ->
+                    val bodyStr = response.body?.string()
+                    if (response.isSuccessful && bodyStr != null) {
+                        val json = JSONObject(bodyStr)
+                        val access = json.optString("access_token", "")
+                        val refresh = json.optString("refresh_token", "")
+                        if (access.isNotBlank()) {
+                            onSuccess(access, refresh)
+                            true
                         } else false
-                    }
+                    } else false
                 }
-                if (executed) return
-            } catch (e: Exception) {
-                Log.w("SupabaseClient", "Exchange proxy error: ${e.message}")
             }
+            if (executed) return
+        } catch (e: Exception) {
+            Log.w("SupabaseClient", "Exchange proxy error: ${e.message}")
         }
 
         val endpoint = "https://api.supabase.com/v1/oauth/token"
         val bodyBuilder = okhttp3.FormBody.Builder()
             .add("grant_type", "authorization_code")
-            .add("client_id", clientId.trim())
+            .add("client_id", effectiveClientId)
+            .add("client_secret", effectiveSecret)
             .add("code", code.trim())
-            .add("redirect_uri", redirectUri)
-            .add("code_verifier", codeVerifier.trim())
+            .add("redirect_uri", redirectUri.trim())
 
-        if (clientSecret.isNotBlank()) {
-            bodyBuilder.add("client_secret", clientSecret.trim())
+        if (codeVerifier.isNotBlank()) {
+            bodyBuilder.add("code_verifier", codeVerifier.trim())
         }
+
+        val basicAuth = android.util.Base64.encodeToString(
+            "$effectiveClientId:$effectiveSecret".toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP
+        )
 
         val request = Request.Builder()
             .url(endpoint)
+            .addHeader("Authorization", "Basic $basicAuth")
             .post(bodyBuilder.build())
             .build()
 

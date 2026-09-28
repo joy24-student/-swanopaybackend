@@ -1,10 +1,10 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="390dp"
-    android:height="196dp"
-    android:viewportWidth="390"
-    android:viewportHeight="196.5495">
+    android:width="300dp"
+    android:height="135dp"
+    android:viewportWidth="300"
+    android:viewportHeight="135">
     
-    <group android:translateX="45" android:translateY="32.75825">
+    <group android:translateX="0" android:translateY="2">
         <group android:translateX="-1266.194" android:translateY="-110.295" android:scaleX="2.59472" android:scaleY="2.59472">
             <group android:translateX="481.988" android:translateY="41.407">
                 <group>

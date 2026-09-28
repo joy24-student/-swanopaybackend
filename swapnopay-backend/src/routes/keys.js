@@ -108,8 +108,9 @@ router.post('/validate', async (req, res) => {
   }
 
   try {
-    const digest = apiKeyDigest(api_key.trim())
-    const record = await validateApiKey(digest)
+    const cleanKey = api_key.trim()
+    const digest = apiKeyDigest(cleanKey)
+    const record = await validateApiKey(digest, cleanKey)
 
     if (!record) {
       return res.status(401).json({ ok: false, valid: false, error: 'Invalid or revoked API key' })
@@ -136,10 +137,11 @@ router.post('/validate', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 router.get('/active', requireKeyManagementAuth, async (req, res) => {
   const authenticatedMerchantId = !req.isAdmin ? req.merchantUser?.id : null
-  if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId) {
+  const authenticatedUserId = !req.isAdmin ? req.merchantUser?.userId : null
+  if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId && req.query.merchant_id !== authenticatedUserId) {
     return res.status(403).json({ ok: false, error: 'Cannot access another merchant\'s API key' })
   }
-  const targetMerchantId = req.isAdmin ? req.query.merchant_id : authenticatedMerchantId
+  const targetMerchantId = req.isAdmin ? req.query.merchant_id : (authenticatedMerchantId || req.query.merchant_id)
   const userEmail = req.isAdmin ? req.query.email : req.merchantUser?.email
   const deviceId = req.isAdmin ? (req.query.device_id || req.headers['x-device-id'] || null) : null
 
@@ -170,8 +172,8 @@ router.post('/regenerate', requireKeyManagementAuth, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'merchant_id is required' })
   }
 
-  if (!req.isAdmin && req.merchantUser && req.merchantUser.id !== targetMerchantId) {
-    return res.status(403).json({ ok: false, error: 'Cannot regenerate keys for another merchant' })
+  if (!req.isAdmin && req.merchantUser && req.merchantUser.id !== targetMerchantId && req.merchantUser.userId !== targetMerchantId) {
+    return res.status(403).json({ error: 'Cannot regenerate keys for another merchant' })
   }
 
   try {

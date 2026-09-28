@@ -56,6 +56,39 @@ object OpenRouterClient {
         }
 
         var lastError = "Unknown error"
+
+        val formattedMessages = JSONArray()
+        for (i in 0 until messages.length()) {
+            val msg = messages.getJSONObject(i)
+            val role = msg.optString("role", "user")
+            val content = msg.optString("content", "")
+            val imageBase64 = msg.optString("image_base64", "")
+            val imageMimeType = msg.optString("image_mime_type", "image/jpeg").ifBlank { "image/jpeg" }
+
+            if (imageBase64.isNotBlank() && imageMimeType.startsWith("image/")) {
+                val contentArr = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "text")
+                        put("text", content.ifBlank { "Analyze this image and help me." })
+                    })
+                    put(JSONObject().apply {
+                        put("type", "image_url")
+                        put("image_url", JSONObject().apply {
+                            put("url", "data:$imageMimeType;base64,$imageBase64")
+                        })
+                    })
+                }
+                formattedMessages.put(JSONObject().apply {
+                    put("role", role)
+                    put("content", contentArr)
+                })
+            } else {
+                formattedMessages.put(JSONObject().apply {
+                    put("role", role)
+                    put("content", content)
+                })
+            }
+        }
         
         // Loop through keys and models
         for (currentKey in rawKeys) {
@@ -64,7 +97,7 @@ object OpenRouterClient {
 
                 val payload = JSONObject().apply {
                     put("model", currentModel)
-                    put("messages", messages)
+                    put("messages", formattedMessages)
                     put("temperature", 0.3)
                 }
 

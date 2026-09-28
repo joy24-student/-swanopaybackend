@@ -924,7 +924,7 @@ class AppRepository(private val context: Context) {
             senderLower.contains("bkash") -> "bKash"
             senderLower.contains("nagad") -> "Nagad"
             senderLower.contains("upay") -> "Upay"
-            senderLower.contains("16216") -> "Rocket"
+            senderLower.contains("rocket") || senderLower.contains("16216") || senderLower.contains("dbbl") -> "Rocket"
             cleanSender.contains("bkash") || cleanSender.endsWith("16247") -> "bKash"
             cleanSender.contains("nagad") || cleanSender.endsWith("16167") -> "Nagad"
             cleanSender.contains("upay") || cleanSender.endsWith("16268") -> "Upay"
@@ -933,6 +933,9 @@ class AppRepository(private val context: Context) {
             body.contains("nagad", ignoreCase = true) -> "Nagad"
             body.contains("upay", ignoreCase = true) -> "Upay"
             body.contains("rocket", ignoreCase = true) -> "Rocket"
+            body.contains("money received.", ignoreCase = true) -> "Nagad"
+            body.contains("a/c:", ignoreCase = true) && (body.contains("cash-in", ignoreCase = true) || body.contains("txnid:", ignoreCase = true)) -> "Rocket"
+            body.contains("you have received", ignoreCase = true) || body.contains("trxid", ignoreCase = true) -> "bKash"
             else -> return null
         }
         

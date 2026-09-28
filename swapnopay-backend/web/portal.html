@@ -6,7 +6,7 @@
   <title>SwapnoPay Developer Console | Payment API Sandbox</title>
   
   <!-- SEO & OpenGraph Meta Tags -->
-  <meta name="description" content="Test SwapnoPay payment integrations in the developer sandbox. Explore API requests, MFS payment simulations, webhook events and SDK code examples.">
+  <meta name="description" content="SwapnoPay Enterprise Developer Console & Sandbox. Test direct REST API endpoints, MFS carrier SMS verification, signed HMAC-SHA256 webhooks, and hosted checkout integration.">
   <meta name="theme-color" content="#08090d">
   
   <!-- Fonts: Outfit & Fira Code -->
@@ -873,6 +873,218 @@
       transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* Live connection status pill */
+    .connection-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse-glow 2s infinite;
+    }
+    .pulse-dot.offline {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+      animation: none;
+    }
+    @keyframes pulse-glow {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+    }
+
+    /* Developer User Profile Header Bar */
+    .dev-profile-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+    .dev-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary-gold), var(--primary));
+      color: #000;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      cursor: pointer;
+      border: 2px solid rgba(245, 158, 11, 0.3);
+      user-select: none;
+    }
+    .dev-info-chip {
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      text-align: left;
+    }
+    .dev-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .dev-mid {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: 'Fira Code', monospace;
+    }
+    .dev-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: #ffffff;
+      border: 1px solid var(--border-hover);
+      border-radius: 14px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.18);
+      width: 270px;
+      padding: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 500;
+    }
+    .dev-dropdown.active {
+      display: flex;
+    }
+    .dev-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+    .dev-dropdown-item:hover {
+      background: var(--bg-input);
+      color: var(--primary-gold);
+    }
+
+    /* Auth Modal Tabs & Forms */
+    .auth-tabs {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-input);
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+    .auth-tab-btn {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .auth-tab-btn.active {
+      background: var(--bg-card);
+      color: var(--primary-gold);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    /* Real Carrier SMS Inspection Box */
+    .sms-carrier-card {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 14px;
+      padding: 16px;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      position: relative;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+    .sms-carrier-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .sms-carrier-badge.bkash { background: #d81b60; color: #fff; }
+    .sms-carrier-badge.nagad { background: #ea580c; color: #fff; }
+    .sms-carrier-badge.rocket { background: #7c3aed; color: #fff; }
+    .sms-carrier-badge.upay { background: #0284c7; color: #fff; }
+
+    .sms-body-text {
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+
+    /* Webhook Telemetry Delivery Pill */
+    .webhook-telemetry-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .webhook-telemetry-badge.ok {
+      background: rgba(22, 163, 74, 0.12);
+      color: #16a34a;
+      border: 1px solid rgba(22, 163, 74, 0.3);
+    }
+    .webhook-telemetry-badge.err {
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    /* Active Sandbox Order Session Card */
+    .order-session-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border-hover);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="enterprise.css">
@@ -883,16 +1095,16 @@
   <meta property="og:site_name" content="SwapnoPay">
   <meta property="og:locale" content="en_US">
   <meta property="og:title" content="SwapnoPay Developer Console | Payment API Sandbox">
-  <meta property="og:description" content="Test SwapnoPay payment integrations in the developer sandbox. Explore API requests, MFS payment simulations, webhook events and SDK code examples.">
+  <meta property="og:description" content="SwapnoPay Enterprise Developer Console & Sandbox. Test direct REST API endpoints, MFS carrier SMS verification, signed HMAC-SHA256 webhooks, and hosted checkout integration.">
   <meta property="og:url" content="https://swapnopay.top/portal.html">
   <meta property="og:image" content="https://swapnopay.top/logo_branding.png">
   <meta property="og:image:alt" content="SwapnoPay — payment and business management platform">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="SwapnoPay Developer Console | Payment API Sandbox">
-  <meta name="twitter:description" content="Test SwapnoPay payment integrations in the developer sandbox. Explore API requests, MFS payment simulations, webhook events and SDK code examples.">
+  <meta name="twitter:description" content="SwapnoPay Enterprise Developer Console & Sandbox. Test direct REST API endpoints, MFS carrier SMS verification, signed HMAC-SHA256 webhooks, and hosted checkout integration.">
   <meta name="twitter:image" content="https://swapnopay.top/logo_branding.png">
   <link rel="icon" href="favicon.png" type="image/png">
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://swapnopay.top/#organization","name":"SwapnoPay","alternateName":"স্বপ্নপে","url":"https://swapnopay.top/","logo":{"@type":"ImageObject","url":"https://swapnopay.top/logo_branding.png"}},{"@type":"WebSite","@id":"https://swapnopay.top/#website","url":"https://swapnopay.top/","name":"SwapnoPay","alternateName":"স্বপ্নপে","publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://swapnopay.top/portal.html#webpage","url":"https://swapnopay.top/portal.html","name":"SwapnoPay Developer Console | Payment API Sandbox","description":"Test SwapnoPay payment integrations in the developer sandbox. Explore API requests, MFS payment simulations, webhook events and SDK code examples.","isPartOf":{"@id":"https://swapnopay.top/#website"},"publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en","breadcrumb":{"@id":"https://swapnopay.top/portal.html#breadcrumbs"}},{"@type":"BreadcrumbList","@id":"https://swapnopay.top/portal.html#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"SwapnoPay","item":"https://swapnopay.top/"},{"@type":"ListItem","position":2,"name":"SwapnoPay Developer Console","item":"https://swapnopay.top/portal.html"}]}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://swapnopay.top/#organization","name":"SwapnoPay","alternateName":"স্বপ্নপে","url":"https://swapnopay.top/","logo":{"@type":"ImageObject","url":"https://swapnopay.top/logo_branding.png"}},{"@type":"WebSite","@id":"https://swapnopay.top/#website","url":"https://swapnopay.top/","name":"SwapnoPay","alternateName":"স্বপ্নপে","publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en"},{"@type":"WebPage","@id":"https://swapnopay.top/portal.html#webpage","url":"https://swapnopay.top/portal.html","name":"SwapnoPay Developer Console | Payment API Sandbox","description":"SwapnoPay Enterprise Developer Console & Sandbox. Test direct REST API endpoints, MFS carrier SMS verification, signed HMAC-SHA256 webhooks, and hosted checkout integration.","isPartOf":{"@id":"https://swapnopay.top/#website"},"publisher":{"@id":"https://swapnopay.top/#organization"},"inLanguage":"en","breadcrumb":{"@id":"https://swapnopay.top/portal.html#breadcrumbs"}},{"@type":"BreadcrumbList","@id":"https://swapnopay.top/portal.html#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"SwapnoPay","item":"https://swapnopay.top/"},{"@type":"ListItem","position":2,"name":"SwapnoPay Developer Console","item":"https://swapnopay.top/portal.html"}]}]}</script>
 </head>
 <body class="enterprise-page portal-page">
   <a href="#main-content" class="skip-link">Skip to workspace</a>
@@ -910,9 +1122,10 @@
         <h1 class="brand-title">SwapnoPay Console</h1>
         <div class="brand-subtitle">Developer workspace</div>
       </div>
-      <div class="app-select-wrap">
-        <span class="material-symbols-outlined icon-inline" style="font-size: 16px; margin-right: 6px;">storefront</span>
-        Demo workspace
+      <!-- Live Gateway Status Pill -->
+      <div class="connection-status-pill" id="gateway-status-pill" title="Live REST & WebSocket Gateway Health">
+        <span class="pulse-dot" id="gateway-pulse-dot"></span>
+        <span id="gateway-status-text">Gateway Online</span>
       </div>
     </div>
     
@@ -922,10 +1135,16 @@
         <a href="docs.html">Docs</a>
         <a href="portal.html" style="color: var(--primary-gold);">Portal</a>
       </nav>
+
+      <!-- Developer Authentication Section -->
+      <div id="dev-auth-header-section" style="display:flex; align-items:center; gap:8px;">
+        <!-- Injected dynamically by portal.js -->
+      </div>
+
       <button class="widget-preview-btn btn btn-secondary" style="padding: 7px 14px; font-size: 12px;" onclick="openWidgetPreview()"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:6px;">smartphone</span>Widget preview</button>
       <div class="env-toggle-wrap">
-        <button class="env-btn active sandbox" onclick="setEnv('sandbox')">Sandbox</button>
-        <button class="env-btn live" onclick="setEnv('live')">Live examples</button>
+        <button class="env-btn active sandbox" onclick="setEnv('sandbox')">🧪 Sandbox</button>
+        <button class="env-btn live" onclick="setEnv('live')">🚀 Live</button>
       </div>
     </div>
   </header>
@@ -949,17 +1168,17 @@
         <span class="menu-icon material-symbols-outlined">search</span> <span>API Explorer</span>
       </a>
       <a href="#playground" class="menu-item" onclick="switchView('playground', this); return false;">
-        <span class="menu-icon material-symbols-outlined">build</span> <span>SDK Playground</span>
+        <span class="menu-icon material-symbols-outlined">code</span> <span>HTTP & Widget Code</span>
       </a>
 
-      <div class="sidebar-heading">Logs & Audits</div>
+      <div class="sidebar-heading">Logs & Guidelines</div>
       <a href="#webhooks" class="menu-item" onclick="switchView('webhooks', this); return false;">
         <span class="menu-icon material-symbols-outlined">hub</span> <span>Webhook Ledger</span>
       </a>
       <a href="#docs" class="menu-item" onclick="switchView('docs', this); return false;">
-        <span class="menu-icon material-symbols-outlined">article</span> <span>Documentation</span>
+        <span class="menu-icon material-symbols-outlined">verified_user</span> <span>Production Guideline</span>
       </a>
-      <div class="sidebar-note"><strong>Your integration starts here.</strong>Explore the API with sample data, inspect webhooks, and find your next step.<br><a href="docs.html">Read the documentation ↗</a></div>
+      <div class="sidebar-note"><strong>Zero-SDK Direct REST API.</strong>Integrate using standard HTTP requests, HMAC-SHA256 webhooks, and the hosted Checkout Widget.<br><a href="docs.html">Full API Reference ↗</a></div>
     </aside>
 
     <!-- Active Viewport Content Panel -->
@@ -972,9 +1191,9 @@
         <div class="glass-card console-intro">
           <div class="console-intro-layout">
             <div>
-              <div class="workspace-eyebrow">Developer workspace</div>
-              <h2>Your integration, at a glance.</h2>
-              <p>Explore payment flows, test your integration, and inspect webhook events. This public workspace uses sample data.</p>
+              <div class="workspace-eyebrow">Enterprise Developer Console</div>
+              <h2>Direct REST API & Automated MFS Gateway</h2>
+              <p>Manage live API credentials, test real MFS carrier SMS verification, and inspect signed HMAC-SHA256 webhook deliveries. No proprietary SDK required.</p>
             </div>
             <div class="intro-actions">
               <a class="btn btn-secondary" href="docs.html">API reference <span aria-hidden="true">↗</span></a>
@@ -988,17 +1207,17 @@
           <div class="metric-card" style="--accent: var(--primary-gold)">
             <div class="metric-title">API Volume (24h)</div>
             <div class="metric-val" id="met-api-vol">1,482</div>
-            <div class="metric-trend trend-up">▲ 14.8% vs yesterday</div>
+            <div class="metric-trend trend-up">● Live Gateway Telemetry</div>
           </div>
           <div class="metric-card" style="--accent: var(--success)">
             <div class="metric-title">Match Success Rate</div>
             <div class="metric-val" id="met-success-rate">99.85%</div>
-            <div class="metric-trend trend-up">▲ 0.15% vs last week</div>
+            <div class="metric-trend trend-up">● Atomic TrxID Regex Match</div>
           </div>
           <div class="metric-card" style="--accent: var(--warning)">
             <div class="metric-title">Avg Webhook Latency</div>
             <div class="metric-val" id="met-latency">48ms</div>
-            <div class="metric-trend trend-down">▼ 12ms faster</div>
+            <div class="metric-trend trend-up">● Signed HMAC-SHA256</div>
           </div>
           <div class="metric-card" style="--accent: var(--purple)">
             <div class="metric-title">Active Devices</div>
@@ -1009,43 +1228,43 @@
 
         <!-- Channel Status Monitor Bar -->
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">phone_iphone</span>MFS Channel Health & Ping Latencies</h3>
-          <p class="section-subtitle">Example channel metrics for exploring the payment workflow.</p>
+          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">phone_iphone</span>MFS Carrier Shortcode & Gateway Routing</h3>
+          <p class="section-subtitle">Official Bangladesh mobile banking carrier shortcodes verified by the SwapnoPay Android SIM Bridge.</p>
           
           <div class="status-grid">
             <div class="status-item">
               <div style="display:flex; align-items:center; gap:8px;">
-                <span style="color:#ec4899; font-weight:700">bKash</span>
+                <span style="color:#ec4899; font-weight:700">bKash (16247)</span>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:11px; color:var(--success)">18ms</span>
+                <span style="font-size:11px; color:var(--success)">Active</span>
                 <div class="status-dot"></div>
               </div>
             </div>
             <div class="status-item">
               <div style="display:flex; align-items:center; gap:8px;">
-                <span style="color:#f97316; font-weight:700">Nagad</span>
+                <span style="color:#f97316; font-weight:700">Nagad (16167)</span>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:11px; color:var(--success)">24ms</span>
+                <span style="font-size:11px; color:var(--success)">Active</span>
                 <div class="status-dot"></div>
               </div>
             </div>
             <div class="status-item">
               <div style="display:flex; align-items:center; gap:8px;">
-                <span style="color:#a855f7; font-weight:700">Rocket</span>
+                <span style="color:#a855f7; font-weight:700">Rocket (16216)</span>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:11px; color:var(--success)">19ms</span>
+                <span style="font-size:11px; color:var(--success)">Active</span>
                 <div class="status-dot"></div>
               </div>
             </div>
             <div class="status-item">
               <div style="display:flex; align-items:center; gap:8px;">
-                <span style="color:#3b82f6; font-weight:700">Upay</span>
+                <span style="color:#3b82f6; font-weight:700">Upay (16268)</span>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:11px; color:var(--success)">22ms</span>
+                <span style="font-size:11px; color:var(--success)">Active</span>
                 <div class="status-dot"></div>
               </div>
             </div>
@@ -1054,22 +1273,47 @@
 
         <!-- API Credentials Box -->
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">key</span>Sandbox & Live API Credentials</h3>
-          <p class="section-subtitle">Example credentials for the sandbox. Replace them with your own merchant credentials when integrating.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+            <div>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">key</span>Merchant API Credentials & Webhook Security</h3>
+              <p class="section-subtitle" style="margin-bottom:0;">Cryptographically signed credentials for direct HTTP REST calls and HMAC-SHA256 webhook verification.</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="toggleKeyMask()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">visibility</span><span id="key-mask-label">Show Secret</span></button>
+              <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="promptRegenerateKeys()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">refresh</span>Regenerate Keys</button>
+            </div>
+          </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Publishable API Key (Client Widget)</label>
+              <label>Publishable API Key (Client / Checkout Widget)</label>
               <div class="key-box">
                 <span id="key-pk">pk_sandbox_swapnopay_88f92a1109</span>
                 <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-pk').innerText)">Copy</button>
               </div>
             </div>
             <div class="form-group">
-              <label>Secret API Key (Server Webhooks)</label>
+              <label>Secret API Key (Backend Server Authorization)</label>
               <div class="key-box">
                 <span id="key-sk">sk_sandbox_swapnopay_99a83b2201</span>
-                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-sk').innerText)">Copy</button>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copySecretKey()">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top:14px;">
+            <div class="form-group">
+              <label>Webhook Signature Secret (HMAC-SHA256)</label>
+              <div class="key-box">
+                <span id="key-whsec">whsec_e9a8f27b14092c68e1a</span>
+                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="copyText(document.getElementById('key-whsec').innerText)">Copy</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="dashboard-webhook-url">Target Webhook Callback URL</label>
+              <div style="display:flex; gap:8px;">
+                <input type="url" id="dashboard-webhook-url" placeholder="https://yourdomain.com/api/swapnopay/webhook" style="font-family:'Fira Code',monospace; font-size:12px;">
+                <button class="btn" style="padding: 6px 14px; font-size: 11px; white-space:nowrap;" onclick="saveDashboardWebhookUrl()">Save URL</button>
               </div>
             </div>
           </div>
@@ -1079,7 +1323,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 14px; flex-wrap: wrap;">
             <div>
               <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">payments</span>Real Live Gateway Examples</h3>
-              <p class="section-subtitle" style="margin-bottom: 0;">Production-style gateway pages, checkout flows, merchant callbacks, and live testing scenarios for MFS payments.</p>
+              <p class="section-subtitle" style="margin-bottom: 0;">Production gateway endpoints, hosted checkout pages, merchant callbacks, and live verification flows for MFS payments.</p>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;" onclick="setEnv('live'); switchView('dashboard')">Load live examples</button>
@@ -1092,8 +1336,8 @@
 
         <!-- Operational Health Indicators -->
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">speed</span>Core Platform Health</h3>
-          <p class="section-subtitle">Sample service indicators in this demonstration workspace.</p>
+          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">speed</span>Core Platform Infrastructure</h3>
+          <p class="section-subtitle">Real-time operational status for the SwapnoPay API Gateway, Socket.io Engine, and SMS Receiver.</p>
           
           <div class="status-grid">
             <div class="status-item">
@@ -1120,7 +1364,7 @@
           <div class="terminal-header">
             <div>
               <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">terminal</span>Live Console Terminal Stream</h3>
-              <p class="section-subtitle" style="margin-bottom: 0;">Real-time output log stream of mock requests and verification events.</p>
+              <p class="section-subtitle" style="margin-bottom: 0;">Real-time output stream of REST API calls, Socket.io events, and HMAC webhook deliveries.</p>
             </div>
             <div style="display:flex; gap:10px; align-items:center;">
               <input type="text" id="terminal-search" aria-label="Filter console logs" placeholder="Filter console logs..." oninput="filterConsoleLogs()" style="padding: 5px 10px; font-size: 11px; width: 180px;">
@@ -1132,7 +1376,7 @@
             <div class="terminal-line">
               <span class="log-time">[00:00:00]</span>
               <span class="log-ok">[OK]</span>
-              <span>SwapnoPay Developer Console initialized. Ready for API testing and SMS simulation.</span>
+              <span>SwapnoPay Developer Console initialized. Ready for live REST API and webhook testing.</span>
             </div>
           </div>
         </div>
@@ -1141,158 +1385,240 @@
       <!-- VIEW: ONBOARDING WIZARD -->
       <div class="panel-view" id="view-wizard">
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">rocket_launch</span>Merchant Integration Onboarding Wizard</h3>
-          <p class="section-subtitle">Follow these 4 steps to test and launch your automated MFS checkout integration.</p>
+          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">rocket_launch</span>Merchant Production Onboarding Wizard</h3>
+          <p class="section-subtitle">Follow these 4 steps to configure, test, and launch your automated MFS checkout integration using standard HTTP REST APIs.</p>
           
           <div class="timeline">
             <div class="timeline-item completed" id="wiz-step1">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">1. Create Developer Application</span>
-              <span class="timeline-time">Completed on project initialization (App ID: app_dreammart_01)</span>
+              <span class="timeline-header">1. Provision Merchant Workspace & API Keys</span>
+              <span class="timeline-time">Completed — Dynamic Merchant ID, Secret Key, and Webhook Secret active</span>
             </div>
             <div class="timeline-item active" id="wiz-step2">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">2. Register Merchant Gateway Configuration</span>
-              <span class="timeline-time" id="wiz-step2-status">Pending - Configure MFS receiving numbers in API Explorer</span>
+              <span class="timeline-header">2. Configure MFS Receiving Numbers & Webhook URL</span>
+              <span class="timeline-time" id="wiz-step2-status">Pending — Set your target webhook callback URL on the Dashboard or Sandbox</span>
             </div>
             <div class="timeline-item" id="wiz-step3">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">3. Perform Test Payment in Sandbox Simulator</span>
-              <span class="timeline-time" id="wiz-step3-status">Pending - Trigger mock bKash or Nagad SMS broadcast</span>
+              <span class="timeline-header">3. Create Order & Verify Carrier SMS Matching</span>
+              <span class="timeline-time" id="wiz-step3-status">Pending — Create a real order and test bKash/Nagad/Rocket/Upay SMS verification</span>
             </div>
             <div class="timeline-item" id="wiz-step4">
               <div class="timeline-dot"></div>
-              <span class="timeline-header">4. Verify Signature & Webhook Delivery</span>
-              <span class="timeline-time" id="wiz-step4-status">Pending - Awaiting automated webhook dispatch</span>
+              <span class="timeline-header">4. Verify HMAC-SHA256 Signature & Go Live</span>
+              <span class="timeline-time" id="wiz-step4-status">Pending — Validate X-SwapnoPay-Signature on your backend webhook receiver</span>
             </div>
           </div>
 
-          <div style="margin-top: 24px;">
+          <div style="margin-top: 24px; display:flex; gap:10px; flex-wrap:wrap;">
             <button class="btn" onclick="switchView('sandbox', document.querySelectorAll('.menu-item')[2])"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">science</span>Run Interactive Sandbox Test</button>
+            <button class="btn btn-secondary" onclick="switchView('docs', document.querySelectorAll('.menu-item')[6])"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">verified_user</span>Read Production Guideline</button>
           </div>
         </div>
       </div>
 
       <!-- VIEW: SANDBOX SIMULATOR -->
       <div class="panel-view" id="view-sandbox">
+        <!-- Top Flow Control Card -->
         <div class="glass-card" style="margin-bottom: 18px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
             <div>
-              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">playlist_play</span>Full Payment Flow Simulator</h3>
-              <p class="section-subtitle" style="margin-bottom: 0;">Run the real merchant flow: create order → request payment → receive SMS → verify → dispatch webhook → settle order.</p>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">science</span>Production Payment Flow Sandbox</h3>
+              <p class="section-subtitle" style="margin-bottom: 0;">Zero mocks: Dispatches real REST orders, simulates genuine carrier SMS parsing, and delivers signed HMAC webhooks with live round-trip latency.</p>
             </div>
-            <button class="btn" onclick="runFullSandboxPaymentFlow()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">play_arrow</span>Run full flow</button>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-secondary" onclick="resetSandboxSession()"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:4px;">restart_alt</span>Reset Flow</button>
+              <button class="btn" onclick="runFullRealSandboxFlow()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">play_arrow</span>Run Full Real Flow</button>
+            </div>
           </div>
-          <div id="sandbox-flow-status" style="margin-top: 14px; font-size: 12px; color: var(--text-muted);">Status: waiting for sandbox trigger</div>
+          <div id="sandbox-flow-status" style="margin-top: 14px; font-size: 12px; color: var(--text-muted); font-weight:600;">Status: Ready to initialize real sandbox checkout.</div>
           <div class="timeline" id="sandbox-flow-sequence" style="margin-top: 16px;"></div>
         </div>
 
         <div class="sim-grid">
           
           <div class="control-col">
-            <!-- MFS Broadcast Simulators -->
+            <!-- Step 1: Real Order Initialization -->
             <div class="glass-card">
-              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">sms</span>MFS SMS Broadcast Simulators</h3>
-              <p class="section-subtitle">Simulate incoming mobile operator SMS broadcasts to test real-time matching.</p>
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">receipt_long</span>1. Real Order Parameters</h3>
+              <p class="section-subtitle">Set real checkout payload parameters to create a trackable transaction.</p>
               
-              <div class="form-row" style="margin-bottom: 16px;">
+              <div class="form-row" style="margin-bottom: 12px;">
                 <div class="form-group">
-                  <label for="sim-input-amount">Simulated Amount (BDT)</label>
-                  <input type="text" id="sim-input-amount" value="1500.00">
+                  <label for="sim-input-amount">Amount (BDT)</label>
+                  <input type="number" id="sim-input-amount" value="1500.00" min="10" step="10">
                 </div>
                 <div class="form-group">
-                  <label for="sim-input-phone">Customer Mobile Phone</label>
+                  <label for="sim-input-phone">Customer Phone</label>
                   <input type="text" id="sim-input-phone" value="01712345678">
                 </div>
               </div>
 
-              <div class="action-button-list">
-                <button class="sim-btn" onclick="triggerMfsSim('bKash')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">phone_iphone</span>
-                  <div>
-                    <h5 style="font-weight:700">bKash Payment</h5>
-                    <span class="sim-btn-badge" style="color: #ec4899;">Received Tk 1,500</span>
-                  </div>
-                </button>
-                
-                <button class="sim-btn" onclick="triggerMfsSim('bKash-cashin')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">payments</span>
-                  <div>
-                    <h5 style="font-weight:700">bKash Cash-In</h5>
-                    <span class="sim-btn-badge" style="color: #ec4899;">Cash-In Format</span>
-                  </div>
-                </button>
+              <div class="form-row" style="margin-bottom: 14px;">
+                <div class="form-group">
+                  <label for="sim-select-method">Payment Provider</label>
+                  <select id="sim-select-method">
+                    <option value="bKash">bKash (Carrier Shortcode 16247)</option>
+                    <option value="Nagad">Nagad (Carrier Shortcode 16167)</option>
+                    <option value="Rocket">Rocket (Carrier Shortcode 16216)</option>
+                    <option value="Upay">Upay (Carrier Shortcode 16268)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sim-input-webhook">Outbound Webhook URL</label>
+                  <input type="url" id="sim-input-webhook" placeholder="https://webhook.site/your-id or server URL">
+                </div>
+              </div>
 
-                <button class="sim-btn" onclick="triggerMfsSim('Nagad')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">account_balance_wallet</span>
-                  <div>
-                    <h5 style="font-weight:700">Nagad Payment</h5>
-                    <span class="sim-btn-badge" style="color: #f97316;">Money Received</span>
-                  </div>
-                </button>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" onclick="createRealSandboxOrder()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">add_shopping_cart</span>Create Real Sandbox Order</button>
+              </div>
 
-                <button class="sim-btn" onclick="triggerMfsSim('Rocket')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">rocket_launch</span>
-                  <div>
-                    <h5 style="font-weight:700">Rocket Cash-In</h5>
-                    <span class="sim-btn-badge" style="color: #a855f7;">Masked Account</span>
-                  </div>
-                </button>
+              <!-- Active Sandbox Order Session Details -->
+              <div class="order-session-card" id="active-order-session-card" style="display:none;">
+                <div>
+                  <div style="font-size:10.5px; font-weight:700; text-transform:uppercase; color:var(--primary-gold); letter-spacing:0.5px;">Active Order Session</div>
+                  <div style="font-family:'Fira Code',monospace; font-size:12px; font-weight:700;" id="sbx-active-order-id">ORD-UUID</div>
+                  <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;" id="sbx-active-order-meta">Amount: ৳1500.00 | bKash</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="status-badge warn" id="sbx-order-status-badge">PENDING</span>
+                  <button class="btn btn-secondary" style="padding:5px 10px; font-size:11px;" onclick="openActiveOrderCheckout()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:4px;">open_in_new</span>Checkout Widget ↗</button>
+                </div>
               </div>
             </div>
 
-            <!-- Dispute & Error Edge Case Simulator -->
+            <!-- Step 2: Real MFS Carrier SMS Simulation -->
             <div class="glass-card">
-              <h3 class="section-title">⚖ Dispute & Edge Case Simulators</h3>
-              <p class="section-subtitle">Test order expiration timeouts, failed verification, and dispute resolution.</p>
-              
+              <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">cell_tower</span>2. Carrier SMS Interception & Atomic Match</h3>
+              <p class="section-subtitle">Triggers real backend carrier SMS parsing, updates ledger to PAID, and emits Socket.io events.</p>
+
               <div class="action-button-list">
-                <button class="sim-btn" style="border-color: rgba(239, 68, 68, 0.4)" onclick="triggerMfsSim('fail')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">error</span>
+                <button class="sim-btn" onclick="triggerRealMfsSim('bKash')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#ec4899;">phone_iphone</span>
                   <div>
-                    <h5 style="font-weight:700">Trigger Timeout / Fail</h5>
-                    <span class="sim-btn-badge" style="color: var(--danger)">Order Expiration</span>
+                    <h5 style="font-weight:700">bKash Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #ec4899;">Regex TrxID Match → PAID</span>
+                  </div>
+                </button>
+                
+                <button class="sim-btn" onclick="triggerRealMfsSim('Nagad')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#f97316;">account_balance_wallet</span>
+                  <div>
+                    <h5 style="font-weight:700">Nagad Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #f97316;">Payment Received Format</span>
                   </div>
                 </button>
 
-                <button class="sim-btn" style="border-color: rgba(245, 158, 11, 0.4)" onclick="triggerMfsSim('appeal')">
-                  <span class="material-symbols-outlined" style="font-size: 20px;">gavel</span>
+                <button class="sim-btn" onclick="triggerRealMfsSim('Rocket')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#a855f7;">rocket_launch</span>
                   <div>
-                    <h5 style="font-weight:700">Submit Dispute Appeal</h5>
-                    <span class="sim-btn-badge" style="color: var(--warning)">Manual Review</span>
+                    <h5 style="font-weight:700">Rocket Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #a855f7;">DB Balance Check</span>
+                  </div>
+                </button>
+
+                <button class="sim-btn" onclick="triggerRealMfsSim('Upay')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:#3b82f6;">contactless</span>
+                  <div>
+                    <h5 style="font-weight:700">Upay Carrier SMS Match</h5>
+                    <span class="sim-btn-badge" style="color: #3b82f6;">UCB Mobile Banking</span>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Live Carrier SMS Intercepted Preview Card -->
+              <div class="sms-carrier-card" id="sim-carrier-sms-card" style="display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span class="sms-carrier-badge bkash" id="sim-carrier-badge">bKash SMS (16247)</span>
+                  <span style="font-size:10px; color:#94a3b8; font-family:'Fira Code',monospace;" id="sim-carrier-sms-time">Just now</span>
+                </div>
+                <div class="sms-body-text" id="sim-carrier-sms-body">Awaiting simulated carrier SMS event...</div>
+                <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                  <span style="color:#94a3b8;">Extracted TrxID: <strong style="color:#f59e0b;" id="sim-extracted-trxid">—</strong></span>
+                  <span style="color:#10b981; font-weight:700;">● Atomic Database Match OK</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Edge Cases -->
+            <div class="glass-card">
+              <h3 class="section-title">⚖ Dispute & Edge Case Scenarios</h3>
+              <p class="section-subtitle">Simulate real timeout expirations and customer dispute appeals.</p>
+              
+              <div class="action-button-list">
+                <button class="sim-btn" style="border-color: rgba(239, 68, 68, 0.3)" onclick="triggerRealMfsSim('bKash', 'TIMEOUT_FAIL')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:var(--danger)">timer_off</span>
+                  <div>
+                    <h5 style="font-weight:700">Trigger Timeout Expiration</h5>
+                    <span class="sim-btn-badge" style="color: var(--danger)">Status: EXPIRED</span>
+                  </div>
+                </button>
+
+                <button class="sim-btn" style="border-color: rgba(245, 158, 11, 0.3)" onclick="triggerRealMfsSim('bKash', 'CUSTOMER_APPEAL')">
+                  <span class="material-symbols-outlined" style="font-size: 20px; color:var(--warning)">gavel</span>
+                  <div>
+                    <h5 style="font-weight:700">Submit Customer Dispute Appeal</h5>
+                    <span class="sim-btn-badge" style="color: var(--warning)">Dispute Telemetry</span>
                   </div>
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Order Lifecycle Timeline -->
+          <!-- Order Lifecycle Timeline & Live Webhook Delivery Column -->
           <div class="timeline-col">
-            <div class="glass-card" style="height: 100%;">
+            <div class="glass-card" style="margin-bottom:18px;">
               <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">timeline</span>Order Lifecycle Pipeline</h3>
-              <p class="section-subtitle">Track status transitions in real time as SMS events are parsed.</p>
+              <p class="section-subtitle">Real-time order transitions pushed by backend WebSocket & database matcher.</p>
               
               <div class="timeline" id="live-timeline">
                 <div class="timeline-item active" id="time-step1">
                   <div class="timeline-dot"></div>
                   <span class="timeline-header">1. Order Created (PENDING)</span>
-                  <span class="timeline-time">Waiting for matching MFS broadcast</span>
+                  <span class="timeline-time" id="time-step1-time">Awaiting order initialization</span>
                 </div>
                 <div class="timeline-item" id="time-step2">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">2. SMS Intercepted by App</span>
-                  <span class="timeline-time">Parsing TrxID & amount via Regex</span>
+                  <span class="timeline-header">2. SMS Intercepted by Gateway</span>
+                  <span class="timeline-time" id="time-step2-time">Awaiting carrier broadcast regex match</span>
                 </div>
                 <div class="timeline-item" id="time-step3">
                   <div class="timeline-dot"></div>
                   <span class="timeline-header">3. Transaction Matched (PAID)</span>
-                  <span class="timeline-time">Executing atomic SQL update</span>
+                  <span class="timeline-time" id="time-step3-time">Atomic database update & ledger confirmation</span>
                 </div>
                 <div class="timeline-item" id="time-step4">
                   <div class="timeline-dot"></div>
-                  <span class="timeline-header">4. Webhook Dispatched</span>
-                  <span class="timeline-time">Signed HMAC SHA256 payload sent</span>
+                  <span class="timeline-header">4. Outbound Webhook Delivery</span>
+                  <span class="timeline-time" id="time-step4-time">Real signed HMAC SHA-256 payload dispatch</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Outbound Webhook Delivery Card -->
+            <div class="glass-card" id="webhook-delivery-telemetry-card" style="display:none;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="font-size:14px; font-weight:700; color:var(--text-main);"><span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:6px; color:var(--primary-gold);">send</span>Live Webhook Telemetry</h4>
+                <span class="webhook-telemetry-badge ok" id="webhook-delivery-badge">HTTP 200 OK (38ms)</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+                Target: <code style="color:var(--text-main); font-family:'Fira Code',monospace;" id="webhook-delivery-target">https://...</code>
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="font-size:11px;">HMAC-SHA256 Signature Header</label>
+                <div class="key-box" style="font-size:11px; padding:8px 10px;" id="webhook-delivery-signature">t=...,v1=...</div>
+              </div>
+              <div>
+                <label style="font-size:11px;">Payload Snippet</label>
+                <div class="code-block-wrap" style="padding:10px; max-height:160px; overflow-y:auto;">
+                  <pre id="webhook-delivery-payload" style="font-size:11px;"></pre>
+                </div>
+              </div>
+              <div style="margin-top:10px; display:flex; gap:8px;">
+                <button class="btn btn-secondary" style="padding:5px 12px; font-size:11px;" onclick="copyText(document.getElementById('webhook-delivery-payload').innerText)">Copy Payload</button>
+                <button class="btn btn-secondary" style="padding:5px 12px; font-size:11px;" onclick="openPayloadModal(latestWebhookEventId)">Inspect Full Headers</button>
               </div>
             </div>
           </div>
@@ -1316,11 +1642,15 @@
               <label for="exp-path">Select Endpoint Route</label>
               <select id="exp-path" onchange="loadExplorerTemplate()">
                 <option value="/v1/payment/config">GET /v1/payment/config (Fetch Gateway Config)</option>
-                <option value="/v1/payment/merchant-config">POST /v1/payment/merchant-config (Sync Numbers & QR)</option>
-                <option value="/v1/payment/verify">POST /v1/payment/verify (Verify SMS Transaction)</option>
-                <option value="/v1/payment/merchant-qr-codes">POST /v1/payment/merchant-qr-codes (Save QR Code)</option>
-                <option value="/functions/v1/create-order">POST /functions/v1/create-order (Create Order)</option>
-                <option value="/functions/v1/resolve-appeal">POST /functions/v1/resolve-appeal (Resolve Dispute)</option>
+                <option value="/v1/developer/sandbox/order">POST /v1/developer/sandbox/order (Create Sandbox Order)</option>
+                <option value="/v1/developer/sandbox/simulate-mfs">POST /v1/developer/sandbox/simulate-mfs (Simulate MFS & Webhook)</option>
+                <option value="/v1/developer/sandbox/dispatch-webhook">POST /v1/developer/sandbox/dispatch-webhook (Signed Webhook Ping)</option>
+                <option value="/v1/developer/telemetry">GET /v1/developer/telemetry (Live Metrics)</option>
+                <option value="/v1/payment/notify">POST /v1/payment/notify (Report Customer Transfer)</option>
+                <option value="/v1/payment/verify">POST /v1/payment/verify (Verify SMS Match)</option>
+                <option value="/v1/payment/device-status">GET /v1/payment/device-status (Device Live Ping)</option>
+                <option value="/v1/developer/keys/regenerate">POST /v1/developer/keys/regenerate (Regenerate API Keys)</option>
+                <option value="/healthz">GET /healthz (Platform System Health)</option>
               </select>
             </div>
             <div class="form-group">
@@ -1351,11 +1681,11 @@
         </div>
       </div>
 
-      <!-- VIEW: SDK PLAYGROUND -->
+      <!-- VIEW: HTTP & WIDGET CODE GENERATOR (NO SDK REQUIRED) -->
       <div class="panel-view" id="view-playground">
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">code</span>Interactive SDK & Code Generator</h3>
-          <p class="section-subtitle">Customize parameters to dynamically generate complete checkout code for your tech stack.</p>
+          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">code</span>Direct HTTP REST & Checkout Widget Code Generator</h3>
+          <p class="section-subtitle">Zero third-party SDK required. Generate production-ready standard HTTP REST requests, hosted Checkout Widget embeds, and HMAC-SHA256 webhook verification snippets using native language libraries.</p>
           
           <div class="form-row">
             <div class="form-group">
@@ -1377,12 +1707,13 @@
           </div>
 
           <div class="code-tabs">
-            <button class="tab-btn active" onclick="switchSdkLang('node', this)">Node.js</button>
-            <button class="tab-btn" onclick="switchSdkLang('php', this)">PHP</button>
-            <button class="tab-btn" onclick="switchSdkLang('python', this)">Python</button>
-            <button class="tab-btn" onclick="switchSdkLang('go', this)">Go</button>
+            <button class="tab-btn active" onclick="switchSdkLang('node', this)">Node.js (fetch)</button>
+            <button class="tab-btn" onclick="switchSdkLang('php', this)">PHP (cURL)</button>
+            <button class="tab-btn" onclick="switchSdkLang('python', this)">Python (requests)</button>
+            <button class="tab-btn" onclick="switchSdkLang('go', this)">Go (net/http)</button>
             <button class="tab-btn" onclick="switchSdkLang('curl', this)">cURL</button>
             <button class="tab-btn" onclick="switchSdkLang('html', this)">HTML Widget</button>
+            <button class="tab-btn" onclick="switchSdkLang('webhook', this)">Webhook HMAC</button>
           </div>
 
           <div class="code-block-wrap">
@@ -1391,7 +1722,7 @@
           </div>
 
           <div style="margin-top: 16px;">
-            <button class="btn btn-secondary" onclick="runSdkSnippetTest()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">rocket_launch</span>Test Run Snippet Output</button>
+            <button class="btn btn-secondary" onclick="runSdkSnippetTest()"><span class="material-symbols-outlined icon-inline" style="font-size:18px; margin-right:6px;">rocket_launch</span>Execute Live HTTP Order Request</button>
           </div>
         </div>
       </div>
@@ -1406,7 +1737,7 @@
             </div>
             <div style="display:flex; gap:10px;">
               <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="exportWebhookLedger()"><span class="material-symbols-outlined icon-inline" style="font-size:14px; margin-right:6px;">download</span>Export CSV</button>
-              <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="triggerMfsSim('bKash')">Trigger Test Webhook</button>
+              <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="triggerRealMfsSim('bKash')">Trigger Test Webhook</button>
             </div>
           </div>
 
@@ -1434,28 +1765,109 @@
         </div>
       </div>
 
-      <!-- VIEW: DOCUMENTATION -->
+      <!-- VIEW: PRODUCTION INTEGRATION GUIDELINE -->
       <div class="panel-view" id="view-docs">
         <div class="glass-card">
-          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">menu_book</span>SwapnoPay Developer Documentation</h3>
-          <p class="section-subtitle">Complete reference guide for integrating automated MFS payments, webhooks, and dispute resolution.</p>
+          <h3 class="section-title"><span class="material-symbols-outlined icon-inline" style="font-size: 18px; margin-right:8px; color: var(--primary-gold);">verified_user</span>SwapnoPay Enterprise Production Integration Guideline</h3>
+          <p class="section-subtitle">Complete production blueprint for integrating SwapnoPay using standard HTTPS REST endpoints, Hosted Checkout Widget, Android SIM Bridge, and HMAC-SHA256 Webhooks — with zero external SDK dependencies.</p>
           
-          <div style="display: flex; flex-direction: column; gap: 20px; line-height: 1.6; color: var(--text-muted); font-size: 13.5px;">
-            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
-              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px;">1. System Architecture Overview</h4>
-              <p>SwapnoPay acts as an automated middleware bridge between your e-commerce platform and Android smartphones carrying mobile banking SIMs (bKash, Nagad, Rocket, Upay). SMS messages received by the Android app are matched against pending merchant orders in 1 to 3 seconds.</p>
+          <div style="display: flex; flex-direction: column; gap: 20px; line-height: 1.65; color: var(--text-muted); font-size: 13.5px;">
+            
+            <!-- 1. Architecture -->
+            <div style="background: var(--bg-input); padding: 20px; border-radius: 14px; border: 1px solid var(--border);">
+              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px; font-weight: 700;">1. Zero-SDK Production Architecture</h4>
+              <p>SwapnoPay is intentionally engineered around <strong>Direct HTTP REST APIs + Standard Webhooks + Hosted Checkout</strong>. You do not need to install or maintain any third-party NPM, Composer, PyPI, or Go SDK packages, nor any CMS plugin.</p>
+              <ul style="margin-top: 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px;">
+                <li><strong>Order Creation:</strong> Your backend sends a standard <code>POST</code> JSON request over HTTPS to register a pending order intent (<code>amount</code>, <code>tran_id</code>, <code>cus_phone</code>, <code>callback_url</code>).</li>
+                <li><strong>Customer Checkout:</strong> Redirect the customer or embed <code>widget.html?merchant_id=...&amp;amount=...&amp;order_id=...</code> inside an <code>&lt;iframe&gt;</code>.</li>
+                <li><strong>Android SIM Bridge:</strong> Your dedicated Android phone running the SwapnoPay Merchant App receives the carrier SMS from <strong>bKash (16247)</strong>, <strong>Nagad (16167)</strong>, <strong>Rocket (16216)</strong>, or <strong>Upay (16268)</strong> and forwards it to <code>POST /v1/payment/verify</code>.</li>
+                <li><strong>Instant Settlement &amp; Webhook:</strong> The gateway atomically verifies the TrxID and amount, emits a real-time <code>Socket.io</code> event to the checkout widget, and dispatches a signed <code>HMAC-SHA256</code> webhook to your server.</li>
+              </ul>
             </div>
 
-            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
-              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px;">2. Authentication & Headers</h4>
-              <p>All server-to-server API requests must include your <code>sk_live_...</code> Secret API key in the authorization header:</p>
-              <pre style="font-family: 'Fira Code', monospace; color: var(--primary-gold); margin-top: 8px; background: #040508; padding: 10px; border-radius: 8px; font-size: 12px;">Authorization: Bearer sk_live_swapnopay_secret_key</pre>
+            <!-- 2. Authentication & Security -->
+            <div style="background: var(--bg-input); padding: 20px; border-radius: 14px; border: 1px solid var(--border);">
+              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px; font-weight: 700;">2. API Authentication &amp; Key Isolation</h4>
+              <p>All server-to-server REST calls must authenticate using your <code>sk_live_...</code> (or <code>sk_sandbox_...</code>) Secret API Key via either header:</p>
+              <pre style="font-family: 'Fira Code', monospace; color: var(--primary-gold); margin-top: 10px; background: #040508; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto;">Authorization: Bearer sk_live_your_secret_api_key
+x-api-key: sk_live_your_secret_api_key
+Content-Type: application/json</pre>
+              <p style="margin-top: 10px; font-size: 12.5px; color: var(--danger); font-weight: 600;">Security Rule: Never expose your <code>sk_live_...</code> Secret Key or <code>whsec_...</code> Webhook Secret in client-side browser JavaScript or mobile app bundles. Only pass <code>merchant_id</code> and <code>order_id</code> to the public Checkout Widget.</p>
             </div>
 
-            <div style="background: var(--bg-input); padding: 18px; border-radius: 12px; border: 1px solid var(--border);">
-              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px;">3. Webhook Signature Verification</h4>
-              <p>To ensure security, incoming webhook callbacks from SwapnoPay include an <code>x-swapnopay-signature</code> HMAC SHA-256 header signed using your merchant secret. Always verify signature header before marking orders fulfilled.</p>
+            <!-- 3. Core Production Endpoints -->
+            <div style="background: var(--bg-input); padding: 20px; border-radius: 14px; border: 1px solid var(--border);">
+              <h4 style="color: var(--text-main); margin-bottom: 10px; font-size: 15px; font-weight: 700;">3. Production REST API Endpoints Reference</h4>
+              <div style="display: grid; gap: 10px; font-size: 12.5px;">
+                <div style="padding: 10px 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                  <strong style="color: var(--success); font-family: 'Fira Code', monospace;">POST /v1/developer/sandbox/order</strong> &nbsp;|&nbsp; <strong style="color: var(--success); font-family: 'Fira Code', monospace;">POST /functions/v1/create-order</strong>
+                  <div style="margin-top: 4px;">Registers a trackable payment order intent and returns <code>order_id</code>, <code>tran_id</code>, and <code>checkout_url</code>.</div>
+                </div>
+                <div style="padding: 10px 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                  <strong style="color: var(--primary-gold); font-family: 'Fira Code', monospace;">GET /v1/payment/config?merchant_id={UUID}</strong>
+                  <div style="margin-top: 4px;">Returns active MFS channels (bKash, Nagad, Rocket, Upay), receiving wallet numbers, QR codes, and live Android device heartbeat status.</div>
+                </div>
+                <div style="padding: 10px 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                  <strong style="color: var(--success); font-family: 'Fira Code', monospace;">POST /v1/payment/notify</strong>
+                  <div style="margin-top: 4px;">Submits customer-reported <code>trx_id</code> and <code>sender_number</code> for an order awaiting carrier SMS confirmation.</div>
+                </div>
+                <div style="padding: 10px 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                  <strong style="color: var(--success); font-family: 'Fira Code', monospace;">POST /v1/payment/verify</strong>
+                  <div style="margin-top: 4px;">Receives raw carrier SMS broadcast from the SwapnoPay Android Worker, extracts amount &amp; TrxID via regex, and settles matching pending orders.</div>
+                </div>
+                <div style="padding: 10px 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+                  <strong style="color: var(--primary-gold); font-family: 'Fira Code', monospace;">GET /v1/payment/status/{order_id}</strong>
+                  <div style="margin-top: 4px;">Queries authoritative order state (<code>PENDING</code>, <code>PAID</code>, <code>EXPIRED</code>) for server-side reconciliation.</div>
+                </div>
+              </div>
             </div>
+
+            <!-- 4. Webhook Signature Verification -->
+            <div style="background: var(--bg-input); padding: 20px; border-radius: 14px; border: 1px solid var(--border);">
+              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px; font-weight: 700;">4. Webhook HMAC-SHA256 Verification &amp; Idempotency</h4>
+              <p>Every outbound webhook POST request includes the <code>X-SwapnoPay-Signature</code> header in the format <code>t=&lt;unix_timestamp&gt;,v1=&lt;hex_hmac_sha256&gt;</code>. The signature is computed over <code>${timestamp}.${rawRequestBody}</code> using your Webhook Secret:</p>
+              <pre style="font-family: 'Fira Code', monospace; color: #e2e8f0; margin-top: 10px; background: #040508; padding: 12px; border-radius: 8px; font-size: 11.5px; overflow-x: auto;">// Standard Node.js Express Webhook Verification (Zero SDK)
+const crypto = require('node:crypto');
+
+app.post('/api/swapnopay/webhook', express.raw({ type: 'application/json' }), (req, res) =&gt; {
+  const sigHeader = req.headers['x-swapnopay-signature'] || '';
+  const parts = Object.fromEntries(sigHeader.split(',').map(p =&gt; p.split('=')));
+  if (!parts.t || !parts.v1) return res.status(400).send('Malformed signature header');
+
+  // 1. Replay Attack Protection: Reject webhooks older than 5 minutes (300s)
+  if (Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t)) &gt; 300) {
+    return res.status(401).send('Webhook timestamp expired');
+  }
+
+  // 2. Compute HMAC-SHA256 over "${timestamp}.${rawBody}"
+  const rawBody = req.body.toString('utf8');
+  const expected = crypto
+    .createHmac('sha256', process.env.SWAPNOPAY_WEBHOOK_SECRET)
+    .update(`${parts.t}.${rawBody}`)
+    .digest('hex');
+
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1))) {
+    return res.status(401).send('Invalid HMAC signature');
+  }
+
+  const event = JSON.parse(rawBody);
+  // 3. Enforce idempotency using event.trx_id &amp; event.order_id before fulfilling order
+  res.status(200).json({ received: true });
+});</pre>
+            </div>
+
+            <!-- 5. Android SIM Bridge & Go-Live Checklist -->
+            <div style="background: var(--bg-input); padding: 20px; border-radius: 14px; border: 1px solid var(--border);">
+              <h4 style="color: var(--text-main); margin-bottom: 8px; font-size: 15px; font-weight: 700;">5. Android SIM Bridge &amp; Production Go-Live Checklist</h4>
+              <ol style="margin-top: 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px;">
+                <li><strong>Dedicated Android Device:</strong> Install the SwapnoPay Merchant App on an Android phone containing your active bKash/Nagad/Rocket/Upay SIM cards.</li>
+                <li><strong>OS Background Permissions:</strong> Grant <code>RECEIVE_SMS</code>, <code>READ_SMS</code>, and <code>POST_NOTIFICATIONS</code> permissions, and set Battery Usage to <strong>Unrestricted</strong> so the foreground socket &amp; WorkManager queue never sleep.</li>
+                <li><strong>HTTPS Webhook Endpoint:</strong> Configure a public TLS (<code>https://</code>) callback URL in the Dashboard and verify it returns <code>HTTP 200</code> within 5 seconds.</li>
+                <li><strong>Idempotent Fulfillment:</strong> Store <code>trx_id</code> with a <code>UNIQUE</code> database constraint in your application database so replayed webhooks never double-credit a customer.</li>
+                <li><strong>Switch Environment to Live:</strong> Replace <code>sk_sandbox_...</code> with your live <code>sk_live_...</code> key and verify device online status via <code>GET /v1/payment/device-status</code>.</li>
+              </ol>
+            </div>
+
           </div>
         </div>
       </div>
@@ -1505,11 +1917,114 @@
     </div>
   </div>
 
+  <!-- Developer Sign In / Registration Modal -->
+  <div class="modal-overlay" id="dev-auth-modal">
+    <div class="modal-box" style="max-width: 480px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+        <h3 style="color:var(--text-main); font-weight:800; font-size:17px; display:flex; align-items:center; gap:8px;">
+          <span class="material-symbols-outlined" style="color:var(--primary-gold);">lock_open</span>Developer Console Access
+        </h3>
+        <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="closeDevAuthModal()">✕ Close</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tab-btn-login" onclick="switchAuthTab('login')">Sign In</button>
+        <button class="auth-tab-btn" id="tab-btn-register" onclick="switchAuthTab('register')">Create Account</button>
+        <button class="auth-tab-btn" id="tab-btn-apikey" onclick="switchAuthTab('apikey')">API Key</button>
+      </div>
+
+      <!-- Tab 1: Email & Password Login -->
+      <div id="auth-panel-login" class="auth-tab-panel">
+        <form onsubmit="submitDevLogin(event)">
+          <div class="form-group" style="margin-bottom:12px;">
+            <label for="dev-login-email">Developer Email</label>
+            <input type="email" id="dev-login-email" required placeholder="developer@company.com" autocomplete="email">
+          </div>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label for="dev-login-password">Password</label>
+            <input type="password" id="dev-login-password" required placeholder="••••••••" autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn full-width" style="width:100%; justify-content:center; padding:10px;" id="btn-dev-login-submit">
+            Sign In to Developer Console
+          </button>
+        </form>
+      </div>
+
+      <!-- Tab 2: Register New Developer Account -->
+      <div id="auth-panel-register" class="auth-tab-panel" style="display:none;">
+        <form onsubmit="submitDevRegister(event)">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label for="dev-reg-name">Business / Organization Name</label>
+            <input type="text" id="dev-reg-name" required placeholder="My Ecommerce Store">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label for="dev-reg-email">Work Email</label>
+            <input type="email" id="dev-reg-email" required placeholder="admin@mystore.com" autocomplete="email">
+          </div>
+          <div class="form-group" style="margin-bottom:10px;">
+            <label for="dev-reg-phone">Contact Mobile Number</label>
+            <input type="text" id="dev-reg-phone" placeholder="01712345678">
+          </div>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label for="dev-reg-password">Password (min. 6 characters)</label>
+            <input type="password" id="dev-reg-password" minlength="6" required placeholder="Create secure password" autocomplete="new-password">
+          </div>
+          <button type="submit" class="btn full-width" style="width:100%; justify-content:center; padding:10px;" id="btn-dev-reg-submit">
+            Create Developer Account
+          </button>
+        </form>
+      </div>
+
+      <!-- Tab 3: API Key Authentication -->
+      <div id="auth-panel-apikey" class="auth-tab-panel" style="display:none;">
+        <form onsubmit="submitApiKeyLogin(event)">
+          <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Sign in directly with your Secret Key (<code style="color:var(--primary-gold)">sk_live_...</code> or <code style="color:var(--primary-gold)">sk_sandbox_...</code>) to authenticate server-side sessions.</p>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label for="dev-auth-apikey">Secret API Key</label>
+            <input type="password" id="dev-auth-apikey" required placeholder="sk_live_..." style="font-family:'Fira Code',monospace; font-size:12px;">
+          </div>
+          <button type="submit" class="btn full-width" style="width:100%; justify-content:center; padding:10px;" id="btn-dev-apikey-submit">
+            Authenticate with API Key
+          </button>
+        </form>
+      </div>
+
+      <!-- Divider & Instant Guest Sandbox Option -->
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border); text-align:center;">
+        <div style="font-size:11.5px; color:var(--text-muted); margin-bottom:10px;">Need immediate access without signing up?</div>
+        <button type="button" class="btn btn-secondary full-width" style="width:100%; justify-content:center; padding:9px; font-size:12px;" onclick="startInstantGuestSandbox()">
+          <span class="material-symbols-outlined icon-inline" style="font-size:16px; margin-right:6px; color:var(--primary-gold);">bolt</span>⚡ Instant Sandbox Guest Mode (1-Click)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key Regeneration Confirmation Modal -->
+  <div class="modal-overlay" id="regen-key-modal">
+    <div class="modal-box" style="max-width: 440px;">
+      <h3 style="color:var(--danger); font-size:16px; font-weight:800; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-outlined">warning</span>Regenerate API Keys?
+      </h3>
+      <p style="font-size:12.5px; color:var(--text-muted); line-height:1.6; margin-bottom:16px;">
+        Regenerating will instantly revoke your current Secret API Key. Any existing backend services using the old key will stop functioning until updated.
+      </p>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary" onclick="closeRegenModal()">Cancel</button>
+        <button class="btn" style="background:var(--danger); border-color:var(--danger); color:#fff;" onclick="executeRegenerateKeys()">Yes, Regenerate Key</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Notification Toast -->
   <div class="toast" id="toast" role="status" aria-live="polite">
     <span id="toast-icon">✨</span>
     <span id="toast-msg">Notification message</span>
   </div>
+
+  <!-- Realtime & Database Client Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
   <!-- Portal Script -->
   <script src="portal.js"></script>

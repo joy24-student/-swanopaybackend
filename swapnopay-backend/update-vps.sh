@@ -61,6 +61,11 @@ chmod -R 775 "$STORAGE_BASE/uploads" "$STORAGE_BASE/data" 2>/dev/null || true
 if [ -n "$BACKEND_APP_DIR" ]; then
     echo -e "${YELLOW}⚙️  Updating Backend API dependencies in $BACKEND_APP_DIR...${NC}"
     cd "$BACKEND_APP_DIR"
+    if [ -f .env ]; then
+        grep -q "^SUPABASE_OAUTH_CLIENT_ID=" .env || echo "SUPABASE_OAUTH_CLIENT_ID=5d3dcd9b-1acf-4e31-96d2-d673af42a18b" >> .env
+        grep -q "^SUPABASE_OAUTH_CLIENT_SECRET=" .env || echo "SUPABASE_OAUTH_CLIENT_SECRET=sba_db474448667fb0eea9ab0b36d2395a29c9149b61" >> .env
+        grep -q "^SUPABASE_OAUTH_REDIRECT_URI=" .env || echo "SUPABASE_OAUTH_REDIRECT_URI=https://api.swapnopay.top/v1/oauth/callback" >> .env
+    fi
     npm install --omit=dev --no-audit --no-fund || true
     
     # Restart PM2 process

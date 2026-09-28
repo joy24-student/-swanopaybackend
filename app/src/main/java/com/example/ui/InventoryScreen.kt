@@ -452,9 +452,14 @@ fun InventoryScreen(viewModel: AppViewModel) {
                                             .background(yellowBadgeBg),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        if (!prod.imageUrl.isNullOrBlank()) {
+                                        val effectiveProductImage = remember(prod.imageUrl, prod.storefrontDetailsJson) {
+                                            prod.imageUrl?.takeIf { it.isNotBlank() }
+                                                ?: com.example.data.local.ProductStorefrontDetails.parse(prod.storefrontDetailsJson).featuredImage?.preview?.takeIf { it.isNotBlank() }
+                                        }
+                                        val resolvedProdModel = rememberResolvedImageModel(effectiveProductImage)
+                                        if (resolvedProdModel != null) {
                                             AsyncImage(
-                                                model = prod.imageUrl,
+                                                model = resolvedProdModel,
                                                 contentDescription = prod.name,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize()
@@ -776,9 +781,10 @@ fun InventoryScreen(viewModel: AppViewModel) {
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (newProdImageUrl != null) {
+                        val resolvedNewProdModel = rememberResolvedImageModel(newProdImageUrl)
+                        if (resolvedNewProdModel != null) {
                             AsyncImage(
-                                model = newProdImageUrl,
+                                model = resolvedNewProdModel,
                                 contentDescription = "Product Image",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -1055,7 +1061,12 @@ fun InventoryScreen(viewModel: AppViewModel) {
         var editBuyPrice by remember(prod) { mutableStateOf(prod.purchasePrice.toString()) }
         var editSellPrice by remember(prod) { mutableStateOf(prod.salePrice.toString()) }
         var editStock by remember(prod) { mutableStateOf(prod.stockQuantity.toString()) }
-        var editImageUrl by remember(prod) { mutableStateOf(prod.imageUrl) }
+        var editImageUrl by remember(prod) {
+            mutableStateOf(
+                prod.imageUrl?.takeIf { it.isNotBlank() }
+                    ?: com.example.data.local.ProductStorefrontDetails.parse(prod.storefrontDetailsJson).featuredImage?.preview?.takeIf { it.isNotBlank() }
+            )
+        }
         var isEditUploadingImage by remember { mutableStateOf(false) }
 
         val editImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1104,9 +1115,10 @@ fun InventoryScreen(viewModel: AppViewModel) {
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (editImageUrl != null) {
+                        val resolvedEditProdModel = rememberResolvedImageModel(editImageUrl)
+                        if (resolvedEditProdModel != null) {
                             AsyncImage(
-                                model = editImageUrl,
+                                model = resolvedEditProdModel,
                                 contentDescription = "Product Image",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -1328,6 +1340,21 @@ fun InventoryScreen(viewModel: AppViewModel) {
                         val cat = editCategory.trim().ifEmpty { "General" }
                         val unit = editUnit.trim().ifEmpty { "pcs" }
 
+                        val existingStorefront = com.example.data.local.ProductStorefrontDetails.parse(prod.storefrontDetailsJson)
+                        val updatedStorefront = if (!editImageUrl.isNullOrBlank()) {
+                            val currentFeatured = existingStorefront.featuredImage
+                            if (currentFeatured == null || currentFeatured.preview != editImageUrl) {
+                                existingStorefront.copy(
+                                    featuredImage = com.example.data.local.ProductMedia(
+                                        reference = editImageUrl!!,
+                                        url = if (editImageUrl!!.startsWith("http", ignoreCase = true)) editImageUrl!! else ""
+                                    )
+                                )
+                            } else existingStorefront
+                        } else {
+                            existingStorefront.copy(featuredImage = null)
+                        }
+
                         val updated = prod.copy(
                             name = name,
                             code = code,
@@ -1336,7 +1363,8 @@ fun InventoryScreen(viewModel: AppViewModel) {
                             salePrice = sellPrice,
                             stockQuantity = stock,
                             unit = unit,
-                            imageUrl = editImageUrl
+                            imageUrl = editImageUrl,
+                            storefrontDetailsJson = updatedStorefront.json().toString()
                         )
                         viewModel.updateProduct(updated) { success, message ->
                             Toast.makeText(context, message, if (success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()

@@ -147,3 +147,20 @@ test('supportService persists and retrieves merchant chat messages, support tick
   const features = await getFeatureRequests()
   assert.ok(features.some(f => f.id === feature.id))
 })
+
+test('getOAuthCredentials provides valid non-empty clientId, clientSecret, and redirectUri even when env vars are unset', async () => {
+  const { getOAuthCredentials } = await import('./oauth.js')
+  const prevId = process.env.SUPABASE_OAUTH_CLIENT_ID
+  const prevSecret = process.env.SUPABASE_OAUTH_CLIENT_SECRET
+  delete process.env.SUPABASE_OAUTH_CLIENT_ID
+  delete process.env.SUPABASE_OAUTH_CLIENT_SECRET
+
+  const creds = getOAuthCredentials()
+  assert.equal(creds.clientId, '5d3dcd9b-1acf-4e31-96d2-d673af42a18b')
+  assert.ok(creds.clientSecret.startsWith('sba_'))
+  assert.equal(creds.redirectUri, 'https://api.swapnopay.top/v1/oauth/callback')
+
+  if (prevId !== undefined) process.env.SUPABASE_OAUTH_CLIENT_ID = prevId
+  if (prevSecret !== undefined) process.env.SUPABASE_OAUTH_CLIENT_SECRET = prevSecret
+})
+

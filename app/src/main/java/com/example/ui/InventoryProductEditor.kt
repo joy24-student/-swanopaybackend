@@ -43,7 +43,14 @@ fun InventoryProductEditor(viewModel: AppViewModel, product: ProductItemEntity?,
     var purchase by rememberSaveable(key) { mutableStateOf(product?.purchasePrice?.toString() ?: "0") }
     var price by rememberSaveable(key) { mutableStateOf(product?.salePrice?.toString() ?: "") }
     var stock by rememberSaveable(key) { mutableStateOf(product?.stockQuantity?.toString() ?: "0") }
-    var detailsJson by rememberSaveable(key) { mutableStateOf(product?.storefrontDetailsJson ?: "{}") }
+    var detailsJson by rememberSaveable(key) {
+        val parsed = ProductStorefrontDetails.parse(product?.storefrontDetailsJson ?: "{}")
+        val seeded = if (parsed.featuredImage == null && !product?.imageUrl.isNullOrBlank()) {
+            val rawImg = product!!.imageUrl!!.trim()
+            parsed.copy(featuredImage = ProductMedia(reference = rawImg, url = if (rawImg.startsWith("http", ignoreCase = true)) rawImg else ""))
+        } else parsed
+        mutableStateOf(seeded.json().toString())
+    }
     val details = remember(detailsJson) { ProductStorefrontDetails.parse(detailsJson) }
     var oldPrice by rememberSaveable(key) { mutableStateOf(details.oldPrice.toString()) }
     var sizes by rememberSaveable(key) { mutableStateOf(details.sizes.joinToString(", ")) }
@@ -170,9 +177,10 @@ private fun ProductField(label: String, value: String, change: (String) -> Unit,
 
 @Composable
 private fun ProductPhoto(photo: ProductMedia, label: String, enabled: Boolean, remove: () -> Unit) {
+    val resolvedModel = rememberResolvedImageModel(photo.preview)
     Column {
         Box {
-            AsyncImage(photo.preview, label, Modifier.fillMaxWidth().height(145.dp), contentScale = ContentScale.Fit)
+            AsyncImage(resolvedModel, label, Modifier.fillMaxWidth().height(145.dp), contentScale = ContentScale.Fit)
             IconButton(remove, Modifier.align(Alignment.TopEnd), enabled = enabled) { Icon(Icons.Outlined.Close, "Remove $label") }
         }
         Text(if (photo.bytes > 0) "$label · ${photo.bytes / 1024} KB" else label, style = MaterialTheme.typography.labelSmall)

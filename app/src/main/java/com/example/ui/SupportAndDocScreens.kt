@@ -2838,11 +2838,12 @@ Submit customer appeal for unmatched payments or wrong references.
 SwapnoPay sends instant JSON HTTP POST notifications whenever an order changes state.
 
 ### 4.1 Signature Header
-Every webhook request contains an HMAC SHA-256 signature in the header:
+Every webhook request contains a timestamped HMAC SHA-256 signature in the header:
 ```http
+X-SwapnoPay-Signature: t=1774650000,v1=4f6a9e1029c8b3...
 X-Signature: sha256=4f6a9e1029c8b3...
 ```
-The signature is computed over the raw UTF-8 request body bytes using your `webhook_secret`.
+The signature is computed over `${'$'}{timestamp}.${'$'}{rawBody}` using your `whsec_...` Webhook Signing Secret. Reject timestamps older than 300 seconds to prevent replay attacks.
 
 ### 4.2 Webhook Event: `payment.paid`
 ```json
@@ -2866,36 +2867,43 @@ The signature is computed over the raw UTF-8 request body bytes using your `webh
 }
 ```
 
-### 4.3 HMAC Verification Examples
+### 4.3 HMAC Verification Examples (Replay Protected)
 
 #### Node.js / Express:
 ```javascript
 const crypto = require('crypto');
 
-function verifySwapnoPayWebhook(rawBody, signatureHeader, secret) {
-  const expected = 'sha256=' + crypto
+function verifySwapnoPayWebhook(rawBody, sigHeader, secret) {
+  const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
+  if (Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t)) > 300) return false;
+  const expected = crypto
     .createHmac('sha256', secret)
-    .update(rawBody, 'utf8')
+    .update(`${'$'}{parts.t}.${'$'}{rawBody}`, 'utf8')
     .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+  return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(parts.v1, 'hex'));
 }
 ```
 
 #### Python / Flask / FastAPI:
 ```python
-import hmac
-import hashlib
+import hmac, hashlib, time
 
-def verify_swapnopay_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
-    expected = "sha256=" + hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+def verify_swapnopay_signature(raw_body: str, sig_header: str, secret: str) -> bool:
+    parts = dict(item.split("=") for item in sig_header.split(","))
+    if abs(int(time.time()) - int(parts["t"])) > 300:
+        return False
+    signed_payload = f"{parts['t']}.{raw_body}".encode("utf-8")
+    expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts["v1"])
 ```
 
 #### PHP (Laravel):
 ```php
-function verifySwapnoPayWebhook(${'$'}rawBody, ${'$'}signatureHeader, ${'$'}secret) {
-    ${'$'}expected = 'sha256=' . hash_hmac('sha256', ${'$'}rawBody, ${'$'}secret);
-    return hash_equals(${'$'}expected, ${'$'}signatureHeader);
+function verifySwapnoPayWebhook(${'$'}rawBody, ${'$'}sigHeader, ${'$'}secret) {
+    parse_str(str_replace(',', '&', ${'$'}sigHeader), ${'$'}parts);
+    if (abs(time() - (int)${'$'}parts['t']) > 300) return false;
+    ${'$'}expected = hash_hmac('sha256', ${'$'}parts['t'] . '.' . ${'$'}rawBody, ${'$'}secret);
+    return hash_equals(${'$'}expected, ${'$'}parts['v1']);
 }
 ```
 
@@ -2914,44 +2922,44 @@ function verifySwapnoPayWebhook(${'$'}rawBody, ${'$'}signatureHeader, ${'$'}secr
 
 ---
 
-## 6. Official SDK Quickstart
+## 6. Direct HTTP Integration Quickstart (No External SDK Required)
 
-### Node.js
-```bash
-npm install axios
-```
+SwapnoPay operates on a **Zero-SDK Direct HTTP REST** architecture. Do not install unverified third-party packages; use your runtime's native HTTP client.
+
+### Node.js 18+ (Built-in Fetch)
 ```javascript
-const axios = require('axios');
+const crypto = require('crypto');
 
 async function createSwapnoPayOrder() {
-  const res = await axios.post('https://pay.swapnopay.top/v1/payment/create', {
-    order_id: 'ORD-5521',
-    amount: 500.00,
-    customer_name: 'Sadia Islam',
-    customer_phone: '01812345678',
-    payment_method: 'Nagad'
-  }, {
+  const res = await fetch('https://pay.swapnopay.top/v1/payment/create', {
+    method: 'POST',
     headers: {
-      'X-Admin-Secret': 'sk_live_your_secret',
+      'Content-Type': 'application/json',
+      'X-API-Key': process.env.SWAPNOPAY_SECRET_KEY,
       'Idempotency-Key': crypto.randomUUID()
-    }
+    },
+    body: JSON.stringify({
+      order_id: 'ORD-5521',
+      amount: 500.00,
+      customer_name: 'Sadia Islam',
+      customer_phone: '01812345678',
+      payment_method: 'Nagad',
+      redirect_url: 'https://merchant.example.com/checkout/success'
+    })
   });
-  console.log('Redirect user to:', res.data.data.payment_url);
+  const data = await res.json();
+  console.log('Redirect user to:', data.payment_url);
 }
 ```
 
-### Python
-```bash
-pip install requests
-```
+### Python 3 (`requests`)
 ```python
-import requests
-import uuid
+import os, uuid, requests
 
 response = requests.post(
     "https://pay.swapnopay.top/v1/payment/create",
     headers={
-        "X-Admin-Secret": "sk_live_your_secret",
+        "X-API-Key": os.environ["SWAPNOPAY_SECRET_KEY"],
         "Idempotency-Key": str(uuid.uuid4())
     },
     json={
@@ -2960,13 +2968,23 @@ response = requests.post(
         "customer_name": "Sadia Islam",
         "customer_phone": "01812345678",
         "payment_method": "Nagad"
-    }
+    },
+    timeout=10
 )
 print(response.json())
 ```
 
 ---
-*SwapnoPay Developer Portal & API Specification • Version 2.0 • Updated September 2026*
+
+## 7. Production Deployment & Go-Live Checklist
+1. **Server-Side Secret Key Isolation**: Store `sk_live_...` and `whsec_...` exclusively in backend environment variables. Never expose secret keys in client-side code.
+2. **Idempotency Enforcement**: Pass a unique UUID v4 `Idempotency-Key` header on every `POST /v1/payment/create` call.
+3. **Strict Webhook Replay Defense**: Verify `X-SwapnoPay-Signature` (`t=<timestamp>,v1=<hmac>`) and reject requests older than 300 seconds.
+4. **Android SIM Bridge Hardening**: Disable battery optimization (`Settings -> Apps -> SwapnoPay -> Battery -> Unrestricted`) and grant SMS + Notification Listener permissions on the merchant handset.
+5. **Reconciliation Fallback**: Query `GET /v1/payment/status/{orderId}` before fulfilling orders if a customer returns to `redirect_url` before your webhook listener processes `payment.paid`.
+
+---
+*SwapnoPay Developer Portal & Zero-SDK Production API Specification • Version 3.0 • Updated September 2026*
 """
 
 @Composable
@@ -2992,15 +3010,16 @@ fun ApiDocScreen(viewModel: AppViewModel) {
 
     val tabs = listOf(
         "Overview",
+        "Production Guide",
         "API Reference",
-        "SDKs & Code",
+        "HTTP Code Gen",
         "Webhooks & Security",
         "Video Tutorials",
         "Explorer"
     )
     var activeTab by remember { mutableStateOf("Overview") }
 
-    // SDK Playground States
+    // HTTP Code Generator States
     var sdkAmount by remember { mutableStateOf("1250") }
     var sdkOrderId by remember { mutableStateOf("ORD-9821") }
     var sdkPhone by remember { mutableStateOf("01712963652") }
@@ -3010,7 +3029,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
     // API Explorer States
     var explorerPath by remember { mutableStateOf("POST /v1/payment/create") }
     var explorerBody by remember { mutableStateOf("{\n  \"order_id\": \"ORD-9821\",\n  \"amount\": 1250.00,\n  \"payment_method\": \"bKash\",\n  \"customer_phone\": \"01712963652\"\n}") }
-    var explorerResponse by remember { mutableStateOf("Click 'Execute Request ⚡' to query the live API sandbox...") }
+    var explorerResponse by remember { mutableStateOf("Click 'Execute Live Request ⚡' to send a real HTTP call to the configured gateway...") }
     var isExecutingRequest by remember { mutableStateOf(false) }
 
     fun copyFullDocumentation() {
@@ -3039,7 +3058,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                             color = brandText
                         )
                         Text(
-                            text = "v2.0 Production • Full API & Webhooks",
+                            text = "v3.0 Zero-SDK • Direct HTTP REST & Webhooks",
                             fontSize = 10.sp,
                             color = brandTextMuted
                         )
@@ -3112,13 +3131,13 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = if (useLiveCredentials) "Live Credentials Injected" else "Sandbox Placeholders Active",
+                                text = if (useLiveCredentials) "Live Credentials Injected" else "Standard Gateway Endpoint Active",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (useLiveCredentials) Color(0xFF10B981) else brandText
                             )
                             Text(
-                                text = if (useLiveCredentials) activeUrl else "Toggle to inject real Supabase URL & Key",
+                                text = if (useLiveCredentials) activeUrl else "Toggle to inject your configured Supabase/Gateway URL & Key",
                                 fontSize = 10.sp,
                                 color = brandTextMuted,
                                 maxLines = 1,
@@ -3189,7 +3208,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = "🚀 Complete API Documentation",
+                                            text = "🚀 Zero-SDK Production API Spec",
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 16.sp,
                                             color = if (isDarkMode) Color(0xFF38BDF8) else Color(0xFF3730A3)
@@ -3199,12 +3218,12 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                                 .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                                         ) {
-                                            Text("OpenAPI Spec v2.0", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                                            Text("Direct REST v3.0", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "One-click export of complete API specification including all 6 endpoints, request/response models, HMAC-SHA256 signature verification code, error codes, and SDK snippets.",
+                                        text = "SwapnoPay requires zero external SDK dependencies. Integrate directly via standard HTTPS JSON endpoints, timestamped HMAC-SHA256 webhooks, and our drop-in Hosted Checkout Widget.",
                                         fontSize = 12.sp,
                                         color = brandTextMuted,
                                         lineHeight = 16.sp
@@ -3269,7 +3288,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
 
                         // 3. Quickstart Checklist
                         item {
-                            Text("2. Integration Quickstart", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
+                            Text("2. Production Integration Quickstart", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
                         }
 
                         item {
@@ -3282,9 +3301,9 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     val quickSteps = listOf(
                                         "Step 1: Setup Supabase Database URL & Anon Key in Setup tab" to true,
                                         "Step 2: Add Gateway Receiving Number (bKash/Nagad) under Gateways" to true,
-                                        "Step 3: Grant SMS & Notification permissions to background worker" to true,
-                                        "Step 4: Send a test transaction (10 BDT) to verify auto-match" to false,
-                                        "Step 5: Point your website checkout to POST /v1/payment/create" to false
+                                        "Step 3: Grant SMS & Notification permissions & Unrestricted Battery" to true,
+                                        "Step 4: Call POST /v1/payment/create from your backend with X-API-Key" to false,
+                                        "Step 5: Verify X-SwapnoPay-Signature (HMAC-SHA256) on your webhook endpoint" to false
                                     )
                                     quickSteps.forEach { (text, done) ->
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3357,6 +3376,60 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                         }
                     }
 
+                    "Production Guide" -> {
+                        item {
+                            Text("Enterprise Production Deployment Guideline", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Mandatory security, reliability, and Android handset checklist before switching to live customer traffic.", fontSize = 11.sp, color = brandTextMuted)
+                        }
+
+                        item {
+                            val guidelines = listOf(
+                                Triple(
+                                    "1. Zero-SDK Direct HTTP Architecture",
+                                    "SwapnoPay does not require third-party npm, pip, or Composer SDKs. Use native HTTP clients (fetch, requests, cURL, OkHttp) directly against https://pay.swapnopay.top to eliminate supply-chain risk.",
+                                    Color(0xFF10B981)
+                                ),
+                                Triple(
+                                    "2. Server-Side Secret Key Isolation",
+                                    "Store sk_live_... and whsec_... exclusively in backend environment variables. Never embed secret keys in client-side JavaScript or mobile APK bundles.",
+                                    Color(0xFF3B82F6)
+                                ),
+                                Triple(
+                                    "3. Idempotency & Timeout Resilience",
+                                    "Include a UUID v4 Idempotency-Key header on every POST /v1/payment/create call and configure a 10-second HTTP timeout with safe network retries.",
+                                    Color(0xFFF59E0B)
+                                ),
+                                Triple(
+                                    "4. Timestamped HMAC-SHA256 Webhook Verification",
+                                    "Verify X-SwapnoPay-Signature (t=<timestamp>,v1=<hmac>) using constant-time digest comparison over '<timestamp>.<rawBody>' and reject payloads older than 300 seconds.",
+                                    Color(0xFF8B5CF6)
+                                ),
+                                Triple(
+                                    "5. Android Handset 24/7 Uptime Hardening",
+                                    "Disable Android OS Battery Optimization (Unrestricted mode), grant SMS & Notification Listener permissions, and keep the bridge device connected to stable Wi-Fi/4G.",
+                                    Color(0xFFEC4899)
+                                )
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                guidelines.forEach { (title, body, color) ->
+                                    Card(
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = brandCardBg),
+                                        border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = color)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(body, fontSize = 11.sp, color = brandTextMuted, lineHeight = 15.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     "API Reference" -> {
                         // Endpoints Reference
                         item {
@@ -3387,12 +3460,12 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     }
                                     Text("Initializes a new checkout order session and generates a hosted redirect link.", fontSize = 12.sp, color = brandTextMuted)
 
-                                    Divider(color = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0))
+                                    HorizontalDivider(color = if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0))
 
                                     Text("Request Headers:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = brandText)
-                                    Text("• Content-Type: application/json\n• X-Admin-Secret: $activeAnonKey\n• Idempotency-Key: <UUID>", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = brandTextMuted)
+                                    Text("• Content-Type: application/json\n• X-API-Key: $activeAnonKey\n• Idempotency-Key: <UUID>", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = brandTextMuted)
 
-                                    Text("Sample Request Body:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = brandText)
+                                    Text("Request Body:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = brandText)
                                     val createJson = """
                                     {
                                       "order_id": "ORD-2026-9812",
@@ -3497,7 +3570,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     Text("Error Codes Reference", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = brandText)
                                     val errs = listOf(
                                         Triple("ERR_INVALID_HMAC", "401", "Webhook or request signature mismatch."),
-                                        Triple("ERR_ORDER_EXPIRED", "400", "Order lifetime exceeded (default 10 min)."),
+                                        Triple("ERR_ORDER_EXPIRED", "400", "Payment window expired (10 mins)."),
                                         Triple("ERR_DUPLICATE_IDEMPOTENCY", "409", "Request with this Idempotency-Key already processed."),
                                         Triple("ERR_INSUFFICIENT_AMOUNT", "422", "Customer paid less than order invoice."),
                                         Triple("ERR_GATEWAY_OFFLINE", "503", "No Android gateway phone online.")
@@ -3519,11 +3592,11 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                         }
                     }
 
-                    "SDKs & Code" -> {
+                    "HTTP Code Gen" -> {
                         item {
-                            Text("Interactive SDK Code Generator", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
+                            Text("Direct HTTP REST Code Generator (No SDK Required)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Select language and adjust parameters to copy ready-to-run production code.", fontSize = 11.sp, color = brandTextMuted)
+                            Text("Select your language and parameters to copy zero-dependency native HTTP production code.", fontSize = 11.sp, color = brandTextMuted)
                         }
 
                         // Parameters form
@@ -3586,22 +3659,27 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                         item {
                             val generatedCode = when (activeSdkLang) {
                                 "Node.js" -> """
-                                const axios = require('axios');
+                                // Node.js 18+ Built-in Fetch (Zero External Dependencies)
+                                const crypto = require('crypto');
                                 
                                 async function createPayment() {
-                                  const response = await axios.post('$activeUrl/v1/payment/create', {
-                                    order_id: '$sdkOrderId',
-                                    amount: $sdkAmount,
-                                    customer_phone: '$sdkPhone',
-                                    payment_method: '$sdkMethod',
-                                    redirect_url: 'https://mysite.com/success'
-                                  }, {
+                                  const response = await fetch('$activeUrl/v1/payment/create', {
+                                    method: 'POST',
                                     headers: {
-                                      'X-Admin-Secret': '$activeAnonKey',
+                                      'Content-Type': 'application/json',
+                                      'X-API-Key': '$activeAnonKey',
                                       'Idempotency-Key': crypto.randomUUID()
-                                    }
+                                    },
+                                    body: JSON.stringify({
+                                      order_id: '$sdkOrderId',
+                                      amount: $sdkAmount,
+                                      customer_phone: '$sdkPhone',
+                                      payment_method: '$sdkMethod',
+                                      redirect_url: 'https://mysite.com/success'
+                                    })
                                   });
-                                  console.log('Redirect URL:', response.data.data.payment_url);
+                                  const data = await response.json();
+                                  console.log('Redirect URL:', data.payment_url);
                                 }
                                 """.trimIndent()
                                 "Python" -> """
@@ -3611,7 +3689,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 response = requests.post(
                                     "$activeUrl/v1/payment/create",
                                     headers={
-                                        "X-Admin-Secret": "$activeAnonKey",
+                                        "X-API-Key": "$activeAnonKey",
                                         "Idempotency-Key": str(uuid.uuid4())
                                     },
                                     json={
@@ -3620,7 +3698,8 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                         "customer_phone": "$sdkPhone",
                                         "payment_method": "$sdkMethod",
                                         "redirect_url": "https://mysite.com/success"
-                                    }
+                                    },
+                                    timeout=10
                                 )
                                 print(response.json())
                                 """.trimIndent()
@@ -3630,7 +3709,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 curl_setopt(${"$" + "ch"}, CURLOPT_RETURNTRANSFER, true);
                                 curl_setopt(${"$" + "ch"}, CURLOPT_HTTPHEADER, [
                                     'Content-Type: application/json',
-                                    'X-Admin-Secret: $activeAnonKey',
+                                    'X-API-Key: $activeAnonKey',
                                     'Idempotency-Key: ' . uniqid()
                                 ]);
                                 curl_setopt(${"$" + "ch"}, CURLOPT_POSTFIELDS, json_encode([
@@ -3655,7 +3734,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 }
                                 val request = Request.Builder()
                                     .url("$activeUrl/v1/payment/create")
-                                    .addHeader("X-Admin-Secret", "$activeAnonKey")
+                                    .addHeader("X-API-Key", "$activeAnonKey")
                                     .addHeader("Idempotency-Key", java.util.UUID.randomUUID().toString())
                                     .post(json.toString().toRequestBody("application/json".toMediaType()))
                                     .build()
@@ -3678,7 +3757,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 		"payment_method": "$sdkMethod",
                                 	})
                                 	req, _ := http.NewRequest("POST", "$activeUrl/v1/payment/create", bytes.NewBuffer(payload))
-                                	req.Header.Set("X-Admin-Secret", "$activeAnonKey")
+                                	req.Header.Set("X-API-Key", "$activeAnonKey")
                                 	req.Header.Set("Content-Type", "application/json")
                                 	http.DefaultClient.Do(req)
                                 }
@@ -3686,7 +3765,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 else -> """
                                 curl -X POST $activeUrl/v1/payment/create \\
                                   -H "Content-Type: application/json" \\
-                                  -H "X-Admin-Secret: $activeAnonKey" \\
+                                  -H "X-API-Key: $activeAnonKey" \\
                                   -H "Idempotency-Key: \$(uuidgen)" \\
                                   -d '{
                                     "order_id": "$sdkOrderId",
@@ -3705,7 +3784,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                         item {
                             Text("Webhooks & HMAC Signature Security", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("SwapnoPay signs every HTTP callback using HMAC-SHA256 in the X-Signature header.", fontSize = 11.sp, color = brandTextMuted)
+                            Text("SwapnoPay signs every HTTP callback using HMAC-SHA256 in X-SwapnoPay-Signature (t=<timestamp>,v1=<hmac>).", fontSize = 11.sp, color = brandTextMuted)
                         }
 
                         item {
@@ -3715,22 +3794,24 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("HMAC-SHA256 Verification in Node.js:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandText)
+                                    Text("HMAC-SHA256 Verification in Node.js (Replay-Protected):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandText)
                                     val nodeHmac = """
                                     const crypto = require('crypto');
                                     
-                                    function verifyWebhook(rawBody, signatureHeader, secret) {
-                                      const expected = 'sha256=' + crypto
+                                    function verifyWebhook(rawBody, sigHeader, secret) {
+                                      const parts = Object.fromEntries(sigHeader.split(',').map(p => p.split('=')));
+                                      if (Math.abs(Math.floor(Date.now() / 1000) - Number(parts.t)) > 300) return false;
+                                      const expected = crypto
                                         .createHmac('sha256', secret)
-                                        .update(rawBody, 'utf8')
+                                        .update(`${"$"}{parts.t}.${"$"}{rawBody}`, 'utf8')
                                         .digest('hex');
-                                      return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+                                      return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(parts.v1, 'hex'));
                                     }
                                     """.trimIndent()
                                     CodeBlock(nodeHmac, clipboardManager, isDarkMode)
 
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    Text("Sample Webhook Payload (payment.paid):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandText)
+                                    Text("Webhook Payload (payment.paid):", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandText)
                                     val webhookPayload = """
                                     {
                                       "event": "payment.paid",
@@ -3753,6 +3834,9 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                     }
 
                     "Video Tutorials" -> {
+                        val validTutorials = systemConfig.videoTutorials.filter {
+                            it.videoUrl.isNotBlank() && !it.videoUrl.contains("dQw4w9WgXcQ")
+                        }
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3761,20 +3845,19 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                             ) {
                                 Column {
                                     Text("Video Integration Tutorials", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
-                                    Text("Updated dynamically in real-time from Admin CMS", fontSize = 11.sp, color = brandTextMuted)
+                                    Text("Synced directly from Admin CMS", fontSize = 11.sp, color = brandTextMuted)
                                 }
                                 Box(
                                     modifier = Modifier
                                         .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("${systemConfig.videoTutorials.size} Guides", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                                    Text("${validTutorials.size} Guides", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
                                 }
                             }
                         }
 
-                        val tutorials = systemConfig.videoTutorials
-                        if (tutorials.isEmpty()) {
+                        if (validTutorials.isEmpty()) {
                             item {
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
@@ -3782,12 +3865,12 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Box(modifier = Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
-                                        Text("No video tutorials configured in Admin Panel.", fontSize = 12.sp, color = brandTextMuted)
+                                        Text("No video tutorials published in Admin CMS yet. Refer to the Production Guide & Direct HTTP Code Generator tabs.", fontSize = 12.sp, color = brandTextMuted)
                                     }
                                 }
                             }
                         } else {
-                            items(tutorials) { vid ->
+                            items(validTutorials) { vid ->
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = brandCardBg),
@@ -3795,9 +3878,8 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            val targetUrl = vid.videoUrl.ifBlank { "https://www.youtube.com/@swapnopay" }
                                             try {
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(vid.videoUrl)))
                                             } catch (e: Exception) {
                                                 Toast.makeText(context, "Could not open video URL", Toast.LENGTH_SHORT).show()
                                             }
@@ -3850,9 +3932,9 @@ fun ApiDocScreen(viewModel: AppViewModel) {
 
                     "Explorer" -> {
                         item {
-                            Text("Interactive API Request Sandbox", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
+                            Text("Live HTTP API Request Explorer", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = brandText)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Configure request body and execute live requests against the sandbox.", fontSize = 11.sp, color = brandTextMuted)
+                            Text("Configure endpoint and JSON body to execute a real HTTP request against $activeUrl.", fontSize = 11.sp, color = brandTextMuted)
                         }
 
                         item {
@@ -3862,7 +3944,7 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("Endpoint Path", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandTextMuted)
+                                    Text("Endpoint Path (e.g. POST /v1/payment/create or GET /health)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = brandTextMuted)
                                     OutlinedTextField(
                                         value = explorerPath,
                                         onValueChange = { explorerPath = it },
@@ -3882,33 +3964,51 @@ fun ApiDocScreen(viewModel: AppViewModel) {
                                     Button(
                                         onClick = {
                                             isExecutingRequest = true
-                                            scope.launch {
-                                                delay(800)
-                                                isExecutingRequest = false
-                                                explorerResponse = """
-                                                {
-                                                  "status": "SUCCESS",
-                                                  "code": 200,
-                                                  "order_id": "ORD-9821",
-                                                  "payment_url": "$activeUrl/pay/ORD-9821",
-                                                  "assigned_gateway_number": "01784992118",
-                                                  "expires_at": "2026-09-07T21:15:00Z"
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                val startMs = System.currentTimeMillis()
+                                                val resultText = try {
+                                                    val parts = explorerPath.trim().split(Regex("\\s+"), limit = 2)
+                                                    val method = if (parts.size == 2) parts[0].uppercase() else "POST"
+                                                    val pathPart = if (parts.size == 2) parts[1] else parts[0]
+                                                    val fullUrl = if (pathPart.startsWith("http")) pathPart else "${activeUrl.trimEnd('/')}/${pathPart.trimStart('/')}"
+                                                    val conn = (java.net.URL(fullUrl).openConnection() as java.net.HttpURLConnection).apply {
+                                                        requestMethod = method
+                                                        connectTimeout = 10000
+                                                        readTimeout = 10000
+                                                        setRequestProperty("Content-Type", "application/json")
+                                                        setRequestProperty("X-API-Key", activeAnonKey)
+                                                        setRequestProperty("Idempotency-Key", java.util.UUID.randomUUID().toString())
+                                                        if (method != "GET" && method != "HEAD" && explorerBody.isNotBlank()) {
+                                                            doOutput = true
+                                                            outputStream.use { it.write(explorerBody.toByteArray(Charsets.UTF_8)) }
+                                                        }
+                                                    }
+                                                    val status = conn.responseCode
+                                                    val elapsed = System.currentTimeMillis() - startMs
+                                                    val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+                                                    val raw = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                                                    "HTTP $status (${elapsed}ms)\n$raw"
+                                                } catch (e: Exception) {
+                                                    "Network Error: ${e.javaClass.simpleName}: ${e.message}"
                                                 }
-                                                """.trimIndent()
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    isExecutingRequest = false
+                                                    explorerResponse = resultText
+                                                }
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = if (isDarkMode) Color(0xFFFB923C) else Color(0xFF5D45FF)),
                                         shape = RoundedCornerShape(10.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text(if (isExecutingRequest) "Sending Request..." else "Execute Request ⚡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        Text(if (isExecutingRequest) "Executing Live HTTP Call..." else "Execute Live Request ⚡", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                     }
                                 }
                             }
                         }
 
                         item {
-                            Text("API Sandbox Response Output", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = brandText)
+                            Text("Live HTTP Response Output", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = brandText)
                             Spacer(modifier = Modifier.height(6.dp))
                             Box(
                                 modifier = Modifier
