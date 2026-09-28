@@ -8109,7 +8109,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
         stopVoiceDictation()
         stopSpeaking()
         try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
             audioManager?.mode = android.media.AudioManager.MODE_NORMAL
             audioManager?.isSpeakerphoneOn = true
             if (audioManager != null) {

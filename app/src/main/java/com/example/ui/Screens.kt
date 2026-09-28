@@ -965,6 +965,7 @@ fun AppNavigation(viewModel: AppViewModel) {
         "Settings", "SystemSettings" -> SettingsScreen(viewModel)
         "PrivacyPolicy" -> PrivacyPolicyScreen(viewModel)
         "FormBuilder", "FormBuilderStudio", "AiFormBuilder", "AiBuilder", "FormTemplates", "TemplatePicker", "FormResponses", "FormSubmissions" -> FormBuilderStudioScreen(viewModel)
+        "FormResponsesSheet", "FormResponsesSpreadsheet", "FormResponsesLedger", "FormResponsesGrid", "FormResponseSheet" -> FormResponsesSpreadsheetScreen(viewModel)
         "SMSLogs" -> SMSLogsScreen(viewModel)
         "Notifications" -> NotificationsScreen(viewModel)
         "SupabaseProfiles", "SupabaseProfileManager", "SupabaseDiagnostics", "CloudBackends" -> SupabaseProfilesScreen(viewModel)
@@ -11441,10 +11442,12 @@ fun MoreScreen(viewModel: AppViewModel) {
             else -> raw
         }
     }
+    val subStatus by viewModel.subscriptionStatus.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.listenToSystemConfig()
         viewModel.refreshSimCards()
+        viewModel.fetchSubscriptionStatus()
     }
 
     var showFeatureRequestModal by remember { mutableStateOf(false) }
@@ -11840,15 +11843,34 @@ fun MoreScreen(viewModel: AppViewModel) {
                                     tint = goldText,
                                     modifier = Modifier.size(20.dp)
                                 )
+                                val currentPlanTitle = when {
+                                    subStatus.status == "EXPIRED" -> "Subscription Expired"
+                                    subStatus.status == "REQUIRES_NID" -> "NID Verification Required"
+                                    subStatus.isTrialActive || subStatus.status == "TRIAL" -> "Free Trial"
+                                    subStatus.subscriptionPlan.equals("YEARLY", true) -> "Yearly Plan"
+                                    subStatus.subscriptionPlan.equals("QUARTERLY", true) || subStatus.subscriptionPlan.equals("BUSINESS", true) -> "Quarterly Plan"
+                                    subStatus.subscriptionPlan.equals("MONTHLY", true) || subStatus.subscriptionPlan.equals("PRO", true) -> "Monthly Plan"
+                                    subStatus.isSubscriptionActive -> "${subStatus.subscriptionPlan ?: "Active"} Plan"
+                                    else -> "Free Plan"
+                                }
+                                val currentPlanSubtitle = when {
+                                    subStatus.status == "EXPIRED" -> "Upgrade now to restore access"
+                                    subStatus.isSubscriptionActive && !subStatus.subscriptionExpiresAt.isNullOrBlank() -> "Renews on ${subStatus.subscriptionExpiresAt!!.take(10)}"
+                                    subStatus.isSubscriptionActive -> "Active Subscription"
+                                    subStatus.isTrialActive -> "${subStatus.trialRemainingDays} days trial remaining"
+                                    subStatus.status == "REQUIRES_NID" -> "National ID verification required"
+                                    else -> "Free tier active"
+                                }
+
                                 Column {
                                     Text(
-                                        text = "Self-hosted Test Plan",
+                                        text = currentPlanTitle,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = primaryText
+                                        color = if (subStatus.status == "EXPIRED") Color(0xFFEF4444) else primaryText
                                     )
                                     Text(
-                                        text = "Provider billing not connected",
+                                        text = currentPlanSubtitle,
                                         fontSize = 11.sp,
                                         color = secondaryText
                                     )
@@ -11856,15 +11878,33 @@ fun MoreScreen(viewModel: AppViewModel) {
                             }
 
                             Button(
-                                onClick = { viewModel.navigateTo("Subscription") },
-                                colors = ButtonDefaults.buttonColors(containerColor = goldPrimary),
+                                onClick = {
+                                    if (subStatus.status == "REQUIRES_NID") {
+                                        viewModel.navigateTo("KycVerification")
+                                    } else {
+                                        viewModel.navigateTo("Subscription")
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (subStatus.status == "EXPIRED") Color(0xFFEF4444) else goldPrimary
+                                ),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                                 modifier = Modifier.height(34.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("View Plan", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                                    Icon(Icons.Default.ChevronRight, null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        text = if (subStatus.status == "EXPIRED") "Renew Plan" else if (subStatus.status == "REQUIRES_NID") "Verify NID" else "View Plan",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (subStatus.status == "EXPIRED") Color.White else Color.Black
+                                    )
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        null,
+                                        tint = if (subStatus.status == "EXPIRED") Color.White else Color.Black,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         }

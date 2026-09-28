@@ -1242,6 +1242,8 @@ export interface AdminSubscriptionConfig {
   trial_days: number
   is_trial_enabled: boolean
   enforce_nid_verification: boolean
+  gateway_merchant_id?: string
+  gateway_api_key?: string
   updated_at?: string
 }
 
@@ -1249,48 +1251,38 @@ export async function fetchSubscriptionConfig(): Promise<AdminSubscriptionConfig
   const baseUrl = getBackendBaseUrl()
   const headers = await getAdminHeaders()
 
-  try {
-    const res = await fetch(`${baseUrl}/v1/admin/subscription-config`, { headers })
-    if (res.ok) {
-      const json = await res.json()
-      if (json.config) {
-        return {
-          monthly_fee: Number(json.config.monthly_fee) || 100,
-          quarterly_fee: Number(json.config.quarterly_fee) || 250,
-          yearly_fee: Number(json.config.yearly_fee) || 650,
-          trial_days: Number(json.config.trial_days) || 90,
-          is_trial_enabled: json.config.is_trial_enabled ?? true,
-          enforce_nid_verification: json.config.enforce_nid_verification ?? true,
-          updated_at: json.config.updated_at,
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[fetchSubscriptionConfig] Backend notice:', err)
+  // 1. Try Backend API
+  const endpoints = [
+    `${baseUrl}/v1/admin/subscription-config`,
+    '/v1/admin/subscription-config'
+  ]
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && !baseUrl.includes('localhost:4000')) {
+    endpoints.push('http://localhost:4000/v1/admin/subscription-config')
   }
 
-  // Fallback 1: platform_subscription_config table
-  try {
-    const { data } = await adminSupabase
-      .from('platform_subscription_config')
-      .select('*')
-      .eq('id', 'default_config')
-      .maybeSingle()
-
-    if (data) {
-      return {
-        monthly_fee: Number(data.monthly_fee) || 100,
-        quarterly_fee: Number(data.quarterly_fee) || 250,
-        yearly_fee: Number(data.yearly_fee) || 650,
-        trial_days: Number(data.trial_days) || 90,
-        is_trial_enabled: data.is_trial_enabled ?? true,
-        enforce_nid_verification: data.enforce_nid_verification ?? true,
-        updated_at: data.updated_at,
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, { headers })
+      if (res.ok) {
+        const json = await res.json()
+        if (json.config) {
+          return {
+            monthly_fee: Number(json.config.monthly_fee) || 100,
+            quarterly_fee: Number(json.config.quarterly_fee) || 250,
+            yearly_fee: Number(json.config.yearly_fee) || 650,
+            trial_days: Number(json.config.trial_days) || 90,
+            is_trial_enabled: json.config.is_trial_enabled ?? true,
+            enforce_nid_verification: json.config.enforce_nid_verification ?? true,
+            gateway_merchant_id: json.config.gateway_merchant_id || '',
+            gateway_api_key: json.config.gateway_api_key || '',
+            updated_at: json.config.updated_at,
+          }
+        }
       }
-    }
-  } catch (e) {}
+    } catch (_) {}
+  }
 
-  // Fallback 2: showcase_config table
+  // 2. Direct Supabase showcase_config table
   try {
     const { data } = await adminSupabase
       .from('showcase_config')
@@ -1307,7 +1299,32 @@ export async function fetchSubscriptionConfig(): Promise<AdminSubscriptionConfig
         trial_days: Number(v.trial_days) || 90,
         is_trial_enabled: v.is_trial_enabled ?? true,
         enforce_nid_verification: v.enforce_nid_verification ?? true,
+        gateway_merchant_id: v.gateway_merchant_id || '',
+        gateway_api_key: v.gateway_api_key || '',
         updated_at: v.updated_at,
+      }
+    }
+  } catch (e) {}
+
+  // 3. Fallback: platform_subscription_config table
+  try {
+    const { data } = await adminSupabase
+      .from('platform_subscription_config')
+      .select('*')
+      .eq('id', 'default_config')
+      .maybeSingle()
+
+    if (data) {
+      return {
+        monthly_fee: Number(data.monthly_fee) || 100,
+        quarterly_fee: Number(data.quarterly_fee) || 250,
+        yearly_fee: Number(data.yearly_fee) || 650,
+        trial_days: Number(data.trial_days) || 90,
+        is_trial_enabled: data.is_trial_enabled ?? true,
+        enforce_nid_verification: data.enforce_nid_verification ?? true,
+        gateway_merchant_id: data.gateway_merchant_id || '',
+        gateway_api_key: data.gateway_api_key || '',
+        updated_at: data.updated_at,
       }
     }
   } catch (e) {}
@@ -1319,6 +1336,8 @@ export async function fetchSubscriptionConfig(): Promise<AdminSubscriptionConfig
     trial_days: 90,
     is_trial_enabled: true,
     enforce_nid_verification: true,
+    gateway_merchant_id: '',
+    gateway_api_key: '',
   }
 }
 
@@ -1332,37 +1351,63 @@ export async function saveSubscriptionConfig(config: AdminSubscriptionConfig): P
     trial_days: Number(config.trial_days),
     is_trial_enabled: Boolean(config.is_trial_enabled),
     enforce_nid_verification: Boolean(config.enforce_nid_verification),
+    gateway_merchant_id: String(config.gateway_merchant_id || '').trim(),
+    gateway_api_key: String(config.gateway_api_key || '').trim(),
     updated_at: new Date().toISOString(),
   }
 
-  // 1. Try Backend POST
+  let savedSuccessfully = false
+  let lastErr = ''
+
+  // 1. Direct Supabase showcase_config (Real-time synchronization across Web & Apps)
   try {
-    await fetch(`${baseUrl}/v1/admin/subscription-config`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-  } catch (err) {
-    console.warn('[saveSubscriptionConfig] Backend save notice:', err)
+    await upsertShowcaseConfig('subscription_config', payload)
+    savedSuccessfully = true
+  } catch (err: any) {
+    lastErr = err?.message || 'showcase_config save failed'
+    console.warn('[saveSubscriptionConfig] showcase_config notice:', err)
   }
 
-  // 2. Direct Supabase platform_subscription_config
+  // 2. Try Backend POST
+  const endpoints = [
+    `${baseUrl}/v1/admin/subscription-config`,
+    '/v1/admin/subscription-config'
+  ]
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && !baseUrl.includes('localhost:4000')) {
+    endpoints.push('http://localhost:4000/v1/admin/subscription-config')
+  }
+
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        savedSuccessfully = true
+        break
+      }
+    } catch (err: any) {
+      // try next endpoint
+    }
+  }
+
+  // 3. Direct Supabase platform_subscription_config (if table exists)
   try {
-    await adminSupabase
+    const { error } = await adminSupabase
       .from('platform_subscription_config')
       .upsert({
         id: 'default_config',
         ...payload,
       })
+    if (!error) savedSuccessfully = true
   } catch (err) {
-    console.warn('[saveSubscriptionConfig] platform_subscription_config notice:', err)
+    // Ignore if table does not exist
   }
 
-  // 3. Direct Supabase showcase_config
-  try {
-    await upsertShowcaseConfig('subscription_config', payload)
-  } catch (err) {
-    console.warn('[saveSubscriptionConfig] showcase_config notice:', err)
+  if (!savedSuccessfully && lastErr) {
+    throw new Error('Failed to save subscription config: ' + lastErr)
   }
 
   return payload

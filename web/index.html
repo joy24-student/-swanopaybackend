@@ -1896,19 +1896,23 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
       
-      <!-- Free Plan -->
+      <!-- Free / Starter Plan -->
       <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between reveal" data-reveal>
         <div class="space-y-4">
+          <div id="web-starter-trial-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-800 text-[11px] font-bold border border-emerald-500/30">
+            <i class="fa-solid fa-gift text-emerald-600 text-xs"></i>
+            <span id="web-starter-trial-text">90-Day Free Trial</span>
+          </div>
           <h3 class="text-lg font-black text-black">Starter</h3>
-          <div class="text-3xl font-black text-black">৳ 0 <span class="text-xs font-bold text-black">/month</span></div>
-          <p class="text-xs text-black">Perfect for small shops &amp; Facebook sellers starting out.</p>
+          <div class="text-3xl font-black text-black"><span id="web-plan-starter-price">৳ 0</span> <span id="web-plan-starter-period" class="text-xs font-bold text-black">/month</span></div>
+          <p class="text-xs text-black" id="web-plan-starter-desc">Perfect for small shops &amp; Facebook sellers starting out.</p>
           <ul class="space-y-2.5 text-xs text-black font-medium">
             <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i><span>Up to 100 payment matches/mo</span></li>
             <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i><span>Basic POS &amp; Ledger</span></li>
             <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i><span>Offline mode support</span></li>
           </ul>
         </div>
-        <a href="#download" class="w-full py-3 rounded-xl bg-slate-100 border border-slate-300 text-black text-xs font-extrabold text-center hover:bg-amber-500/20 transition-all" data-en="Get Started Free" data-bn="ফ্রি শুরু করুন">Get Started Free</a>
+        <a href="#download" id="web-plan-starter-cta" class="w-full py-3 rounded-xl bg-slate-100 border border-slate-300 text-black text-xs font-extrabold text-center hover:bg-amber-500/20 transition-all" data-en="Get Started Free" data-bn="ফ্রি শুরু করুন">Get Started Free</a>
       </div>
 
       <!-- Pro Plan -->
@@ -1916,7 +1920,7 @@
         <div class="absolute -top-3.5 right-6 px-3 py-1 rounded-full bg-amber-500 text-black font-black text-[10px] tracking-wider uppercase"><i class="fa-solid fa-star mr-1"></i>MOST POPULAR</div>
         <div class="space-y-4">
           <h3 class="text-lg font-black text-black">Business Pro</h3>
-          <div class="text-3xl font-black text-black"><span id="web-plan-pro-price">৳ 599</span> <span id="web-plan-pro-period" class="text-xs font-bold text-black">/month</span></div>
+          <div class="text-3xl font-black text-black"><span id="web-plan-pro-price">৳ 100</span> <span id="web-plan-pro-period" class="text-xs font-bold text-black">/month</span></div>
           <p class="text-xs text-black">Full platform automation for active retail stores &amp; merchants.</p>
           <ul class="space-y-2.5 text-xs text-black font-medium">
             <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-amber-600 text-sm"></i><span>Unlimited MFS payment matching</span></li>
@@ -1928,11 +1932,11 @@
         <a href="#download" class="w-full py-3 rounded-xl gold-gradient-btn font-extrabold text-xs text-center shadow-lg" data-en="Start Pro Trial" data-bn="প্রো ট্রায়াল শুরু করুন">Start Pro Trial</a>
       </div>
 
-      <!-- Developer Plan -->
+      <!-- Developer / Enterprise Plan -->
       <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6 flex flex-col justify-between reveal" data-reveal>
         <div class="space-y-4">
           <h3 class="text-lg font-black text-black">Developer / Enterprise</h3>
-          <div class="text-3xl font-black text-black"><span id="web-plan-enterprise-price">৳ 1,999</span> <span id="web-plan-enterprise-period" class="text-xs font-bold text-black">/month</span></div>
+          <div class="text-3xl font-black text-black"><span id="web-plan-enterprise-price">৳ 650</span> <span id="web-plan-enterprise-period" class="text-xs font-bold text-black">/year</span></div>
           <p class="text-xs text-black">Open REST APIs, WebSockets &amp; custom gateway infrastructure.</p>
           <ul class="space-y-2.5 text-xs text-black font-medium">
             <li class="flex items-center gap-2"><i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i><span>Full API &amp; Webhook access</span></li>
@@ -2236,30 +2240,70 @@
       });
     }
 
-    // Pricing Billing Cycle Toggle
-    function setPricingBilling(mode) {
+    // Live Dynamic Pricing Configuration (Admin Panel sync)
+    let currentPricingConfig = {
+      monthly_fee: 100,
+      quarterly_fee: 250,
+      yearly_fee: 650,
+      trial_days: 90,
+      is_trial_enabled: true,
+      enforce_nid_verification: true
+    };
+    let activePricingMode = 'monthly';
+
+    function renderPricingUI() {
       const mBtn = document.getElementById('billing-btn-monthly');
       const aBtn = document.getElementById('billing-btn-annual');
       const proPrice = document.getElementById('web-plan-pro-price');
       const proPeriod = document.getElementById('web-plan-pro-period');
       const entPrice = document.getElementById('web-plan-enterprise-price');
       const entPeriod = document.getElementById('web-plan-enterprise-period');
+      const trialBadge = document.getElementById('web-starter-trial-badge');
+      const trialText = document.getElementById('web-starter-trial-text');
 
-      if (mode === 'annual') {
-        if (mBtn) mBtn.className = 'px-3.5 py-1.5 rounded-full text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
-        if (aBtn) aBtn.className = 'px-3.5 py-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
-        if (proPrice) proPrice.innerText = '৳ 479';
-        if (proPeriod) proPeriod.innerText = '/month (billed yearly)';
-        if (entPrice) entPrice.innerText = '৳ 1,599';
-        if (entPeriod) entPeriod.innerText = '/month (billed yearly)';
-      } else {
-        if (mBtn) mBtn.className = 'px-3.5 py-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
-        if (aBtn) aBtn.className = 'px-3.5 py-1.5 rounded-full text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
-        if (proPrice) proPrice.innerText = '৳ 599';
-        if (proPeriod) proPeriod.innerText = '/month';
-        if (entPrice) entPrice.innerText = '৳ 1,999';
-        if (entPeriod) entPeriod.innerText = '/month';
+      if (trialBadge) {
+        if (currentPricingConfig.is_trial_enabled) {
+          trialBadge.style.display = 'inline-flex';
+          if (trialText) trialText.innerText = (currentPricingConfig.trial_days || 90) + '-Day Free Trial';
+        } else {
+          trialBadge.style.display = 'none';
+        }
       }
+
+      if (activePricingMode === 'annual') {
+        if (mBtn) mBtn.className = 'px-3.5 py-1.5 rounded-full text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
+        if (aBtn) aBtn.className = 'px-3.5 py-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all shadow';
+        const discMonthly = Math.round(currentPricingConfig.monthly_fee * 0.8);
+        if (proPrice) proPrice.innerText = '৳ ' + discMonthly;
+        if (proPeriod) proPeriod.innerText = '/month (billed yearly)';
+        if (entPrice) entPrice.innerText = '৳ ' + currentPricingConfig.yearly_fee;
+        if (entPeriod) entPeriod.innerText = '/year (Save 40%)';
+      } else {
+        if (mBtn) mBtn.className = 'px-3.5 py-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all shadow';
+        if (aBtn) aBtn.className = 'px-3.5 py-1.5 rounded-full text-black text-[10px] font-black uppercase tracking-[0.16em] transition-all';
+        if (proPrice) proPrice.innerText = '৳ ' + currentPricingConfig.monthly_fee;
+        if (proPeriod) proPeriod.innerText = '/month';
+        if (entPrice) entPrice.innerText = '৳ ' + (currentPricingConfig.quarterly_fee || Math.round(currentPricingConfig.monthly_fee * 2.5));
+        if (entPeriod) entPeriod.innerText = '/quarter (90 days)';
+      }
+    }
+
+    function setPricingBilling(mode) {
+      activePricingMode = mode;
+      renderPricingUI();
+    }
+
+    function applySubscriptionConfig(cfg) {
+      if (!cfg) return;
+      currentPricingConfig = {
+        monthly_fee: Number(cfg.monthly_fee) || currentPricingConfig.monthly_fee,
+        quarterly_fee: Number(cfg.quarterly_fee) || currentPricingConfig.quarterly_fee,
+        yearly_fee: Number(cfg.yearly_fee) || currentPricingConfig.yearly_fee,
+        trial_days: Number(cfg.trial_days) ?? currentPricingConfig.trial_days,
+        is_trial_enabled: cfg.is_trial_enabled ?? currentPricingConfig.is_trial_enabled,
+        enforce_nid_verification: cfg.enforce_nid_verification ?? currentPricingConfig.enforce_nid_verification
+      };
+      renderPricingUI();
     }
 
     /* ── REAL PHOTO SHOWCASE SYNC FROM ADMIN PANEL (SUPABASE + BACKEND API) ── */
@@ -2730,26 +2774,61 @@
     }
     initHeroParticleCanvas();
 
-    // Live Subscription Pricing Sync from Admin Panel
+    // Live Subscription Pricing Sync from Admin Panel (Supabase Realtime + REST)
     (async function syncLiveSubscriptionPricing() {
-      try {
-        const res = await fetch('https://api.swapnopay.top/v1/subscription/config');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.config) {
-            const proEl = document.getElementById('web-plan-pro-price');
-            if (proEl && json.config.monthly_fee) {
-              proEl.innerText = '৳ ' + json.config.monthly_fee;
-            }
-            const entEl = document.getElementById('web-plan-enterprise-price');
-            if (entEl && json.config.yearly_fee) {
-              entEl.innerText = '৳ ' + json.config.yearly_fee;
-              const subSpan = entEl.nextElementSibling;
-              if (subSpan) subSpan.innerText = '/year';
-            }
+      // 1. Direct Supabase showcase_config query
+      if (radymateSupabase) {
+        try {
+          const { data, error } = await radymateSupabase
+            .from('showcase_config')
+            .select('value')
+            .eq('key', 'subscription_config')
+            .maybeSingle();
+
+          if (!error && data?.value && (data.value.monthly_fee || data.value.yearly_fee)) {
+            applySubscriptionConfig(data.value);
           }
+        } catch (_) {}
+
+        // Realtime subscription for instantaneous sync when admin saves settings
+        try {
+          radymateSupabase
+            .channel('realtime_landing_subscription_config')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.subscription_config' }, (payload) => {
+              if (payload.new?.value) {
+                applySubscriptionConfig(payload.new.value);
+              }
+            })
+            .subscribe();
+        } catch (_) {}
+      }
+
+      // 2. Fallback: query backend showcase key
+      try {
+        const backendVal = await fetchBackendShowcaseKey('subscription_config');
+        if (backendVal && (backendVal.monthly_fee || backendVal.yearly_fee)) {
+          applySubscriptionConfig(backendVal);
+          return;
         }
       } catch (_) {}
+
+      // 3. Fallback: query REST endpoints
+      const endpoints = [
+        '/v1/subscription/config',
+        'https://api.swapnopay.top/v1/subscription/config'
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (res.ok) {
+            const json = await res.json();
+            if (json && json.config) {
+              applySubscriptionConfig(json.config);
+              break;
+            }
+          }
+        } catch (_) {}
+      }
     })();
   </script>
 </body>

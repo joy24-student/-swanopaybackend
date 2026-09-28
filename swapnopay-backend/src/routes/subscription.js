@@ -20,6 +20,7 @@ const router = Router()
 // ────────────────────────────────────────────────────────────────────────────
 router.get('/config', async (_req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
     const config = await getSubscriptionConfig()
     return res.json({
       ok: true,
@@ -30,6 +31,7 @@ router.get('/config', async (_req, res) => {
         trial_days: config.trial_days,
         is_trial_enabled: config.is_trial_enabled,
         enforce_nid_verification: config.enforce_nid_verification,
+        gateway_merchant_id: config.gateway_merchant_id || '',
         updated_at: config.updated_at
       }
     })
@@ -44,6 +46,7 @@ router.get('/config', async (_req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 router.get('/status', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
     const merchantId = req.query.merchant_id || req.headers['x-merchant-id'] || 'default'
     const email = req.query.email || null
     const deviceId = req.query.device_id || req.headers['x-device-id'] || null
@@ -58,6 +61,7 @@ router.get('/status', async (req, res) => {
 // Authenticated status endpoint
 router.get('/my-status', requirePlatformUser, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
     const merchantId = req.platformUser.id
     const email = req.platformUser.email
     const status = await getMerchantSubscriptionStatus(merchantId, email)

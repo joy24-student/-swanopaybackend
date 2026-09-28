@@ -43,6 +43,10 @@ import {
   Lock,
   Megaphone,
   ArrowRight,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
 } from 'lucide-react';
 
 export interface FaqItem {
@@ -367,8 +371,12 @@ export default function SystemSettings() {
     trial_days: 90,
     is_trial_enabled: true,
     enforce_nid_verification: true,
+    gateway_merchant_id: '',
+    gateway_api_key: '',
   });
   const [subSaving, setSubSaving] = useState(false);
+  const [showGatewayApiKey, setShowGatewayApiKey] = useState(false);
+  const [copiedApiKey, setCopiedApiKey] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -414,6 +422,8 @@ export default function SystemSettings() {
           trial_days: Number(loadedSub.trial_days) || 90,
           is_trial_enabled: loadedSub.is_trial_enabled ?? true,
           enforce_nid_verification: loadedSub.enforce_nid_verification ?? true,
+          gateway_merchant_id: loadedSub.gateway_merchant_id || '',
+          gateway_api_key: loadedSub.gateway_api_key || '',
         });
       } catch (e) {
         console.warn('Subscription config read notice:', e);
@@ -433,15 +443,39 @@ export default function SystemSettings() {
         })
       .subscribe();
 
-    return () => { adminSupabase.removeChannel(channel); };
+    const subChannel = adminSupabase
+      .channel('showcase_subscription_config')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.subscription_config' },
+        (payload: any) => {
+          if (payload.new?.value) {
+            const val = payload.new.value;
+            setSubConfig(prev => ({
+              ...prev,
+              monthly_fee: Number(val.monthly_fee) || prev.monthly_fee,
+              quarterly_fee: Number(val.quarterly_fee) || prev.quarterly_fee,
+              yearly_fee: Number(val.yearly_fee) || prev.yearly_fee,
+              trial_days: Number(val.trial_days) ?? prev.trial_days,
+              is_trial_enabled: val.is_trial_enabled ?? prev.is_trial_enabled,
+              enforce_nid_verification: val.enforce_nid_verification ?? prev.enforce_nid_verification,
+              gateway_merchant_id: val.gateway_merchant_id !== undefined ? String(val.gateway_merchant_id) : prev.gateway_merchant_id,
+              gateway_api_key: val.gateway_api_key !== undefined ? String(val.gateway_api_key) : prev.gateway_api_key,
+            }));
+          }
+        })
+      .subscribe();
+
+    return () => {
+      adminSupabase.removeChannel(channel);
+      adminSupabase.removeChannel(subChannel);
+    };
   }, []);
 
   const handleSaveSubscriptionConfig = async () => {
     setSubSaving(true);
-    setStatusMsg('Saving subscription & pricing settings across backend, web & Android app...');
+    setStatusMsg('Saving subscription pricing and gateway credentials across backend, web & Android app...');
     try {
       await saveSubscriptionConfig(subConfig);
-      setStatusMsg('SUCCESS: Subscription pricing and trial settings updated live across Web and Mobile App!');
+      setStatusMsg('SUCCESS: Subscription pricing, gateway credentials, and trial settings updated live across Web and Mobile App!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save subscription config: ' + err.message);
@@ -907,7 +941,7 @@ export default function SystemSettings() {
                   disabled={subSaving}
                 >
                   <Save size={13} />
-                  {subSaving ? 'Saving...' : 'Save Pricing & Trial Settings'}
+                  {subSaving ? 'Saving...' : 'Save Subscription & Gateway Settings'}
                 </button>
               </div>
 
@@ -1143,6 +1177,137 @@ export default function SystemSettings() {
                         Enforce Mandatory NID Verification (1 NID = 1 Account)
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Subscription Payment Gateway Credentials Card */}
+                <div
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: 20,
+                    boxShadow: 'var(--shadow-xs)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Key size={18} color="var(--brand-primary)" />
+                        <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          Subscription Payment Gateway Credentials
+                        </h4>
+                      </div>
+                      <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                        Configure the receiving merchant account and API key for processing merchant subscription purchases across Web checkout and the Android App.
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className={`status-pill ${subConfig.gateway_merchant_id ? 'success' : 'neutral'}`} style={{ fontSize: 11 }}>
+                        {subConfig.gateway_merchant_id ? `Receiving ID: ${subConfig.gateway_merchant_id}` : 'Default: SWAPNOPAY_PLATFORM'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+                    {/* Merchant ID */}
+                    <div>
+                      <label className="form-label" style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>Subscription Gateway Merchant ID</span>
+                        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(Receiving Account)</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. SWAPNOPAY_PLATFORM or merchant_01xxx"
+                        value={subConfig.gateway_merchant_id || ''}
+                        onChange={(e) => setSubConfig({ ...subConfig, gateway_merchant_id: e.target.value.trim() })}
+                        style={{ fontFamily: 'monospace', fontWeight: 600 }}
+                      />
+                      <span className="form-hint">
+                        The merchant ID that receives subscription payments. Ensure this merchant has active wallet numbers configured in <Link to="/gateway-settings" style={{ color: 'var(--brand-primary)', textDecoration: 'underline' }}>Gateway Settings</Link>.
+                      </span>
+                    </div>
+
+                    {/* API Key */}
+                    <div>
+                      <label className="form-label" style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>Subscription Gateway API Key</span>
+                        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(Live / Secret Key)</span>
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <input
+                          type={showGatewayApiKey ? 'text' : 'password'}
+                          className="input"
+                          placeholder="e.g. sp_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                          value={subConfig.gateway_api_key || ''}
+                          onChange={(e) => setSubConfig({ ...subConfig, gateway_api_key: e.target.value.trim() })}
+                          style={{ paddingRight: 80, fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}
+                        />
+                        <div style={{ position: 'absolute', right: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '4px 6px', height: 'auto', minHeight: 0 }}
+                            title={showGatewayApiKey ? 'Hide API Key' : 'Reveal API Key'}
+                            onClick={() => setShowGatewayApiKey(!showGatewayApiKey)}
+                          >
+                            {showGatewayApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '4px 6px', height: 'auto', minHeight: 0 }}
+                            title="Copy API Key"
+                            disabled={!subConfig.gateway_api_key}
+                            onClick={() => {
+                              if (subConfig.gateway_api_key) {
+                                navigator.clipboard.writeText(subConfig.gateway_api_key);
+                                setCopiedApiKey(true);
+                                setTimeout(() => setCopiedApiKey(false), 2000);
+                              }
+                            }}
+                          >
+                            {copiedApiKey ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                      <span className="form-hint">
+                        {copiedApiKey ? (
+                          <span style={{ color: 'var(--success)', fontWeight: 600 }}>Copied to clipboard!</span>
+                        ) : (
+                          'Secured live key for authenticating checkout sessions for subscription upgrades. Keep confidential.'
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Info Notice Box */}
+                  <div
+                    style={{
+                      marginTop: 16,
+                      background: 'var(--bg-subtle)',
+                      border: '1px dashed var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '12px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                      <ShieldCheck size={16} color="var(--brand-primary)" />
+                      <span>
+                        Need to update platform bKash, Nagad, or Rocket receiving numbers? Configure numbers for this Merchant ID in Gateway Settings.
+                      </span>
+                    </div>
+                    <Link to="/gateway-settings" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <span>Configure Gateway Numbers</span>
+                      <ArrowRight size={13} />
+                    </Link>
                   </div>
                 </div>
               </div>

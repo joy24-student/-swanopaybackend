@@ -6060,7 +6060,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 price = vObj.optDouble("price", 0.0),
                                 sku = vObj.optString("sku"),
                                 stock = vObj.optInt("stock", 100),
-                                description = vObj.optString("description")
+                                description = vObj.optString("description"),
+                                colorHex = vObj.optString("color_hex", ""),
+                                imageUrl = vObj.optString("image_url", "")
                             ))
                         }
                         vl
@@ -6100,10 +6102,51 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 price = vObj.optDouble("price", 0.0),
                                 sku = vObj.optString("sku"),
                                 stock = vObj.optInt("stock", 100),
-                                description = vObj.optString("description")
+                                description = vObj.optString("description"),
+                                colorHex = vObj.optString("color_hex", ""),
+                                imageUrl = vObj.optString("image_url", "")
                             ))
                         }
                         vl
+                    } ?: emptyList(),
+                    specifications = product.optJSONArray("specifications")?.let { sArr ->
+                        val sl = mutableListOf<ProductSpecItem>()
+                        for (si in 0 until sArr.length()) {
+                            val sObj = sArr.optJSONObject(si) ?: continue
+                            sl.add(ProductSpecItem(
+                                id = sObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                key = sObj.optString("key"),
+                                value = sObj.optString("value")
+                            ))
+                        }
+                        sl
+                    } ?: emptyList(),
+                    deliveryInfo = product.optJSONObject("delivery_info")?.let { dObj ->
+                        ProductDeliveryInfo(
+                            insideDhakaCharge = dObj.optString("inside_charge", "60"),
+                            outsideDhakaCharge = dObj.optString("outside_charge", "120"),
+                            deliveryTimeInside = dObj.optString("time_inside", "24-48 Hours"),
+                            deliveryTimeOutside = dObj.optString("time_outside", "2-4 Days"),
+                            isCodAvailable = dObj.optBoolean("cod_available", true),
+                            returnPolicy = dObj.optString("return_policy", "7 Days Free Replacement Guarantee"),
+                            warranty = dObj.optString("warranty", "1 Year Official Brand Warranty"),
+                            notes = dObj.optString("notes", "Check package in front of delivery person before payment")
+                        )
+                    } ?: ProductDeliveryInfo(),
+                    customSections = product.optJSONArray("custom_sections")?.let { cArr ->
+                        val cl = mutableListOf<ShowcaseSectionItem>()
+                        for (ci in 0 until cArr.length()) {
+                            val cObj = cArr.optJSONObject(ci) ?: continue
+                            cl.add(ShowcaseSectionItem(
+                                id = cObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                type = cObj.optString("type", "FEATURES"),
+                                title = cObj.optString("title"),
+                                subtitle = cObj.optString("subtitle"),
+                                content = cObj.optString("content"),
+                                isVisible = cObj.optBoolean("is_visible", true)
+                            ))
+                        }
+                        cl
                     } ?: emptyList()
                 )
             }
@@ -6230,7 +6273,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             hidePromo = themeJson.optBoolean("hide_promo", themeJson.optBoolean("hidePromo", false)),
             hideAssurances = themeJson.optBoolean("hide_assurances", themeJson.optBoolean("hideAssurances", false)),
             hideDetails = themeJson.optBoolean("hide_details", themeJson.optBoolean("hideDetails", false)),
-            hideMobileDock = themeJson.optBoolean("hide_mobile_dock", themeJson.optBoolean("hideMobileDock", false))
+            hideMobileDock = themeJson.optBoolean("hide_mobile_dock", themeJson.optBoolean("hideMobileDock", false)),
+            hideSpecs = themeJson.optBoolean("hide_specs", themeJson.optBoolean("hideSpecs", false)),
+            hideDelivery = themeJson.optBoolean("hide_delivery", themeJson.optBoolean("hideDelivery", false)),
+            hideFaq = themeJson.optBoolean("hide_faq", themeJson.optBoolean("hideFaq", false)),
+            hideReviews = themeJson.optBoolean("hide_reviews", themeJson.optBoolean("hideReviews", false))
         )
         val model = HostedFormModel(
             id = id,
@@ -6669,6 +6716,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 put("sku", pv.sku)
                                 put("stock", pv.stock)
                                 put("description", pv.description)
+                                put("color_hex", pv.colorHex)
+                                put("image_url", pv.imageUrl)
                             })
                         }
                     })
@@ -6700,6 +6749,41 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 put("sku", pv.sku)
                                 put("stock", pv.stock)
                                 put("description", pv.description)
+                                put("color_hex", pv.colorHex)
+                                put("image_url", pv.imageUrl)
+                            })
+                        }
+                    })
+                    put("specifications", org.json.JSONArray().apply {
+                        product.specifications.forEach { s ->
+                            put(org.json.JSONObject().apply {
+                                put("id", s.id)
+                                put("key", s.key)
+                                put("value", s.value)
+                            })
+                        }
+                    })
+                    put("delivery_info", org.json.JSONObject().apply {
+                        val d = product.deliveryInfo
+                        put("inside_charge", d.insideDhakaCharge)
+                        put("outside_charge", d.outsideDhakaCharge)
+                        put("time_inside", d.deliveryTimeInside)
+                        put("time_outside", d.deliveryTimeOutside)
+                        put("cod_available", d.isCodAvailable)
+                        put("return_policy", d.returnPolicy)
+                        put("warranty", d.warranty)
+                        put("notes", d.notes)
+                    })
+                    put("custom_sections", org.json.JSONArray().apply {
+                        product.customSections.forEach { cs ->
+                            put(org.json.JSONObject().apply {
+                                put("id", cs.id)
+                                put("type", cs.type)
+                                put("title", cs.title)
+                                put("subtitle", cs.subtitle)
+                                put("content", cs.content)
+                                put("items", org.json.JSONArray(cs.items))
+                                put("is_visible", cs.isVisible)
                             })
                         }
                     })
@@ -6803,6 +6887,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             put("hide_assurances", theme.hideAssurances)
             put("hide_details", theme.hideDetails)
             put("hide_mobile_dock", theme.hideMobileDock)
+            put("hide_specs", theme.hideSpecs)
+            put("hide_delivery", theme.hideDelivery)
+            put("hide_faq", theme.hideFaq)
+            put("hide_reviews", theme.hideReviews)
             if (theme.customVariables.isNotEmpty()) {
                 val cvArr = org.json.JSONArray()
                 theme.customVariables.forEach { cv -> cvArr.put(org.json.JSONObject().apply { put("key", cv.key); put("example_value", cv.exampleValue); put("source", cv.source) }) }
@@ -8474,12 +8562,45 @@ function executePayment() {
                 formProductsList.value = listOf(
                     FormProductItem(
                         title = "Aura Pro Wireless Headphones",
-                        description = "Engineered for acoustic depth with bespoke aerospace-grade magnesium dynamics and 40h playtime.",
+                        description = "Engineered for acoustic depth with bespoke aerospace-grade magnesium dynamics, active noise cancellation, and high-fidelity sound.",
                         price = 2490.0,
                         salePrice = 3290.0,
                         stock = 18,
                         sku = "AURA-PRO-01",
-                        category = "Audio & Electronics"
+                        category = "Audio & Electronics",
+                        productVariants = listOf(
+                            ProductVariantItem(name = "Midnight Black", colorHex = "#0F172A", price = 2490.0, stock = 12),
+                            ProductVariantItem(name = "Titanium Silver", colorHex = "#94A3B8", price = 2490.0, stock = 6)
+                        ),
+                        specifications = listOf(
+                            ProductSpecItem(key = "Connectivity", value = "Bluetooth 5.3 + 3.5mm Aux"),
+                            ProductSpecItem(key = "Battery Life", value = "40 Hours Playtime with ANC Off"),
+                            ProductSpecItem(key = "Noise Cancellation", value = "Hybrid Active Noise Cancellation (48dB)"),
+                            ProductSpecItem(key = "Charging", value = "USB Type-C Fast Charging (10m = 5h)")
+                        ),
+                        deliveryInfo = ProductDeliveryInfo(
+                            insideDhakaCharge = "60",
+                            outsideDhakaCharge = "120",
+                            deliveryTimeInside = "24-48 Hours",
+                            deliveryTimeOutside = "2-4 Business Days",
+                            isCodAvailable = true,
+                            returnPolicy = "7 Days Free Replacement Guarantee if defective",
+                            warranty = "1 Year Official Brand Replacement Warranty"
+                        ),
+                        customSections = listOf(
+                            ShowcaseSectionItem(
+                                type = "FAQ",
+                                title = "Frequently Asked Questions",
+                                subtitle = "Got questions? We have answers",
+                                content = "Q: Is the product 100% genuine?\nA: Yes, all products are brand-new and official with warranty.\n\nQ: Can I check the product before paying?\nA: Yes, open parcel delivery is allowed for Cash on Delivery."
+                            ),
+                            ShowcaseSectionItem(
+                                type = "REVIEWS",
+                                title = "Customer Reviews",
+                                subtitle = "Over 240+ verified buyer ratings",
+                                content = "⭐⭐⭐⭐⭐ Outstanding sound quality and deep bass. ANC works like magic on bus and commute. Fast delivery within Dhaka!"
+                            )
+                        )
                     )
                 )
                 formThemeConfig.value = FormThemeConfig(
@@ -9566,6 +9687,54 @@ function executePayment() {
             list[0] = product
         } else {
             list.add(product)
+        }
+        formProductsList.value = list
+        saveActiveFormToHostedList()
+    }
+
+    fun updateShowcaseVariants(variants: List<ProductVariantItem>) {
+        pushFormStateToUndo()
+        val list = formProductsList.value.toMutableList()
+        if (list.isNotEmpty()) {
+            list[0] = list[0].copy(productVariants = variants)
+        } else {
+            list.add(FormProductItem(title = formTitle.value.ifBlank { "Flagship Product" }, productVariants = variants))
+        }
+        formProductsList.value = list
+        saveActiveFormToHostedList()
+    }
+
+    fun updateShowcaseSpecifications(specs: List<ProductSpecItem>) {
+        pushFormStateToUndo()
+        val list = formProductsList.value.toMutableList()
+        if (list.isNotEmpty()) {
+            list[0] = list[0].copy(specifications = specs)
+        } else {
+            list.add(FormProductItem(title = formTitle.value.ifBlank { "Flagship Product" }, specifications = specs))
+        }
+        formProductsList.value = list
+        saveActiveFormToHostedList()
+    }
+
+    fun updateShowcaseDeliveryInfo(delivery: ProductDeliveryInfo) {
+        pushFormStateToUndo()
+        val list = formProductsList.value.toMutableList()
+        if (list.isNotEmpty()) {
+            list[0] = list[0].copy(deliveryInfo = delivery)
+        } else {
+            list.add(FormProductItem(title = formTitle.value.ifBlank { "Flagship Product" }, deliveryInfo = delivery))
+        }
+        formProductsList.value = list
+        saveActiveFormToHostedList()
+    }
+
+    fun updateShowcaseCustomSections(sections: List<ShowcaseSectionItem>) {
+        pushFormStateToUndo()
+        val list = formProductsList.value.toMutableList()
+        if (list.isNotEmpty()) {
+            list[0] = list[0].copy(customSections = sections)
+        } else {
+            list.add(FormProductItem(title = formTitle.value.ifBlank { "Flagship Product" }, customSections = sections))
         }
         formProductsList.value = list
         saveActiveFormToHostedList()
@@ -17626,7 +17795,10 @@ data class FormProductItem(
     var digitalDownloadUrl: String = "",
     var variants: List<String> = emptyList(),
     var galleryUrls: List<String> = emptyList(),
-    var productVariants: List<ProductVariantItem> = emptyList()
+    var productVariants: List<ProductVariantItem> = emptyList(),
+    var specifications: List<ProductSpecItem> = emptyList(),
+    var deliveryInfo: ProductDeliveryInfo = ProductDeliveryInfo(),
+    var customSections: List<ShowcaseSectionItem> = emptyList()
 )
 
 data class FormThemeConfig(
@@ -17720,7 +17892,11 @@ data class FormThemeConfig(
     var hidePromo: Boolean = false,
     var hideAssurances: Boolean = false,
     var hideDetails: Boolean = false,
-    var hideMobileDock: Boolean = false
+    var hideMobileDock: Boolean = false,
+    var hideSpecs: Boolean = false,
+    var hideDelivery: Boolean = false,
+    var hideFaq: Boolean = false,
+    var hideReviews: Boolean = false
 )
 
 data class CustomVariable(
@@ -17886,7 +18062,36 @@ data class ProductVariantItem(
     var price: Double = 0.0,
     var sku: String = "",
     var stock: Int = 100,
-    var description: String = ""
+    var description: String = "",
+    var colorHex: String = "",
+    var imageUrl: String = ""
+)
+
+data class ProductSpecItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    var key: String = "",
+    var value: String = ""
+)
+
+data class ProductDeliveryInfo(
+    var insideDhakaCharge: String = "60",
+    var outsideDhakaCharge: String = "120",
+    var deliveryTimeInside: String = "24-48 Hours",
+    var deliveryTimeOutside: String = "2-4 Days",
+    var isCodAvailable: Boolean = true,
+    var returnPolicy: String = "7 Days Free Replacement Guarantee",
+    var warranty: String = "1 Year Official Brand Warranty",
+    var notes: String = "Check package in front of delivery person before payment"
+)
+
+data class ShowcaseSectionItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    var type: String = "FEATURES", // FEATURES, FAQ, REVIEWS, ASSURANCES, CUSTOM
+    var title: String = "",
+    var subtitle: String = "",
+    var content: String = "",
+    var items: List<String> = emptyList(),
+    var isVisible: Boolean = true
 )
 
 data class FormPageItem(

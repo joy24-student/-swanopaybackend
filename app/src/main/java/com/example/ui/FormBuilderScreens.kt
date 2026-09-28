@@ -7150,6 +7150,10 @@ private fun LivePreviewModal(
     var previewDynamicValues by remember { mutableStateOf(mapOf<String, String>()) }
     var previewErrors by remember { mutableStateOf(mapOf<String, String>()) }
     var activeUploadFieldId by remember { mutableStateOf<String?>(null) }
+    var previewSelectedHeroImgUrl by remember { mutableStateOf<String?>(null) }
+    var previewSelectedVariantId by remember { mutableStateOf<String?>(null) }
+    var previewExpandedFaqIndices by remember { mutableStateOf(setOf<String>()) }
+    var previewIsDescExpanded by remember { mutableStateOf(false) }
     val previewFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
@@ -7412,32 +7416,793 @@ private fun LivePreviewModal(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        if (formProducts.isNotEmpty() && (formPages.size <= 1 || previewPageIndex == 0)) {
-                            Text("PRODUCTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
-                            formProducts.forEach { product ->
-                                val effectivePrice = product.salePrice.takeIf { it > 0.0 } ?: product.price
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (product.imageUrl.isNotBlank()) {
-                                        AsyncImage(
-                                            model = product.imageUrl,
-                                            contentDescription = product.title,
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(RoundedCornerShape(8.dp)),
-                                            contentScale = ContentScale.Crop
-                                        )
+                        val isProductShowcase = themeConfig.productImageUrl.isNotBlank() ||
+                            formProducts.isNotEmpty() ||
+                            viewModel.formTemplateKey.value in listOf("FLAGSHIP_PRODUCT", "SINGLE_PRODUCT")
+
+                        if (isProductShowcase && (formPages.size <= 1 || previewPageIndex == 0)) {
+                            val primaryProduct = formProducts.firstOrNull() ?: FormProductItem(
+                                title = formTitle.ifBlank { "Flagship Product" },
+                                price = if (themeConfig.wasPrice > 0.0) themeConfig.wasPrice else 0.0,
+                                imageUrl = themeConfig.productImageUrl
+                            )
+                            val selectedVariant = primaryProduct.productVariants.firstOrNull { it.id == previewSelectedVariantId }
+                                ?: primaryProduct.productVariants.firstOrNull()
+
+                            val basePrice = if (primaryProduct.salePrice > 0.0) primaryProduct.salePrice else primaryProduct.price
+                            val effectivePrice = selectedVariant?.let { if (it.price > 0.0) it.price else basePrice } ?: basePrice
+                            val curr = if (themeConfig.currencyCode == "USD") "$" else if (themeConfig.currencyCode.isNotBlank()) themeConfig.currencyCode else "৳"
+                            val activeHeroImg = previewSelectedHeroImgUrl
+                                ?: selectedVariant?.imageUrl?.takeIf { it.isNotBlank() }
+                                ?: primaryProduct.imageUrl.ifBlank { themeConfig.productImageUrl }
+
+                            val allGalleryImages = remember(primaryProduct.imageUrl, primaryProduct.galleryUrls, themeConfig.productImageUrl) {
+                                val list = mutableListOf<String>()
+                                val mainUrl = primaryProduct.imageUrl.ifBlank { themeConfig.productImageUrl }
+                                if (mainUrl.isNotBlank()) list.add(mainUrl)
+                                list.addAll(primaryProduct.galleryUrls.filter { it.isNotBlank() })
+                                list.distinct()
+                            }
+
+                            // 1. Header with Eyebrow, Title & Rating
+                            if (!themeConfig.hideHeader) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val eyebrow = themeConfig.eyebrowText.ifBlank { primaryProduct.category }
+                                    if (!themeConfig.hideEyebrow && eyebrow.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = parsedPrimaryColor.copy(alpha = 0.12f)
+                                        ) {
+                                            Text(
+                                                text = eyebrow.uppercase(),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = parsedPrimaryColor,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(product.title, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                                        if (product.sku.isNotBlank()) Text(product.sku, fontSize = 10.5.sp, color = textSecondary)
+
+                                    Text(
+                                        text = primaryProduct.title.ifBlank { formTitle.ifBlank { "Flagship Product" } },
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = textPrimary
+                                    )
+
+                                    if (!themeConfig.hideRating && themeConfig.ratingScore > 0.0) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text("★ ${themeConfig.ratingScore}", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF59E0B))
+                                            Text("• Verified Ratings", fontSize = 11.sp, color = textSecondary)
+                                        }
                                     }
-                                    Text("BDT ${"%,.2f".format(effectivePrice)}", fontWeight = FontWeight.Bold, color = goldText)
                                 }
                             }
+
+                            // 2. Main Hero Showcase Photo
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isDark) Color(0xFF0F172A) else Color(0xFFF1F5F9))
+                                    .border(1.dp, cardBorder, RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (activeHeroImg.isNotBlank()) {
+                                    AsyncImage(
+                                        model = activeHeroImg,
+                                        contentDescription = primaryProduct.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Storefront,
+                                            contentDescription = null,
+                                            tint = parsedPrimaryColor.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(44.dp)
+                                        )
+                                        Text(
+                                            "Showcase Product Image",
+                                            fontSize = 12.sp,
+                                            color = textSecondary
+                                        )
+                                    }
+                                }
+
+                                // Badges overlay on image
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.TopCenter)
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val wasPriceVal = themeConfig.wasPrice
+                                    if (wasPriceVal > effectivePrice && effectivePrice > 0.0) {
+                                        val discPct = (((wasPriceVal - effectivePrice) / wasPriceVal) * 100).toInt()
+                                        if (discPct > 0) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFFDC2626)
+                                            ) {
+                                                Text(
+                                                    text = "-$discPct% OFF",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Spacer(Modifier.width(1.dp))
+                                        }
+                                    } else {
+                                        Spacer(Modifier.width(1.dp))
+                                    }
+
+                                    if (primaryProduct.stock > 0) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color.Black.copy(alpha = 0.7f)
+                                        ) {
+                                            Text(
+                                                text = "In Stock (${primaryProduct.stock})",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF34D399),
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Gallery Thumbnails Row
+                            if (allGalleryImages.size > 1) {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(allGalleryImages) { gUrl ->
+                                        val isImgSelected = (activeHeroImg == gUrl)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(50.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isDark) Color(0xFF131824) else Color(0xFFE2E8F0))
+                                                .border(
+                                                    width = if (isImgSelected) 2.dp else 1.dp,
+                                                    color = if (isImgSelected) parsedPrimaryColor else cardBorder,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { previewSelectedHeroImgUrl = gUrl }
+                                        ) {
+                                            AsyncImage(
+                                                model = gUrl,
+                                                contentDescription = "Gallery Thumbnail",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 4. Price & Savings Block
+                            if (!themeConfig.hidePrice) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    if (effectivePrice > 0.0) {
+                                        Text(
+                                            text = "$curr${"%,.0f".format(effectivePrice)}",
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = textPrimary
+                                        )
+                                    }
+                                    if (themeConfig.wasPrice > effectivePrice && effectivePrice > 0.0) {
+                                        Text(
+                                            text = "$curr${"%,.0f".format(themeConfig.wasPrice)}",
+                                            fontSize = 14.sp,
+                                            color = textSecondary,
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                                        )
+                                        val diff = themeConfig.wasPrice - effectivePrice
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                text = "Save $curr${"%,.0f".format(diff)}",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF10B981),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 5. Value & Trust Badges
+                            if (!themeConfig.hideChips) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf(
+                                        "🚚 Fast Delivery",
+                                        "🛡️ 100% Genuine",
+                                        "↩️ 7-Day Returns",
+                                        "💵 Cash on Delivery"
+                                    ).forEach { chip ->
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = if (isDark) Color(0xFF1A1F2C) else Color(0xFFF1F5F9),
+                                            border = BorderStroke(0.6.dp, cardBorder)
+                                        ) {
+                                            Text(
+                                                text = chip,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = textPrimary,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 6. Color Swatches & Variants Selector
+                            if (!themeConfig.hideSwatches && primaryProduct.productVariants.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "COLOR & VARIANTS",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = textSecondary
+                                        )
+                                        if (selectedVariant != null) {
+                                            Text(
+                                                text = "Selected: ${selectedVariant.name}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = parsedPrimaryColor
+                                            )
+                                        }
+                                    }
+
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(primaryProduct.productVariants) { variant ->
+                                            val isSelected = (selectedVariant?.id == variant.id)
+                                            val swatchColor = runCatching {
+                                                if (variant.colorHex.isNotBlank()) {
+                                                    Color(android.graphics.Color.parseColor(if (variant.colorHex.startsWith("#")) variant.colorHex else "#${variant.colorHex}"))
+                                                } else null
+                                            }.getOrNull()
+
+                                            Surface(
+                                                onClick = {
+                                                    previewSelectedVariantId = variant.id
+                                                    if (variant.imageUrl.isNotBlank()) {
+                                                        previewSelectedHeroImgUrl = variant.imageUrl
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isSelected) parsedPrimaryColor.copy(alpha = 0.12f) else cardBg,
+                                                border = BorderStroke(
+                                                    width = if (isSelected) 1.5.dp else 0.8.dp,
+                                                    color = if (isSelected) parsedPrimaryColor else cardBorder
+                                                )
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    if (swatchColor != null) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(14.dp)
+                                                                .clip(CircleShape)
+                                                                .background(swatchColor)
+                                                                .border(0.8.dp, cardBorder, CircleShape)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = variant.name,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) parsedPrimaryColor else textPrimary
+                                                    )
+                                                    if (variant.price > 0.0) {
+                                                        Text(
+                                                            text = "$curr${variant.price.toInt()}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isSelected) parsedPrimaryColor else goldText
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 7. Product Description / Overview
+                            val productDesc = primaryProduct.description.ifBlank { formDescription }
+                            if (!themeConfig.hideDetails && productDesc.isNotBlank()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("OVERVIEW", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                    Card(
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                        border = BorderStroke(0.8.dp, cardBorder),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = productDesc,
+                                                fontSize = 12.sp,
+                                                color = textPrimary,
+                                                maxLines = if (previewIsDescExpanded) Int.MAX_VALUE else 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (productDesc.length > 120) {
+                                                Text(
+                                                    text = if (previewIsDescExpanded) "Show less ▲" else "Show more ▼",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = parsedPrimaryColor,
+                                                    modifier = Modifier.clickable { previewIsDescExpanded = !previewIsDescExpanded }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 8. Specifications Table
+                            if (!themeConfig.hideSpecs && primaryProduct.specifications.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.ListAlt, null, tint = parsedPrimaryColor, modifier = Modifier.size(16.dp))
+                                        Text("SPECIFICATIONS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                    }
+                                    Card(
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                        border = BorderStroke(0.8.dp, cardBorder),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column {
+                                            primaryProduct.specifications.forEachIndexed { sIdx, spec ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = spec.key,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = textSecondary
+                                                    )
+                                                    Text(
+                                                        text = spec.value,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = textPrimary
+                                                    )
+                                                }
+                                                if (sIdx < primaryProduct.specifications.lastIndex) {
+                                                    HorizontalDivider(color = cardBorder.copy(alpha = 0.5f), thickness = 0.6.dp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 9. Delivery & Policies
+                            val delInfo = primaryProduct.deliveryInfo
+                            if (!themeConfig.hideDelivery && delInfo != null) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Outlined.LocalShipping, null, tint = goldText, modifier = Modifier.size(16.dp))
+                                        Text("DELIVERY & ASSURANCES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                    }
+                                    Card(
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                        border = BorderStroke(0.8.dp, cardBorder),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text("Inside City", fontSize = 10.sp, color = textSecondary)
+                                                    Text("${delInfo.insideDhakaCharge} • ${delInfo.deliveryTimeInside}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                                                }
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Text("Outside City", fontSize = 10.sp, color = textSecondary)
+                                                    Text("${delInfo.outsideDhakaCharge} • ${delInfo.deliveryTimeOutside}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                                                }
+                                            }
+                                            HorizontalDivider(color = cardBorder.copy(alpha = 0.5f), thickness = 0.6.dp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (delInfo.isCodAvailable) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            "✓ COD Available",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF10B981),
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                                if (delInfo.returnPolicy.isNotBlank()) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = parsedPrimaryColor.copy(alpha = 0.12f)
+                                                    ) {
+                                                        Text(
+                                                            "↩️ ${delInfo.returnPolicy}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = parsedPrimaryColor,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                                if (delInfo.warranty.isNotBlank()) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = goldPrimary.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            "🛡️ ${delInfo.warranty}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = goldText,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (delInfo.notes.isNotBlank()) {
+                                                Text("ℹ️ ${delInfo.notes}", fontSize = 10.5.sp, color = textSecondary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 10. Dynamic Custom Sections (FAQ, Reviews, Features, Assurances, Custom)
+                            if (primaryProduct.customSections.isNotEmpty()) {
+                                primaryProduct.customSections.filter { it.isVisible }.forEach { section ->
+                                    when (section.type) {
+                                        "FAQ" -> {
+                                            if (!themeConfig.hideFaq) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text("❓", fontSize = 13.sp)
+                                                        Text(
+                                                            text = section.title.ifBlank { "Frequently Asked Questions" },
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textSecondary
+                                                        )
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+
+                                                    val faqPairs = remember(section.content) {
+                                                        val blocks = section.content.split(Regex("\n\\s*\n"))
+                                                        blocks.mapNotNull { b ->
+                                                            val lines = b.lines()
+                                                            val qLine = lines.firstOrNull { it.trim().startsWith("Q:") }
+                                                                ?: lines.firstOrNull()
+                                                            val aLines = lines.filter { !it.trim().startsWith("Q:") }
+                                                            val q = qLine?.removePrefix("Q:")?.trim().orEmpty()
+                                                            val a = (if (aLines.isNotEmpty()) aLines.joinToString("\n") { it.removePrefix("A:").trim() } else "").trim()
+                                                            if (q.isNotBlank()) (q to a) else null
+                                                        }
+                                                    }
+
+                                                    Card(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                        border = BorderStroke(0.8.dp, cardBorder),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column {
+                                                            faqPairs.forEachIndexed { fIdx, (qText, aText) ->
+                                                                val itemKey = "${section.id}_$fIdx"
+                                                                val isExpanded = itemKey in previewExpandedFaqIndices
+                                                                Surface(
+                                                                    onClick = {
+                                                                        previewExpandedFaqIndices = if (isExpanded) {
+                                                                            previewExpandedFaqIndices - itemKey
+                                                                        } else {
+                                                                            previewExpandedFaqIndices + itemKey
+                                                                        }
+                                                                    },
+                                                                    color = Color.Transparent,
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                                                        Row(
+                                                                            modifier = Modifier.fillMaxWidth(),
+                                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                                            verticalAlignment = Alignment.CenterVertically
+                                                                        ) {
+                                                                            Text(
+                                                                                text = qText,
+                                                                                fontSize = 11.5.sp,
+                                                                                fontWeight = FontWeight.SemiBold,
+                                                                                color = textPrimary,
+                                                                                modifier = Modifier.weight(1f)
+                                                                            )
+                                                                            Icon(
+                                                                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                                                contentDescription = null,
+                                                                                tint = textSecondary,
+                                                                                modifier = Modifier.size(18.dp)
+                                                                            )
+                                                                        }
+                                                                        if (isExpanded && aText.isNotBlank()) {
+                                                                            Spacer(Modifier.height(6.dp))
+                                                                            Text(
+                                                                                text = aText,
+                                                                                fontSize = 11.sp,
+                                                                                color = textSecondary,
+                                                                                lineHeight = 16.sp
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                                if (fIdx < faqPairs.lastIndex) {
+                                                                    HorizontalDivider(color = cardBorder.copy(alpha = 0.5f), thickness = 0.6.dp)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "REVIEWS" -> {
+                                            if (!themeConfig.hideReviews) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text("💬", fontSize = 13.sp)
+                                                        Text(
+                                                            text = section.title.ifBlank { "Customer Reviews" },
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textSecondary
+                                                        )
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+                                                    Card(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                        border = BorderStroke(0.8.dp, cardBorder),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                    repeat(5) {
+                                                                        Text("★", color = Color(0xFFF59E0B), fontSize = 13.sp)
+                                                                    }
+                                                                }
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(4.dp),
+                                                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                                                ) {
+                                                                    Text(
+                                                                        "✓ Verified Buyer",
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color(0xFF10B981),
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            Text(
+                                                                text = section.content.ifBlank { "Excellent product! Exceeded expectations and delivery was swift." },
+                                                                fontSize = 11.5.sp,
+                                                                color = textPrimary,
+                                                                lineHeight = 16.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "FEATURES" -> {
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text("⭐", fontSize = 13.sp)
+                                                    Text(
+                                                        text = section.title.ifBlank { "Key Features" },
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textSecondary
+                                                    )
+                                                }
+                                                if (section.subtitle.isNotBlank()) {
+                                                    Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                }
+                                                Card(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                    border = BorderStroke(0.8.dp, cardBorder),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        val featureLines = section.content.lines().filter { it.isNotBlank() }
+                                                        if (featureLines.isNotEmpty()) {
+                                                            featureLines.forEach { line ->
+                                                                Row(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    verticalAlignment = Alignment.Top
+                                                                ) {
+                                                                    Text("✓", color = Color(0xFF10B981), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                                    Text(line.trim(), fontSize = 11.5.sp, color = textPrimary)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            Text(section.content, fontSize = 11.5.sp, color = textPrimary)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "ASSURANCES" -> {
+                                            if (!themeConfig.hideAssurances) {
+                                                Card(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF131F1C) else Color(0xFFECFDF5)),
+                                                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(10.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(Icons.Outlined.VerifiedUser, null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = section.title.ifBlank { "100% Satisfaction Guarantee" },
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = textPrimary
+                                                            )
+                                                            Text(
+                                                                text = section.content.ifBlank { "Safe delivery, inspected quality, full merchant warranty." },
+                                                                fontSize = 10.5.sp,
+                                                                color = textSecondary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else -> {
+                                            // CUSTOM
+                                            Card(
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                border = BorderStroke(0.8.dp, cardBorder),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    if (section.title.isNotBlank()) {
+                                                        Text(section.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+                                                    if (section.content.isNotBlank()) {
+                                                        Text(section.content, fontSize = 11.sp, color = textPrimary)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 11. Multi-product support if form has more than 1 product
+                            if (formProducts.size > 1) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("MORE PRODUCTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                    formProducts.drop(1).forEach { product ->
+                                        val pPrice = product.salePrice.takeIf { it > 0.0 } ?: product.price
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (product.imageUrl.isNotBlank()) {
+                                                AsyncImage(
+                                                    model = product.imageUrl,
+                                                    contentDescription = product.title,
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(product.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = textPrimary)
+                                                if (product.sku.isNotBlank()) Text(product.sku, fontSize = 10.sp, color = textSecondary)
+                                            }
+                                            Text("$curr${"%,.0f".format(pPrice)}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = goldText)
+                                        }
+                                    }
+                                }
+                            }
+
                             HorizontalDivider(color = cardBorder, thickness = 1.dp)
                         }
 

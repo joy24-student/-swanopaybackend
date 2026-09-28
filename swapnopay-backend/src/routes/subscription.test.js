@@ -126,4 +126,42 @@ test('Subscription, Pricing, Anti-Piracy Billing & NID Enforcement Suite', async
       /Transaction ID/i
     )
   })
+
+  await t.test('6. Admin can update gateway_merchant_id and gateway_api_key, routed to checkout session', async () => {
+    const updated = await updateSubscriptionConfig({
+      gateway_merchant_id: 'platform_rev_merchant_99',
+      gateway_api_key: 'sp_live_test_secret_998877'
+    })
+
+    assert.equal(updated.gateway_merchant_id, 'platform_rev_merchant_99')
+    assert.equal(updated.gateway_api_key, 'sp_live_test_secret_998877')
+
+    const config = await getSubscriptionConfig()
+    assert.equal(config.gateway_merchant_id, 'platform_rev_merchant_99')
+    assert.equal(config.gateway_api_key, 'sp_live_test_secret_998877')
+
+    // Test checkout order with custom gateway credentials
+    const testMerchant = 'subscriber_merchant_' + Date.now()
+    setMerchantMemorySubscription(testMerchant, {
+      nid_number: '9876543210123',
+      kyc_status: 'VERIFIED'
+    })
+
+    const order = await createSubscriptionOrder({
+      merchantId: testMerchant,
+      planType: 'MONTHLY',
+      method: 'bKash'
+    })
+
+    assert.ok(order.checkout_url)
+    assert.ok(order.checkout_url.includes('merchant_id=platform_rev_merchant_99'))
+    assert.ok(order.checkout_url.includes(`subscriber_merchant_id=${testMerchant}`))
+    assert.ok(order.checkout_url.includes('api_key=sp_live_test_secret_998877'))
+
+    // Reset back to defaults
+    await updateSubscriptionConfig({
+      gateway_merchant_id: 'SWAPNOPAY_PLATFORM',
+      gateway_api_key: ''
+    })
+  })
 })

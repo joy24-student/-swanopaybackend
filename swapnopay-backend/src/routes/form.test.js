@@ -4,7 +4,6 @@ import express from 'express'
 import { formRouter, handleFormPaymentPaid, parseAmountFromText, orderToFormSubmissionMap, isProductRoute } from './form.js'
 import { paymentRouter } from './payment.js'
 import { getOrCreateMerchantApiKey } from '../services/adminSupabase.js'
-import { getOrCreateMerchantApiKey } from '../services/adminSupabase.js'
 
 const testAdminSecret = 'form-test-admin-secret-32-characters'
 process.env.ADMIN_SECRET = testAdminSecret

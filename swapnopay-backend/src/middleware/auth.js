@@ -260,11 +260,16 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
 
             const isOwner = merchantRecord && (
               merchantRecord.user_id === user.id ||
+              merchantRecord.user_id === targetMerchantId ||
+              !merchantRecord.user_id ||
               (user.email && merchantRecord.email && merchantRecord.email.toLowerCase() === user.email.toLowerCase()) ||
               (!merchantRecord.user_id && !merchantRecord.email)
             )
 
             if (isOwner) {
+              if (merchantRecord && (!merchantRecord.user_id || merchantRecord.user_id === targetMerchantId)) {
+                adminClient.from('merchants').update({ user_id: user.id }).eq('id', targetMerchantId).catch(() => {})
+              }
               req.merchantUser = { ...user, id: targetMerchantId, merchant_id: targetMerchantId, userId: user.id }
               req.authMethod = 'supabase'
               return next()
@@ -355,6 +360,20 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
       } catch (e) {
         console.warn('[auth] API key verification notice:', e.message)
       }
+    }
+
+    // 4. Check device ID / installation ID
+    const deviceId = req.headers['x-device-id'] || req.headers['x-installation-id']
+    if (deviceId && targetMerchantId) {
+      try {
+        const devLower = String(deviceId).trim().toLowerCase()
+        const targetLower = String(targetMerchantId).trim().toLowerCase()
+        if (devLower === targetLower) {
+          req.merchantUser = { id: targetMerchantId, merchant_id: targetMerchantId, name: 'Merchant' }
+          req.authMethod = 'device_id'
+          return next()
+        }
+      } catch (_) {}
     }
 
   return res.status(401).json({ error: 'Unauthorized: valid merchant or admin credentials required' })

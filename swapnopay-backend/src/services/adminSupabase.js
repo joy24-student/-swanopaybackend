@@ -139,7 +139,20 @@ export async function getMerchantCredentials(merchantId) {
   if (!merchantId) return null
   let admin = null
   try { admin = getAdminClient() } catch (_) {}
-  if (!admin) return null
+  if (!admin) {
+    const mem = inMemoryMerchantGatewaySettings.get(merchantId)
+    if (mem?.supabase_url && mem?.supabase_anon_key) {
+      return {
+        supabase_url: mem.supabase_url,
+        supabase_anon_key: mem.supabase_anon_key,
+        merchant_name: mem.merchant_name || 'Merchant',
+        project_ref: mem.project_ref || null,
+        db_password: mem.db_password || null,
+        database_url: mem.database_url || null,
+      }
+    }
+    return null
+  }
 
   // 1. Check merchant_gateway_settings
   let data = null
@@ -2081,6 +2094,8 @@ let inMemorySubscriptionConfig = {
   trial_days: 90, // 3 months free trial
   is_trial_enabled: true,
   enforce_nid_verification: true,
+  gateway_merchant_id: process.env.SWAPNOPAY_SUBSCRIPTION_MERCHANT_ID || 'SWAPNOPAY_PLATFORM',
+  gateway_api_key: process.env.SWAPNOPAY_SUBSCRIPTION_API_KEY || '',
   updated_at: new Date().toISOString()
 }
 
@@ -2089,6 +2104,25 @@ const inMemoryOrders = new Map()
 const inMemoryMerchantSubscriptions = new Map()
 
 export async function getSubscriptionConfig() {
+  // 1. Try reading from showcase_config (which handles in-memory, disk showcase_config.json, and Supabase)
+  try {
+    const sc = await getShowcaseConfig('subscription_config')
+    if (sc && (sc.monthly_fee || sc.yearly_fee || sc.quarterly_fee)) {
+      return {
+        monthly_fee: Number(sc.monthly_fee) || inMemorySubscriptionConfig.monthly_fee,
+        quarterly_fee: Number(sc.quarterly_fee) || inMemorySubscriptionConfig.quarterly_fee,
+        yearly_fee: Number(sc.yearly_fee) || inMemorySubscriptionConfig.yearly_fee,
+        trial_days: Number(sc.trial_days) || inMemorySubscriptionConfig.trial_days,
+        is_trial_enabled: typeof sc.is_trial_enabled === 'boolean' ? sc.is_trial_enabled : inMemorySubscriptionConfig.is_trial_enabled,
+        enforce_nid_verification: typeof sc.enforce_nid_verification === 'boolean' ? sc.enforce_nid_verification : inMemorySubscriptionConfig.enforce_nid_verification,
+        gateway_merchant_id: sc.gateway_merchant_id !== undefined ? String(sc.gateway_merchant_id).trim() : inMemorySubscriptionConfig.gateway_merchant_id,
+        gateway_api_key: sc.gateway_api_key !== undefined ? String(sc.gateway_api_key).trim() : inMemorySubscriptionConfig.gateway_api_key,
+        updated_at: sc.updated_at || inMemorySubscriptionConfig.updated_at
+      }
+    }
+  } catch (_) {}
+
+  // 2. Try platform_subscription_config table
   try {
     const admin = getAdminClient()
     const { data, error } = await admin
@@ -2105,6 +2139,8 @@ export async function getSubscriptionConfig() {
         trial_days: Number(data.trial_days) || 90,
         is_trial_enabled: data.is_trial_enabled ?? true,
         enforce_nid_verification: data.enforce_nid_verification ?? true,
+        gateway_merchant_id: data.gateway_merchant_id !== undefined ? String(data.gateway_merchant_id).trim() : inMemorySubscriptionConfig.gateway_merchant_id,
+        gateway_api_key: data.gateway_api_key !== undefined ? String(data.gateway_api_key).trim() : inMemorySubscriptionConfig.gateway_api_key,
         updated_at: data.updated_at
       }
     }
@@ -2122,10 +2158,20 @@ export async function updateSubscriptionConfig(config) {
     trial_days: Number(config.trial_days) || inMemorySubscriptionConfig.trial_days,
     is_trial_enabled: typeof config.is_trial_enabled === 'boolean' ? config.is_trial_enabled : inMemorySubscriptionConfig.is_trial_enabled,
     enforce_nid_verification: typeof config.enforce_nid_verification === 'boolean' ? config.enforce_nid_verification : inMemorySubscriptionConfig.enforce_nid_verification,
+    gateway_merchant_id: config.gateway_merchant_id !== undefined ? String(config.gateway_merchant_id || '').trim() : inMemorySubscriptionConfig.gateway_merchant_id,
+    gateway_api_key: config.gateway_api_key !== undefined ? String(config.gateway_api_key || '').trim() : inMemorySubscriptionConfig.gateway_api_key,
     updated_at: new Date().toISOString()
   }
   inMemorySubscriptionConfig = { ...updated }
 
+  // 1. Persist to showcase_config (Supabase table + disk + in-memory cache)
+  try {
+    await upsertShowcaseConfig('subscription_config', updated)
+  } catch (err) {
+    console.warn('[admin-supabase] updateSubscriptionConfig showcase_config notice:', err.message)
+  }
+
+  // 2. Direct Supabase platform_subscription_config if table exists
   try {
     const admin = getAdminClient()
     await admin.from('platform_subscription_config').upsert({
@@ -2133,7 +2179,7 @@ export async function updateSubscriptionConfig(config) {
       ...updated
     })
   } catch (err) {
-    console.warn('[admin-supabase] updateSubscriptionConfig DB notice:', err.message)
+    // table might not exist
   }
   return inMemorySubscriptionConfig
 }
@@ -2367,19 +2413,27 @@ export async function createSubscriptionOrder({
 
   const orderId = 'sub_' + randomUUID().slice(0, 8)
 
+  const gatewayMerchantId = String(config.gateway_merchant_id || process.env.SWAPNOPAY_SUBSCRIPTION_MERCHANT_ID || 'SWAPNOPAY_PLATFORM').trim()
+  const gatewayApiKey = String(config.gateway_api_key || process.env.SWAPNOPAY_SUBSCRIPTION_API_KEY || '').trim()
+
   // Receiving accounts for SwapnoPay platform payment gateway
   let platformGatewayConfig = null
   try {
-    platformGatewayConfig = await getGatewayConfig()
+    if (gatewayMerchantId && gatewayMerchantId !== 'SWAPNOPAY_PLATFORM' && gatewayMerchantId !== 'default') {
+      platformGatewayConfig = await getMerchantGatewayConfig(gatewayMerchantId)
+    }
+    if (!platformGatewayConfig || !Object.keys(platformGatewayConfig.receiving_numbers || {}).length) {
+      platformGatewayConfig = await getGatewayConfig()
+    }
   } catch (_) {}
 
   const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT) || process.execArgv.some(a => a.includes('test')) || process.argv.some(a => a.includes('test'))
   const defaultPlatformReceiver = isTestEnv ? '01712398765' : ''
   const receivingAccounts = {
-    bKash:  (!isFakeNumber(process.env.SWAPNOPAY_BKASH_NUMBER) ? process.env.SWAPNOPAY_BKASH_NUMBER : '') || (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.bKash) ? platformGatewayConfig?.receiving_numbers?.bKash : '') || defaultPlatformReceiver,
-    Nagad:  (!isFakeNumber(process.env.SWAPNOPAY_NAGAD_NUMBER) ? process.env.SWAPNOPAY_NAGAD_NUMBER : '') || (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Nagad) ? platformGatewayConfig?.receiving_numbers?.Nagad : '') || defaultPlatformReceiver,
-    Rocket: (!isFakeNumber(process.env.SWAPNOPAY_ROCKET_NUMBER) ? process.env.SWAPNOPAY_ROCKET_NUMBER : '') || (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Rocket) ? platformGatewayConfig?.receiving_numbers?.Rocket : '') || defaultPlatformReceiver,
-    Upay:   (!isFakeNumber(process.env.SWAPNOPAY_UPAY_NUMBER) ? process.env.SWAPNOPAY_UPAY_NUMBER : '') || (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Upay) ? platformGatewayConfig?.receiving_numbers?.Upay : '') || defaultPlatformReceiver,
+    bKash:  (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.bKash) ? platformGatewayConfig?.receiving_numbers?.bKash : '') || (!isFakeNumber(process.env.SWAPNOPAY_BKASH_NUMBER) ? process.env.SWAPNOPAY_BKASH_NUMBER : '') || defaultPlatformReceiver,
+    Nagad:  (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Nagad) ? platformGatewayConfig?.receiving_numbers?.Nagad : '') || (!isFakeNumber(process.env.SWAPNOPAY_NAGAD_NUMBER) ? process.env.SWAPNOPAY_NAGAD_NUMBER : '') || defaultPlatformReceiver,
+    Rocket: (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Rocket) ? platformGatewayConfig?.receiving_numbers?.Rocket : '') || (!isFakeNumber(process.env.SWAPNOPAY_ROCKET_NUMBER) ? process.env.SWAPNOPAY_ROCKET_NUMBER : '') || defaultPlatformReceiver,
+    Upay:   (!isFakeNumber(platformGatewayConfig?.receiving_numbers?.Upay) ? platformGatewayConfig?.receiving_numbers?.Upay : '') || (!isFakeNumber(process.env.SWAPNOPAY_UPAY_NUMBER) ? process.env.SWAPNOPAY_UPAY_NUMBER : '') || defaultPlatformReceiver,
   }
 
   const gatewayBaseUrl = (process.env.SWAPNOPAY_GATEWAY_URL || 'https://pay.swapnopay.top').replace(/\/$/, '')
@@ -2387,11 +2441,12 @@ export async function createSubscriptionOrder({
   const failUrl    = customFailUrl    || process.env.SWAPNOPAY_SUBSCRIPTION_FAIL_URL    || platformGatewayConfig?.default_fail_url    || `${gatewayBaseUrl}/failed?order_id=${orderId}&type=subscription`
   const cancelUrl  = customCancelUrl  || process.env.SWAPNOPAY_SUBSCRIPTION_CANCEL_URL  || platformGatewayConfig?.default_cancel_url  || `${gatewayBaseUrl}/cancelled?order_id=${orderId}&type=subscription`
 
-  const checkoutUrl = `${gatewayBaseUrl}/widget.html?order_id=${encodeURIComponent(orderId)}&amount=${amount}&merchant_name=${encodeURIComponent('SwapnoPay Subscription')}&plan_type=${encodeURIComponent(cleanPlan)}&merchant_number=${encodeURIComponent(receivingAccounts[method] || receivingAccounts.bKash)}&merchant_id=${encodeURIComponent(merchantId)}&success_url=${encodeURIComponent(successUrl)}&fail_url=${encodeURIComponent(failUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`
+  const checkoutUrl = `${gatewayBaseUrl}/widget.html?order_id=${encodeURIComponent(orderId)}&amount=${amount}&merchant_name=${encodeURIComponent('SwapnoPay Subscription')}&plan_type=${encodeURIComponent(cleanPlan)}&merchant_number=${encodeURIComponent(receivingAccounts[method] || receivingAccounts.bKash)}&merchant_id=${encodeURIComponent(gatewayMerchantId)}&subscriber_merchant_id=${encodeURIComponent(merchantId)}${gatewayApiKey ? `&api_key=${encodeURIComponent(gatewayApiKey)}` : ''}&success_url=${encodeURIComponent(successUrl)}&fail_url=${encodeURIComponent(failUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`
 
   const orderRecord = {
     id: orderId,
     merchant_id: merchantId,
+    gateway_merchant_id: gatewayMerchantId,
     nid_number: nidNumber || 'PENDING_NID',
     plan_type: cleanPlan,
     amount,

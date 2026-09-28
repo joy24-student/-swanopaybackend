@@ -29,3 +29,71 @@ test('shop API enforces authentication, validates errors and returns queued laun
     assert.equal(failure.status,503); assert.ok(!(await failure.text()).includes('password'))
   } finally { await new Promise(resolve=>server.close(resolve)) }
 })
+
+test('requireShopAuth authenticates via device-id, anon-key and connect-database credentials', async () => {
+  const { requireShopAuth } = await import('../middleware/shopAuth.js')
+  const merchantUuid = '11111111-1111-4111-8111-111111111111'
+
+  // 1. Device ID matching merchant ID
+  const reqDevice = {
+    headers: { 'x-device-id': merchantUuid },
+    shopMerchantId: merchantUuid,
+    path: '/status'
+  }
+  let calledDevice = false
+  await requireShopAuth(reqDevice, {}, () => { calledDevice = true })
+  assert.equal(calledDevice, true)
+  assert.equal(reqDevice.merchantUser?.id, merchantUuid)
+  assert.equal(reqDevice.authMethod, 'device_id')
+
+  // 2. /connect-database onboarding with publishable anon_key in body
+  const sampleAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3QiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYwOTQ1OTIwMCwiZXhwIjoxOTI1MDM1MjAwfQ.test_signature_valid_anon_key_length_at_least_20'
+  const reqConnect = {
+    headers: {},
+    shopMerchantId: merchantUuid,
+    path: '/connect-database',
+    body: {
+      merchant_id: merchantUuid,
+      supabase_url: 'https://testproj.supabase.co',
+      supabase_anon_key: sampleAnonKey
+    }
+  }
+  let calledConnect = false
+  await requireShopAuth(reqConnect, {}, () => { calledConnect = true })
+  assert.equal(calledConnect, true)
+  assert.equal(reqConnect.authMethod, 'merchant_anon_key')
+
+  // 3. Client provides registered merchant anon key via Bearer token
+  const { setMerchantGatewayConfig } = await import('../services/adminSupabase.js')
+  await setMerchantGatewayConfig(merchantUuid, {
+    supabase_url: 'https://testproj.supabase.co',
+    supabase_anon_key: sampleAnonKey
+  })
+  const reqAnon = {
+    headers: { authorization: `Bearer ${sampleAnonKey}` },
+    shopMerchantId: merchantUuid,
+    path: '/status'
+  }
+  let calledAnon = false
+  await requireShopAuth(reqAnon, {}, () => { calledAnon = true })
+  assert.equal(calledAnon, true)
+  assert.equal(reqAnon.authMethod, 'merchant_anon_key')
+
+  // 4. Unauthenticated request returns 401 with informative error message
+  const reqUnauth = {
+    headers: {},
+    shopMerchantId: '22222222-2222-4222-8222-222222222222',
+    path: '/status'
+  }
+  let calledUnauth = false
+  let statusCode = 0
+  let respJson = null
+  const resMock = {
+    status(code) { statusCode = code; return this },
+    json(body) { respJson = body; return this }
+  }
+  await requireShopAuth(reqUnauth, resMock, () => { calledUnauth = true })
+  assert.equal(calledUnauth, false)
+  assert.equal(statusCode, 401)
+  assert.ok(respJson.error.includes('Sign in as the owner'))
+})

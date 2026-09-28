@@ -63,12 +63,12 @@ data class SubscriptionStatusState(
     val subscriptionPlan: String? = "FREE",
     val subscriptionExpiresAt: String? = null,
     val isTrialActive: Boolean = false,
-    val trialDaysTotal: Int = 0,
-    val trialRemainingDays: Int = 0,
+    val trialDaysTotal: Int = 90,
+    val trialRemainingDays: Int = 90,
     val trialEndsAt: String? = null,
-    val monthlyPrice: Double = 299.0,
-    val quarterlyPrice: Double = 799.0,
-    val yearlyPrice: Double = 2499.0
+    val monthlyPrice: Double = 100.0,
+    val quarterlyPrice: Double = 250.0,
+    val yearlyPrice: Double = 650.0
 )
 
 data class SubscriptionCheckoutState(
@@ -149,9 +149,10 @@ fun SubscriptionScreen(
 
     // Gateway plan values must match the backend's immutable price catalog.
     // Do not label a quarterly charge as a monthly "Business" subscription.
-    val proPrice = if (subStatus.monthlyPrice > 0) subStatus.monthlyPrice.toInt() else 299
-    val quarterlyPrice = if (subStatus.quarterlyPrice > 0) subStatus.quarterlyPrice.toInt() else 799
-    val plans = remember(proPrice, quarterlyPrice) {
+    val proPrice = if (subStatus.monthlyPrice > 0) subStatus.monthlyPrice.toInt() else 100
+    val quarterlyPrice = if (subStatus.quarterlyPrice > 0) subStatus.quarterlyPrice.toInt() else 250
+    val yearlyPrice = if (subStatus.yearlyPrice > 0) subStatus.yearlyPrice.toInt() else 650
+    val plans = remember(proPrice, quarterlyPrice, yearlyPrice) {
         listOf(
             SubscriptionPlanUi(
                 planKey = "FREE",
@@ -177,7 +178,7 @@ fun SubscriptionScreen(
                     "Priority support",
                     "Advanced analytics"
                 ),
-                isPopular = true,
+                isPopular = false,
                 iconType = "crown"
             ),
             SubscriptionPlanUi(
@@ -191,8 +192,22 @@ fun SubscriptionScreen(
                     "API access",
                     "Dedicated support"
                 ),
-                isPopular = false,
+                isPopular = true,
                 iconType = "briefcase"
+            ),
+            SubscriptionPlanUi(
+                planKey = "YEARLY",
+                title = "Yearly Plan",
+                priceBdt = yearlyPrice,
+                billingCycle = "/ year",
+                features = listOf(
+                    "All Quarterly features",
+                    "Maximum savings",
+                    "Priority VIP support",
+                    "Custom integrations"
+                ),
+                isPopular = false,
+                iconType = "crown"
             )
         )
     }
@@ -204,6 +219,7 @@ fun SubscriptionScreen(
                 val planDisplayName = when (raw.planType.uppercase()) {
                     "FREE" -> "Free Plan"
                     "BUSINESS", "QUARTERLY" -> "Quarterly Plan"
+                    "YEARLY" -> "Yearly Plan"
                     "MONTHLY", "PRO" -> "Monthly Plan"
                     else -> raw.planType.ifBlank { "Subscription" }
                 }
@@ -224,7 +240,11 @@ fun SubscriptionScreen(
                     nidNumber = raw.nidNumber,
                     planType = raw.planType,
                     planNameDisplay = planDisplayName,
-                    billingCycle = if (raw.planType.uppercase() in setOf("QUARTERLY", "BUSINESS")) "Quarterly" else "Monthly",
+                    billingCycle = when (raw.planType.uppercase()) {
+                        "YEARLY" -> "Yearly"
+                        "QUARTERLY", "BUSINESS" -> "Quarterly"
+                        else -> "Monthly"
+                    },
                     dateRangeDisplay = cycleText,
                     amount = raw.amount,
                     trxId = raw.trxId ?: "",
@@ -475,6 +495,27 @@ fun SubscriptionScreen(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
+                        val currentPlanTitle = when {
+                            subStatus.isTrialActive || currentPlanKey == "TRIAL" -> "Free Trial (${subStatus.trialRemainingDays}d left)"
+                            currentPlanKey == "FREE" -> "Free Plan"
+                            currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> "Quarterly Plan"
+                            currentPlanKey == "YEARLY" -> "Yearly Plan"
+                            else -> "Monthly Plan"
+                        }
+                        val currentPlanDisplayPrice = when {
+                            subStatus.isTrialActive || currentPlanKey == "FREE" -> 0
+                            currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> quarterlyPrice
+                            currentPlanKey == "YEARLY" -> yearlyPrice
+                            else -> proPrice
+                        }
+                        val currentPlanDisplayCycle = when {
+                            subStatus.isTrialActive -> "(Trial)"
+                            currentPlanKey == "FREE" -> "/ mo"
+                            currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> "/ 3 mo"
+                            currentPlanKey == "YEARLY" -> "/ yr"
+                            else -> "/ mo"
+                        }
+
                         // Top Section: Icon, Plan details (left) & Price (right)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -510,16 +551,13 @@ fun SubscriptionScreen(
                                         color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
+
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(
-                                            text = when (currentPlanKey) {
-                                                "FREE" -> "Free Plan"
-                                                "BUSINESS", "QUARTERLY" -> "Business Plan"
-                                                else -> "Pro Plan"
-                                            },
+                                            text = currentPlanTitle,
                                             fontSize = 17.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isDark) Color.White else Color(0xFF0F172A),
@@ -528,10 +566,10 @@ fun SubscriptionScreen(
                                         )
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
-                                            color = if (isCurrentActive) Color(0xFF10B981) else Color(0xFFEF4444)
+                                            color = if (subStatus.isTrialActive) Color(0xFF0284C7) else if (isCurrentActive) Color(0xFF10B981) else Color(0xFFEF4444)
                                         ) {
                                             Text(
-                                                text = if (isCurrentActive) "Active" else "Expired",
+                                                text = if (subStatus.isTrialActive) "Trial Active" else if (isCurrentActive) "Active" else "Expired",
                                                 color = Color.White,
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
@@ -556,13 +594,13 @@ fun SubscriptionScreen(
                             Column(horizontalAlignment = Alignment.End) {
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        text = "৳ ${if (currentPlanKey == "FREE") 0 else proPrice}",
+                                        text = "৳ $currentPlanDisplayPrice",
                                         fontSize = 20.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Color.White else Color(0xFF0F172A)
                                     )
                                     Text(
-                                        text = " / mo",
+                                        text = " $currentPlanDisplayCycle",
                                         fontSize = 11.5.sp,
                                         color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
                                         modifier = Modifier.padding(bottom = 2.dp)
@@ -771,13 +809,30 @@ fun SubscriptionScreen(
                                                 }
                                             }
                                         }
-                                        plan.planKey == "MONTHLY" -> {
+                                        isSelectedCurrent -> {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(40.dp),
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1))
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "Active Plan",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.5.sp,
+                                                        color = if (isDark) Color(0xFF10B981) else Color(0xFF059669)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        else -> {
                                             Button(
                                                 onClick = {
                                                     viewModel.checkoutSubscription(
-                                                        // Gateway plan keys are deliberately server-side values; a
-                                                        // merchant cannot change the billed amount in the WebView URL.
-                                                        planType = "MONTHLY"
+                                                        planType = plan.planKey
                                                     ) { success, checkoutState, err ->
                                                         if (success && checkoutState != null) {
                                                             activeCheckoutOrder = checkoutState
@@ -791,44 +846,15 @@ fun SubscriptionScreen(
                                                     .height(40.dp),
                                                 shape = RoundedCornerShape(8.dp),
                                                 colors = ButtonDefaults.buttonColors(
-                                                    containerColor = Color(0xFFF59E0B)
+                                                    containerColor = if (plan.isPopular) Color(0xFFF59E0B) else (if (isDark) Color(0xFFF59E0B) else Color(0xFFD97706))
                                                 ),
                                                 contentPadding = PaddingValues(0.dp)
                                             ) {
                                                 Text(
-                                                    text = if (isSelectedCurrent) "Active" else "Upgrade",
+                                                    text = if (plan.planKey == "MONTHLY") "Upgrade" else "Choose Plan",
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 13.5.sp,
                                                     color = Color(0xFF0F172A)
-                                                )
-                                            }
-                                        }
-                                        else -> {
-                                            // Business Plan
-                                            OutlinedButton(
-                                                onClick = {
-                                                    viewModel.checkoutSubscription(
-                                                        planType = "QUARTERLY"
-                                                    ) { success, checkoutState, err ->
-                                                        if (success && checkoutState != null) {
-                                                            activeCheckoutOrder = checkoutState
-                                                        } else {
-                                                            Toast.makeText(context, err ?: "চেকআউট শুরু করতে ব্যর্থ হয়েছে", Toast.LENGTH_LONG).show()
-                                                        }
-                                                    }
-                                                },
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(40.dp),
-                                                shape = RoundedCornerShape(8.dp),
-                                                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Text(
-                                                    text = if (isSelectedCurrent) "Current Plan" else "Choose Plan",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 13.5.sp,
-                                                    color = Color(0xFFD97706)
                                                 )
                                             }
                                         }
@@ -1839,10 +1865,34 @@ private fun SubscriptionGatewayCheckoutScreen(
                     settings.allowContentAccess = false
                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     webViewClient = object : WebViewClient() {
+                        private fun checkPaymentCallback(url: String?): Boolean {
+                            if (url.isNullOrBlank()) return false
+                            try {
+                                val uri = android.net.Uri.parse(url)
+                                if (uri.scheme == "swapnopay" && (uri.host == "subscription-callback" || uri.host == "callback")) {
+                                    onPaymentReturn(uri.getQueryParameter("status") ?: "PAID")
+                                    return true
+                                }
+                            } catch (_: Exception) {}
+                            val lower = url.lowercase()
+                            if (lower.contains("subscription-callback") || lower.contains("/subscription/success") || lower.contains("/payment/success") || lower.contains("status=paid") || lower.contains("status=completed")) {
+                                onPaymentReturn("PAID")
+                                return true
+                            }
+                            if (lower.contains("/subscription/cancel") || lower.contains("/payment/cancel") || lower.contains("status=cancelled") || lower.contains("status=canceled")) {
+                                onPaymentReturn("CANCELLED")
+                                return true
+                            }
+                            if (lower.contains("/subscription/failed") || lower.contains("/payment/failed") || lower.contains("status=failed")) {
+                                onPaymentReturn("FAILED")
+                                return true
+                            }
+                            return false
+                        }
+
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val target = request.url
-                            if (request.isForMainFrame && target.scheme == "swapnopay" && target.host == "subscription-callback") {
-                                onPaymentReturn(target.getQueryParameter("status") ?: "UNKNOWN")
+                            if (checkPaymentCallback(target.toString())) {
                                 return true
                             }
                             // Hosted checkout may navigate between HTTPS pages. Do not hand it to an external browser.
@@ -1851,6 +1901,9 @@ private fun SubscriptionGatewayCheckoutScreen(
 
                         override fun onPageFinished(view: WebView, url: String) {
                             canGoBack = view.canGoBack()
+                            if (checkPaymentCallback(url)) {
+                                return
+                            }
                             super.onPageFinished(view, url)
                         }
                     }
