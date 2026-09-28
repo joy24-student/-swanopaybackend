@@ -78,16 +78,93 @@ export default function SupportHelpdesk() {
   const [chatReplyInput, setChatReplyInput] = useState('')
   const [chatLoading, setChatLoading] = useState(true)
 
+  const getBackendBase = () => {
+    if ((import.meta as any).env?.VITE_BACKEND_URL) {
+      return ((import.meta as any).env.VITE_BACKEND_URL as string).replace(/\/$/, '')
+    }
+    if (typeof window !== 'undefined') {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:4000'
+      }
+    }
+    return 'https://api.swapnopay.top'
+  }
+
+  const getAdminHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    }
+    const masterSecret = typeof sessionStorage !== 'undefined'
+      ? (sessionStorage.getItem('swapnopay_admin_secret') || localStorage.getItem('swapnopay_admin_secret'))
+      : null
+    if (masterSecret) {
+      headers['X-Admin-Secret'] = masterSecret
+    }
+    return headers
+  }
+
   // 1. Fetch & Subscribe Tickets
   const fetchTickets = async () => {
     try {
-      const { data, error } = await adminSupabase
-        .from('support_tickets')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error && data) {
-        setTickets(data as SupportTicket[])
+      let sbTickets: SupportTicket[] = []
+      let apiTickets: SupportTicket[] = []
+
+      // Fetch from Supabase
+      try {
+        const { data, error } = await adminSupabase
+          .from('support_tickets')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (!error && Array.isArray(data)) {
+          sbTickets = data as SupportTicket[]
+        }
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase tickets fetch notice:', sbErr)
       }
+
+      // Fetch from Backend API
+      try {
+        const base = getBackendBase()
+        const res = await fetch(`${base}/v1/merchant/support/tickets?merchant_id=ALL`, {
+          headers: getAdminHeaders()
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (json.ok && Array.isArray(json.tickets)) {
+            apiTickets = json.tickets
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend API tickets fetch notice:', apiErr)
+      }
+
+      // Merge results by id, preferring newest data
+      const ticketMap = new Map<string, SupportTicket>()
+      for (const t of apiTickets) {
+        if (t && t.id) ticketMap.set(t.id, t)
+      }
+      for (const t of sbTickets) {
+        if (t && t.id) {
+          const existing = ticketMap.get(t.id)
+          if (!existing) {
+            ticketMap.set(t.id, t)
+          } else {
+            ticketMap.set(t.id, {
+              ...existing,
+              ...t,
+              admin_reply: t.admin_reply || existing.admin_reply,
+              resolved_at: t.resolved_at || existing.resolved_at,
+              status: t.status || existing.status,
+            })
+          }
+        }
+      }
+
+      const merged = Array.from(ticketMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      )
+      setTickets(merged)
     } catch (e) {
       console.error('[SupportHelpdesk] Tickets fetch error:', e)
     } finally {
@@ -111,13 +188,62 @@ export default function SupportHelpdesk() {
   // 2. Fetch & Subscribe Feature Requests
   const fetchFeatureRequests = async () => {
     try {
-      const { data, error } = await adminSupabase
-        .from('feature_requests')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error && data) {
-        setFeatureRequests(data as FeatureRequest[])
+      let sbFeatures: FeatureRequest[] = []
+      let apiFeatures: FeatureRequest[] = []
+
+      // Fetch from Supabase
+      try {
+        const { data, error } = await adminSupabase
+          .from('feature_requests')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (!error && Array.isArray(data)) {
+          sbFeatures = data as FeatureRequest[]
+        }
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase feature requests fetch notice:', sbErr)
       }
+
+      // Fetch from Backend API
+      try {
+        const base = getBackendBase()
+        const res = await fetch(`${base}/v1/merchant/support/features?merchant_id=ALL`, {
+          headers: getAdminHeaders()
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (json.ok && Array.isArray(json.features)) {
+            apiFeatures = json.features
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend API feature requests fetch notice:', apiErr)
+      }
+
+      const featureMap = new Map<string, FeatureRequest>()
+      for (const f of apiFeatures) {
+        if (f && f.id) featureMap.set(f.id, f)
+      }
+      for (const f of sbFeatures) {
+        if (f && f.id) {
+          const existing = featureMap.get(f.id)
+          if (!existing) {
+            featureMap.set(f.id, f)
+          } else {
+            featureMap.set(f.id, {
+              ...existing,
+              ...f,
+              admin_notes: f.admin_notes || existing.admin_notes,
+              status: f.status || existing.status,
+            })
+          }
+        }
+      }
+
+      const merged = Array.from(featureMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      )
+      setFeatureRequests(merged)
     } catch (e) {
       console.error('[SupportHelpdesk] Feature requests fetch error:', e)
     } finally {
@@ -141,17 +267,55 @@ export default function SupportHelpdesk() {
   // 3. Fetch & Subscribe Live Chat Messages
   const fetchChatMessages = async () => {
     try {
-      const { data, error } = await adminSupabase
-        .from('live_chat_messages')
-        .select('*')
-        .order('created_at', { ascending: true })
-      if (!error && data) {
-        setChatMessages(data as ChatMessage[])
-        // Default select first merchant if none selected
-        if (!selectedMerchantId && data.length > 0) {
-          const merchants = Array.from(new Set(data.map((m: any) => m.merchant_id)))
-          if (merchants.length > 0) setSelectedMerchantId(merchants[0] as string)
+      let sbMessages: ChatMessage[] = []
+      let apiMessages: ChatMessage[] = []
+
+      // Fetch from Supabase
+      try {
+        const { data, error } = await adminSupabase
+          .from('live_chat_messages')
+          .select('*')
+          .order('created_at', { ascending: true })
+        if (!error && Array.isArray(data)) {
+          sbMessages = data as ChatMessage[]
         }
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase chat fetch notice:', sbErr)
+      }
+
+      // Fetch from Backend API
+      try {
+        const base = getBackendBase()
+        const res = await fetch(`${base}/v1/merchant/support/chat?merchant_id=ALL`, {
+          headers: getAdminHeaders()
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (json.ok && Array.isArray(json.messages)) {
+            apiMessages = json.messages
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend API chat fetch notice:', apiErr)
+      }
+
+      const msgMap = new Map<string, ChatMessage>()
+      for (const m of apiMessages) {
+        if (m && m.id) msgMap.set(m.id, m)
+      }
+      for (const m of sbMessages) {
+        if (m && m.id) msgMap.set(m.id, m)
+      }
+
+      const merged = Array.from(msgMap.values()).sort(
+        (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      )
+      setChatMessages(merged)
+
+      // Default select first merchant if none selected
+      if (!selectedMerchantId && merged.length > 0) {
+        const merchants = Array.from(new Set(merged.map((m: any) => m.merchant_id)))
+        if (merchants.length > 0) setSelectedMerchantId(merchants[0] as string)
       }
     } catch (e) {
       console.error('[SupportHelpdesk] Chat fetch error:', e)
@@ -183,12 +347,27 @@ export default function SupportHelpdesk() {
         resolved_at: (newStatus === 'RESOLVED' || newStatus === 'CLOSED') ? new Date().toISOString() : null,
       }
 
-      const { error } = await adminSupabase
-        .from('support_tickets')
-        .update(updates)
-        .eq('id', ticket.id)
+      // 1. Sync to Backend API
+      try {
+        const base = getBackendBase()
+        await fetch(`${base}/v1/merchant/support/tickets/${ticket.id}`, {
+          method: 'PATCH',
+          headers: getAdminHeaders(),
+          body: JSON.stringify(updates),
+        })
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend ticket update notice:', apiErr)
+      }
 
-      if (error) throw error
+      // 2. Sync to Supabase
+      try {
+        await adminSupabase
+          .from('support_tickets')
+          .update(updates)
+          .eq('id', ticket.id)
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase ticket update notice:', sbErr)
+      }
 
       setTicketActionMsg(`Ticket #${ticket.id.slice(0, 8)} marked as ${newStatus}!`)
       setSelectedTicket(prev => prev ? { ...prev, ...updates } : null)
@@ -209,12 +388,27 @@ export default function SupportHelpdesk() {
         admin_notes: featureAdminNotes.trim() || feature.admin_notes || null,
       }
 
-      const { error } = await adminSupabase
-        .from('feature_requests')
-        .update(updates)
-        .eq('id', feature.id)
+      // 1. Sync to Backend API
+      try {
+        const base = getBackendBase()
+        await fetch(`${base}/v1/merchant/support/features/${feature.id}`, {
+          method: 'PATCH',
+          headers: getAdminHeaders(),
+          body: JSON.stringify(updates),
+        })
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend feature update notice:', apiErr)
+      }
 
-      if (error) throw error
+      // 2. Sync to Supabase
+      try {
+        await adminSupabase
+          .from('feature_requests')
+          .update(updates)
+          .eq('id', feature.id)
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase feature update notice:', sbErr)
+      }
 
       setTicketActionMsg(`Feature request marked as ${newStatus}!`)
       setSelectedFeature(prev => prev ? { ...prev, ...updates } : null)
@@ -232,16 +426,34 @@ export default function SupportHelpdesk() {
     const msgText = chatReplyInput.trim()
     setChatReplyInput('')
     try {
-      const { error } = await adminSupabase
-        .from('live_chat_messages')
-        .insert({
-          merchant_id: selectedMerchantId,
-          sender: 'PLATFORM_OWNER',
-          message: msgText,
-          created_at: new Date().toISOString(),
-        })
+      const payload = {
+        merchant_id: selectedMerchantId,
+        sender: 'PLATFORM_OWNER',
+        message: msgText,
+        created_at: new Date().toISOString(),
+      }
 
-      if (error) throw error
+      // 1. Send to Backend API
+      try {
+        const base = getBackendBase()
+        await fetch(`${base}/v1/merchant/support/chat`, {
+          method: 'POST',
+          headers: getAdminHeaders(),
+          body: JSON.stringify(payload),
+        })
+      } catch (apiErr) {
+        console.warn('[SupportHelpdesk] Backend chat send notice:', apiErr)
+      }
+
+      // 2. Send to Supabase
+      try {
+        await adminSupabase
+          .from('live_chat_messages')
+          .insert(payload)
+      } catch (sbErr) {
+        console.warn('[SupportHelpdesk] Supabase chat send notice:', sbErr)
+      }
+
       await fetchChatMessages()
     } catch (e: any) {
       alert('Failed to send chat reply: ' + e.message)
@@ -274,6 +486,17 @@ export default function SupportHelpdesk() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => {
+              if (activeTab === 'tickets') fetchTickets()
+              else if (activeTab === 'live_chat') fetchChatMessages()
+              else fetchFeatureRequests()
+            }}
+            className="btn btn-secondary btn-sm"
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
           <Link to="/settings" className="btn btn-secondary btn-sm">
             <Settings size={13} />
             System CMS
@@ -617,7 +840,7 @@ export default function SupportHelpdesk() {
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-                        Category: {f.category} • Priority: <span style={{ fontWeight: 700 }}>{f.priority}</span>
+                        Merchant: {f.business_name || f.merchant_id || 'Guest'} • Category: {f.category} • Priority: <span style={{ fontWeight: 700 }}>{f.priority}</span>
                       </div>
                     </div>
                   ))}
@@ -640,6 +863,7 @@ export default function SupportHelpdesk() {
                 <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div><strong>Title:</strong> {selectedFeature.title}</div>
                   <div><strong>Category:</strong> {selectedFeature.category}</div>
+                  <div><strong>Merchant:</strong> {selectedFeature.business_name || selectedFeature.merchant_id || '--'} {selectedFeature.email ? `(${selectedFeature.email})` : ''}</div>
                   <div><strong>Priority:</strong> {selectedFeature.priority}</div>
                   <div><strong>Status:</strong> {selectedFeature.status}</div>
                   <div>

@@ -1,18 +1,22 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
+import { adminRouter } from './admin.js'
 import { keysRouter } from './keys.js'
 
 process.env.API_KEY_PEPPER = 'k'.repeat(64)
+process.env.ADMIN_SECRET = 's'.repeat(40)
 
 test('Dynamic API Key Management & Validation Suite', async (t) => {
   const app = express()
   app.use(express.json())
-  app.use((req, res, next) => {
-    req.isAdmin = true
-    req.merchantUser = { id: 'test-merchant-uuid-1', email: 'merchant@test.com' }
+  app.use((req, _res, next) => {
+    req.isAdmin = false
+    req.authMethod = 'supabase'
+    req.merchantUser = { id: 'test-merchant-uuid-1', userId: 'test-merchant-uuid-1', email: 'merchant@test.com' }
     next()
   })
+  app.use('/v1/admin', adminRouter)
   app.use('/v1/admin/keys', keysRouter)
 
   const server = app.listen(0, '127.0.0.1')

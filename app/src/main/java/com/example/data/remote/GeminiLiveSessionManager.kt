@@ -108,7 +108,7 @@ class GeminiLiveSessionManager {
     private val _connectionState = MutableStateFlow(LiveConnectionState.IDLE)
     val connectionState: StateFlow<LiveConnectionState> = _connectionState.asStateFlow()
 
-    private val _statusText = MutableStateFlow("সংযোগের জন্য প্রস্তুত")
+    private val _statusText = MutableStateFlow("প্রস্তুত")
     val statusText: StateFlow<String> = _statusText.asStateFlow()
 
     private val _inputAudioLevel = MutableStateFlow(0f)
@@ -138,9 +138,9 @@ class GeminiLiveSessionManager {
         _isMicMuted.value = next
         if (next) {
             _inputAudioLevel.value = 0f
-            _statusText.value = "মাইক্রোফোন মিউট করা আছে"
+            _statusText.value = "মিউট"
         } else if (_connectionState.value == LiveConnectionState.CONNECTED_LISTENING) {
-            _statusText.value = "শুনছি... সরাসরি কথা বলুন"
+            _statusText.value = "শুনছি..."
         }
     }
 
@@ -152,7 +152,7 @@ class GeminiLiveSessionManager {
         val cleanKey = apiKey.trim()
         if (cleanKey.isBlank()) {
             _connectionState.value = LiveConnectionState.ERROR
-            _errorMessage.value = "Gemini Live ভয়েস কলের জন্য Google AI Studio API Key প্রয়োজন। নিচে আপনার API Key দিন।"
+            _errorMessage.value = "Google AI Studio API Key প্রয়োজন"
             _statusText.value = "API Key প্রয়োজন"
             return
         }
@@ -171,8 +171,8 @@ class GeminiLiveSessionManager {
         if (!isSessionActive.get()) return
         if (index >= CANDIDATE_ENDPOINTS.size) {
             _connectionState.value = LiveConnectionState.ERROR
-            _errorMessage.value = "Gemini Live সার্ভারে সংযোগ করা যায়নি। আপনার Google AI Studio API Key ও ইন্টারনেট সংযোগ যাচাই করুন।"
-            _statusText.value = "সংযোগ ব্যর্থ হয়েছে"
+            _errorMessage.value = "সংযোগ করা যায়নি। API Key ও ইন্টারনেট যাচাই করুন।"
+            _statusText.value = "সংযোগ ব্যর্থ"
             isSessionActive.set(false)
             return
         }
@@ -180,7 +180,7 @@ class GeminiLiveSessionManager {
         currentCandidateIndex = index
         isSetupCompleted.set(false)
         _connectionState.value = LiveConnectionState.CONNECTING
-        _statusText.value = "Gemini Live-এর সাথে সংযোগ হচ্ছে..."
+        _statusText.value = "সংযোগ হচ্ছে..."
 
         val (apiVersion, modelName) = CANDIDATE_ENDPOINTS[index]
         val wsUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.$apiVersion.GenerativeService.BidiGenerateContent?key=$lastApiKey"
@@ -213,7 +213,7 @@ class GeminiLiveSessionManager {
                     }
                 } else if (isSessionActive.get()) {
                     _connectionState.value = LiveConnectionState.IDLE
-                    _statusText.value = "ভয়েস সেশন সমাপ্ত হয়েছে"
+                    _statusText.value = "কল সমাপ্ত"
                     stopAudioPipeline()
                 }
             }
@@ -227,7 +227,7 @@ class GeminiLiveSessionManager {
                     }
                 } else if (isSessionActive.get()) {
                     _connectionState.value = LiveConnectionState.ERROR
-                    _errorMessage.value = "সংযোগ বিচ্ছিন্ন হয়েছে: ${t.localizedMessage ?: "নেটওয়ার্ক ত্রুটি"}"
+                    _errorMessage.value = "সংযোগ বিচ্ছিন্ন: ${t.localizedMessage ?: "নেটওয়ার্ক ত্রুটি"}"
                     _statusText.value = "সংযোগ বিচ্ছিন্ন"
                     stopAudioPipeline()
                 }
@@ -325,7 +325,7 @@ class GeminiLiveSessionManager {
             if (json.has("setupComplete")) {
                 isSetupCompleted.set(true)
                 _connectionState.value = LiveConnectionState.CONNECTED_LISTENING
-                _statusText.value = "শুনছি... সরাসরি কথা বলুন"
+                _statusText.value = "শুনছি..."
                 startAudioPipeline()
                 sendInitialGreetingTrigger()
                 return
@@ -337,7 +337,7 @@ class GeminiLiveSessionManager {
                 if (interrupted) {
                     flushAudioOutput()
                     _connectionState.value = LiveConnectionState.CONNECTED_LISTENING
-                    _statusText.value = "শুনছি... সরাসরি কথা বলুন"
+                    _statusText.value = "শুনছি..."
                 }
 
                 val modelTurn = serverContent.optJSONObject("modelTurn")
@@ -352,7 +352,7 @@ class GeminiLiveSessionManager {
                                 val pcmBytes = Base64.decode(b64, Base64.DEFAULT)
                                 if (pcmBytes.isNotEmpty()) {
                                     _connectionState.value = LiveConnectionState.AI_SPEAKING
-                                    _statusText.value = "স্বপ্ন এআই কথা বলছে... (থামাতে কথা বলুন)"
+                                    _statusText.value = "কথা বলছে..."
                                     audioOutChannel.trySend(pcmBytes)
                                 }
                             }
@@ -439,7 +439,7 @@ class GeminiLiveSessionManager {
             })
         }
         webSocket?.send(frameMsg.toString())
-        val updatedLogs = (_liveActionLogs.value + "📸 লাইভ কলে ছবি পাঠানো হয়েছে").takeLast(6)
+        val updatedLogs = (_liveActionLogs.value + "📸 ছবি পাঠানো হয়েছে").takeLast(6)
         _liveActionLogs.value = updatedLogs
     }
 
@@ -448,7 +448,7 @@ class GeminiLiveSessionManager {
         stopAudioPipeline()
         audioOutChannel = Channel(Channel.UNLIMITED)
 
-        // 1. Start 24kHz PCM16 Output AudioTrack
+        // 1. Start 24kHz PCM16 Output AudioTrack on USAGE_MEDIA for loud main speaker output
         val outMinBuf = AudioTrack.getMinBufferSize(
             OUTPUT_SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -458,7 +458,7 @@ class GeminiLiveSessionManager {
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -473,6 +473,9 @@ class GeminiLiveSessionManager {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
+        try {
+            audioTrack?.setVolume(AudioTrack.getMaxVolume())
+        } catch (_: Exception) {}
         audioTrack?.play()
 
         playbackJob = scope.launch {
@@ -483,13 +486,14 @@ class GeminiLiveSessionManager {
                     _outputAudioLevel.value = 0f
                     if (_connectionState.value == LiveConnectionState.AI_SPEAKING) {
                         _connectionState.value = LiveConnectionState.CONNECTED_LISTENING
-                        _statusText.value = if (_isMicMuted.value) "মাইক্রোফোন মিউট করা আছে" else "শুনছি... সরাসরি কথা বলুন"
+                        _statusText.value = if (_isMicMuted.value) "মিউট" else "শুনছি..."
                     }
                     continue
                 }
-                _outputAudioLevel.value = calculatePcmRmsLevel(chunk, chunk.size)
+                val boostedChunk = amplifyPcm16(chunk, 2.5f)
+                _outputAudioLevel.value = calculatePcmRmsLevel(boostedChunk, boostedChunk.size)
                 try {
-                    audioTrack?.write(chunk, 0, chunk.size)
+                    audioTrack?.write(boostedChunk, 0, boostedChunk.size)
                 } catch (e: Exception) {
                     Log.w(TAG, "AudioTrack write error: ${e.message}")
                 }
@@ -504,13 +508,23 @@ class GeminiLiveSessionManager {
         ).coerceAtLeast(3200)
 
         try {
-            val recorder = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            var recorder = AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 INPUT_SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 inMinBuf * 2
             )
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                try { recorder.release() } catch (_: Exception) {}
+                recorder = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    INPUT_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    inMinBuf * 2
+                )
+            }
             if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                 _errorMessage.value = "মাইক্রোফোন চালু করা যায়নি। পারমিশন চেক করুন।"
                 return
@@ -561,6 +575,23 @@ class GeminiLiveSessionManager {
             Log.e(TAG, "AudioRecord initialization failed: ${e.message}")
             _errorMessage.value = "মাইক্রোফোন ত্রুটি: ${e.localizedMessage}"
         }
+    }
+
+    private fun amplifyPcm16(bytes: ByteArray, gain: Float): ByteArray {
+        if (bytes.size < 2) return bytes
+        val out = ByteArray(bytes.size)
+        var i = 0
+        while (i + 1 < bytes.size) {
+            val low = bytes[i].toInt() and 0xFF
+            val high = bytes[i + 1].toInt()
+            val sample = ((high shl 8) or low).toShort().toInt()
+            val boosted = (sample * gain).toInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            out[i] = (boosted and 0xFF).toByte()
+            out[i + 1] = ((boosted shr 8) and 0xFF).toByte()
+            i += 2
+        }
+        return out
     }
 
     private fun flushAudioOutput() {
@@ -638,7 +669,7 @@ class GeminiLiveSessionManager {
         } catch (_: Exception) {}
         webSocket = null
         _connectionState.value = LiveConnectionState.IDLE
-        _statusText.value = "সংযোগের জন্য প্রস্তুত"
+        _statusText.value = "প্রস্তুত"
         _isMicMuted.value = false
         if (resetLogs) {
             _liveActionLogs.value = emptyList()

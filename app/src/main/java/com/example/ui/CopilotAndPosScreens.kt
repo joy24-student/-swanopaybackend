@@ -8108,6 +8108,19 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
     fun startVoiceChatListening() {
         stopVoiceDictation()
         stopSpeaking()
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            audioManager?.mode = android.media.AudioManager.MODE_NORMAL
+            audioManager?.isSpeakerphoneOn = true
+            if (audioManager != null) {
+                val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                val curVol = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                val targetMinVol = (maxVol * 0.75f).toInt().coerceAtLeast(1)
+                if (curVol < targetMinVol) {
+                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetMinVol, 0)
+                }
+            }
+        } catch (_: Exception) {}
         val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
             context,
             android.Manifest.permission.RECORD_AUDIO
@@ -8272,10 +8285,10 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                     // Left: Rounded Menu Button
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(cardBg)
-                            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
+                            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
                             .clickable { showHistoryDrawer = true },
                         contentAlignment = Alignment.Center
                     ) {
@@ -8287,86 +8300,30 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                         )
                     }
 
-                    // Center: Friendly Title & Subtitle
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "স্বপ্ন এআই কো-পাইলট",
-                            fontSize = 17.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textMain
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF10B981))
-                            )
-                            Text(
-                                text = "সক্রিয় ব্যবসা বন্ধু | Gemini AI",
-                                fontSize = 11.sp,
-                                color = textMuted
-                            )
-                        }
-                    }
+                    // Center: Clean Title
+                    Text(
+                        text = "স্বপ্ন এআই",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textMain
+                    )
 
-                    // Right: Memory Pill & Settings Button
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // Right: Settings Button
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(cardBg)
+                            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                            .clickable { showKeysDialog = true },
+                        contentAlignment = Alignment.Center
                     ) {
-                        // AI Memory Pill Button
-                        Surface(
-                            modifier = Modifier
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { showMemoryModal = true },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isDarkMode) Color(0xFF1C2237) else Color(0xFFEEF2FF),
-                            border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.35f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Psychology,
-                                    contentDescription = "AI Memory",
-                                    tint = Color(0xFF6366F1),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                val memoryCount = viewModel.getAiMemoryItems().size
-                                Text(
-                                    text = if (memoryCount > 0) "$memoryCount" else "স্মৃতি",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF6366F1)
-                                )
-                            }
-                        }
-
-                        // Settings Button
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(cardBg)
-                                .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                                .clickable { showKeysDialog = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Settings,
-                                contentDescription = "Settings",
-                                tint = textMain,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Outlined.Settings,
+                            contentDescription = "Settings",
+                            tint = textMain,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
                 }
 
@@ -8585,19 +8542,12 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                         strokeWidth = 2.5.dp,
                                         color = Color(0xFFA855F7)
                                     )
-                                    Column {
-                                        Text(
-                                            text = "স্বপ্ন এআই হিসাব ও ডেটা বিশ্লেষণ করছে...",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF475569)
-                                        )
-                                        Text(
-                                            text = "Analyzing business trends & formulating insights",
-                                            fontSize = 10.5.sp,
-                                            color = textMuted
-                                        )
-                                    }
+                                    Text(
+                                        text = "স্বপ্ন এআই বিশ্লেষণ করছে...",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isDarkMode) Color(0xFFE2E8F0) else Color(0xFF475569)
+                                    )
                                 }
                             }
                         }
@@ -8608,7 +8558,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -8676,7 +8626,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = if (attachedImageBitmap != null) "ছবি সংযুক্ত • এআই বিশ্লেষণ করবে" else "ডকুমেন্ট সংযুক্ত • এআই পড়বে",
+                                                    text = if (attachedImageBitmap != null) "ছবি সংযুক্ত" else "ডকুমেন্ট সংযুক্ত",
                                                     fontSize = 10.5.sp,
                                                     color = Color(0xFF6366F1)
                                                 )
@@ -8707,7 +8657,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                 onValueChange = { userText = it },
                                 placeholder = {
                                     Text(
-                                        text = if (attachedImageBitmap != null || attachedFileName != null) "এই ছবি বা ফাইল সম্পর্কে প্রশ্ন করুন..." else "স্বপ্ন এআই-কে ব্যবসার যেকোনো প্রশ্ন করুন...",
+                                        text = if (attachedImageBitmap != null || attachedFileName != null) "প্রশ্ন লিখুন..." else "স্বপ্ন এআই-কে প্রশ্ন করুন...",
                                         fontSize = 13.5.sp,
                                         color = textMuted
                                     )
@@ -8785,7 +8735,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                text = "টুলস (Tools)",
+                                                text = "টুলস",
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = textMain
@@ -8878,17 +8828,6 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                             }
                         }
                     }
-
-                    // Disclaimer Footer Text
-                    Text(
-                        text = "AI responses may not be 100% accurate. Please verify important information.",
-                        fontSize = 10.5.sp,
-                        color = textMuted,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp, bottom = 2.dp)
-                    )
                 }
             }
 
@@ -9182,8 +9121,8 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                         viewModel.stopGeminiLiveConversation()
                         showVoiceChatModal = false
                     },
-                    title = "Gemini Live ভয়েস কল",
-                    subtitle = "সরাসরি অডিও-টু-অডিও রিয়েল-টাইম কথোপকথন (No Text-to-Speech)",
+                    title = "Gemini Live",
+                    subtitle = null,
                     icon = Icons.Default.GraphicEq
                 ) {
                     val infiniteTransition = rememberInfiniteTransition(label = "geminiLivePulse")
@@ -9215,7 +9154,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // 1. Native Gemini Live Audio Orb
                         Box(
@@ -9343,16 +9282,10 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                             color = Color(0xFFEF4444)
                                         )
                                     }
-                                    Text(
-                                        text = "🔑 Google AI Studio (Gemini) API Key:",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = textMain
-                                    )
                                     OutlinedTextField(
                                         value = inlineLiveApiKey,
                                         onValueChange = { inlineLiveApiKey = it },
-                                        placeholder = { Text("AIzaSy...", fontSize = 12.sp, color = textMuted) },
+                                        placeholder = { Text("Gemini API Key (AIzaSy...)", fontSize = 12.sp, color = textMuted) },
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(10.dp),
                                         singleLine = true
@@ -9370,66 +9303,46 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                     ) {
                                         Icon(Icons.Default.GraphicEq, null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("API Key সেভ ও লাইভ কল শুরু করুন", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                        Text("সংরক্ষণ ও শুরু করুন", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                         }
 
-                        // 4. Native Voice Persona Selector (Aoede, Puck, Kore, Fenrir, Charon)
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        // 4. Compact Voice Selector Pills (Aoede, Puck, Kore, Fenrir, Charon)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
                         ) {
-                            Text(
-                                text = "🎵 এআই কণ্ঠস্বর নির্বাচন (Gemini Native Voice):",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = textMuted
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                com.example.data.remote.GeminiLiveSessionManager.VOICE_OPTIONS.forEach { voiceOpt ->
-                                    val isSelected = liveVoiceName == voiceOpt.id
-                                    Surface(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                viewModel.geminiLiveSession.setVoiceName(voiceOpt.id)
-                                                if (isCallActive) {
-                                                    startVoiceChatListening()
-                                                }
-                                            },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isSelected) Color(0xFF6366F1) else (if (isDarkMode) Color(0xFF181C2E) else Color(0xFFF1F5F9)),
-                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF6366F1) else cardBorder)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = voiceOpt.labelBn,
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White else textMain
-                                            )
-                                            Text(
-                                                text = voiceOpt.descBn,
-                                                fontSize = 9.5.sp,
-                                                color = if (isSelected) Color.White.copy(alpha = 0.85f) else textMuted
-                                            )
-                                        }
-                                    }
+                            com.example.data.remote.GeminiLiveSessionManager.VOICE_OPTIONS.forEach { voiceOpt ->
+                                val isSelected = liveVoiceName == voiceOpt.id
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .clickable {
+                                            viewModel.geminiLiveSession.setVoiceName(voiceOpt.id)
+                                            if (isCallActive) {
+                                                startVoiceChatListening()
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = if (isSelected) Color(0xFF6366F1) else (if (isDarkMode) Color(0xFF181C2E) else Color(0xFFF1F5F9)),
+                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF6366F1) else cardBorder)
+                                ) {
+                                    Text(
+                                        text = voiceOpt.id,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else textMain,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
                                 }
                             }
                         }
 
-                        // 5. Live Function Tool Call Execution Feed
+                        // 5. Live Function Tool Call Execution Feed (only when actions executed)
                         if (liveActionLogs.isNotEmpty()) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -9443,12 +9356,6 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                     modifier = Modifier.padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text(
-                                        text = "⚡ লাইভ কলে সম্পাদিত কাজ:",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF10B981)
-                                    )
                                     liveActionLogs.forEach { logItem ->
                                         Text(
                                             text = logItem,
@@ -9511,7 +9418,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "ছবি দেখান",
+                                        text = "ছবি",
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF6366F1)
@@ -9532,7 +9439,7 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                 ) {
                                     Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("কল শেষ", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("সমাপ্ত", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
                             } else {
                                 Button(
@@ -9546,29 +9453,13 @@ fun AiCopilotScreen(viewModel: AppViewModel) {
                                     Icon(Icons.Default.GraphicEq, null, tint = Color.White, modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Gemini Live কল শুরু করুন",
+                                        text = "শুরু করুন",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
                                 }
                             }
-                        }
-
-                        // Helpful tip card
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isDarkMode) Color(0xFF161B2E) else Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, cardBorder)
-                        ) {
-                            Text(
-                                text = "💡 এটি সরাসরি Gemini Multimodal Live API (WebSocket PCM Audio) ব্যবহার করে। কথা বলার মাঝখানে থামাতে চাইলে স্বাভাবিকভাবে কথা বলুন (Barge-in) অথবা লাইভ রশিদ দেখাতে 'ছবি দেখান' চাপুন।",
-                                fontSize = 11.sp,
-                                color = textMuted,
-                                lineHeight = 15.sp,
-                                modifier = Modifier.padding(10.dp)
-                            )
                         }
                     }
                 }

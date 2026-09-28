@@ -888,48 +888,216 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _isGeneratingApiKey = MutableStateFlow(false)
     val isGeneratingApiKey: StateFlow<Boolean> = _isGeneratingApiKey.asStateFlow()
 
+    private fun generateSignedMerchantApiKey(): Triple<String, String, String> {
+        val randomBytes = ByteArray(24)
+        java.security.SecureRandom().nextBytes(randomBytes)
+        val hex = randomBytes.joinToString("") { "%02x".format(it) }
+        val rawKey = "sp_live_$hex"
+        val preview = rawKey.take(14) + "****"
+        val pepper = "swapnopay_api_key_pepper_cryptographic_secret_salt_32"
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(pepper.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        val digest = mac.doFinal(rawKey.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return Triple(rawKey, preview, digest)
+    }
+
+    private fun fetchOrProvisionApiKeyFromPlatformSupabase(
+        merchantId: String,
+        merchantName: String,
+        token: String,
+        forceRegenerate: Boolean = false
+    ): Pair<String, String>? {
+        val authHeader = "Bearer ${token.ifBlank { PLATFORM_SUPABASE_ANON_KEY }}"
+        val encMid = java.net.URLEncoder.encode(merchantId, "UTF-8")
+
+        if (!forceRegenerate) {
+            // 1. Check platform_api_keys table for active key
+            runCatching {
+                val req = Request.Builder()
+                    .url("$PLATFORM_SUPABASE_URL/rest/v1/platform_api_keys?merchant_id=eq.$encMid&revoked=eq.false&order=created_at.desc&limit=1&select=raw_key,key_preview")
+                    .get()
+                    .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
+                    .header("Authorization", authHeader)
+                    .header("Accept", "application/json")
+                    .build()
+                webShopHttpClient.newCall(req).execute().use { resp ->
+                    val bodyStr = resp.body?.string()
+                    if (resp.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val arr = JSONArray(bodyStr)
+                        if (arr.length() > 0) {
+                            val obj = arr.getJSONObject(0)
+                            val rawKey = obj.optString("raw_key", "")
+                            val preview = obj.optString("key_preview", "")
+                            if (rawKey.isNotBlank() && !rawKey.contains("*")) {
+                                return Pair(rawKey, preview.ifBlank { rawKey.take(14) + "****" })
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Check merchants.api_key column
+            runCatching {
+                val req = Request.Builder()
+                    .url("$PLATFORM_SUPABASE_URL/rest/v1/merchants?id=eq.$encMid&limit=1&select=api_key")
+                    .get()
+                    .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
+                    .header("Authorization", authHeader)
+                    .header("Accept", "application/json")
+                    .build()
+                webShopHttpClient.newCall(req).execute().use { resp ->
+                    val bodyStr = resp.body?.string()
+                    if (resp.isSuccessful && !bodyStr.isNullOrBlank()) {
+                        val arr = JSONArray(bodyStr)
+                        if (arr.length() > 0) {
+                            val rawKey = arr.getJSONObject(0).optString("api_key", "")
+                            if (rawKey.startsWith("sp_live_")) {
+                                return Pair(rawKey, rawKey.take(14) + "****")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Provision or regenerate signed key and sync to Platform Supabase
+        val (rawKey, preview, digest) = generateSignedMerchantApiKey()
+        val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+
+        if (forceRegenerate) {
+            runCatching {
+                val revokeJson = JSONObject().apply {
+                    put("revoked", true)
+                    put("revoked_at", nowIso)
+                }
+                val revokeReq = Request.Builder()
+                    .url("$PLATFORM_SUPABASE_URL/rest/v1/platform_api_keys?merchant_id=eq.$encMid&revoked=eq.false")
+                    .patch(revokeJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
+                    .header("Authorization", authHeader)
+                    .build()
+                webShopHttpClient.newCall(revokeReq).execute().close()
+            }
+        }
+
+        runCatching {
+            val insertJson = JSONObject().apply {
+                put("id", java.util.UUID.randomUUID().toString())
+                put("merchant_id", merchantId)
+                put("merchant_name", merchantName.ifBlank { "Merchant" }.take(100))
+                put("label", if (forceRegenerate) "Mobile App Regenerated Key" else "Default Payment Gateway API Key")
+                put("key_digest", digest)
+                put("key_preview", preview)
+                put("raw_key", rawKey)
+                put("revoked", false)
+            }
+            val insertReq = Request.Builder()
+                .url("$PLATFORM_SUPABASE_URL/rest/v1/platform_api_keys")
+                .post(insertJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
+                .header("Authorization", authHeader)
+                .header("Prefer", "return=minimal")
+                .build()
+            webShopHttpClient.newCall(insertReq).execute().close()
+        }
+
+        runCatching {
+            val updateJson = JSONObject().apply {
+                put("api_key", rawKey)
+                put("updated_at", nowIso)
+            }
+            val updateReq = Request.Builder()
+                .url("$PLATFORM_SUPABASE_URL/rest/v1/merchants?id=eq.$encMid")
+                .patch(updateJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .header("apikey", PLATFORM_SUPABASE_ANON_KEY)
+                .header("Authorization", authHeader)
+                .header("Prefer", "return=minimal")
+                .build()
+            webShopHttpClient.newCall(updateReq).execute().close()
+        }
+
+        return Pair(rawKey, preview)
+    }
+
     fun fetchMerchantApiKey() {
         viewModelScope.launch(Dispatchers.IO) {
+            val shouldShowLoading = _merchantApiKey.value.isBlank()
+            if (shouldShowLoading) _isGeneratingApiKey.value = true
             try {
                 val merchantId = _activeProfile.value.id.ifBlank { installationId }
+                val merchantName = _activeProfile.value.businessName.ifBlank { "Merchant" }
                 val userEmail = _activeProfile.value.email.ifBlank { _userEmail.value ?: "" }
                 val encodedEmail = java.net.URLEncoder.encode(userEmail, "UTF-8")
+                val encodedMid = java.net.URLEncoder.encode(merchantId, "UTF-8")
                 val candidateBases = listOf("https://api.swapnopay.top", "https://swapnopay.top", "https://pay.swapnopay.top")
+                val candidatePaths = listOf(
+                    "/v1/merchant/keys/active?merchant_id=$encodedMid&email=$encodedEmail",
+                    "/v1/admin/keys/active?merchant_id=$encodedMid&email=$encodedEmail",
+                    "/v1/developer/profile?merchant_id=$encodedMid"
+                )
                 var fetchedKey: String? = null
                 var fetchedPreview: String? = null
                 val token = resolvePlatformAuthToken()
 
-                for (backendBase in candidateBases) {
-                    try {
-                        val url = "$backendBase/v1/admin/keys/active?merchant_id=$merchantId&email=$encodedEmail"
-                        val reqBuilder = Request.Builder().url(url).get()
-                        val devId = installationId
-                        if (devId.isNotBlank()) {
-                            reqBuilder.header("x-device-id", devId)
-                            reqBuilder.header("x-merchant-id", merchantId)
-                        }
-                        if (_merchantApiKey.value.isNotBlank()) {
-                            reqBuilder.header("x-api-key", _merchantApiKey.value)
-                        }
-                        if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
+                outerLoop@ for (backendBase in candidateBases) {
+                    for (path in candidatePaths) {
+                        try {
+                            val url = "$backendBase$path"
+                            val reqBuilder = Request.Builder().url(url).get()
+                            val devId = installationId
+                            if (devId.isNotBlank()) {
+                                reqBuilder.header("x-device-id", devId)
+                                reqBuilder.header("x-merchant-id", merchantId)
+                            }
+                            if (_merchantApiKey.value.isNotBlank()) {
+                                reqBuilder.header("x-api-key", _merchantApiKey.value)
+                            }
+                            if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
 
-                        webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
-                            val bodyStr = response.body?.string()
-                            if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
-                                val json = JSONObject(bodyStr)
-                                if (json.optBoolean("ok", false)) {
-                                    val rawKey = json.optString("api_key", "")
-                                    val preview = json.optString("key_preview", "")
-                                    if (rawKey.isNotBlank()) {
-                                        fetchedKey = rawKey
-                                        fetchedPreview = preview.ifBlank { rawKey.take(14) + "****" }
+                            webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                                val bodyStr = response.body?.string()
+                                if (response.isSuccessful && !bodyStr.isNullOrBlank()) {
+                                    val json = JSONObject(bodyStr)
+                                    if (json.optBoolean("ok", false)) {
+                                        val keysObj = json.optJSONObject("keys")
+                                        val rawKey = json.optString("api_key", "").ifBlank {
+                                            keysObj?.optString("secret_key", "") ?: ""
+                                        }
+                                        val preview = json.optString("key_preview", "").ifBlank {
+                                            keysObj?.optString("key_preview", "") ?: ""
+                                        }
+                                        if (rawKey.isNotBlank() && !rawKey.equals("null", ignoreCase = true)) {
+                                            fetchedKey = rawKey
+                                            fetchedPreview = preview.ifBlank { rawKey.take(14) + "****" }
+                                        }
                                     }
                                 }
                             }
+                            if (!fetchedKey.isNullOrBlank()) break@outerLoop
+                        } catch (netErr: Exception) {
+                            Log.d("AppViewModel", "Candidate $backendBase$path notice: ${netErr.message}")
                         }
-                        if (!fetchedKey.isNullOrBlank()) break
-                    } catch (netErr: Exception) {
-                        Log.d("AppViewModel", "Candidate $backendBase notice: ${netErr.message}")
+                    }
+                }
+
+                if (fetchedKey.isNullOrBlank()) {
+                    val cached = securityPrefs.getString("merchant_api_key", "") ?: ""
+                    if (cached.isNotBlank()) {
+                        fetchedKey = cached
+                        fetchedPreview = securityPrefs.getString("merchant_api_key_preview", "") ?: (cached.take(14) + "****")
+                    } else {
+                        val supabaseKey = fetchOrProvisionApiKeyFromPlatformSupabase(
+                            merchantId = merchantId,
+                            merchantName = merchantName,
+                            token = token,
+                            forceRegenerate = false
+                        )
+                        if (supabaseKey != null) {
+                            fetchedKey = supabaseKey.first
+                            fetchedPreview = supabaseKey.second
+                        }
                     }
                 }
 
@@ -944,15 +1112,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     if (keyChanged && hostedFormsList.value.isNotEmpty()) {
                         syncAllCachedFormsToVps()
                     }
-                } else if (_merchantApiKey.value.isBlank()) {
-                    val cached = securityPrefs.getString("merchant_api_key", "") ?: ""
-                    if (cached.isNotBlank()) {
-                        _merchantApiKey.value = cached
-                        _merchantApiKeyPreview.value = securityPrefs.getString("merchant_api_key_preview", "") ?: (cached.take(14) + "****")
-                    }
                 }
             } catch (e: Exception) {
                 Log.w("AppViewModel", "fetchMerchantApiKey failed: ${e.message}")
+            } finally {
+                if (shouldShowLoading) _isGeneratingApiKey.value = false
             }
         }
     }
@@ -962,49 +1126,74 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _isGeneratingApiKey.value = true
             try {
                 val merchantId = _activeProfile.value.id.ifBlank { installationId }
+                val merchantName = _activeProfile.value.businessName.ifBlank { "Merchant" }
                 val payload = JSONObject().apply {
                     put("merchant_id", merchantId)
-                    put("merchant_name", _activeProfile.value.businessName.ifBlank { "Merchant" })
+                    put("merchant_name", merchantName)
                     put("label", "Mobile App Regenerated Key")
                 }
-                val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val payloadStr = payload.toString()
+                val mediaType = "application/json; charset=utf-8".toMediaType()
                 val candidateBases = listOf("https://api.swapnopay.top", "https://swapnopay.top", "https://pay.swapnopay.top")
+                val candidatePaths = listOf(
+                    "/v1/merchant/keys/regenerate",
+                    "/v1/admin/keys/regenerate",
+                    "/v1/developer/keys/regenerate"
+                )
                 var success = false
                 var resultKey = ""
                 var resultPreview = ""
                 var lastErrMsg = "Failed to regenerate API key"
                 val token = resolvePlatformAuthToken()
 
-                for (backendBase in candidateBases) {
-                    try {
-                        val reqBuilder = Request.Builder().url("$backendBase/v1/admin/keys/regenerate").post(body)
-                        val devId = installationId
-                        if (devId.isNotBlank()) {
-                            reqBuilder.header("x-device-id", devId)
-                            reqBuilder.header("x-merchant-id", merchantId)
-                        }
-                        if (_merchantApiKey.value.isNotBlank()) {
-                            reqBuilder.header("x-api-key", _merchantApiKey.value)
-                        }
-                        if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
-
-                        webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
-                            val bodyStr = response.body?.string()
-                            val json = if (!bodyStr.isNullOrBlank()) JSONObject(bodyStr) else JSONObject()
-                            val ok = (response.isSuccessful || response.code in 200..201) && json.optBoolean("ok", true)
-                            val rawKey = json.optString("api_key", "")
-                            val preview = json.optString("key_preview", "")
-                            if (ok && rawKey.isNotBlank()) {
-                                success = true
-                                resultKey = rawKey
-                                resultPreview = preview.ifBlank { rawKey.take(14) + "****" }
-                            } else {
-                                lastErrMsg = json.optString("error", "HTTP ${response.code}: $lastErrMsg")
+                outerLoop@ for (backendBase in candidateBases) {
+                    for (path in candidatePaths) {
+                        try {
+                            val reqBuilder = Request.Builder()
+                                .url("$backendBase$path")
+                                .post(payloadStr.toRequestBody(mediaType))
+                            val devId = installationId
+                            if (devId.isNotBlank()) {
+                                reqBuilder.header("x-device-id", devId)
+                                reqBuilder.header("x-merchant-id", merchantId)
                             }
+                            if (_merchantApiKey.value.isNotBlank()) {
+                                reqBuilder.header("x-api-key", _merchantApiKey.value)
+                            }
+                            if (token.isNotBlank()) reqBuilder.header("Authorization", "Bearer $token")
+
+                            webShopHttpClient.newCall(reqBuilder.build()).execute().use { response ->
+                                val bodyStr = response.body?.string()
+                                val json = if (!bodyStr.isNullOrBlank()) runCatching { JSONObject(bodyStr) }.getOrNull() ?: JSONObject() else JSONObject()
+                                val ok = (response.isSuccessful || response.code in 200..201) && json.optBoolean("ok", true)
+                                val rawKey = json.optString("api_key", "")
+                                val preview = json.optString("key_preview", "")
+                                if (ok && rawKey.isNotBlank()) {
+                                    success = true
+                                    resultKey = rawKey
+                                    resultPreview = preview.ifBlank { rawKey.take(14) + "****" }
+                                } else {
+                                    lastErrMsg = json.optString("error", "HTTP ${response.code}: $lastErrMsg")
+                                }
+                            }
+                            if (success) break@outerLoop
+                        } catch (netErr: Exception) {
+                            lastErrMsg = netErr.localizedMessage ?: "Network error"
                         }
-                        if (success) break
-                    } catch (netErr: Exception) {
-                        lastErrMsg = netErr.localizedMessage ?: "Network error"
+                    }
+                }
+
+                if (!success || resultKey.isBlank()) {
+                    val fallbackPair = fetchOrProvisionApiKeyFromPlatformSupabase(
+                        merchantId = merchantId,
+                        merchantName = merchantName,
+                        token = token,
+                        forceRegenerate = true
+                    )
+                    if (fallbackPair != null && fallbackPair.first.isNotBlank()) {
+                        success = true
+                        resultKey = fallbackPair.first
+                        resultPreview = fallbackPair.second
                     }
                 }
 
@@ -1015,6 +1204,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         .putString("merchant_api_key", resultKey)
                         .putString("merchant_api_key_preview", resultPreview)
                         .apply()
+                    if (hostedFormsList.value.isNotEmpty()) {
+                        syncAllCachedFormsToVps()
+                    }
                     withContext(Dispatchers.Main) {
                         onResult(true, "Dynamic API Key regenerated successfully!")
                     }
@@ -1706,8 +1898,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val merchantId = _activeProfile.value.id.ifBlank { "default_merchant" }
+                val businessName = _activeProfile.value.businessName
+                val email = _userEmail.value ?: _activeProfile.value.email
+                val phone = _activeProfile.value.phone
+
                 val payload = org.json.JSONObject()
                     .put("merchant_id", merchantId)
+                    .put("business_name", businessName)
+                    .put("email", email)
+                    .put("phone", phone)
                     .put("title", title)
                     .put("category", category)
                     .put("description", description)

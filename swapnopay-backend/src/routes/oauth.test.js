@@ -146,6 +146,40 @@ test('supportService persists and retrieves merchant chat messages, support tick
   assert.ok(feature.id)
   const features = await getFeatureRequests()
   assert.ok(features.some(f => f.id === feature.id))
+
+  const {
+    updateSupportTicket,
+    updateFeatureRequest,
+    listSupportTickets,
+    listFeatureRequests,
+    listChatMessages,
+  } = await import('../services/supportService.js')
+
+  // Verify list all without merchant filter
+  const allTickets = await listSupportTickets(null)
+  assert.ok(allTickets.some(t => t.id === ticket.id))
+
+  const allFeatures = await listFeatureRequests(null)
+  assert.ok(allFeatures.some(f => f.id === feature.id))
+
+  const allChats = await listChatMessages(null)
+  assert.ok(allChats.some(m => m.id === chat.id))
+
+  // Verify admin update on ticket
+  const updatedTicket = await updateSupportTicket(ticket.id, {
+    status: 'RESOLVED',
+    admin_reply: 'Issue resolved by SwapnoPay engineering',
+  })
+  assert.equal(updatedTicket.status, 'RESOLVED')
+  assert.equal(updatedTicket.admin_reply, 'Issue resolved by SwapnoPay engineering')
+
+  // Verify admin update on feature request
+  const updatedFeature = await updateFeatureRequest(feature.id, {
+    status: 'PLANNED',
+    admin_notes: 'Scheduled for next release milestone',
+  })
+  assert.equal(updatedFeature.status, 'PLANNED')
+  assert.equal(updatedFeature.admin_notes, 'Scheduled for next release milestone')
 })
 
 test('getOAuthCredentials provides valid non-empty clientId, clientSecret, and redirectUri even when env vars are unset', async () => {

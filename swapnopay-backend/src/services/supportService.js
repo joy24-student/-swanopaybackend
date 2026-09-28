@@ -156,7 +156,7 @@ export async function saveSupportTicket({
   }
 
   loadStoreFromDisk()
-  const record = {
+  const dbRecord = {
     id: crypto.randomUUID(),
     merchant_id: String(merchant_id).trim(),
     business_name: String(business_name || 'My Business').trim(),
@@ -167,7 +167,7 @@ export async function saveSupportTicket({
     description: description.trim(),
     status: String(status || 'OPEN').toUpperCase(),
     admin_reply: null,
-    replied_at: null,
+    resolved_at: null,
     created_at,
     updated_at: created_at,
   }
@@ -177,13 +177,18 @@ export async function saveSupportTicket({
     try {
       const { data, error } = await admin
         .from('support_tickets')
-        .insert(record)
+        .insert(dbRecord)
         .select('*')
         .single()
       if (!error && data) {
-        Object.assign(record, data)
+        Object.assign(dbRecord, data)
       }
     } catch (_) {}
+  }
+
+  const record = {
+    ...dbRecord,
+    replied_at: dbRecord.resolved_at || null,
   }
 
   memoryStore.tickets = [
@@ -192,6 +197,52 @@ export async function saveSupportTicket({
   ].slice(0, 1000)
   saveStoreToDisk()
   return record
+}
+
+export async function updateSupportTicket(ticketId, updates = {}) {
+  if (!ticketId) throw new Error('Ticket ID is required')
+  loadStoreFromDisk()
+
+  const nowIso = new Date().toISOString()
+  const cleanUpdates = {
+    ...(updates.status ? { status: String(updates.status).toUpperCase() } : {}),
+    ...(updates.admin_reply !== undefined ? { admin_reply: updates.admin_reply } : {}),
+    ...(updates.resolved_at !== undefined
+      ? { resolved_at: updates.resolved_at }
+      : updates.status === 'RESOLVED' || updates.status === 'CLOSED'
+      ? { resolved_at: nowIso }
+      : {}),
+    updated_at: nowIso,
+  }
+
+  let updatedRecord = null
+  const idx = memoryStore.tickets.findIndex((t) => t.id === ticketId)
+  if (idx >= 0) {
+    memoryStore.tickets[idx] = {
+      ...memoryStore.tickets[idx],
+      ...cleanUpdates,
+      replied_at: cleanUpdates.resolved_at || memoryStore.tickets[idx].replied_at || nowIso,
+    }
+    updatedRecord = memoryStore.tickets[idx]
+    saveStoreToDisk()
+  }
+
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('support_tickets')
+        .update(cleanUpdates)
+        .eq('id', ticketId)
+        .select('*')
+        .maybeSingle()
+      if (!error && data) {
+        updatedRecord = { ...(updatedRecord || {}), ...data }
+      }
+    } catch (_) {}
+  }
+
+  return updatedRecord || { id: ticketId, ...cleanUpdates }
 }
 
 export async function getSupportTickets(merchantId = null, limit = 100) {
@@ -217,7 +268,7 @@ export async function getSupportTickets(merchantId = null, limit = 100) {
     ? memoryStore.tickets.filter((t) => t.merchant_id === String(merchantId).trim())
     : memoryStore.tickets
 
-  return mergeById(dbTickets, localTickets)
+  return mergeById(localTickets, dbTickets)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .slice(0, limit)
 }
@@ -226,11 +277,12 @@ export async function saveFeatureRequest({
   merchant_id,
   business_name = 'My Business',
   email = null,
+  phone = null,
   category = 'GENERAL',
   priority = 'MEDIUM',
   title,
   description,
-  status = 'UNDER_REVIEW',
+  status = 'PENDING',
   created_at = new Date().toISOString(),
 } = {}) {
   if (!merchant_id) throw new Error('merchant_id is required')
@@ -239,18 +291,18 @@ export async function saveFeatureRequest({
   }
 
   loadStoreFromDisk()
-  const record = {
+  const dbRecord = {
     id: crypto.randomUUID(),
     merchant_id: String(merchant_id).trim(),
     business_name: String(business_name || 'My Business').trim(),
     email: email || null,
+    phone: phone || null,
     category: String(category || 'GENERAL').toUpperCase(),
     priority: String(priority || 'MEDIUM').toUpperCase(),
     title: title.trim(),
     description: description.trim(),
-    status: String(status || 'UNDER_REVIEW').toUpperCase(),
+    status: String(status || 'PENDING').toUpperCase(),
     admin_notes: null,
-    upvotes: 1,
     created_at,
     updated_at: created_at,
   }
@@ -260,13 +312,18 @@ export async function saveFeatureRequest({
     try {
       const { data, error } = await admin
         .from('feature_requests')
-        .insert(record)
+        .insert(dbRecord)
         .select('*')
         .single()
       if (!error && data) {
-        Object.assign(record, data)
+        Object.assign(dbRecord, data)
       }
     } catch (_) {}
+  }
+
+  const record = {
+    ...dbRecord,
+    upvotes: 1,
   }
 
   memoryStore.features = [
@@ -275,6 +332,47 @@ export async function saveFeatureRequest({
   ].slice(0, 1000)
   saveStoreToDisk()
   return record
+}
+
+export async function updateFeatureRequest(featureId, updates = {}) {
+  if (!featureId) throw new Error('Feature request ID is required')
+  loadStoreFromDisk()
+
+  const nowIso = new Date().toISOString()
+  const cleanUpdates = {
+    ...(updates.status ? { status: String(updates.status).toUpperCase() } : {}),
+    ...(updates.admin_notes !== undefined ? { admin_notes: updates.admin_notes } : {}),
+    ...(updates.priority ? { priority: String(updates.priority).toUpperCase() } : {}),
+    updated_at: nowIso,
+  }
+
+  let updatedRecord = null
+  const idx = memoryStore.features.findIndex((f) => f.id === featureId)
+  if (idx >= 0) {
+    memoryStore.features[idx] = {
+      ...memoryStore.features[idx],
+      ...cleanUpdates,
+    }
+    updatedRecord = memoryStore.features[idx]
+    saveStoreToDisk()
+  }
+
+  const admin = tryGetAdmin()
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from('feature_requests')
+        .update(cleanUpdates)
+        .eq('id', featureId)
+        .select('*')
+        .maybeSingle()
+      if (!error && data) {
+        updatedRecord = { ...(updatedRecord || {}), ...data }
+      }
+    } catch (_) {}
+  }
+
+  return updatedRecord || { id: featureId, ...cleanUpdates }
 }
 
 export async function getFeatureRequests(merchantId = null, limit = 100) {
@@ -300,7 +398,12 @@ export async function getFeatureRequests(merchantId = null, limit = 100) {
     ? memoryStore.features.filter((f) => f.merchant_id === String(merchantId).trim())
     : memoryStore.features
 
-  return mergeById(dbFeatures, localFeatures)
+  return mergeById(localFeatures, dbFeatures)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .slice(0, limit)
 }
+
+export const listSupportTickets = getSupportTickets
+export const listFeatureRequests = getFeatureRequests
+export const listChatMessages = getChatMessages
+

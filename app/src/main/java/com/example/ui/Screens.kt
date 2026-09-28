@@ -2079,24 +2079,38 @@ fun OnboardingScreen(viewModel: AppViewModel) {
 
     var businessNameInput by remember { mutableStateOf("") }
     var supportPhoneInput by remember { mutableStateOf("") }
+    var hasUserEditedBusinessName by remember { mutableStateOf(false) }
+    var hasUserEditedPhone by remember { mutableStateOf(false) }
 
     LaunchedEffect(vmBusinessName, vmPhone, activeProfile.businessName, activeProfile.phone) {
-        val candidateName = when {
-            vmBusinessName.isNotBlank() -> vmBusinessName
-            activeProfile.businessName.isNotBlank() && activeProfile.businessName != "Demo Store" -> activeProfile.businessName
-            else -> ""
-        }
-        if (businessNameInput != candidateName) {
-            businessNameInput = candidateName
+        if (!hasUserEditedBusinessName && businessNameInput.isEmpty()) {
+            val isDefaultPlaceholder = { name: String ->
+                name.trim().matches(
+                    Regex(
+                        "^(my store|my business|google user|facebook user|demo store|business setup required|swapnopay merchant|my shop bd)$",
+                        RegexOption.IGNORE_CASE
+                    )
+                )
+            }
+            val candidateName = when {
+                vmBusinessName.isNotBlank() && !isDefaultPlaceholder(vmBusinessName) -> vmBusinessName
+                activeProfile.businessName.isNotBlank() && !isDefaultPlaceholder(activeProfile.businessName) -> activeProfile.businessName
+                else -> ""
+            }
+            if (candidateName.isNotBlank()) {
+                businessNameInput = candidateName
+            }
         }
 
-        val candidatePhone = when {
-            vmPhone.isNotBlank() -> vmPhone
-            activeProfile.phone.isNotBlank() -> activeProfile.phone
-            else -> ""
-        }
-        if (supportPhoneInput != candidatePhone) {
-            supportPhoneInput = candidatePhone
+        if (!hasUserEditedPhone && supportPhoneInput.isEmpty()) {
+            val candidatePhone = when {
+                vmPhone.isNotBlank() -> vmPhone
+                activeProfile.phone.isNotBlank() -> activeProfile.phone
+                else -> ""
+            }
+            if (candidatePhone.isNotBlank()) {
+                supportPhoneInput = candidatePhone
+            }
         }
     }
     
@@ -3502,6 +3516,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                 OutlinedTextField(
                                     value = businessNameInput,
                                     onValueChange = {
+                                        hasUserEditedBusinessName = true
                                         businessNameInput = it
                                         viewModel.setOnboardingBusinessName(it)
                                     },
@@ -3525,6 +3540,7 @@ fun OnboardingScreen(viewModel: AppViewModel) {
                                 OutlinedTextField(
                                     value = supportPhoneInput,
                                     onValueChange = {
+                                        hasUserEditedPhone = true
                                         supportPhoneInput = it
                                         viewModel.setOnboardingPhone(it)
                                     },
@@ -14425,13 +14441,6 @@ fun BusinessProfileScreen(viewModel: AppViewModel) {
                     }
                 }
 
-                OutlinedTextField(
-                    value = editPhotoUrl,
-                    onValueChange = { editPhotoUrl = it },
-                    label = { Text("Merchant Photo URL") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
@@ -16041,7 +16050,11 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                             border = BorderStroke(0.8.dp, if (merchantApiKey.isNotBlank()) greenColor.copy(alpha = 0.4f) else goldColor.copy(alpha = 0.4f))
                         ) {
                             Text(
-                                text = if (merchantApiKey.isNotBlank()) (if (isBangla) "সক্রিয় ও যাচাইকৃত" else "Active & Verified") else (if (isBangla) "জেনারেট হচ্ছে..." else "Auto-Generating..."),
+                                text = when {
+                                    merchantApiKey.isNotBlank() -> if (isBangla) "সক্রিয় ও যাচাইকৃত" else "Active & Verified"
+                                    isGeneratingApiKey -> if (isBangla) "জেনারেট হচ্ছে..." else "Auto-Generating..."
+                                    else -> if (isBangla) "প্রস্তুত নয়" else "Tap to Generate"
+                                },
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (merchantApiKey.isNotBlank()) greenColor else goldColor,
@@ -16150,7 +16163,8 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
 
                             val displayKey = when {
                                 merchantApiKey.isNotBlank() -> if (isKeyRevealed) merchantApiKey else merchantApiKeyPreview.ifBlank { merchantApiKey.take(12) + "••••••••••••" }
-                                else -> if (isBangla) "নিরাপদ কী তৈরি হচ্ছে..." else "Generating secure key..."
+                                isGeneratingApiKey -> if (isBangla) "নিরাপদ কী তৈরি হচ্ছে..." else "Generating secure key..."
+                                else -> if (isBangla) "নতুন তৈরি বাটনে ট্যাপ করুন" else "Tap Regenerate to create key"
                             }
 
                             Surface(

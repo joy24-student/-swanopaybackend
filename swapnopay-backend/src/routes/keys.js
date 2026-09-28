@@ -23,7 +23,7 @@ const router = Router()
 
 function requireKeyManagementAuth(req, res, next) {
   return requireMerchantOrAdminAuth(req, res, () => {
-    if (req.isAdmin || req.authMethod === 'supabase') return next()
+    if (req.isAdmin || req.authMethod === 'supabase' || req.authMethod === 'api_key') return next()
     return res.status(403).json({ error: 'API key management requires an authenticated account session' })
   })
 }
@@ -41,7 +41,7 @@ router.post('/generate', requireKeyManagementAuth, async (req, res) => {
   }
 
   // Non-admins can only generate keys for their own merchant_id
-  if (!req.isAdmin && req.merchantUser && req.merchantUser.id !== merchant_id) {
+  if (!req.isAdmin && req.merchantUser && req.merchantUser.id !== merchant_id && req.merchantUser.userId !== merchant_id) {
     return res.status(403).json({ error: 'Cannot generate keys for another merchant' })
   }
 
@@ -251,7 +251,8 @@ router.get('/', requireKeyManagementAuth, async (req, res) => {
     let keys = await listApiKeyRecords()
 
     const authenticatedMerchantId = !req.isAdmin ? req.merchantUser?.id : null
-    if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId) {
+    const authenticatedUserId = !req.isAdmin ? req.merchantUser?.userId : null
+    if (!req.isAdmin && req.query.merchant_id && req.query.merchant_id !== authenticatedMerchantId && req.query.merchant_id !== authenticatedUserId) {
       return res.status(403).json({ ok: false, error: 'Cannot list another merchant\'s API keys' })
     }
     const targetMerchantId = req.isAdmin ? req.query.merchant_id : authenticatedMerchantId

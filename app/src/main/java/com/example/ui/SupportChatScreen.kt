@@ -1,8 +1,15 @@
 package com.example.ui
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +35,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -38,7 +47,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,6 +68,20 @@ private val TimestampMuted = Color(0xFF94A3B8)
 private val OnlineGreen = Color(0xFF22C55E)
 private val IconDarkColor = Color(0xFF1E293B)
 private val IconMutedColor = Color(0xFF64748B)
+
+private fun resolveUriDisplayName(context: Context, uri: Uri, fallbackPrefix: String): String {
+    runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIdx >= 0 && cursor.moveToFirst()) {
+                val name = cursor.getString(nameIdx)
+                if (!name.isNullOrBlank()) return name
+            }
+        }
+    }
+    val seg = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
+    return if (!seg.isNullOrBlank()) seg else "${fallbackPrefix}_${System.currentTimeMillis() % 100000}"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +103,126 @@ fun SupportChatScreen(viewModel: AppViewModel) {
     var showFaqModal by remember { mutableStateOf(false) }
     var showAttachmentModal by remember { mutableStateOf(false) }
 
+    // Pending attachment state before sending
+    var pendingAttachmentUri by remember { mutableStateOf("") }
+    var pendingAttachmentName by remember { mutableStateOf("") }
+    var pendingAttachmentType by remember { mutableStateOf("") } // "IMAGE" or "FILE"
+    var pendingAttachmentBase64 by remember { mutableStateOf("") }
+    var previewImageMessage by remember { mutableStateOf<AppViewModel.SupportChatMessage?>(null) }
+
+    fun clearPendingAttachment() {
+        pendingAttachmentUri = ""
+        pendingAttachmentName = ""
+        pendingAttachmentType = ""
+        pendingAttachmentBase64 = ""
+    }
+
+    fun handlePickedImageUri(uri: Uri) {
+        try {
+            val displayName = resolveUriDisplayName(context, uri, "Photo").let {
+                if (it.contains('.')) it else "$it.jpg"
+            }
+            val dir = File(context.filesDir, "support_attachments").apply { mkdirs() }
+            val safeFileName = "${System.currentTimeMillis()}_${displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")}"
+            val destFile = File(dir, safeFileName)
+
+            val rawBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (rawBytes == null || rawBytes.isEmpty()) {
+                Toast.makeText(context, "Could not read selected photo", Toast.LENGTH_SHORT).show()
+                return
+            }
+            FileOutputStream(destFile).use { it.write(rawBytes) }
+
+            val decoded = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+            if (decoded != null) {
+                val maxDim = 900
+                val ratio = minOf(maxDim.toFloat() / decoded.width, maxDim.toFloat() / decoded.height, 1f)
+                val scaled = if (ratio < 1f) {
+                    Bitmap.createScaledBitmap(
+                        decoded,
+                        (decoded.width * ratio).toInt().coerceAtLeast(1),
+                        (decoded.height * ratio).toInt().coerceAtLeast(1),
+                        true
+                    )
+                } else decoded
+                val baos = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.JPEG, 75, baos)
+                pendingAttachmentBase64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+            } else {
+                pendingAttachmentBase64 = ""
+            }
+
+            pendingAttachmentUri = destFile.absolutePath
+            pendingAttachmentName = displayName
+            pendingAttachmentType = "IMAGE"
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to attach photo: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val galleryImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            handlePickedImageUri(uri)
+        }
+    }
+
+    val cameraPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bmp: Bitmap? ->
+        if (bmp != null) {
+            try {
+                val fileName = "Camera_${System.currentTimeMillis() % 100000}.jpg"
+                val dir = File(context.filesDir, "support_attachments").apply { mkdirs() }
+                val destFile = File(dir, fileName)
+                val baos = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.JPEG, 82, baos)
+                val bytes = baos.toByteArray()
+                FileOutputStream(destFile).use { it.write(bytes) }
+
+                pendingAttachmentUri = destFile.absolutePath
+                pendingAttachmentName = fileName
+                pendingAttachmentType = "IMAGE"
+                pendingAttachmentBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to capture photo: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val documentFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val mime = context.contentResolver.getType(uri).orEmpty()
+                if (mime.startsWith("image/")) {
+                    handlePickedImageUri(uri)
+                    return@rememberLauncherForActivityResult
+                }
+                val displayName = resolveUriDisplayName(context, uri, "Document")
+                val dir = File(context.filesDir, "support_attachments").apply { mkdirs() }
+                val safeFileName = "${System.currentTimeMillis()}_${displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")}"
+                val destFile = File(dir, safeFileName)
+
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null || bytes.isEmpty()) {
+                    Toast.makeText(context, "Could not read selected file", Toast.LENGTH_SHORT).show()
+                    return@rememberLauncherForActivityResult
+                }
+                FileOutputStream(destFile).use { it.write(bytes) }
+
+                pendingAttachmentUri = destFile.absolutePath
+                pendingAttachmentName = displayName
+                pendingAttachmentType = "FILE"
+                pendingAttachmentBase64 = ""
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to attach file: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     val listState = rememberLazyListState()
 
     // Real-time live chat polling: continuously syncs with Admin Helpdesk & Tickets
@@ -83,8 +231,8 @@ fun SupportChatScreen(viewModel: AppViewModel) {
         viewModel.listenToMerchantSupportTickets()
     }
 
-    // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(chatList.size) {
+    // Auto-scroll to bottom when new messages arrive or session changes
+    LaunchedEffect(chatList.size, currentSessionId) {
         if (chatList.isNotEmpty()) {
             listState.animateScrollToItem(chatList.size - 1)
         }
@@ -104,11 +252,27 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                 ChatBottomInputBar(
                     chatInput = chatInput,
                     onInputChange = { chatInput = it },
+                    pendingAttachmentUri = pendingAttachmentUri,
+                    pendingAttachmentName = pendingAttachmentName,
+                    pendingAttachmentType = pendingAttachmentType,
+                    pendingAttachmentBase64 = pendingAttachmentBase64,
+                    onClearAttachment = { clearPendingAttachment() },
                     onSend = {
-                        if (chatInput.isNotBlank()) {
+                        if (chatInput.isNotBlank() || pendingAttachmentName.isNotBlank()) {
                             val msg = chatInput
+                            val attUri = pendingAttachmentUri
+                            val attName = pendingAttachmentName
+                            val attType = pendingAttachmentType
+                            val attB64 = pendingAttachmentBase64
                             chatInput = ""
-                            viewModel.sendSupportChatMessage(msg)
+                            clearPendingAttachment()
+                            viewModel.sendSupportChatMessage(
+                                messageText = msg,
+                                attachmentUri = attUri,
+                                attachmentName = attName,
+                                attachmentType = attType,
+                                attachmentBase64 = attB64
+                            )
                         }
                     },
                     onAttachClick = { showAttachmentModal = true },
@@ -161,7 +325,7 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Send a message below to chat with our 24/7 support specialist.",
+                                text = "Send a message, photo, or file below to chat with our 24/7 support specialist.",
                                 fontSize = 13.sp,
                                 color = if (isDark) Color(0xFF94A3B8) else TextMutedSecondary,
                                 textAlign = TextAlign.Center,
@@ -184,8 +348,33 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                                 message = message,
                                 userInitial = activeProfile.businessName.ifBlank { "You" }.take(1).uppercase(Locale.getDefault()),
                                 onCopy = { text ->
-                                    clipboardManager.setText(AnnotatedString(text))
-                                    Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
+                                    if (text.isNotBlank()) {
+                                        clipboardManager.setText(AnnotatedString(text))
+                                        Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onPreviewImage = { imgMsg ->
+                                    previewImageMessage = imgMsg
+                                },
+                                onOpenFile = { fileMsg ->
+                                    try {
+                                        val file = File(fileMsg.attachmentUri)
+                                        if (file.exists()) {
+                                            val authority = "${context.packageName}.fileprovider"
+                                            val contentUri = runCatching {
+                                                androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+                                            }.getOrElse { Uri.fromFile(file) }
+                                            val openIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(contentUri, "*/*")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(Intent.createChooser(openIntent, "Open ${fileMsg.attachmentName}"))
+                                        } else {
+                                            Toast.makeText(context, "File: ${fileMsg.attachmentName}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Attached file: ${fileMsg.attachmentName}", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 isDark = isDark
                             )
@@ -222,7 +411,7 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                     onNewChat = {
                         viewModel.startNewSupportChatSession()
                         showHistoryDrawer = false
-                        Toast.makeText(context, "New chat started", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "New chat session started", Toast.LENGTH_SHORT).show()
                     },
                     onSelectSession = { sessionId ->
                         viewModel.loadSupportChatSession(sessionId)
@@ -256,7 +445,8 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                         val transcript = if (chatList.isEmpty()) "No messages in conversation"
                         else chatList.joinToString("\n\n") { msg ->
                             val time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(msg.timestamp))
-                            "[${msg.sender} - $time]\n${msg.message}"
+                            val attInfo = if (msg.attachmentName.isNotBlank()) " [Attached: ${msg.attachmentName}]" else ""
+                            "[${msg.sender} - $time]$attInfo\n${msg.message}"
                         }
                         clipboardManager.setText(AnnotatedString(transcript))
                         Toast.makeText(context, "Chat transcript copied to clipboard", Toast.LENGTH_SHORT).show()
@@ -267,6 +457,70 @@ fun SupportChatScreen(viewModel: AppViewModel) {
                         Toast.makeText(context, "Chat cleared", Toast.LENGTH_SHORT).show()
                     }
                 )
+            }
+        }
+    }
+
+    // Full-screen image preview modal when user taps an attached photo
+    previewImageMessage?.let { imgMsg ->
+        Dialog(onDismissRequest = { previewImageMessage = null }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF0F1117))
+                    .padding(12.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = imgMsg.attachmentName.ifBlank { "Attached Photo" },
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { previewImageMessage = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val decodedBitmap = remember(imgMsg.id, imgMsg.attachmentBase64) {
+                        if (imgMsg.attachmentBase64.isNotBlank()) {
+                            runCatching {
+                                val bytes = Base64.decode(imgMsg.attachmentBase64, Base64.DEFAULT)
+                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            }.getOrNull()
+                        } else null
+                    }
+                    if (decodedBitmap != null) {
+                        Image(
+                            bitmap = decodedBitmap.asImageBitmap(),
+                            contentDescription = imgMsg.attachmentName,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 460.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    } else if (imgMsg.attachmentUri.isNotBlank()) {
+                        AsyncImage(
+                            model = File(imgMsg.attachmentUri),
+                            contentDescription = imgMsg.attachmentName,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 460.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                }
             }
         }
     }
@@ -284,12 +538,23 @@ fun SupportChatScreen(viewModel: AppViewModel) {
         )
     }
 
-    // Attachment dialog
+    // Attachment selector dialog (Gallery Photo, Camera, or File/Document)
     if (showAttachmentModal) {
         AttachmentSelectorModal(
-            onSelectAttachment = { type ->
+            onPickGalleryPhoto = {
                 showAttachmentModal = false
-                viewModel.sendSupportChatMessage("[Attached $type]")
+                viewModel.isExternalActivityExpected = true
+                galleryImageLauncher.launch("image/*")
+            },
+            onTakeCameraPhoto = {
+                showAttachmentModal = false
+                viewModel.isExternalActivityExpected = true
+                cameraPhotoLauncher.launch(null)
+            },
+            onPickDocumentFile = {
+                showAttachmentModal = false
+                viewModel.isExternalActivityExpected = true
+                documentFileLauncher.launch("*/*")
             },
             onDismiss = { showAttachmentModal = false },
             isDark = isDark
@@ -421,12 +686,35 @@ private fun ChatMessageItem(
     message: AppViewModel.SupportChatMessage,
     userInitial: String,
     onCopy: (String) -> Unit,
+    onPreviewImage: (AppViewModel.SupportChatMessage) -> Unit,
+    onOpenFile: (AppViewModel.SupportChatMessage) -> Unit,
     isDark: Boolean
 ) {
     val isUser = message.sender.equals("MERCHANT", ignoreCase = true) || message.sender.equals("USER", ignoreCase = true)
     val timeFormatted = remember(message.timestamp) {
         val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
         sdf.format(Date(message.timestamp))
+    }
+
+    val isImageAttachment = remember(message.id, message.attachmentType, message.attachmentBase64, message.attachmentName) {
+        message.attachmentType.equals("IMAGE", ignoreCase = true) ||
+            message.attachmentBase64.isNotBlank() ||
+            (message.attachmentUri.isNotBlank() && message.attachmentName.lowercase(Locale.getDefault()).let {
+                it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") || it.endsWith(".webp")
+            })
+    }
+
+    val isFileAttachment = remember(message.id, message.attachmentType, message.attachmentName, isImageAttachment) {
+        !isImageAttachment && (message.attachmentType.equals("FILE", ignoreCase = true) || message.attachmentName.isNotBlank())
+    }
+
+    val decodedBitmap = remember(message.id, message.attachmentBase64) {
+        if (message.attachmentBase64.isNotBlank()) {
+            runCatching {
+                val bytes = Base64.decode(message.attachmentBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrNull()
+        } else null
     }
 
     if (isUser) {
@@ -459,15 +747,95 @@ private fun ChatMessageItem(
                                 bottomStart = 16.dp
                             )
                         )
-                        .clickable { onCopy(message.message) }
+                        .clickable {
+                            when {
+                                isImageAttachment -> onPreviewImage(message)
+                                isFileAttachment -> onOpenFile(message)
+                                else -> onCopy(message.message)
+                            }
+                        }
                 ) {
-                    Text(
-                        text = message.message,
-                        color = IconDarkColor,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        if (isImageAttachment) {
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(min = 160.dp, max = 230.dp)
+                                    .heightIn(min = 110.dp, max = 210.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.Black.copy(alpha = 0.08f))
+                                    .clickable { onPreviewImage(message) }
+                            ) {
+                                if (decodedBitmap != null) {
+                                    Image(
+                                        bitmap = decodedBitmap.asImageBitmap(),
+                                        contentDescription = message.attachmentName,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)
+                                    )
+                                } else if (message.attachmentUri.isNotBlank()) {
+                                    AsyncImage(
+                                        model = File(message.attachmentUri),
+                                        contentDescription = message.attachmentName,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)
+                                    )
+                                }
+                            }
+                            if (message.message.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        } else if (isFileAttachment) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.Black.copy(alpha = 0.08f),
+                                modifier = Modifier
+                                    .widthIn(min = 170.dp, max = 240.dp)
+                                    .clickable { onOpenFile(message) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Description,
+                                        contentDescription = null,
+                                        tint = IconDarkColor,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                                        Text(
+                                            text = message.attachmentName.ifBlank { "Attached Document" },
+                                            color = IconDarkColor,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Tap to open file",
+                                            color = IconDarkColor.copy(alpha = 0.7f),
+                                            fontSize = 10.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                            if (message.message.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
+
+                        if (message.message.isNotBlank()) {
+                            Text(
+                                text = message.message,
+                                color = IconDarkColor,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(3.dp))
@@ -558,7 +926,13 @@ private fun ChatMessageItem(
                                 bottomStart = 16.dp
                             )
                         )
-                        .clickable { onCopy(message.message) }
+                        .clickable {
+                            when {
+                                isImageAttachment -> onPreviewImage(message)
+                                isFileAttachment -> onOpenFile(message)
+                                else -> onCopy(message.message)
+                            }
+                        }
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -568,14 +942,85 @@ private fun ChatMessageItem(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) BrandGoldYellow else TextDarkPrimary,
-                            modifier = Modifier.padding(bottom = 2.dp)
+                            modifier = Modifier.padding(bottom = 4.dp)
                         )
-                        Text(
-                            text = message.message,
-                            color = if (isDark) Color.White else TextDarkPrimary,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        )
+
+                        if (isImageAttachment) {
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(min = 160.dp, max = 230.dp)
+                                    .heightIn(min = 110.dp, max = 210.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onPreviewImage(message) }
+                            ) {
+                                if (decodedBitmap != null) {
+                                    Image(
+                                        bitmap = decodedBitmap.asImageBitmap(),
+                                        contentDescription = message.attachmentName,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)
+                                    )
+                                } else if (message.attachmentUri.isNotBlank()) {
+                                    AsyncImage(
+                                        model = File(message.attachmentUri),
+                                        contentDescription = message.attachmentName,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)
+                                    )
+                                }
+                            }
+                            if (message.message.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        } else if (isFileAttachment) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.05f),
+                                modifier = Modifier
+                                    .widthIn(min = 170.dp, max = 240.dp)
+                                    .clickable { onOpenFile(message) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Description,
+                                        contentDescription = null,
+                                        tint = if (isDark) BrandGoldYellow else TextDarkPrimary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                                        Text(
+                                            text = message.attachmentName.ifBlank { "Attached Document" },
+                                            color = if (isDark) Color.White else TextDarkPrimary,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Tap to open file",
+                                            color = if (isDark) Color(0xFF94A3B8) else TextMutedSecondary,
+                                            fontSize = 10.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                            if (message.message.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
+
+                        if (message.message.isNotBlank()) {
+                            Text(
+                                text = message.message,
+                                color = if (isDark) Color.White else TextDarkPrimary,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
                     }
                 }
 
@@ -624,18 +1069,47 @@ private fun ChatHistorySideDrawer(
     var historySearch by remember { mutableStateOf("") }
 
     val allSessions = remember(savedSessions, currentSessionId, currentChatMessages) {
-        val list = savedSessions.toMutableList()
-        if (currentChatMessages.isNotEmpty() && list.none { it.id == currentSessionId }) {
-            val firstMsg = currentChatMessages.firstOrNull { it.sender.equals("MERCHANT", ignoreCase = true) || it.sender.equals("USER", ignoreCase = true) }?.message?.trim()
-                ?: currentChatMessages.firstOrNull()?.message?.trim() ?: "Support Chat"
-            val title = if (firstMsg.length > 45) firstMsg.take(42) + "..." else firstMsg
-            list.add(0, AppViewModel.SupportChatSession(
-                id = currentSessionId,
-                title = title,
-                timestamp = currentChatMessages.lastOrNull()?.timestamp ?: System.currentTimeMillis(),
-                messages = currentChatMessages,
-                status = "ACTIVE"
-            ))
+        val list = savedSessions.map { session ->
+            if (session.id == currentSessionId && currentChatMessages.isNotEmpty()) {
+                val firstMsgObj = currentChatMessages.firstOrNull {
+                    it.sender.equals("MERCHANT", ignoreCase = true) || it.sender.equals("USER", ignoreCase = true)
+                } ?: currentChatMessages.firstOrNull()
+                val rawTitle = when {
+                    !firstMsgObj?.message.isNullOrBlank() -> firstMsgObj!!.message.trim()
+                    !firstMsgObj?.attachmentName.isNullOrBlank() -> "📎 ${firstMsgObj!!.attachmentName}"
+                    else -> session.title
+                }
+                val title = if (rawTitle.length > 45) rawTitle.take(42) + "..." else rawTitle
+                session.copy(
+                    title = title,
+                    messages = currentChatMessages,
+                    timestamp = currentChatMessages.maxOfOrNull { it.timestamp } ?: session.timestamp
+                )
+            } else {
+                session
+            }
+        }.toMutableList()
+
+        if (list.none { it.id == currentSessionId }) {
+            val firstMsgObj = currentChatMessages.firstOrNull {
+                it.sender.equals("MERCHANT", ignoreCase = true) || it.sender.equals("USER", ignoreCase = true)
+            } ?: currentChatMessages.firstOrNull()
+            val rawTitle = when {
+                !firstMsgObj?.message.isNullOrBlank() -> firstMsgObj!!.message.trim()
+                !firstMsgObj?.attachmentName.isNullOrBlank() -> "📎 ${firstMsgObj!!.attachmentName}"
+                else -> "New Support Chat"
+            }
+            val title = if (rawTitle.length > 45) rawTitle.take(42) + "..." else rawTitle
+            list.add(
+                0,
+                AppViewModel.SupportChatSession(
+                    id = currentSessionId,
+                    title = title,
+                    timestamp = currentChatMessages.lastOrNull()?.timestamp ?: System.currentTimeMillis(),
+                    messages = currentChatMessages,
+                    status = "ACTIVE"
+                )
+            )
         }
         list
     }
@@ -644,7 +1118,10 @@ private fun ChatHistorySideDrawer(
         if (historySearch.isBlank()) allSessions
         else allSessions.filter { session ->
             session.title.contains(historySearch, ignoreCase = true) ||
-                session.messages.any { it.message.contains(historySearch, ignoreCase = true) }
+                session.messages.any {
+                    it.message.contains(historySearch, ignoreCase = true) ||
+                        it.attachmentName.contains(historySearch, ignoreCase = true)
+                }
         }
     }
 
@@ -1300,6 +1777,11 @@ private fun DrawerActionCard(
 private fun ChatBottomInputBar(
     chatInput: String,
     onInputChange: (String) -> Unit,
+    pendingAttachmentUri: String,
+    pendingAttachmentName: String,
+    pendingAttachmentType: String,
+    pendingAttachmentBase64: String,
+    onClearAttachment: () -> Unit,
     onSend: () -> Unit,
     onAttachClick: () -> Unit,
     onEmojiClick: () -> Unit,
@@ -1311,13 +1793,95 @@ private fun ChatBottomInputBar(
     val inputTextColor = if (isDark) Color.White else Color(0xFF0F172A)
     val iconTint = if (isDark) Color(0xFF94A3B8) else IconMutedColor
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isDark) Color(0xFF0F1117) else Color.White)
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
+        // Pending Attachment Preview Strip
+        if (pendingAttachmentName.isNotBlank()) {
+            val previewBmp = remember(pendingAttachmentUri, pendingAttachmentBase64) {
+                if (pendingAttachmentBase64.isNotBlank()) {
+                    runCatching {
+                        val bytes = Base64.decode(pendingAttachmentBase64, Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }.getOrNull()
+                } else null
+            }
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = pillBg,
+                border = BorderStroke(1.dp, BrandGoldYellow.copy(alpha = 0.7f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (pendingAttachmentType == "IMAGE" && previewBmp != null) {
+                        Image(
+                            bitmap = previewBmp.asImageBitmap(),
+                            contentDescription = pendingAttachmentName,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(BrandGoldYellow.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (pendingAttachmentType == "IMAGE") Icons.Default.Image else Icons.Default.Description,
+                                contentDescription = null,
+                                tint = if (isDark) BrandGoldYellow else IconDarkColor,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = pendingAttachmentName,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = inputTextColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (pendingAttachmentType == "IMAGE") "Photo attached • Tap Send" else "File attached • Tap Send",
+                            fontSize = 11.sp,
+                            color = BrandGoldAmber
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onClearAttachment,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Remove attachment",
+                            tint = iconTint,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1338,8 +1902,8 @@ private fun ChatBottomInputBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.AttachFile,
-                    contentDescription = "Attach file",
-                    tint = iconTint,
+                    contentDescription = "Attach file or photo",
+                    tint = if (pendingAttachmentName.isNotBlank()) BrandGoldAmber else iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -1353,7 +1917,7 @@ private fun ChatBottomInputBar(
             ) {
                 if (chatInput.isEmpty()) {
                     Text(
-                        text = "Type your message...",
+                        text = if (pendingAttachmentName.isNotBlank()) "Add a caption or tap Send..." else "Type your message...",
                         fontSize = 14.sp,
                         color = hintColor
                     )
@@ -1560,25 +2124,27 @@ private fun FaqViewerModal(
 
 /**
  * Attachment Selector Modal
- * Quick attachments for screenshot, transaction slip, or error log.
+ * Real pickers for Gallery Photos, Camera Capture, and Files/Documents.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AttachmentSelectorModal(
-    onSelectAttachment: (String) -> Unit,
+    onPickGalleryPhoto: () -> Unit,
+    onTakeCameraPhoto: () -> Unit,
+    onPickDocumentFile: () -> Unit,
     onDismiss: () -> Unit,
     isDark: Boolean
 ) {
     val items = listOf(
-        Triple("Payment Receipt Slip", Icons.Default.ReceiptLong, "Send proof of bank/wallet payment"),
-        Triple("App Screenshot", Icons.Default.Image, "Share an issue or error screenshot"),
-        Triple("Transaction Log", Icons.Default.Description, "Share transaction ID and SMS text")
+        Triple("Choose Photo from Gallery", Icons.Default.Image, "Select a screenshot, payment slip, or image") to onPickGalleryPhoto,
+        Triple("Take Photo (Camera)", Icons.Default.PhotoCamera, "Capture a photo or receipt directly") to onTakeCameraPhoto,
+        Triple("Attach File or Document", Icons.Default.Description, "Share PDF, CSV, log, or any document file") to onPickDocumentFile
     )
 
     EnterpriseGestureModal(
         onDismissRequest = onDismiss,
-        title = "Add Attachment",
-        subtitle = "Select an item to share with our support specialist",
+        title = "Send Photo or File",
+        subtitle = "Choose a photo or file to attach to your message",
         icon = Icons.Default.AttachFile
     ) {
         Column(
@@ -1587,7 +2153,8 @@ private fun AttachmentSelectorModal(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items.forEach { (title, icon, subtitle) ->
+            items.forEach { (info, action) ->
+                val (title, icon, subtitle) = info
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
@@ -1597,7 +2164,7 @@ private fun AttachmentSelectorModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSelectAttachment(title) }
+                        .clickable { action() }
                 ) {
                     Row(
                         modifier = Modifier

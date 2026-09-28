@@ -207,7 +207,7 @@ fun StructuredAiMessageBubble(
                                 )
                             }
                             Text(
-                                text = "স্বপ্ন এআই • আপনার বিশ্বস্ত বন্ধু",
+                                text = "স্বপ্ন এআই",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFA855F7)
@@ -255,32 +255,6 @@ fun StructuredAiMessageBubble(
                                         color = Color(0xFFA855F7)
                                     )
                                 }
-                            }
-
-                            // Save to AI Memory
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isDarkMode) Color(0xFF1E293B) else Color(0xFFECFDF5),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val snippet = rawContent
-                                            .replace(Regex("[#*`|_]"), "")
-                                            .lines()
-                                            .map { it.trim() }
-                                            .firstOrNull { it.length > 10 }
-                                            ?.take(140) ?: rawContent.take(140)
-                                        viewModel.addAiMemoryItem(snippet)
-                                        Toast.makeText(context, "🧠 এআই মেমোরিতে সংরক্ষিত হয়েছে!", Toast.LENGTH_SHORT).show()
-                                    }
-                            ) {
-                                Text(
-                                    text = "🧠 মেমোরি",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF10B981),
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                                )
                             }
 
                             // Copy

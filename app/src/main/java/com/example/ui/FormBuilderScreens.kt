@@ -3066,7 +3066,6 @@ private fun ProductShowcaseSettingsEditor(
     // Image Gallery states & launchers
     var isUploadingMainImage by remember { mutableStateOf(false) }
     var isUploadingGalleryImage by remember { mutableStateOf(false) }
-    var newGalleryUrlInput by remember { mutableStateOf("") }
 
     val mainImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -3402,19 +3401,6 @@ private fun ProductShowcaseSettingsEditor(
                     }
                 }
 
-                OutlinedTextField(
-                    value = themeConfig.productImageUrl,
-                    onValueChange = { url ->
-                        val cleanUrl = url.trim()
-                        viewModel.updateFormThemeConfig(themeConfig.copy(productImageUrl = cleanUrl))
-                        viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(imageUrl = cleanUrl))
-                    },
-                    label = { Text("Or paste Main Photo URL (HTTPS)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    singleLine = true
-                )
-
                 HorizontalDivider(color = cardBorder, thickness = 0.8.dp)
 
                 // Multi-Image Gallery List
@@ -3495,40 +3481,10 @@ private fun ProductShowcaseSettingsEditor(
                     }
                 } else {
                     Text(
-                        "No additional gallery photos yet. Tap '+ Upload to Gallery' or paste an image URL below.",
+                        "No additional gallery photos yet. Tap '+ Upload to Gallery' to add photos.",
                         fontSize = 11.5.sp,
                         color = textSecondary
                     )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newGalleryUrlInput,
-                        onValueChange = { newGalleryUrlInput = it },
-                        label = { Text("Paste Gallery Image URL") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                    Button(
-                        onClick = {
-                            if (newGalleryUrlInput.isNotBlank()) {
-                                val updated = (primaryProduct.galleryUrls + newGalleryUrlInput.trim()).distinct()
-                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(galleryUrls = updated))
-                                newGalleryUrlInput = ""
-                                Toast.makeText(context, "Image added to gallery", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = goldPrimary, contentColor = Color.Black),
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        Text("+ Add", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
                 }
             }
         }
@@ -4102,14 +4058,6 @@ private fun AdvancedFieldSettingsEditor(
                         }
                     }
                 }
-
-                OutlinedTextField(
-                    value = field.mediaUrl,
-                    onValueChange = { onUpdate(field.copy(mediaUrl = it.trim())) },
-                    label = { Text("Or paste Image URL", fontSize = 11.5.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
             }
 
             // Product Multi-Image Gallery
@@ -4606,28 +4554,6 @@ private fun FormSettingsTab(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         minLines = 2
-                    )
-
-                    OutlinedTextField(
-                        value = themeConfig.bannerUrl,
-                        onValueChange = { value -> viewModel.updateFormThemeConfig(themeConfig.copy(bannerUrl = value.trim().take(2048))) },
-                        label = { Text("Cover Photo URL (HTTPS)") },
-                        leadingIcon = { Icon(Icons.Outlined.Image, null, tint = goldText) },
-                        supportingText = { Text("Leave blank for no cover image.") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = themeConfig.logoUrl,
-                        onValueChange = { value -> viewModel.updateFormThemeConfig(themeConfig.copy(logoUrl = value.trim().take(2048))) },
-                        label = { Text("Logo URL (HTTPS)") },
-                        leadingIcon = { Icon(Icons.Outlined.Business, null, tint = goldText) },
-                        supportingText = { Text("Shown above the hosted form title.") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
                     )
 
                     // Toggles Row
