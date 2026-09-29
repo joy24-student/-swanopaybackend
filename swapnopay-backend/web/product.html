@@ -1435,6 +1435,16 @@
   const cushionStop1 = document.getElementById('cushionStop1');
   const cushionStop2 = document.getElementById('cushionStop2');
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function formatMoney(amount) {
     const val = Number(amount) || 0;
     return `${currencySymbol}${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1495,51 +1505,47 @@
     formIdentifier = urlParams.get('id') || urlParams.get('slug') || '';
 
     if (!formIdentifier) {
-      const pathMatch = window.location.pathname.match(/\/(?:p|product|item|f|form|forms)\/([^\/?#]+)/i);
+      const pathMatch = window.location.pathname.match(/\/(?:p|product|item|f|form|forms|prc|pr)\/([^\/?#]+)/i);
       if (pathMatch) formIdentifier = pathMatch[1];
     }
 
-    // Default / Demo Showcase if no slug or demo requested
-    const cleanId = (formIdentifier || '').toLowerCase();
-    if (!formIdentifier || cleanId === 'demo' || cleanId === 'aura-pro' || cleanId === 'pay-aura-pro' || cleanId === 'flagship') {
-      renderDefaultFlagshipProduct();
-      return;
-    }
-
-    try {
-      const res = await fetch(`/v1/forms/${encodeURIComponent(formIdentifier)}`);
-      if (res.ok) {
-        const resData = await res.json();
-        if (resData.ok && resData.form) {
-          formConfig = resData.form;
-          renderProduct(formConfig);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('[product] Direct endpoint lookup notice:', err.message);
-    }
-
-    // Production Domain Fallbacks
-    const fallbackHosts = ["https://swapnopay.top", "https://api.swapnopay.top", "https://pay.swapnopay.top"];
-    for (const host of fallbackHosts) {
-      if (!window.location.origin.includes(host.replace('https://', ''))) {
-        try {
-          const res = await fetch(`${host}/v1/forms/${encodeURIComponent(formIdentifier)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.ok && data.form) {
-              formConfig = data.form;
-              renderProduct(formConfig);
-              return;
-            }
+    // Attempt direct API resolution if identifier is present (do not short-circuit demo names without checking API)
+    if (formIdentifier && formIdentifier !== 'demo') {
+      try {
+        const res = await fetch(`/v1/forms/${encodeURIComponent(formIdentifier)}`);
+        if (res.ok) {
+          const resData = await res.json();
+          if (resData.ok && resData.form) {
+            formConfig = resData.form;
+            renderProduct(formConfig);
+            return;
           }
-        } catch (fErr) {}
+        }
+      } catch (err) {
+        console.warn('[product] Direct endpoint lookup notice:', err.message);
+      }
+
+      // Production Domain Fallbacks
+      const fallbackHosts = ["https://swapnopay.top", "https://api.swapnopay.top", "https://pay.swapnopay.top"];
+      for (const host of fallbackHosts) {
+        if (!window.location.origin.includes(host.replace('https://', ''))) {
+          try {
+            const res = await fetch(`${host}/v1/forms/${encodeURIComponent(formIdentifier)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.ok && data.form) {
+                formConfig = data.form;
+                renderProduct(formConfig);
+                return;
+              }
+            }
+          } catch (fErr) {}
+        }
       }
     }
 
     // Fallback: If not found in network, render default Flagship Product showcase gracefully
-    console.warn('[product] Route not found in API. Rendering flagship product showcase.');
+    console.warn('[product] Rendering flagship product showcase.');
     renderDefaultFlagshipProduct();
   }
 
@@ -1556,11 +1562,35 @@
       products: [
         {
           title: 'Aura Pro Wireless Headphones',
+          description: 'Engineered for acoustic depth with bespoke aerospace-grade magnesium dynamics, active noise cancellation, and high-fidelity sound.',
           price: 2490.0,
           salePrice: 3290.0,
           stock: 18,
           sku: 'AURA-PRO-01',
-          category: 'Flagship Audio'
+          category: 'Flagship Audio',
+          product_variants: [
+            { id: 'v1', name: 'Midnight Black', color_hex: '#141518', price: 2490.0, stock: 12 },
+            { id: 'v2', name: 'Sandstone Gold', color_hex: '#e4e0d7', price: 2490.0, stock: 8 },
+            { id: 'v3', name: 'Deep Navy', color_hex: '#283a4f', price: 2490.0, stock: 10 },
+            { id: 'v4', name: 'Graphite Grey', color_hex: '#777b83', price: 2490.0, stock: 6 }
+          ],
+          specifications: [
+            { key: 'Dynamic Drivers', value: 'Custom 40 mm beryllium-coated dynamics for ultra-low distortion' },
+            { key: 'Noise Cancellation', value: 'Hybrid adaptive ANC with 4 external beamforming microphones' },
+            { key: 'Battery Life', value: 'Up to 42 hours continuous battery life (30 hours with ANC enabled)' },
+            { key: 'Audio Codecs', value: 'High-res wireless support: LDAC, aptX Adaptive, AAC, SBC' },
+            { key: 'Charging', value: 'USB-C rapid charge: 5 minutes provides 4 hours of playback' }
+          ],
+          delivery_info: {
+            inside_charge: '60',
+            outside_charge: '120',
+            time_inside: '24-48 Hours',
+            time_outside: '2-4 Business Days',
+            cod_available: true,
+            return_policy: '7 Days Free Replacement Guarantee',
+            warranty: '2-Year Full Manufacturer Warranty',
+            notes: 'Check package in front of delivery person before payment'
+          }
         }
       ],
       theme_config: {
@@ -1571,12 +1601,17 @@
         badgeText: 'Flagship Series',
         wasPrice: 3290.0,
         ratingScore: 4.9,
-        ratingCount: 348,
+        ratingCount: 248,
         brand_name: 'NORTHWAVE',
-        brand_badge: 'PRO'
+        brand_badge: 'PRO',
+        assurances: [
+          { title: 'Fast & Free Delivery', subtitle: 'Complimentary express 2-day delivery across Bangladesh' },
+          { title: '30-Day Risk Free', subtitle: 'Keep only what fits your listening needs' },
+          { title: '2-Year Protection', subtitle: 'Full replacement manufacturer warranty' }
+        ]
       },
       fields: [
-        { id: 'full_name', type: 'NAME', label: 'Customer Full Name', placeholder: 'Recipient\'s full name', isRequired: true },
+        { id: 'full_name', type: 'NAME', label: 'Customer Full Name', placeholder: "Recipient's full name", isRequired: true },
         { id: 'phone', type: 'PHONE', label: 'bKash / Nagad Contact Number', placeholder: '01XXXXXXXXX', isRequired: true },
         { id: 'address', type: 'ADDRESS', label: 'Delivery Street Address', placeholder: 'House, Road, Area, Thana', isRequired: true },
         { id: 'shipping', type: 'SHIPPING', label: 'Delivery Area & Speed', options: ['Standard Courier — 3-5 days (৳60)', 'Express Courier — 24-48 hrs (৳120)', 'Store Pickup — Banani, Dhaka (Free)'], isRequired: true },
@@ -1613,9 +1648,14 @@
       brandLogoSlot.textContent = brandName.charAt(0).toUpperCase();
     }
 
-    if (theme.brand_badge || theme.brandBadge) {
-      brandBadgeText.textContent = theme.brand_badge || theme.brandBadge;
+    const brandBadge = theme.brand_badge || theme.brandBadge || 'PRO';
+    if (brandBadge) {
+      brandBadgeText.textContent = brandBadge;
       brandBadgeText.style.display = 'inline-block';
+    }
+
+    if (theme.hide_header === true || theme.hideHeader === true) {
+      document.querySelector('.brand-bar')?.style.setProperty('display', 'none');
     }
 
     // 2. Product Title & Subtitle
@@ -1628,8 +1668,8 @@
     }
 
     // 3. Category / Eyebrow
-    const category = theme.eyebrow_text || theme.eyebrowText || config.category || 'Acoustic Reference Series';
-    if (category) {
+    const category = theme.eyebrow_text || theme.eyebrowText || config.category || '';
+    if (category && !theme.hide_eyebrow && !theme.hideEyebrow) {
       eyebrowText.textContent = category;
       eyebrowRow.style.display = 'inline-flex';
     } else {
@@ -1637,8 +1677,8 @@
     }
 
     // 4. Badge Tag
-    const bTag = theme.badge_text || theme.badgeText || 'Flagship Series';
-    if (bTag) {
+    const bTag = theme.badge_text || theme.badgeText || '';
+    if (bTag && !theme.hide_price && !theme.hidePrice) {
       badgeTag.textContent = bTag;
       badgeTag.style.display = 'block';
     } else {
@@ -1654,10 +1694,14 @@
 
     // 6. Rating
     const rScore = theme.rating_score || 4.9;
-    const rCount = theme.rating_count || 348;
-    document.getElementById('ratingScore').textContent = rScore;
-    document.getElementById('ratingCount').textContent = `${rCount} verified reviews`;
-    ratingRow.style.display = 'flex';
+    const rCount = theme.rating_count || 248;
+    if (!theme.hide_rating && !theme.hideRating) {
+      document.getElementById('ratingScore').textContent = rScore;
+      document.getElementById('ratingCount').textContent = `${rCount} verified reviews`;
+      ratingRow.style.display = 'flex';
+    } else {
+      ratingRow.style.display = 'none';
+    }
 
     // 7. Product Images & Gallery
     const rawMainImg = config.image_url || theme.product_image_url || firstProduct?.imageUrl || '';
@@ -1678,7 +1722,6 @@
       mainArt.style.display = 'block';
     }
 
-    // Thumbnails: Render images if gallery exists; otherwise render 4 interactive angle presets
     thumbsList.innerHTML = '';
     if (gallery.length > 0) {
       const allImages = mainImg ? [mainImg, ...gallery.filter(g => g !== mainImg)] : gallery;
@@ -1700,11 +1743,10 @@
       });
       thumbsList.style.display = 'grid';
     } else {
-      // 4 Interactive angle previews for vector art
       const anglePresets = [
         { label: 'Front view', rot: 0, scale: 1, bg: '#f5f6f8' },
         { label: 'Perspective view', rot: -12, scale: 1.05, bg: '#edf0f5' },
-        { label: 'Detail acoustic close-up', rot: 0, scale: 1.22, bg: '#f4f1ed' },
+        { label: 'Detail close-up', rot: 0, scale: 1.22, bg: '#f4f1ed' },
         { label: 'Profile side view', rot: 10, scale: 0.95, bg: '#eff1f3' }
       ];
 
@@ -1734,15 +1776,55 @@
       thumbsList.style.display = 'grid';
     }
 
-    // 8. Color Swatches (Dynamic + Primary UI Gradient Switching)
-    const colorVariants = theme.swatches || theme.colorVariants || (firstProduct?.productVariants?.filter(v => String(v.type).toUpperCase() === 'COLOR')) || [
+    // 8. Delivery Info & Charges (Inside / Outside City)
+    const delInfo = firstProduct?.delivery_info || firstProduct?.deliveryInfo || theme?.delivery_info || theme?.deliveryInfo || {};
+    const insideCharge = delInfo.inside_charge || delInfo.insideDhakaCharge || '60';
+    const outsideCharge = delInfo.outside_charge || delInfo.outsideDhakaCharge || '120';
+    const timeInside = delInfo.time_inside || delInfo.deliveryTimeInside || '24-48 Hours';
+    const timeOutside = delInfo.time_outside || delInfo.deliveryTimeOutside || '2-4 Business Days';
+    const codAvailable = (delInfo.cod_available !== false && delInfo.isCodAvailable !== false);
+    const returnPolicy = delInfo.return_policy || delInfo.returnPolicy || '7 Days Free Replacement Guarantee';
+    const warranty = delInfo.warranty || delInfo.warranty || '2-Year Full Manufacturer Warranty';
+    const deliveryNotes = delInfo.notes || 'Check package in front of delivery person before payment';
+
+    // 9. Color Swatches & Variants
+    let rawVariants = null;
+    if (Array.isArray(firstProduct?.product_variants) && firstProduct.product_variants.length > 0) {
+      rawVariants = firstProduct.product_variants;
+    } else if (Array.isArray(firstProduct?.productVariants) && firstProduct.productVariants.length > 0) {
+      rawVariants = firstProduct.productVariants;
+    } else if (Array.isArray(theme.swatches) && theme.swatches.length > 0) {
+      rawVariants = theme.swatches;
+    } else if (Array.isArray(theme.colorVariants) && theme.colorVariants.length > 0) {
+      rawVariants = theme.colorVariants;
+    }
+
+    const defaultColors = [
       { name: 'Midnight Black', hex: '#141518', bodyStart: '#3a3c42', bodyMid: '#141518', bodyEnd: '#08080a', cushionStart: '#4a4c52', cushionEnd: '#212226' },
       { name: 'Sandstone Gold', hex: '#e4e0d7', bodyStart: '#eae6dd', bodyMid: '#cfc8bc', bodyEnd: '#9b9588', cushionStart: '#d8d3c7', cushionEnd: '#b5ad9e' },
       { name: 'Deep Navy', hex: '#283a4f', bodyStart: '#3d5672', bodyMid: '#223348', bodyEnd: '#141f2e', cushionStart: '#46607e', cushionEnd: '#1c2c3d' },
       { name: 'Graphite Grey', hex: '#777b83', bodyStart: '#989ca5', bodyMid: '#686c75', bodyEnd: '#3f4248', cushionStart: '#9da2ad', cushionEnd: '#555861' }
     ];
 
-    if (Array.isArray(colorVariants) && colorVariants.length > 0) {
+    const colorVariants = rawVariants ? rawVariants.map((v, idx) => {
+      const def = defaultColors[idx % defaultColors.length];
+      const hex = v.color_hex || v.colorHex || v.hex || def.hex;
+      return {
+        name: v.name || v.label || `Option ${idx + 1}`,
+        hex: hex,
+        bodyStart: v.bodyStart || hex,
+        bodyMid: v.bodyMid || hex,
+        bodyEnd: v.bodyEnd || '#08080a',
+        cushionStart: v.cushionStart || '#4a4c52',
+        cushionEnd: v.cushionEnd || '#212226',
+        price: (typeof v.price === 'number' && v.price > 0) ? v.price : (parseFloat(v.price) || 0),
+        stock: (typeof v.stock === 'number') ? v.stock : (parseInt(v.stock, 10) || 100),
+        sku: v.sku || '',
+        imageUrl: v.image_url || v.imageUrl || ''
+      };
+    }) : defaultColors;
+
+    if (!theme.hide_swatches && !theme.hideSwatches && Array.isArray(colorVariants) && colorVariants.length > 0) {
       swatchesContainer.innerHTML = '';
       colorVariants.forEach((sw, idx) => {
         const btn = document.createElement('button');
@@ -1755,6 +1837,9 @@
         if (idx === 0) {
           selectedColor = name;
           colorName.textContent = selectedColor;
+          if (sw.price && sw.price > 0) {
+            basePrice = sw.price;
+          }
         }
 
         btn.addEventListener('click', () => {
@@ -1763,12 +1848,36 @@
           selectedColor = name;
           colorName.textContent = selectedColor;
 
+          if (sw.price && sw.price > 0) {
+            basePrice = sw.price;
+            calculateTotal();
+          }
+
+          if (typeof sw.stock === 'number') {
+            maxStock = sw.stock;
+            if (maxStock <= 0) {
+              stockStatusText.textContent = 'Out of Stock';
+              stockStatusText.style.color = '#dc2626';
+              desktopBuyBtn.disabled = true;
+              mobileBuyBtn.disabled = true;
+            } else if (maxStock < 10) {
+              stockStatusText.textContent = `Only ${maxStock} left in stock · Order soon`;
+              stockStatusText.style.color = '#f59e0b';
+              desktopBuyBtn.disabled = false;
+              mobileBuyBtn.disabled = false;
+            } else {
+              stockStatusText.textContent = 'In Stock · Ready for Delivery';
+              stockStatusText.style.color = '#10b981';
+              desktopBuyBtn.disabled = false;
+              mobileBuyBtn.disabled = false;
+            }
+          }
+
           if (sw.imageUrl) {
             mainProductImage.src = sw.imageUrl;
             mainProductImage.style.display = 'block';
             mainArt.style.display = 'none';
           } else {
-            // Apply gradient stops smoothly
             if (gradStop1) {
               const bStart = sw.bodyStart || hex;
               const bMid = sw.bodyMid || hex;
@@ -1794,36 +1903,38 @@
       swatchesSection.style.display = 'none';
     }
 
-    // 9. Size / Profile Chips
-    const sizeVariants = theme.chips || theme.sizeVariants || firstProduct?.variants || [
-      'Standard Profile', 'Extra Cushion (+12mm)', 'Slim Fit'
-    ];
-    if (Array.isArray(sizeVariants) && sizeVariants.length > 0) {
-      chipsContainer.innerHTML = '';
-      sizeVariants.forEach((chip, idx) => {
-        const label = typeof chip === 'string' ? chip : (chip.name || chip.label || '');
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `chip ${idx === 0 ? 'active' : ''}`;
-        btn.textContent = label;
-        if (idx === 0) {
-          selectedVariant = label;
-          fitSelected.textContent = selectedVariant;
-        }
-        btn.addEventListener('click', () => {
-          chipsContainer.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-          btn.classList.add('active');
-          selectedVariant = label;
-          fitSelected.textContent = selectedVariant;
-        });
-        chipsContainer.appendChild(btn);
-      });
-      chipsSection.style.display = 'block';
-    } else {
+    // 10. Size / Profile Chips
+    if (theme.hide_chips === true || theme.hideChips === true) {
       chipsSection.style.display = 'none';
+    } else {
+      const sizeVariants = theme.chips || theme.sizeVariants || firstProduct?.variants || null;
+      if (Array.isArray(sizeVariants) && sizeVariants.length > 0) {
+        chipsContainer.innerHTML = '';
+        sizeVariants.forEach((chip, idx) => {
+          const label = typeof chip === 'string' ? chip : (chip.name || chip.label || '');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `chip ${idx === 0 ? 'active' : ''}`;
+          btn.textContent = label;
+          if (idx === 0) {
+            selectedVariant = label;
+            fitSelected.textContent = selectedVariant;
+          }
+          btn.addEventListener('click', () => {
+            chipsContainer.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            selectedVariant = label;
+            fitSelected.textContent = selectedVariant;
+          });
+          chipsContainer.appendChild(btn);
+        });
+        chipsSection.style.display = 'block';
+      } else {
+        chipsSection.style.display = 'none';
+      }
     }
 
-    // 10. Stock Status
+    // 11. Stock Status
     if (firstProduct && typeof firstProduct.stock === 'number') {
       maxStock = firstProduct.stock;
       if (maxStock <= 0) {
@@ -1834,14 +1945,18 @@
         desktopBuyLabel.textContent = 'Sold Out';
       } else if (maxStock < 10) {
         stockStatusText.textContent = `Only ${maxStock} left in stock · Order soon`;
+        stockStatusText.style.color = '#f59e0b';
+      } else {
+        stockStatusText.textContent = 'In Stock · Ready for Delivery';
+        stockStatusText.style.color = '#10b981';
       }
     }
 
-    // 11. Dynamic Custom Form Fields
+    // 12. Dynamic Custom Form Fields (with inside/outside delivery charges)
     currentFields = config.fields || (config.pages && config.pages[0]?.fields) || [];
-    renderDynamicFormFields(currentFields);
+    renderDynamicFormFields(currentFields, insideCharge, outsideCharge, timeInside, timeOutside);
 
-    // 12. Promo Codes / Coupons
+    // 13. Promo Codes / Coupons
     const coupons = theme.coupons || theme.coupon_codes || [];
     if (Array.isArray(coupons) && coupons.length > 0) {
       coupons.forEach(c => {
@@ -1863,87 +1978,135 @@
       });
     }
 
-    // 13. Trust Assurances
-    const assurances = (Array.isArray(theme.assurances) && theme.assurances.length > 0) ? theme.assurances : [
-      { title: 'Fast & Free Delivery', subtitle: 'Complimentary express 2-day delivery across Bangladesh' },
-      { title: '30-Day Risk Free', subtitle: 'Keep only what fits your listening needs' },
-      { title: '2-Year Protection', subtitle: 'Full replacement manufacturer warranty' }
-    ];
+    // 14. Trust Assurances
+    if (theme.hide_assurances === true || theme.hideAssurances === true) {
+      assuranceGrid.style.display = 'none';
+    } else {
+      const assurances = (Array.isArray(theme.assurances) && theme.assurances.length > 0)
+        ? theme.assurances
+        : [
+          { title: 'Fast & Free Delivery', subtitle: `Complimentary express ${timeInside} delivery across Bangladesh` },
+          { title: codAvailable ? '30-Day Risk Free' : 'Hassle-Free Guarantee', subtitle: returnPolicy },
+          { title: warranty, subtitle: 'Full manufacturer warranty protection' }
+        ];
 
-    assuranceGrid.innerHTML = '';
-    assurances.forEach(a => {
-      const card = document.createElement('div');
-      card.className = 'assurance-card';
-      card.innerHTML = `
-        <strong>${a.title || 'Guaranteed'}</strong>
-        <span>${a.subtitle || ''}</span>
-      `;
-      assuranceGrid.appendChild(card);
-    });
-    assuranceGrid.style.display = 'grid';
+      assuranceGrid.innerHTML = '';
+      assurances.forEach(a => {
+        const card = document.createElement('div');
+        card.className = 'assurance-card';
+        card.innerHTML = `
+          <strong>${escapeHtml(a.title || 'Guaranteed')}</strong>
+          <span>${escapeHtml(a.subtitle || '')}</span>
+        `;
+        assuranceGrid.appendChild(card);
+      });
+      assuranceGrid.style.display = 'grid';
+    }
 
-    // 14. Specifications Accordion
-    const specs = (Array.isArray(theme.accordion_details) && theme.accordion_details.length > 0)
-      ? theme.accordion_details
-      : (Array.isArray(theme.specifications) && theme.specifications.length > 0 ? theme.specifications : [
-        {
-          title: 'Acoustic Specifications',
-          content: '<ul><li>Custom 40 mm beryllium-coated dynamic drivers for ultra-low distortion</li><li>Hybrid adaptive noise cancellation with 4 external beamforming microphones</li><li>Up to 42 hours continuous battery life (30 hours with ANC enabled)</li><li>High-res wireless audio codec support: LDAC, aptX Adaptive, AAC, SBC</li><li>USB-C rapid charge: 5 minutes provides 4 hours of playback</li></ul>'
-        },
-        {
-          title: 'Delivery & Complimentary Returns',
-          content: 'Every order is dispatched securely within 24 hours. Enjoy complimentary returns or size/fit exchanges within 30 days of receiving your item.'
-        },
-        {
-          title: 'What is Included',
-          content: 'Aura Pro wireless headphones, ballistic nylon hard travel case, braided 1.2m USB-C audio charging cable, 3.5mm gold-plated auxiliary cord, and quick setup guide.'
+    // 15. Specifications & Details Accordions
+    if (theme.hide_details === true || theme.hideDetails === true) {
+      detailsList.style.display = 'none';
+    } else {
+      let specs = [];
+      if (Array.isArray(theme.accordion_details) && theme.accordion_details.length > 0) {
+        specs = theme.accordion_details;
+      } else {
+        const rawSpecs = (Array.isArray(firstProduct?.specifications) && firstProduct.specifications.length > 0)
+          ? firstProduct.specifications
+          : (Array.isArray(theme.specifications) && theme.specifications.length > 0 ? theme.specifications : null);
+
+        if (rawSpecs && rawSpecs.length > 0 && !theme.hide_specs && !theme.hideSpecs) {
+          let specTableHtml = '<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.6;">';
+          rawSpecs.forEach((s, sIdx) => {
+            const k = s.key || s.title || `Spec ${sIdx + 1}`;
+            const v = s.value || s.content || s.description || '';
+            specTableHtml += `<tr style="border-bottom:1px solid rgba(0,0,0,0.06);">
+              <td style="padding:6px 0; color:var(--muted); font-weight:600; width:42%;">${escapeHtml(k)}</td>
+              <td style="padding:6px 0; color:var(--ink);">${escapeHtml(v)}</td>
+            </tr>`;
+          });
+          specTableHtml += '</table>';
+          specs.push({
+            title: theme.spec_title || 'Acoustic Specifications',
+            content: specTableHtml
+          });
+        } else if (!theme.hide_specs && !theme.hideSpecs) {
+          specs.push({
+            title: 'Acoustic Specifications',
+            content: '<ul><li>Custom 40 mm beryllium-coated dynamic drivers for ultra-low distortion</li><li>Hybrid adaptive noise cancellation with 4 external beamforming microphones</li><li>Up to 42 hours continuous battery life (30 hours with ANC enabled)</li><li>High-res wireless audio codec support: LDAC, aptX Adaptive, AAC, SBC</li><li>USB-C rapid charge: 5 minutes provides 4 hours of playback</li></ul>'
+          });
         }
-      ]);
 
-    detailsList.innerHTML = '';
-    specs.forEach((item, idx) => {
-      const det = document.createElement('details');
-      if (idx === 0) det.open = true;
-      det.innerHTML = `
-        <summary>${item.title || 'Details'}</summary>
-        <div class="details-content">${item.content || item.description || ''}</div>
-      `;
-      detailsList.appendChild(det);
-    });
-    detailsList.style.display = 'block';
+        if (!theme.hide_delivery && !theme.hideDelivery) {
+          const delHtml = `
+            <div style="line-height:1.7; font-size:13px;">
+              <p style="margin:0 0 6px 0;"><strong>Inside Dhaka / City (${currencySymbol}${insideCharge}):</strong> Express dispatch in ${timeInside}.</p>
+              <p style="margin:0 0 6px 0;"><strong>Outside Dhaka / Nationwide (${currencySymbol}${outsideCharge}):</strong> Standard delivery in ${timeOutside}.</p>
+              <p style="margin:0 0 6px 0;"><strong>Payment Option:</strong> ${codAvailable ? 'Cash on Delivery (COD) is supported nationwide.' : 'Prepayment required before dispatch.'}</p>
+              <p style="margin:0 0 6px 0;"><strong>Return Guarantee:</strong> ${escapeHtml(returnPolicy)}</p>
+              <p style="margin:0 0 6px 0;"><strong>Official Warranty:</strong> ${escapeHtml(warranty)}</p>
+              ${deliveryNotes ? `<p style="margin:8px 0 0 0; padding:8px 10px; background:rgba(0,0,0,0.04); border-left:3px solid var(--ink); border-radius:4px; font-size:12px;"><strong>Notice:</strong> ${escapeHtml(deliveryNotes)}</p>` : ''}
+            </div>
+          `;
+          specs.push({
+            title: 'Delivery & Complimentary Returns',
+            content: delHtml
+          });
+        }
+
+        if (Array.isArray(firstProduct?.custom_sections) && firstProduct.custom_sections.length > 0) {
+          firstProduct.custom_sections.filter(cs => cs.is_visible !== false).forEach(cs => {
+            specs.push({
+              title: cs.title || 'Details',
+              content: `<div style="white-space:pre-line; line-height:1.7; font-size:13px;">${escapeHtml(cs.content || '')}</div>`
+            });
+          });
+        } else {
+          specs.push({
+            title: 'What is Included',
+            content: `${escapeHtml(config.title || 'Aura Pro wireless headphones')}, hard travel case, braided USB-C cable, auxiliary cord, and quick setup guide.`
+          });
+        }
+      }
+
+      detailsList.innerHTML = '';
+      specs.forEach((item, idx) => {
+        const det = document.createElement('details');
+        if (idx === 0) det.open = true;
+        det.innerHTML = `
+          <summary>${escapeHtml(item.title || 'Details')}</summary>
+          <div class="details-content">${item.content || item.description || ''}</div>
+        `;
+        detailsList.appendChild(det);
+      });
+      detailsList.style.display = 'block';
+    }
+
+    if (theme.hide_summary === true || theme.hideSummary === true) {
+      summaryCard.style.display = 'none';
+    }
+
+    if (theme.hide_mobile_dock === true || theme.hideMobileDock === true) {
+      document.querySelector('.mobile-dock')?.style.setProperty('display', 'none');
+    }
 
     calculateTotal();
   }
 
-  function applyThemeStyle(theme) {
-    const primaryColor = theme.primary_color || theme.primaryColorHex || '#0d0f12';
-    document.documentElement.style.setProperty('--ink', primaryColor);
-
-    const btnRadius = theme.button_shape === 'PILL' ? '9999px' : (theme.button_shape === 'SQUARE' ? '0px' : (theme.border_radius ? `${theme.border_radius}px` : '12px'));
-    document.documentElement.style.setProperty('--btn-radius', btnRadius);
-
-    if (theme.font_family) {
-      document.documentElement.style.setProperty('--font-main', theme.font_family);
-    }
-
-    if (theme.is_dark_mode === true || theme.isDarkMode === true) {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
-  }
-
   // ── Dynamic Form Fields Builder ────────────────────────────────────────────
-  function renderDynamicFormFields(fieldsList) {
+  function renderDynamicFormFields(fieldsList, insideCharge = '60', outsideCharge = '120', timeInside = '24-48 Hours', timeOutside = '2-4 Business Days') {
     dynamicFieldsContainer.innerHTML = '';
 
     const fieldsToRender = (Array.isArray(fieldsList) && fieldsList.length > 0)
       ? fieldsList
       : [
-          { type: 'NAME', label: 'Customer Full Name', placeholder: 'Recipient\'s full name', isRequired: true },
+          { type: 'NAME', label: 'Customer Full Name', placeholder: "Recipient's full name", isRequired: true },
           { type: 'PHONE', label: 'bKash / Nagad Contact Number', placeholder: '01XXXXXXXXX', isRequired: true },
-          { type: 'ADDRESS', label: 'Delivery Street Address', placeholder: 'House, Road, Area, Thana', isRequired: true }
+          { type: 'ADDRESS', label: 'Delivery Street Address', placeholder: 'House, Road, Area, Thana', isRequired: true },
+          { type: 'SHIPPING', label: 'Delivery Area & Speed', options: [`Standard Courier — ${timeInside} (${currencySymbol}${insideCharge})`, `Express Courier — ${timeOutside} (${currencySymbol}${outsideCharge})`, 'Store Pickup — Free'], isRequired: true }
         ];
+
+    let hasShippingField = false;
 
     fieldsToRender.forEach(f => {
       const type = String(f.type || 'TEXT').toUpperCase();
@@ -1961,19 +2124,27 @@
 
       const label = document.createElement('label');
       label.htmlFor = `input-${fieldId}`;
-      label.innerHTML = `${f.label || 'Field'} ${f.isRequired ? '<span class="req">*</span>' : ''}`;
+      label.innerHTML = `${escapeHtml(f.label || 'Field')} ${f.isRequired ? '<span class="req">*</span>' : ''}`;
       group.appendChild(label);
 
       let inputEl;
 
       if (type === 'SHIPPING') {
+        hasShippingField = true;
         inputEl = document.createElement('select');
         inputEl.className = 'form-select';
-        const options = f.options || ['Standard Courier — 3-5 days (৳60)', 'Express Courier — 24-48 hrs (৳120)', 'Store Pickup — Banani, Dhaka (Free)'];
+        const options = (Array.isArray(f.options) && f.options.length > 0) ? f.options : [
+          `Standard Courier — ${timeInside} (${currencySymbol}${insideCharge})`,
+          `Express Courier — ${timeOutside} (${currencySymbol}${outsideCharge})`,
+          'Store Pickup — Free'
+        ];
         options.forEach((optStr, idx) => {
           const opt = document.createElement('option');
-          const match = optStr.match(/(?:৳|\$|tk|bdt)\s*(\d+(?:\.\d+)?)/i) || optStr.match(/(\d+(?:\.\d+)?)\s*(?:৳|\$|tk|bdt)/i);
-          const fee = match ? parseFloat(match[1]) : (optStr.toLowerCase().includes('free') ? 0 : 60);
+          const match = optStr.match(/(?:৳|\$|tk|bdt)\s*(\d+(?:\.\d+)?)/i) || 
+                        optStr.match(/(\d+(?:\.\d+)?)\s*(?:৳|\$|tk|bdt)/i) ||
+                        optStr.match(/\(\s*(\d+(?:\.\d+)?)\s*\)/) ||
+                        optStr.match(/[-:]\s*(\d+(?:\.\d+)?)/);
+          const fee = match ? parseFloat(match[1]) : (optStr.toLowerCase().includes('free') ? 0 : (parseFloat(insideCharge) || 60));
           opt.value = fee;
           opt.textContent = optStr;
           if (idx === 0) {
@@ -2004,7 +2175,7 @@
       } else if (type === 'ADDRESS' || type === 'NOTES' || type === 'TEXTAREA') {
         inputEl = document.createElement('textarea');
         inputEl.className = 'form-textarea';
-        inputEl.placeholder = f.placeholder || `Enter ${f.label || ''}`;
+        inputEl.placeholder = f.placeholder || (type === 'NOTES' ? 'e.g. Call before delivery, leave with concierge' : `Enter ${f.label || ''}`);
 
       } else {
         inputEl = document.createElement('input');
@@ -2036,6 +2207,10 @@
 
       dynamicFieldsContainer.appendChild(group);
     });
+
+    if (!hasShippingField) {
+      selectedShippingFee = parseFloat(insideCharge) || 60;
+    }
   }
 
   // ── Quantity Adjustments ───────────────────────────────────────────────────

@@ -3101,13 +3101,57 @@ private fun ProductShowcaseSettingsEditor(
         }
     }
 
+    // Delivery states
+    var insideChargeInput by remember(primaryProduct.deliveryInfo.insideDhakaCharge) {
+        mutableStateOf(primaryProduct.deliveryInfo.insideDhakaCharge.ifBlank { "60" })
+    }
+    var outsideChargeInput by remember(primaryProduct.deliveryInfo.outsideDhakaCharge) {
+        mutableStateOf(primaryProduct.deliveryInfo.outsideDhakaCharge.ifBlank { "120" })
+    }
+    var timeInsideInput by remember(primaryProduct.deliveryInfo.deliveryTimeInside) {
+        mutableStateOf(primaryProduct.deliveryInfo.deliveryTimeInside.ifBlank { "24-48 Hours" })
+    }
+    var timeOutsideInput by remember(primaryProduct.deliveryInfo.deliveryTimeOutside) {
+        mutableStateOf(primaryProduct.deliveryInfo.deliveryTimeOutside.ifBlank { "2-4 Business Days" })
+    }
+    var isCodAvailableInput by remember(primaryProduct.deliveryInfo.isCodAvailable) {
+        mutableStateOf(primaryProduct.deliveryInfo.isCodAvailable)
+    }
+    var returnPolicyInput by remember(primaryProduct.deliveryInfo.returnPolicy) {
+        mutableStateOf(primaryProduct.deliveryInfo.returnPolicy.ifBlank { "7 Days Free Replacement Guarantee" })
+    }
+    var warrantyInput by remember(primaryProduct.deliveryInfo.warranty) {
+        mutableStateOf(primaryProduct.deliveryInfo.warranty.ifBlank { "1 Year Official Brand Warranty" })
+    }
+    var deliveryNotesInput by remember(primaryProduct.deliveryInfo.notes) {
+        mutableStateOf(primaryProduct.deliveryInfo.notes.ifBlank { "Check package in front of delivery person before payment" })
+    }
+
+    // Specifications states
+    var showAddSpecDialog by remember { mutableStateOf(false) }
+    var editingSpec by remember { mutableStateOf<ProductSpecItem?>(null) }
+    var newSpecKey by remember { mutableStateOf("") }
+    var newSpecValue by remember { mutableStateOf("") }
+
     // Variants states
     var showAddVariantDialog by remember { mutableStateOf(false) }
+    var editingVariant by remember { mutableStateOf<ProductVariantItem?>(null) }
     var newVarName by remember { mutableStateOf("") }
+    var newVarColorHex by remember { mutableStateOf("#141518") }
     var newVarPrice by remember { mutableStateOf("") }
     var newVarSku by remember { mutableStateOf("") }
     var newVarStock by remember { mutableStateOf("100") }
     var newVarDesc by remember { mutableStateOf("") }
+
+    // Assurances & Identity states
+    var brandNameInput by remember(themeConfig.brandName) { mutableStateOf(themeConfig.brandName.ifBlank { "NORTHWAVE" }) }
+    var brandBadgeInput by remember(themeConfig.brandBadge) { mutableStateOf(themeConfig.brandBadge.ifBlank { "PRO" }) }
+    var assurance1TitleInput by remember(themeConfig.assurance1Title) { mutableStateOf(themeConfig.assurance1Title.ifBlank { "Fast & Free Delivery" }) }
+    var assurance1SubInput by remember(themeConfig.assurance1Subtitle) { mutableStateOf(themeConfig.assurance1Subtitle.ifBlank { "Complimentary express 2-day delivery across Bangladesh" }) }
+    var assurance2TitleInput by remember(themeConfig.assurance2Title) { mutableStateOf(themeConfig.assurance2Title.ifBlank { "30-Day Risk Free" }) }
+    var assurance2SubInput by remember(themeConfig.assurance2Subtitle) { mutableStateOf(themeConfig.assurance2Subtitle.ifBlank { "Keep only what fits your listening needs" }) }
+    var assurance3TitleInput by remember(themeConfig.assurance3Title) { mutableStateOf(themeConfig.assurance3Title.ifBlank { "2-Year Protection" }) }
+    var assurance3SubInput by remember(themeConfig.assurance3Subtitle) { mutableStateOf(themeConfig.assurance3Subtitle.ifBlank { "Full replacement manufacturer warranty" }) }
 
     Column(
         modifier = Modifier
@@ -3133,11 +3177,14 @@ private fun ProductShowcaseSettingsEditor(
             }
         }
 
-        // 4 Category Tabs
+        // 7 Category Tabs
         val tabs = listOf(
             "DETAILS" to "Details & Price",
+            "DELIVERY" to "Delivery & Shipping",
+            "SPECS" to "Specs (${primaryProduct.specifications.size})",
+            "VARIANTS" to "Colors & Variants (${primaryProduct.productVariants.size})",
+            "INFO" to "Assurances & Identity",
             "GALLERY" to "Image Gallery (${primaryProduct.galleryUrls.size})",
-            "VARIANTS" to "Variants (${primaryProduct.productVariants.size})",
             "VISIBILITY" to "Section Visibility"
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
@@ -3340,7 +3387,557 @@ private fun ProductShowcaseSettingsEditor(
             }
         }
 
-        // TAB 2: IMAGE GALLERY
+        // TAB 2: DELIVERY & SHIPPING CHARGES
+        if (activeTab == "DELIVERY") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("DELIVERY CHARGES & SPEED", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = insideChargeInput,
+                        onValueChange = { v ->
+                            insideChargeInput = v.filter { ch -> ch.isDigit() || ch == '.' }.take(6)
+                            val updated = primaryProduct.deliveryInfo.copy(insideDhakaCharge = insideChargeInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Inside City Fee (${themeConfig.currencyCode})") },
+                        placeholder = { Text("e.g. 60") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = outsideChargeInput,
+                        onValueChange = { v ->
+                            outsideChargeInput = v.filter { ch -> ch.isDigit() || ch == '.' }.take(6)
+                            val updated = primaryProduct.deliveryInfo.copy(outsideDhakaCharge = outsideChargeInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Outside City Fee (${themeConfig.currencyCode})") },
+                        placeholder = { Text("e.g. 120") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = timeInsideInput,
+                        onValueChange = { v ->
+                            timeInsideInput = v.take(30)
+                            val updated = primaryProduct.deliveryInfo.copy(deliveryTimeInside = timeInsideInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Inside City Delivery Time") },
+                        placeholder = { Text("e.g. 24-48 Hours") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = timeOutsideInput,
+                        onValueChange = { v ->
+                            timeOutsideInput = v.take(30)
+                            val updated = primaryProduct.deliveryInfo.copy(deliveryTimeOutside = timeOutsideInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Outside City Delivery Time") },
+                        placeholder = { Text("e.g. 2-4 Business Days") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+
+                // COD Toggle
+                Surface(
+                    onClick = {
+                        isCodAvailableInput = !isCodAvailableInput
+                        val updated = primaryProduct.deliveryInfo.copy(isCodAvailable = isCodAvailableInput)
+                        viewModel.updateShowcaseDeliveryInfo(updated)
+                        viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isCodAvailableInput) Color(0xFF10B981).copy(alpha = 0.12f) else (if (isDark) Color(0xFF1F1A0E) else Color(0xFFF1F5F9)),
+                    border = BorderStroke(1.dp, if (isCodAvailableInput) Color(0xFF10B981) else cardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Cash on Delivery (COD) Nationwide", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                            Text("Allow customers to pay cash when package arrives", fontSize = 11.sp, color = textSecondary)
+                        }
+                        Switch(
+                            checked = isCodAvailableInput,
+                            onCheckedChange = {
+                                isCodAvailableInput = it
+                                val updated = primaryProduct.deliveryInfo.copy(isCodAvailable = isCodAvailableInput)
+                                viewModel.updateShowcaseDeliveryInfo(updated)
+                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                            }
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = cardBorder, thickness = 0.8.dp)
+
+                Text("DELIVERY INSTRUCTIONS & POLICIES", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+
+                OutlinedTextField(
+                    value = deliveryNotesInput,
+                    onValueChange = { v ->
+                        deliveryNotesInput = v.take(250)
+                        val updated = primaryProduct.deliveryInfo.copy(notes = deliveryNotesInput)
+                        viewModel.updateShowcaseDeliveryInfo(updated)
+                        viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                    },
+                    label = { Text("Delivery Notice / Instructions to Customer") },
+                    placeholder = { Text("e.g. Check package in front of delivery person before payment") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    maxLines = 2
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = returnPolicyInput,
+                        onValueChange = { v ->
+                            returnPolicyInput = v.take(120)
+                            val updated = primaryProduct.deliveryInfo.copy(returnPolicy = returnPolicyInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Return & Replacement Policy") },
+                        placeholder = { Text("e.g. 7 Days Free Replacement Guarantee") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = warrantyInput,
+                        onValueChange = { v ->
+                            warrantyInput = v.take(120)
+                            val updated = primaryProduct.deliveryInfo.copy(warranty = warrantyInput)
+                            viewModel.updateShowcaseDeliveryInfo(updated)
+                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(deliveryInfo = updated))
+                        },
+                        label = { Text("Official Warranty") },
+                        placeholder = { Text("e.g. 1 Year Official Brand Warranty") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+
+                // Sync button to auto-update form's SHIPPING options
+                Button(
+                    onClick = {
+                        val curr = if (themeConfig.currencyCode == "USD") "$" else "৳"
+                        val newOpts = listOf(
+                            "Standard Courier — $timeInsideInput ($curr$insideChargeInput)",
+                            "Express Courier — $timeOutsideInput ($curr$outsideChargeInput)",
+                            "Store Pickup — Free"
+                        )
+                        val fields = viewModel.formFieldsList.value.toMutableList()
+                        val sIdx = fields.indexOfFirst { it.type == FormFieldType.SHIPPING }
+                        if (sIdx != -1) {
+                            fields[sIdx] = fields[sIdx].copy(options = newOpts)
+                        } else {
+                            fields.add(FormFieldItem(
+                                type = FormFieldType.SHIPPING,
+                                label = "Delivery Area & Speed",
+                                options = newOpts,
+                                isRequired = true
+                            ))
+                        }
+                        viewModel.formFieldsList.value = fields
+                        viewModel.saveActiveFormToHostedList()
+                        Toast.makeText(context, "Delivery charges synced to checkout dropdown ($curr$insideChargeInput / $curr$outsideChargeInput)", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF281E0A) else Color(0xFFFFFBEB), contentColor = goldText),
+                    border = BorderStroke(1.dp, goldPrimary),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Sync Charges to Checkout Form Dropdown", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // TAB 3: SPECIFICATIONS
+        if (activeTab == "SPECS") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            "PRODUCT SPECIFICATIONS (${primaryProduct.specifications.size})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Text(
+                            "Key features and technical specifications shown in the customer details accordion.",
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        )
+                    }
+
+                    Surface(
+                        onClick = {
+                            newSpecKey = ""
+                            newSpecValue = ""
+                            editingSpec = null
+                            showAddSpecDialog = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = goldPrimary.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, goldPrimary)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = goldText, modifier = Modifier.size(13.dp))
+                            Text("+ Add Spec", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText)
+                        }
+                    }
+                }
+
+                if (primaryProduct.specifications.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        primaryProduct.specifications.forEach { spec ->
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
+                                border = BorderStroke(1.dp, cardBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(spec.key, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = goldText)
+                                        Text(spec.value, fontSize = 11.5.sp, color = textPrimary)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(
+                                            onClick = {
+                                                editingSpec = spec
+                                                newSpecKey = spec.key
+                                                newSpecValue = spec.value
+                                            },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit Spec", tint = textSecondary, modifier = Modifier.size(14.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val updated = primaryProduct.specifications.filterNot { it.id == spec.id }
+                                                viewModel.updateShowcaseSpecifications(updated)
+                                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(specifications = updated))
+                                            },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Remove Spec", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "No specifications added yet. Tap '+ Add Spec' to add technical specs, dimensions, battery life, drivers, or materials.",
+                        fontSize = 11.5.sp,
+                        color = textSecondary
+                    )
+                }
+            }
+        }
+
+        // TAB 4: COLORS & VARIANTS
+        if (activeTab == "VARIANTS") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            "COLORS & PRODUCT VARIANTS (${primaryProduct.productVariants.size})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textPrimary
+                        )
+                        Text(
+                            "Custom colors, finish swatches, memory sizes, or bundles with individual pricing.",
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        )
+                    }
+
+                    Surface(
+                        onClick = {
+                            newVarName = ""
+                            newVarColorHex = "#141518"
+                            newVarPrice = ""
+                            newVarSku = ""
+                            newVarStock = "100"
+                            editingVariant = null
+                            showAddVariantDialog = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(13.dp))
+                            Text("+ Add Variant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                        }
+                    }
+                }
+
+                if (primaryProduct.productVariants.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        primaryProduct.productVariants.forEach { pv ->
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
+                                border = BorderStroke(1.dp, cardBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+                                        val parsedColor = remember(pv.colorHex) {
+                                            try {
+                                                if (pv.colorHex.isNotBlank()) Color(android.graphics.Color.parseColor(pv.colorHex)) else Color(0xFF141518)
+                                            } catch (_: Exception) { Color(0xFF141518) }
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(parsedColor)
+                                                .border(1.5.dp, cardBorder, CircleShape)
+                                        )
+
+                                        Column {
+                                            Text(pv.name, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                            val curr = if (themeConfig.currencyCode == "USD") "$" else "৳"
+                                            Text(
+                                                "$curr${pv.price.toInt()}${if (pv.sku.isNotBlank()) " | SKU: ${pv.sku}" else ""}${if (pv.stock > 0) " | Stock: ${pv.stock}" else ""}${if (pv.colorHex.isNotBlank()) " | ${pv.colorHex}" else ""}",
+                                                fontSize = 11.sp,
+                                                color = textSecondary
+                                            )
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(
+                                            onClick = {
+                                                editingVariant = pv
+                                                newVarName = pv.name
+                                                newVarColorHex = pv.colorHex.ifBlank { "#141518" }
+                                                newVarPrice = if (pv.price > 0) pv.price.toInt().toString() else ""
+                                                newVarSku = pv.sku
+                                                newVarStock = pv.stock.toString()
+                                            },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit Variant", tint = textSecondary, modifier = Modifier.size(14.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val updated = primaryProduct.productVariants.filterNot { it.id == pv.id }
+                                                viewModel.updateShowcaseVariants(updated)
+                                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(productVariants = updated))
+                                            },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Remove Variant", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "No variants configured yet. Tap '+ Add Variant' to add colors, storage options, sizes, or models.",
+                        fontSize = 11.5.sp,
+                        color = textSecondary
+                    )
+                }
+            }
+        }
+
+        // TAB 5: ASSURANCES & BRAND IDENTITY
+        if (activeTab == "INFO") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("STORE & BRAND IDENTITY", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = brandNameInput,
+                        onValueChange = { v ->
+                            brandNameInput = v.take(50)
+                            viewModel.updateFormThemeConfig(themeConfig.copy(brandName = brandNameInput))
+                        },
+                        label = { Text("Brand / Store Name") },
+                        placeholder = { Text("e.g. NORTHWAVE") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = brandBadgeInput,
+                        onValueChange = { v ->
+                            brandBadgeInput = v.take(20)
+                            viewModel.updateFormThemeConfig(themeConfig.copy(brandBadge = brandBadgeInput))
+                        },
+                        label = { Text("Brand Badge") },
+                        placeholder = { Text("e.g. PRO") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+                }
+
+                HorizontalDivider(color = cardBorder, thickness = 0.8.dp)
+
+                Text("3 TRUST ASSURANCE CARDS", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+
+                // Card 1
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
+                    border = BorderStroke(1.dp, cardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Assurance #1 (Delivery)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText)
+                        OutlinedTextField(
+                            value = assurance1TitleInput,
+                            onValueChange = { v ->
+                                assurance1TitleInput = v.take(60)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance1Title = assurance1TitleInput))
+                            },
+                            label = { Text("Title") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = assurance1SubInput,
+                            onValueChange = { v ->
+                                assurance1SubInput = v.take(120)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance1Subtitle = assurance1SubInput))
+                            },
+                            label = { Text("Subtitle") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // Card 2
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
+                    border = BorderStroke(1.dp, cardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Assurance #2 (Return / Guarantee)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText)
+                        OutlinedTextField(
+                            value = assurance2TitleInput,
+                            onValueChange = { v ->
+                                assurance2TitleInput = v.take(60)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance2Title = assurance2TitleInput))
+                            },
+                            label = { Text("Title") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = assurance2SubInput,
+                            onValueChange = { v ->
+                                assurance2SubInput = v.take(120)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance2Subtitle = assurance2SubInput))
+                            },
+                            label = { Text("Subtitle") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // Card 3
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
+                    border = BorderStroke(1.dp, cardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Assurance #3 (Warranty / Protection)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = goldText)
+                        OutlinedTextField(
+                            value = assurance3TitleInput,
+                            onValueChange = { v ->
+                                assurance3TitleInput = v.take(60)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance3Title = assurance3TitleInput))
+                            },
+                            label = { Text("Title") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = assurance3SubInput,
+                            onValueChange = { v ->
+                                assurance3SubInput = v.take(120)
+                                viewModel.updateFormThemeConfig(themeConfig.copy(assurance3Subtitle = assurance3SubInput))
+                            },
+                            label = { Text("Subtitle") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+        }
+
+        // TAB 6: IMAGE GALLERY
         if (activeTab == "GALLERY") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("MAIN SHOWCASE PHOTO", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
@@ -3489,92 +4086,7 @@ private fun ProductShowcaseSettingsEditor(
             }
         }
 
-        // TAB 3: PRODUCT VARIANTS (REPLACING COLOR)
-        if (activeTab == "VARIANTS") {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                        Text(
-                            "PRODUCT VARIANTS (${primaryProduct.productVariants.size})",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary
-                        )
-                        Text(
-                            "Replaces color swatches with generalized product options (sizes, models, storage, editions).",
-                            fontSize = 11.sp,
-                            color = textSecondary
-                        )
-                    }
-
-                    Surface(
-                        onClick = { showAddVariantDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF10B981).copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(13.dp))
-                            Text("+ Add Variant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
-                        }
-                    }
-                }
-
-                if (primaryProduct.productVariants.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        primaryProduct.productVariants.forEach { pv ->
-                            Card(
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1A1610) else Color.White),
-                                border = BorderStroke(1.dp, cardBorder),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(pv.name, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
-                                        val curr = if (themeConfig.currencyCode == "USD") "$" else "৳"
-                                        Text(
-                                            "$curr${pv.price.toInt()}${if (pv.sku.isNotBlank()) " | SKU: ${pv.sku}" else ""}${if (pv.stock > 0) " | Stock: ${pv.stock}" else ""}",
-                                            fontSize = 11.sp,
-                                            color = textSecondary
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            val updated = primaryProduct.productVariants.filterNot { it.id == pv.id }
-                                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(productVariants = updated))
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Remove Variant", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Text(
-                        "No variants configured yet. Tap '+ Add Variant' to add size, bundle, or spec options with individual prices and inventory.",
-                        fontSize = 11.5.sp,
-                        color = textSecondary
-                    )
-                }
-            }
-        }
-
-        // TAB 4: SECTION VISIBILITY & LAYOUT (MOVED FROM SETTINGS TAB)
+        // TAB 7: SECTION VISIBILITY & LAYOUT
         if (activeTab == "VISIBILITY") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -3611,6 +4123,14 @@ private fun ProductShowcaseSettingsEditor(
                     viewModel.updateFormThemeConfig(themeConfig.copy(hideQty = !visible))
                 }
 
+                SettingsToggleRow("Delivery & Assurances (ডেলিভারি তথ্য)", !themeConfig.hideDelivery) { visible ->
+                    viewModel.updateFormThemeConfig(themeConfig.copy(hideDelivery = !visible))
+                }
+
+                SettingsToggleRow("Specifications Table (স্পেসিফিকেশন)", !themeConfig.hideSpecs) { visible ->
+                    viewModel.updateFormThemeConfig(themeConfig.copy(hideSpecs = !visible))
+                }
+
                 SettingsToggleRow("Order Summary Breakdown (অর্ডার সামারি)", !themeConfig.hideSummary) { visible ->
                     viewModel.updateFormThemeConfig(themeConfig.copy(hideSummary = !visible))
                 }
@@ -3623,7 +4143,7 @@ private fun ProductShowcaseSettingsEditor(
                     viewModel.updateFormThemeConfig(themeConfig.copy(hideAssurances = !visible))
                 }
 
-                SettingsToggleRow("Specifications & Details (বিস্তারিত স্পেসিফিকেশন)", !themeConfig.hideDetails) { visible ->
+                SettingsToggleRow("Details Accordions (বিস্তারিত স্পেসিফিকেশন)", !themeConfig.hideDetails) { visible ->
                     viewModel.updateFormThemeConfig(themeConfig.copy(hideDetails = !visible))
                 }
 
@@ -3634,39 +4154,45 @@ private fun ProductShowcaseSettingsEditor(
         }
     }
 
-    if (showAddVariantDialog) {
+    // Dialog: Add / Edit Specification
+    if (showAddSpecDialog || editingSpec != null) {
+        val isEditing = editingSpec != null
         AlertDialog(
-            onDismissRequest = { showAddVariantDialog = false },
-            title = { Text("Add Product Variant", fontWeight = FontWeight.Bold, color = textPrimary) },
+            onDismissRequest = {
+                showAddSpecDialog = false
+                editingSpec = null
+            },
+            title = { Text(if (isEditing) "Edit Specification" else "Add Specification", fontWeight = FontWeight.Bold, color = textPrimary) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Popular Suggestions:", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                    val specSuggestions = listOf("Connectivity", "Battery Life", "Noise Cancellation", "Drivers", "Charging", "Weight", "Bluetooth", "Warranty")
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(specSuggestions) { sug ->
+                            Surface(
+                                onClick = { newSpecKey = sug },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (newSpecKey == sug) goldPrimary.copy(alpha = 0.2f) else (if (isDark) Color(0xFF221A0C) else Color(0xFFF1F5F9)),
+                                border = BorderStroke(0.6.dp, if (newSpecKey == sug) goldPrimary else cardBorder)
+                            ) {
+                                Text(sug, fontSize = 10.sp, color = if (newSpecKey == sug) goldText else textPrimary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
-                        value = newVarName,
-                        onValueChange = { newVarName = it.take(60) },
-                        label = { Text("Variant Name (e.g. 128GB Black, XL)") },
+                        value = newSpecKey,
+                        onValueChange = { newSpecKey = it.take(60) },
+                        label = { Text("Specification Key / Feature") },
+                        placeholder = { Text("e.g. Battery Life") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     OutlinedTextField(
-                        value = newVarPrice,
-                        onValueChange = { v -> newVarPrice = v.filter { ch -> ch.isDigit() || ch == '.' }.take(10) },
-                        label = { Text("Price Override (optional, default: ${primaryProduct.price.toInt()})") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = newVarSku,
-                        onValueChange = { newVarSku = it.take(40) },
-                        label = { Text("Variant SKU (optional)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = newVarStock,
-                        onValueChange = { newVarStock = it.filter(Char::isDigit).take(6) },
-                        label = { Text("Stock Quantity") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        value = newSpecValue,
+                        onValueChange = { newSpecValue = it.take(200) },
+                        label = { Text("Specification Value") },
+                        placeholder = { Text("e.g. 40 Hours Playtime") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -3675,34 +4201,186 @@ private fun ProductShowcaseSettingsEditor(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (newSpecKey.isNotBlank() && newSpecValue.isNotBlank()) {
+                            if (isEditing && editingSpec != null) {
+                                val updated = primaryProduct.specifications.map {
+                                    if (it.id == editingSpec!!.id) it.copy(key = newSpecKey.trim(), value = newSpecValue.trim()) else it
+                                }
+                                viewModel.updateShowcaseSpecifications(updated)
+                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(specifications = updated))
+                                Toast.makeText(context, "Specification updated", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val newSpec = ProductSpecItem(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    key = newSpecKey.trim(),
+                                    value = newSpecValue.trim()
+                                )
+                                val updated = primaryProduct.specifications + newSpec
+                                viewModel.updateShowcaseSpecifications(updated)
+                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(specifications = updated))
+                                Toast.makeText(context, "Specification added", Toast.LENGTH_SHORT).show()
+                            }
+                            showAddSpecDialog = false
+                            editingSpec = null
+                            newSpecKey = ""
+                            newSpecValue = ""
+                        } else {
+                            Toast.makeText(context, "Enter both key and value", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = goldPrimary, contentColor = Color.Black)
+                ) { Text(if (isEditing) "Save Changes" else "Add Specification", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddSpecDialog = false
+                    editingSpec = null
+                }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Dialog: Add / Edit Variant
+    if (showAddVariantDialog || editingVariant != null) {
+        val isEditing = editingVariant != null
+        AlertDialog(
+            onDismissRequest = {
+                showAddVariantDialog = false
+                editingVariant = null
+            },
+            title = { Text(if (isEditing) "Edit Product Variant" else "Add Color / Variant", fontWeight = FontWeight.Bold, color = textPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newVarName,
+                        onValueChange = { newVarName = it.take(60) },
+                        label = { Text("Variant Name (e.g. Midnight Black, 128GB, XL)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Text("Color Swatch Palette:", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                    val colorPalette = listOf(
+                        "#141518" to "Black",
+                        "#E4E0D7" to "Sandstone",
+                        "#283A4F" to "Navy",
+                        "#777B83" to "Grey",
+                        "#94A3B8" to "Silver",
+                        "#EF4444" to "Red",
+                        "#10B981" to "Green",
+                        "#3B82F6" to "Blue",
+                        "#8B5CF6" to "Purple",
+                        "#FFFFFF" to "White"
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(colorPalette) { (hex, _) ->
+                            val isSel = newVarColorHex.equals(hex, ignoreCase = true)
+                            val c = try { Color(android.graphics.Color.parseColor(hex)) } catch (_: Exception) { Color.Gray }
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(c)
+                                    .border(if (isSel) 2.5.dp else 1.dp, if (isSel) goldPrimary else cardBorder, CircleShape)
+                                    .clickable { newVarColorHex = hex }
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = newVarColorHex,
+                            onValueChange = { newVarColorHex = it.take(10) },
+                            label = { Text("Color Hex") },
+                            placeholder = { Text("#141518") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = newVarPrice,
+                            onValueChange = { v -> newVarPrice = v.filter { ch -> ch.isDigit() || ch == '.' }.take(10) },
+                            label = { Text("Price Override") },
+                            placeholder = { Text(primaryProduct.price.toInt().toString()) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = newVarSku,
+                            onValueChange = { newVarSku = it.take(40) },
+                            label = { Text("Variant SKU") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = newVarStock,
+                            onValueChange = { newVarStock = it.filter(Char::isDigit).take(6) },
+                            label = { Text("Stock Quantity") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
                         if (newVarName.isNotBlank()) {
                             val priceVal = newVarPrice.toDoubleOrNull() ?: primaryProduct.price
                             val stockVal = newVarStock.toIntOrNull() ?: 100
-                            val newVariant = ProductVariantItem(
-                                id = java.util.UUID.randomUUID().toString(),
-                                name = newVarName.trim(),
-                                price = priceVal,
-                                sku = newVarSku.trim(),
-                                stock = stockVal,
-                                description = newVarDesc.trim()
-                            )
-                            val updated = primaryProduct.productVariants + newVariant
-                            viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(productVariants = updated))
+                            if (isEditing && editingVariant != null) {
+                                val updated = primaryProduct.productVariants.map {
+                                    if (it.id == editingVariant!!.id) {
+                                        it.copy(
+                                            name = newVarName.trim(),
+                                            colorHex = newVarColorHex.trim(),
+                                            price = priceVal,
+                                            sku = newVarSku.trim(),
+                                            stock = stockVal
+                                        )
+                                    } else it
+                                }
+                                viewModel.updateShowcaseVariants(updated)
+                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(productVariants = updated))
+                                Toast.makeText(context, "Variant updated", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val newVariant = ProductVariantItem(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    name = newVarName.trim(),
+                                    colorHex = newVarColorHex.trim(),
+                                    price = priceVal,
+                                    sku = newVarSku.trim(),
+                                    stock = stockVal,
+                                    description = newVarDesc.trim()
+                                )
+                                val updated = primaryProduct.productVariants + newVariant
+                                viewModel.updateShowcaseVariants(updated)
+                                viewModel.saveOrUpdateShowcaseProduct(primaryProduct.copy(productVariants = updated))
+                                Toast.makeText(context, "Variant added", Toast.LENGTH_SHORT).show()
+                            }
+                            showAddVariantDialog = false
+                            editingVariant = null
                             newVarName = ""
                             newVarPrice = ""
                             newVarSku = ""
                             newVarStock = "100"
-                            showAddVariantDialog = false
-                            Toast.makeText(context, "Variant added", Toast.LENGTH_SHORT).show()
                         } else {
                             Toast.makeText(context, "Enter variant name", Toast.LENGTH_SHORT).show()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = goldPrimary, contentColor = Color.Black)
-                ) { Text("Add Variant", fontWeight = FontWeight.Bold) }
+                ) { Text(if (isEditing) "Save Changes" else "Add Variant", fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddVariantDialog = false }) { Text("Cancel") }
+                TextButton(onClick = {
+                    showAddVariantDialog = false
+                    editingVariant = null
+                }) { Text("Cancel") }
             }
         )
     }
@@ -7922,1059 +8600,5 @@ private fun LivePreviewModal(
                             if (primaryProduct.customSections.isNotEmpty()) {
                                 primaryProduct.customSections.filter { it.isVisible }.forEach { section ->
                                     when (section.type) {
-                                        "FAQ" -> {
-                                            if (!themeConfig.hideFaq) {
-                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Text("❓", fontSize = 13.sp)
-                                                        Text(
-                                                            text = section.title.ifBlank { "Frequently Asked Questions" },
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = textSecondary
-                                                        )
-                                                    }
-                                                    if (section.subtitle.isNotBlank()) {
-                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
-                                                    }
-
-                                                    val faqPairs = remember(section.content) {
-                                                        val blocks = section.content.split(Regex("\n\\s*\n"))
-                                                        blocks.mapNotNull { b ->
-                                                            val lines = b.lines()
-                                                            val qLine = lines.firstOrNull { it.trim().startsWith("Q:") }
-                                                                ?: lines.firstOrNull()
-                                                            val aLines = lines.filter { !it.trim().startsWith("Q:") }
-                                                            val q = qLine?.removePrefix("Q:")?.trim().orEmpty()
-                                                            val a = (if (aLines.isNotEmpty()) aLines.joinToString("\n") { it.removePrefix("A:").trim() } else "").trim()
-                                                            if (q.isNotBlank()) (q to a) else null
-                                                        }
-                                                    }
-
-                                                    Card(
-                                                        shape = RoundedCornerShape(10.dp),
-                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
-                                                        border = BorderStroke(0.8.dp, cardBorder),
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Column {
-                                                            faqPairs.forEachIndexed { fIdx, (qText, aText) ->
-                                                                val itemKey = "${section.id}_$fIdx"
-                                                                val isExpanded = itemKey in previewExpandedFaqIndices
-                                                                Surface(
-                                                                    onClick = {
-                                                                        previewExpandedFaqIndices = if (isExpanded) {
-                                                                            previewExpandedFaqIndices - itemKey
-                                                                        } else {
-                                                                            previewExpandedFaqIndices + itemKey
-                                                                        }
-                                                                    },
-                                                                    color = Color.Transparent,
-                                                                    modifier = Modifier.fillMaxWidth()
-                                                                ) {
-                                                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                                                        Row(
-                                                                            modifier = Modifier.fillMaxWidth(),
-                                                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                                                            verticalAlignment = Alignment.CenterVertically
-                                                                        ) {
-                                                                            Text(
-                                                                                text = qText,
-                                                                                fontSize = 11.5.sp,
-                                                                                fontWeight = FontWeight.SemiBold,
-                                                                                color = textPrimary,
-                                                                                modifier = Modifier.weight(1f)
-                                                                            )
-                                                                            Icon(
-                                                                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                                                                contentDescription = null,
-                                                                                tint = textSecondary,
-                                                                                modifier = Modifier.size(18.dp)
-                                                                            )
-                                                                        }
-                                                                        if (isExpanded && aText.isNotBlank()) {
-                                                                            Spacer(Modifier.height(6.dp))
-                                                                            Text(
-                                                                                text = aText,
-                                                                                fontSize = 11.sp,
-                                                                                color = textSecondary,
-                                                                                lineHeight = 16.sp
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }
-                                                                if (fIdx < faqPairs.lastIndex) {
-                                                                    HorizontalDivider(color = cardBorder.copy(alpha = 0.5f), thickness = 0.6.dp)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        "REVIEWS" -> {
-                                            if (!themeConfig.hideReviews) {
-                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Text("💬", fontSize = 13.sp)
-                                                        Text(
-                                                            text = section.title.ifBlank { "Customer Reviews" },
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = textSecondary
-                                                        )
-                                                    }
-                                                    if (section.subtitle.isNotBlank()) {
-                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
-                                                    }
-                                                    Card(
-                                                        shape = RoundedCornerShape(10.dp),
-                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
-                                                        border = BorderStroke(0.8.dp, cardBorder),
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    ) {
-                                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                                    repeat(5) {
-                                                                        Text("★", color = Color(0xFFF59E0B), fontSize = 13.sp)
-                                                                    }
-                                                                }
-                                                                Surface(
-                                                                    shape = RoundedCornerShape(4.dp),
-                                                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
-                                                                ) {
-                                                                    Text(
-                                                                        "✓ Verified Buyer",
-                                                                        fontSize = 9.5.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = Color(0xFF10B981),
-                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                                    )
-                                                                }
-                                                            }
-                                                            Text(
-                                                                text = section.content.ifBlank { "Excellent product! Exceeded expectations and delivery was swift." },
-                                                                fontSize = 11.5.sp,
-                                                                color = textPrimary,
-                                                                lineHeight = 16.sp
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        "FEATURES" -> {
-                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    Text("⭐", fontSize = 13.sp)
-                                                    Text(
-                                                        text = section.title.ifBlank { "Key Features" },
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = textSecondary
-                                                    )
-                                                }
-                                                if (section.subtitle.isNotBlank()) {
-                                                    Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
-                                                }
-                                                Card(
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
-                                                    border = BorderStroke(0.8.dp, cardBorder),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                        val featureLines = section.content.lines().filter { it.isNotBlank() }
-                                                        if (featureLines.isNotEmpty()) {
-                                                            featureLines.forEach { line ->
-                                                                Row(
-                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                                    verticalAlignment = Alignment.Top
-                                                                ) {
-                                                                    Text("✓", color = Color(0xFF10B981), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                                                    Text(line.trim(), fontSize = 11.5.sp, color = textPrimary)
-                                                                }
-                                                            }
-                                                        } else {
-                                                            Text(section.content, fontSize = 11.5.sp, color = textPrimary)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        "ASSURANCES" -> {
-                                            if (!themeConfig.hideAssurances) {
-                                                Card(
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF131F1C) else Color(0xFFECFDF5)),
-                                                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(10.dp),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Icon(Icons.Outlined.VerifiedUser, null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
-                                                        Column {
-                                                            Text(
-                                                                text = section.title.ifBlank { "100% Satisfaction Guarantee" },
-                                                                fontSize = 11.5.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = textPrimary
-                                                            )
-                                                            Text(
-                                                                text = section.content.ifBlank { "Safe delivery, inspected quality, full merchant warranty." },
-                                                                fontSize = 10.5.sp,
-                                                                color = textSecondary
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        else -> {
-                                            // CUSTOM
-                                            Card(
-                                                shape = RoundedCornerShape(10.dp),
-                                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
-                                                border = BorderStroke(0.8.dp, cardBorder),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    if (section.title.isNotBlank()) {
-                                                        Text(section.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
-                                                    }
-                                                    if (section.subtitle.isNotBlank()) {
-                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
-                                                    }
-                                                    if (section.content.isNotBlank()) {
-                                                        Text(section.content, fontSize = 11.sp, color = textPrimary)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 11. Multi-product support if form has more than 1 product
-                            if (formProducts.size > 1) {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text("MORE PRODUCTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
-                                    formProducts.drop(1).forEach { product ->
-                                        val pPrice = product.salePrice.takeIf { it > 0.0 } ?: product.price
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (product.imageUrl.isNotBlank()) {
-                                                AsyncImage(
-                                                    model = product.imageUrl,
-                                                    contentDescription = product.title,
-                                                    modifier = Modifier
-                                                        .size(40.dp)
-                                                        .clip(RoundedCornerShape(8.dp)),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            }
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(product.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = textPrimary)
-                                                if (product.sku.isNotBlank()) Text(product.sku, fontSize = 10.sp, color = textSecondary)
-                                            }
-                                            Text("$curr${"%,.0f".format(pPrice)}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = goldText)
-                                        }
-                                    }
-                                }
-                            }
-
-                            HorizontalDivider(color = cardBorder, thickness = 1.dp)
-                        }
-
-                        // Dynamic Fields in Preview Modal
-                        if (formFields.isNotEmpty()) {
-                            HorizontalDivider(color = cardBorder, thickness = 1.dp)
-                            Text("FORM FIELDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
-
-                            formFields.filter { field ->
-                                val matchesPage = formPages.size <= 1 || field.pageIndex == previewPageIndex
-                                if (!matchesPage) return@filter false
-                                val dependencyId = field.dependsOnFieldId
-                                if (dependencyId.isNullOrBlank()) true else {
-                                    val actual = previewDynamicValues[dependencyId]
-                                        ?: formFields.firstOrNull { it.id == dependencyId }?.defaultValue
-                                        ?: ""
-                                    when (field.conditionOperator.uppercase()) {
-                                        "NOT_EQUALS" -> actual != field.conditionValue
-                                        "CONTAINS" -> actual.contains(field.conditionValue)
-                                        else -> actual == field.conditionValue
-                                    }
-                                }
-                            }.forEach { field ->
-                                val currentVal = previewDynamicValues[field.id] ?: ""
-                                val fieldError = previewErrors[field.id]
-
-                                when (field.type) {
-                                    FormFieldType.PRODUCT, FormFieldType.PRODUCT_LIST -> {
-                                        val allMedia = listOfNotNull(field.mediaUrl.takeIf { it.isNotBlank() }) + field.galleryUrls
-                                        var activeImgIdx by remember(field.id) { mutableIntStateOf(0) }
-                                        val currentImg = allMedia.getOrNull(activeImgIdx) ?: field.mediaUrl
-
-                                        var selectedVariantId by remember(field.id) {
-                                            mutableStateOf(field.productVariants.firstOrNull()?.id)
-                                        }
-                                        val selectedVariant = field.productVariants.firstOrNull { it.id == selectedVariantId }
-                                        val effectivePrice = selectedVariant?.price ?: (field.minValue ?: field.defaultValue.toDoubleOrNull() ?: 0.0)
-
-                                        val isSelected = currentVal == "selected" || (field.isRequired && currentVal != "unselected")
-                                        Surface(
-                                            onClick = {
-                                                if (!field.isRequired) {
-                                                    previewDynamicValues = previewDynamicValues + (field.id to if (isSelected) "unselected" else "selected")
-                                                    if (fieldError != null) previewErrors = previewErrors - field.id
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isSelected) goldDarkBg else cardBg,
-                                            border = BorderStroke(1.dp, if (isSelected) parsedPrimaryColor else cardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(52.dp)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(if (isDark) Color(0xFF281E0A) else Color(0xFFFEF3C7)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        if (currentImg.isNotBlank()) {
-                                                            AsyncImage(
-                                                                model = currentImg,
-                                                                contentDescription = field.label,
-                                                                modifier = Modifier.fillMaxSize(),
-                                                                contentScale = ContentScale.Crop
-                                                            )
-                                                        } else {
-                                                            Icon(Icons.Outlined.ShoppingBag, null, tint = goldText, modifier = Modifier.size(22.dp))
-                                                        }
-                                                    }
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            fontSize = 13.sp,
-                                                            color = textPrimary
-                                                        )
-                                                        Text(
-                                                            text = "BDT ${"%,.2f".format(effectivePrice)}${if (selectedVariant != null) " (${selectedVariant.name})" else ""}",
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = parsedPrimaryColor
-                                                        )
-                                                    }
-                                                    Checkbox(
-                                                        checked = isSelected,
-                                                        enabled = !field.isRequired,
-                                                        onCheckedChange = { checked ->
-                                                            previewDynamicValues = previewDynamicValues + (field.id to if (checked) "selected" else "unselected")
-                                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                                        }
-                                                    )
-                                                }
-
-                                                if (allMedia.size > 1) {
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        modifier = Modifier.horizontalScroll(rememberScrollState())
-                                                    ) {
-                                                        allMedia.forEachIndexed { idx, url ->
-                                                            val isImgSel = idx == activeImgIdx
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(36.dp)
-                                                                    .clip(RoundedCornerShape(6.dp))
-                                                                    .border(
-                                                                        width = if (isImgSel) 2.dp else 1.dp,
-                                                                        color = if (isImgSel) parsedPrimaryColor else cardBorder,
-                                                                        shape = RoundedCornerShape(6.dp)
-                                                                    )
-                                                                    .clickable { activeImgIdx = idx }
-                                                            ) {
-                                                                AsyncImage(
-                                                                    model = url,
-                                                                    contentDescription = null,
-                                                                    modifier = Modifier.fillMaxSize(),
-                                                                    contentScale = ContentScale.Crop
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                if (field.productVariants.isNotEmpty()) {
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text("SELECT VARIANT:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textSecondary)
-                                                        Row(
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                            modifier = Modifier.horizontalScroll(rememberScrollState())
-                                                        ) {
-                                                            field.productVariants.forEach { pv ->
-                                                                val isVarSel = pv.id == selectedVariantId
-                                                                Surface(
-                                                                    onClick = {
-                                                                        selectedVariantId = pv.id
-                                                                        previewDynamicValues = previewDynamicValues + (field.id to "selected")
-                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant" to pv.name)
-                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant_price" to pv.price.toString())
-                                                                    },
-                                                                    shape = RoundedCornerShape(8.dp),
-                                                                    color = if (isVarSel) parsedPrimaryColor.copy(alpha = 0.15f) else Color.Transparent,
-                                                                    border = BorderStroke(1.dp, if (isVarSel) parsedPrimaryColor else cardBorder)
-                                                                ) {
-                                                                    Text(
-                                                                        text = "${pv.name} • BDT ${pv.price.toInt()}",
-                                                                        fontSize = 11.sp,
-                                                                        fontWeight = if (isVarSel) FontWeight.Bold else FontWeight.Normal,
-                                                                        color = if (isVarSel) parsedPrimaryColor else textSecondary,
-                                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    FormFieldType.CUSTOM_CODE -> {
-                                        val fieldHtml = remember(field.customCodeHtml, previewDynamicValues) {
-                                            var content = field.customCodeHtml.ifBlank { field.defaultValue }
-                                            content = content.replace("{{form_title}}", formTitle)
-                                            content = content.replace("{{form_description}}", formDescription)
-                                            formFields.forEach { f ->
-                                                val v = previewDynamicValues[f.id] ?: f.defaultValue
-                                                content = content.replace("{{${f.id}}}", v)
-                                                val key = f.label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
-                                                content = content.replace("{{field_$key}}", v)
-                                            }
-                                            unescapeHtmlString(content)
-                                        }
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
-                                            border = BorderStroke(1.dp, cardBorder),
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                if (field.label.isNotBlank() && field.label != "Custom Code Block" && field.label != "Custom Code" && field.label != "HTML/CSS block") {
-                                                    Text(field.label, fontWeight = FontWeight.Bold, color = textPrimary, fontSize = 13.sp)
-                                                }
-                                                if (fieldHtml.isBlank()) {
-                                                    Text("Custom HTML/CSS Block (Empty)", fontSize = 11.sp, color = textSecondary)
-                                                } else {
-                                                    FormHtmlPreview(
-                                                        htmlContent = fieldHtml,
-                                                        cssContent = field.customCodeCss,
-                                                        isDark = isDark,
-                                                        modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp, max = 350.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                FormFieldType.CHECKBOX -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            val isChecked = currentVal == "true"
-                                            Checkbox(
-                                                checked = isChecked,
-                                                onCheckedChange = { checked ->
-                                                    previewDynamicValues = previewDynamicValues + (field.id to checked.toString())
-                                                    if (fieldError != null) previewErrors = previewErrors - field.id
-                                                }
-                                            )
-                                            Text(
-                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                                fontSize = 12.5.sp,
-                                                color = textPrimary
-                                            )
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.DATE -> {
-                                    val calendar = Calendar.getInstance()
-                                    val datePickerDialog = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            val formattedDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-                                            previewDynamicValues = previewDynamicValues + (field.id to formattedDate)
-                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                        },
-                                        calendar.get(Calendar.YEAR),
-                                        calendar.get(Calendar.MONTH),
-                                        calendar.get(Calendar.DAY_OF_MONTH)
-                                    )
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Surface(
-                                            onClick = { datePickerDialog.show() },
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = cardBg,
-                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.CalendarToday,
-                                                        contentDescription = null,
-                                                        tint = if (currentVal.isNotBlank()) goldPrimary else textSecondary,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                    Text(
-                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select Date (YYYY-MM-DD)" }),
-                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
-                                                        fontSize = 14.sp
-                                                    )
-                                                }
-                                                if (currentVal.isNotBlank()) {
-                                                    IconButton(
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues - field.id
-                                                        },
-                                                        modifier = Modifier.size(24.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Clear,
-                                                            contentDescription = "Clear",
-                                                            tint = textSecondary,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.FILE_UPLOAD, FormFieldType.CAMERA_UPLOAD -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Surface(
-                                            onClick = {
-                                                activeUploadFieldId = field.id
-                                                previewFileLauncher.launch("*/*")
-                                            },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isDark) Color(0xFF19140C) else Color(0xFFFBFBFE),
-                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(16.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isDark) Color(0xFF281E0A) else Color(0xFFFFFBEB)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = if (field.type == FormFieldType.CAMERA_UPLOAD) Icons.Outlined.PhotoCamera else Icons.Outlined.CloudUpload,
-                                                        contentDescription = null,
-                                                        tint = goldPrimary,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                                if (currentVal.isNotBlank()) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.CheckCircle,
-                                                            contentDescription = null,
-                                                            tint = Color(0xFF10B981),
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Text(
-                                                            text = currentVal,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            fontSize = 13.sp,
-                                                            color = textPrimary,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                    TextButton(
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues - field.id
-                                                        },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text("Remove File", color = Color(0xFFEF4444), fontSize = 12.sp)
-                                                    }
-                                                } else {
-                                                    Text(
-                                                        text = field.placeholder.ifBlank { "Tap to choose file / document" },
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = textPrimary,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Text(
-                                                        text = "PDF, DOCX, PNG, JPG up to 10MB",
-                                                        fontSize = 11.sp,
-                                                        color = textSecondary
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.DROPDOWN -> {
-                                    var expandedDropdown by remember { mutableStateOf(false) }
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        Box(modifier = Modifier.fillMaxWidth()) {
-                                            Surface(
-                                                onClick = { expandedDropdown = true },
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = cardBg,
-                                                border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(
-                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select option" }),
-                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
-                                                        fontSize = 14.sp
-                                                    )
-                                                    Icon(
-                                                        imageVector = if (expandedDropdown) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                                        contentDescription = null,
-                                                        tint = textSecondary
-                                                    )
-                                                }
-                                            }
-                                            DropdownMenu(
-                                                expanded = expandedDropdown,
-                                                onDismissRequest = { expandedDropdown = false }
-                                            ) {
-                                                options.forEach { option ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(option, fontSize = 13.5.sp) },
-                                                        onClick = {
-                                                            previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                            if (fieldError != null) previewErrors = previewErrors - field.id
-                                                            expandedDropdown = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.RADIO -> {
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        options.forEach { option ->
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                RadioButton(
-                                                    selected = currentVal == option,
-                                                    onClick = {
-                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                )
-                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.MULTI_SELECT -> {
-                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
-                                    val selectedSet = remember(currentVal) {
-                                        if (currentVal.isBlank()) emptySet()
-                                        else currentVal.split(", ").filter { it.isNotBlank() }.toSet()
-                                    }
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = textSecondary
-                                        )
-                                        options.forEach { option ->
-                                            val isSelected = option in selectedSet
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        val newSet = if (isSelected) selectedSet - option else selectedSet + option
-                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Checkbox(
-                                                    checked = isSelected,
-                                                    onCheckedChange = { checked ->
-                                                        val newSet = if (checked) selectedSet + option else selectedSet - option
-                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
-                                                        if (fieldError != null) previewErrors = previewErrors - field.id
-                                                    }
-                                                )
-                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
-                                            }
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.TOGGLE -> {
-                                    val isToggled = currentVal == "true"
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = textPrimary
-                                            )
-                                            Switch(
-                                                checked = isToggled,
-                                                onCheckedChange = { toggled ->
-                                                    previewDynamicValues = previewDynamicValues + (field.id to toggled.toString())
-                                                    if (fieldError != null) previewErrors = previewErrors - field.id
-                                                }
-                                            )
-                                        }
-                                        if (fieldError != null) {
-                                            Text(
-                                                text = fieldError,
-                                                color = Color(0xFFEF4444),
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(start = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                FormFieldType.COUPON -> {
-                                    Card(
-                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
-                                        border = BorderStroke(1.dp, if (isDark) Color(0xFF332918) else Color(0xFFE2E8F0)),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    "🎟️ ${field.label.ifBlank { "Promo / Coupon Code" }}",
-                                                    fontSize = 12.5.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = textPrimary
-                                                )
-                                                val hint = field.options.firstOrNull()?.substringBefore(':') ?: "SAVE10"
-                                                Text("e.g. $hint", fontSize = 11.sp, color = textSecondary)
-                                            }
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                OutlinedTextField(
-                                                    value = currentVal,
-                                                    onValueChange = { previewDynamicValues = previewDynamicValues + (field.id to it) },
-                                                    placeholder = { Text(field.placeholder.ifBlank { "Enter code" }, fontSize = 12.sp, color = textSecondary) },
-                                                    modifier = Modifier.weight(1f),
-                                                    singleLine = true,
-                                                    shape = RoundedCornerShape(8.dp)
-                                                )
-                                                Button(
-                                                    onClick = { /* simulated apply in builder */ },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = goldPrimary),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                                ) {
-                                                    Text("Apply", fontSize = 12.sp, color = Color.White)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                else -> {
-                                    OutlinedTextField(
-                                        value = currentVal,
-                                        onValueChange = { inputVal ->
-                                            previewDynamicValues = previewDynamicValues + (field.id to inputVal)
-                                            if (fieldError != null) previewErrors = previewErrors - field.id
-
-                                            // CSV Backend Frontend Autofill
-                                            if (themeConfig.enableCsvBackend && inputVal.length >= 2) {
-                                                val isLookupField = field.label.contains(themeConfig.csvLookupColumn, ignoreCase = true) ||
-                                                        themeConfig.csvLookupColumn.contains(field.label, ignoreCase = true) ||
-                                                        field.placeholder.contains(themeConfig.csvLookupColumn, ignoreCase = true)
-                                                if (isLookupField) {
-                                                    val matched = viewModel.lookupCsvRecord(inputVal)
-                                                    if (matched != null) {
-                                                        val newMap = previewDynamicValues.toMutableMap()
-                                                        formFields.forEach { f ->
-                                                            if (f.id != field.id) {
-                                                                matched.forEach { (col, v) ->
-                                                                    if (f.label.equals(col, ignoreCase = true) || f.label.contains(col, ignoreCase = true) || col.contains(f.label, ignoreCase = true)) {
-                                                                        newMap[f.id] = v
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        previewDynamicValues = newMap
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        isError = fieldError != null,
-                                        supportingText = {
-                                            if (fieldError != null) {
-                                                Text(fieldError, color = Color(0xFFEF4444), fontSize = 11.5.sp)
-                                            }
-                                        },
-                                        label = { Text("${field.label}${if (field.isRequired) " *" else ""}") },
-                                        placeholder = { Text(field.placeholder.ifBlank { "Enter value" }, color = textSecondary) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text("This form has no fields yet.", fontSize = 13.sp, color = textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            }
-
-            val isClosedForm = viewModel.isFormClosed()
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (formPages.size > 1 && previewPageIndex > 0) {
-                    OutlinedButton(
-                        onClick = { previewPageIndex = (previewPageIndex - 1).coerceAtLeast(0) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        border = BorderStroke(1.dp, cardBorder)
-                    ) {
-                        Text("← Back", color = textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                }
-
-                if (formPages.size > 1 && previewPageIndex < formPages.size - 1) {
-                    Button(
-                        onClick = {
-                            val curPageFields = formFields.filter { it.pageIndex == previewPageIndex }
-                            val pageValidation = FormValidationEngine.validateFormSubmission(
-                                fields = curPageFields,
-                                values = previewDynamicValues,
-                                enforceRequiredFields = themeConfig.enforceRequiredFields,
-                                strictFormatValidation = themeConfig.strictFormatValidation,
-                                enforceQuantityRange = themeConfig.enforceQuantityRange
-                            )
-                            if (!pageValidation.isValid) {
-                                previewErrors = pageValidation.errors
-                                Toast.makeText(context, pageValidation.summaryMessage, Toast.LENGTH_SHORT).show()
-                            } else {
-                                previewErrors = emptyMap()
-                                previewPageIndex++
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = parsedPrimaryColor,
-                            contentColor = Color.Black
-                        )
-                    ) {
-                        Text("Next Page →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                } else {
-                     Button(
-                        onClick = {
-                            if (isClosedForm) {
-                                Toast.makeText(context, themeConfig.closedMessage, Toast.LENGTH_LONG).show()
-                                return@Button
-                            }
-                            val validation = FormValidationEngine.validateFormSubmission(
-                                fields = formFields,
-                                values = previewDynamicValues,
-                                enforceRequiredFields = themeConfig.enforceRequiredFields,
-                                strictFormatValidation = themeConfig.strictFormatValidation,
-                                enforceQuantityRange = themeConfig.enforceQuantityRange
-                            )
-                            if (!validation.isValid) {
-                                previewErrors = validation.errors
-                                Toast.makeText(context, validation.summaryMessage as CharSequence, Toast.LENGTH_SHORT).show()
-                            } else {
-                                previewErrors = emptyMap()
-                                // C6 Fix: Submit real form data to Room DB + Supabase instead of just showing a Toast
-                                val formId = viewModel.activeFormId.value
-                                viewModel.submitFormFieldAnswers(
-                                    formId = formId,
-                                    answers = previewDynamicValues
-                                ) { success, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                    if (success) onDismiss()
-                                }
-                            }
-                        },
-                        enabled = !isClosedForm,
-                        modifier = Modifier
-                            .weight(if (formPages.size > 1 && previewPageIndex > 0) 1.5f else 1f)
-                            .height(48.dp),
-                        shape = parsedButtonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isClosedForm) Color.Gray else parsedPrimaryColor,
-                            contentColor = if (isClosedForm) Color.White else Color.Black
-                        )
-                    ) {
-                        Text(
-                            text = if (isClosedForm) "Form Closed (সময়সীমা শেষ)" else "Submit / Complete Form",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.5.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
+                                        
+... [truncated for diff preview]

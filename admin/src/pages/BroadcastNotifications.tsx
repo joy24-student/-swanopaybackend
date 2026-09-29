@@ -24,10 +24,13 @@ import {
   broadcastMerchantNotification,
   fetchBroadcastHistory,
   deleteBroadcastBatch,
+  clearLiveAnnouncementBanner,
   BroadcastPayload,
   BroadcastHistoryItem,
   NotificationType,
-  NotificationSeverity
+  NotificationSeverity,
+  getBackendBaseUrl,
+  getAdminHeaders,
 } from '../adminSupabaseClient'
 import { useNotifications } from '../components/ToastProvider'
 
@@ -91,14 +94,34 @@ export default function BroadcastNotifications() {
         .select('id, business_name, status, email')
         .order('business_name', { ascending: true })
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         setMerchants(data as MerchantOption[])
-        if (data.length > 0 && !selectedMerchantId) {
+        if (!selectedMerchantId) {
           setSelectedMerchantId(data[0].id)
         }
+        return
       }
     } catch (err) {
-      console.warn('[BroadcastNotifications] Could not load merchants:', err)
+      console.warn('[BroadcastNotifications] Could not load merchants from Supabase:', err)
+    }
+
+    // Backend fallback
+    try {
+      const baseUrl = getBackendBaseUrl()
+      const headers = await getAdminHeaders()
+      const res = await fetch(`${baseUrl}/v1/admin/merchants`, { headers })
+      if (res.ok) {
+        const json = await res.json()
+        const list = json.merchants || (Array.isArray(json) ? json : [])
+        if (list.length > 0) {
+          setMerchants(list as MerchantOption[])
+          if (!selectedMerchantId) {
+            setSelectedMerchantId(list[0].id)
+          }
+        }
+      }
+    } catch (bkErr) {
+      console.warn('[BroadcastNotifications] Backend fallback merchants load failed:', bkErr)
     }
   }
 
@@ -115,9 +138,51 @@ export default function BroadcastNotifications() {
     }
   }
 
+  // Live Banner Status State
+  const [currentLiveBanner, setCurrentLiveBanner] = useState<string>('')
+  const [isLiveBannerActive, setIsLiveBannerActive] = useState<boolean>(false)
+  const [isClearingBanner, setIsClearingBanner] = useState<boolean>(false)
+
+  const loadLiveBannerState = async () => {
+    try {
+      const { data } = await adminSupabase
+        .from('showcase_config')
+        .select('value')
+        .eq('key', 'system_config')
+        .maybeSingle()
+      if (data?.value) {
+        const val = data.value
+        const active = val.notice_banner_enabled ?? val.system_notice_active ?? Boolean(val.system_notice && val.system_notice.trim())
+        setIsLiveBannerActive(Boolean(active && val.system_notice && val.system_notice.trim()))
+        setCurrentLiveBanner(val.system_notice || '')
+      } else {
+        setIsLiveBannerActive(false)
+        setCurrentLiveBanner('')
+      }
+    } catch (_) {}
+  }
+
+  const handleClearLiveBanner = async () => {
+    if (!window.confirm('Are you sure you want to turn off and clear the live announcement banner from all mobile apps and merchant dashboards?')) {
+      return
+    }
+    setIsClearingBanner(true)
+    try {
+      await clearLiveAnnouncementBanner()
+      setIsLiveBannerActive(false)
+      setCurrentLiveBanner('')
+      addToast('success', 'Live announcement banner turned off and cleared across all merchant apps!')
+    } catch (err: any) {
+      addToast('error', 'Failed to clear announcement banner: ' + err.message)
+    } finally {
+      setIsClearingBanner(false)
+    }
+  }
+
   useEffect(() => {
     loadMerchants()
     loadHistory()
+    loadLiveBannerState()
   }, [])
 
   // Filtered merchants for dropdown

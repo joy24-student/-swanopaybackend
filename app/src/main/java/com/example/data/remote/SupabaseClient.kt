@@ -2042,14 +2042,21 @@ object SupabaseClient {
     // Helpers
     private fun Response.parseError(body: String?): String {
         return try {
-            if (body != null) {
-                val json = JSONObject(body)
-                json.optString("error_description", json.optString("message", "HTTP $code"))
+            if (!body.isNullOrBlank()) {
+                val json = JSONObject(body.trim())
+                val err = json.optString("error_description", "").ifBlank {
+                    json.optString("message", "").ifBlank {
+                        json.optString("msg", "").ifBlank {
+                            json.optString("error", "HTTP $code")
+                        }
+                    }
+                }
+                err
             } else {
                 "HTTP Error $code"
             }
         } catch (e: Exception) {
-            "HTTP Error $code"
+            body?.take(200)?.ifBlank { "HTTP Error $code" } ?: "HTTP Error $code"
         }
     }
 
@@ -2230,18 +2237,54 @@ object SupabaseClient {
         onFailure: (String) -> Unit
     ) {
         val cleanToken = managementToken.trim()
+        if (cleanToken.isEmpty()) {
+            onFailure("Management API Access Token cannot be empty.")
+            return
+        }
+
+        var effectiveOrgId = organizationId.trim()
+        if (effectiveOrgId.isBlank() || effectiveOrgId.equals("personal", ignoreCase = true)) {
+            // Auto-resolve organization ID directly from Supabase Management API
+            try {
+                val orgsReq = Request.Builder()
+                    .url("https://api.supabase.com/v1/organizations")
+                    .addHeader("Authorization", "Bearer $cleanToken")
+                    .addHeader("Content-Type", "application/json")
+                    .get()
+                    .build()
+                withContext(Dispatchers.IO) {
+                    client.newCall(orgsReq).execute().use { orgsResp ->
+                        val orgsBody = orgsResp.body?.string()
+                        if (orgsResp.isSuccessful && !orgsBody.isNullOrBlank()) {
+                            val arr = JSONArray(orgsBody)
+                            if (arr.length() > 0) {
+                                effectiveOrgId = arr.getJSONObject(0).optString("id", "")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SupabaseClient", "Failed to auto-resolve organization ID: ${e.message}")
+            }
+        }
+
+        if (effectiveOrgId.isBlank() || effectiveOrgId.equals("personal", ignoreCase = true)) {
+            onFailure("No valid Supabase organization found. Please ensure your account has at least one organization.")
+            return
+        }
+
         val endpoint = "https://api.supabase.com/v1/projects"
         val bodyJson = JSONObject().apply {
             put("name", projectName)
-            put("organization_id", organizationId)
+            put("organization_id", effectiveOrgId)
             put("db_pass", dbPass)
             put("region", region)
-            put("plan", "free")
         }.toString()
 
         val request = Request.Builder()
             .url(endpoint)
             .addHeader("Authorization", "Bearer $cleanToken")
+            .addHeader("Content-Type", "application/json")
             .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 

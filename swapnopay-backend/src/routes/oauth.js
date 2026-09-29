@@ -666,6 +666,34 @@ async function handleProvision(req, res) {
 
     if (action === 'CREATE_PROJECT') {
       const defaultPass = getDefaultProjectDbPassword(userId || projectName || 'merchant', dbPassword)
+
+      // Resolve valid organization_id from Supabase Management API
+      let targetOrgId = orgSlug
+      try {
+        const orgsRes = await fetch('https://api.supabase.com/v1/organizations', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (orgsRes.ok) {
+          const orgs = await orgsRes.json()
+          if (Array.isArray(orgs) && orgs.length > 0) {
+            const matchedOrg = orgs.find((o) => o.id === targetOrgId || o.slug === targetOrgId)
+            if (matchedOrg) {
+              targetOrgId = matchedOrg.id
+            } else if (!targetOrgId || targetOrgId === 'personal' || !orgs.some((o) => o.id === targetOrgId)) {
+              targetOrgId = orgs[0].id
+            }
+          }
+        }
+      } catch (orgErr) {
+        console.warn('[oauth-create-project] Organization lookup warning:', orgErr.message)
+      }
+
+      if (!targetOrgId || targetOrgId === 'personal') {
+        return res.status(400).json({ error: 'No valid Supabase organization found. Please ensure your Supabase account has an organization.' })
+      }
+
+      console.log(`[oauth-create-project] Creating project "${projectName || 'SwapnoPay Merchant Store'}" in organization ${targetOrgId}...`)
+
       const resp = await fetch('https://api.supabase.com/v1/projects', {
         method: 'POST',
         headers: {
@@ -674,16 +702,17 @@ async function handleProvision(req, res) {
         },
         body: JSON.stringify({
           name: projectName || 'SwapnoPay Merchant Store',
-          organization_id: orgSlug,
+          organization_id: targetOrgId,
           db_pass: defaultPass,
           region: 'ap-southeast-1', // Singapore (fastest for Bangladesh & South Asia)
-          plan: 'free',
         }),
       })
 
-      const projData = await resp.json()
+      const projData = await resp.json().catch(() => ({}))
       if (!resp.ok) {
-        return res.status(resp.status).json({ error: projData.message || 'Project creation failed' })
+        const errMsg = projData.message || projData.error || projData.msg || projData.error_description || (typeof projData === 'string' ? projData : `HTTP Error ${resp.status}`)
+        console.error('[oauth-create-project] Project creation failed:', resp.status, projData)
+        return res.status(resp.status).json({ error: `Supabase Project Creation Error: ${errMsg}` })
       }
 
       // Immediately persist the generated db_password and project_ref by default

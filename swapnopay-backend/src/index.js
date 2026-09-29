@@ -257,29 +257,54 @@ io.on('connection', (socket) => {
 
   // ── Emit current system notice immediately upon connection ──
   getShowcaseConfig('system_config').then(cfg => {
-    if (cfg && cfg.system_notice) {
-      socket.emit('system_notice', {
-        system_notice: cfg.system_notice,
-        latest_broadcast: cfg.latest_broadcast || null,
-        updated_at: cfg.updated_at || new Date().toISOString()
-      })
-    }
+    const isBannerDisabled = cfg?.notice_banner_enabled === false || cfg?.system_notice_active === false || cfg?.banner_enabled === false
+    const rawNotice = typeof cfg?.system_notice === 'string' ? cfg.system_notice.trim() : ''
+    const rawImageUrl = typeof cfg?.banner_image_url === 'string' ? cfg.banner_image_url.trim() : ''
+    const rawLinkUrl = typeof cfg?.banner_link_url === 'string' ? cfg.banner_link_url.trim() : ''
+    const rawTitle = typeof cfg?.banner_title === 'string' ? cfg.banner_title.trim() : ''
+    const hasContent = Boolean(rawNotice || rawImageUrl)
+    const isBannerEnabled = Boolean(!isBannerDisabled && hasContent)
+    const activeNotice = isBannerEnabled ? rawNotice : ''
+
+    socket.emit('system_notice', {
+      system_notice: activeNotice,
+      notice_banner_enabled: isBannerEnabled,
+      system_notice_active: isBannerEnabled,
+      banner_image_url: isBannerEnabled ? rawImageUrl : '',
+      banner_link_url: isBannerEnabled ? rawLinkUrl : '',
+      banner_title: isBannerEnabled ? rawTitle : '',
+      latest_broadcast: cfg?.latest_broadcast || null,
+      updated_at: cfg?.updated_at || new Date().toISOString()
+    })
   }).catch(() => {})
 
   // ── Allow client to query current system notice on demand ──
   socket.on('get_system_notice', async (cb) => {
     try {
       const cfg = await getShowcaseConfig('system_config')
-      const notice = cfg?.system_notice || ''
+      const isBannerDisabled = cfg?.notice_banner_enabled === false || cfg?.system_notice_active === false || cfg?.banner_enabled === false
+      const rawNotice = typeof cfg?.system_notice === 'string' ? cfg.system_notice.trim() : ''
+      const rawImageUrl = typeof cfg?.banner_image_url === 'string' ? cfg.banner_image_url.trim() : ''
+      const rawLinkUrl = typeof cfg?.banner_link_url === 'string' ? cfg.banner_link_url.trim() : ''
+      const rawTitle = typeof cfg?.banner_title === 'string' ? cfg.banner_title.trim() : ''
+      const hasContent = Boolean(rawNotice || rawImageUrl)
+      const isBannerEnabled = Boolean(!isBannerDisabled && hasContent)
+      const activeNotice = isBannerEnabled ? rawNotice : ''
+
       const res = {
-        system_notice: notice,
+        system_notice: activeNotice,
+        notice_banner_enabled: isBannerEnabled,
+        system_notice_active: isBannerEnabled,
+        banner_image_url: isBannerEnabled ? rawImageUrl : '',
+        banner_link_url: isBannerEnabled ? rawLinkUrl : '',
+        banner_title: isBannerEnabled ? rawTitle : '',
         latest_broadcast: cfg?.latest_broadcast || null,
         updated_at: cfg?.updated_at || new Date().toISOString()
       }
       if (typeof cb === 'function') cb(res)
       else socket.emit('system_notice', res)
     } catch (_) {
-      if (typeof cb === 'function') cb({ system_notice: '' })
+      if (typeof cb === 'function') cb({ system_notice: '', notice_banner_enabled: false, system_notice_active: false, banner_image_url: '', banner_link_url: '', banner_title: '' })
     }
   })
 
@@ -511,12 +536,30 @@ app.get('/v1/system-notice', async (_req, res) => {
       listBroadcastHistory(15).catch(() => []),
     ])
     const latestBroadcast = config.latest_broadcast || (Array.isArray(broadcasts) && broadcasts.length > 0 ? broadcasts[0] : null)
-    const fallbackNotice = latestBroadcast
-      ? (latestBroadcast.title ? `${latestBroadcast.title} — ${latestBroadcast.message}` : latestBroadcast.message)
-      : ''
+    
+    // Check if notice banner is explicitly disabled or turned off
+    const isBannerDisabled = config.notice_banner_enabled === false || config.system_notice_active === false || config.banner_enabled === false
+    const rawNotice = typeof config.system_notice === 'string' ? config.system_notice.trim() : ''
+    const rawImageUrl = typeof config.banner_image_url === 'string' ? config.banner_image_url.trim() : ''
+    const rawLinkUrl = typeof config.banner_link_url === 'string' ? config.banner_link_url.trim() : ''
+    const rawTitle = typeof config.banner_title === 'string' ? config.banner_title.trim() : ''
+    
+    // The notice banner is active ONLY when not disabled and has either text or an uploaded image
+    const hasContent = Boolean(rawNotice || rawImageUrl)
+    const isBannerEnabled = Boolean(!isBannerDisabled && hasContent)
+    const activeNotice = isBannerEnabled ? rawNotice : ''
+    const activeImageUrl = isBannerEnabled ? rawImageUrl : ''
+    const activeLinkUrl = isBannerEnabled ? rawLinkUrl : ''
+    const activeTitle = isBannerEnabled ? rawTitle : ''
+
     res.json({
       ok: true,
-      system_notice: config.system_notice || fallbackNotice || '',
+      notice_banner_enabled: isBannerEnabled,
+      system_notice_active: isBannerEnabled,
+      system_notice: activeNotice,
+      banner_image_url: activeImageUrl,
+      banner_link_url: activeLinkUrl,
+      banner_title: activeTitle,
       latest_broadcast: latestBroadcast,
       notifications: Array.isArray(broadcasts) ? broadcasts : [],
       maintenance_mode: Boolean(config.maintenance_mode),
@@ -527,7 +570,7 @@ app.get('/v1/system-notice', async (_req, res) => {
       updated_at: config.updated_at || latestBroadcast?.created_at || new Date().toISOString(),
     })
   } catch (err) {
-    res.json({ ok: true, system_notice: '', notifications: [], maintenance_mode: false })
+    res.json({ ok: true, notice_banner_enabled: false, system_notice_active: false, system_notice: '', banner_image_url: '', banner_link_url: '', banner_title: '', notifications: [], maintenance_mode: false })
   }
 })
 

@@ -1252,6 +1252,8 @@ export async function deleteBroadcastBatch(batchId: string): Promise<void> {
       await upsertShowcaseConfig('system_config', {
         ...currentVal,
         system_notice: '',
+        notice_banner_enabled: false,
+        system_notice_active: false,
         latest_broadcast: null,
         updated_at: new Date().toISOString(),
       })
@@ -1260,6 +1262,51 @@ export async function deleteBroadcastBatch(batchId: string): Promise<void> {
 
   if (!backendDeleted) {
     // Already attempted direct Supabase cleanup above
+  }
+}
+
+/**
+ * Explicitly clear and turn off the live announcement marquee banner across all merchant apps.
+ */
+export async function clearLiveAnnouncementBanner(): Promise<boolean> {
+  let backendSuccess = false
+
+  try {
+    const baseUrl = getBackendBaseUrl()
+    const headers = await getAdminHeaders()
+    const res = await fetch(`${baseUrl}/v1/admin/notifications/clear-banner`, {
+      method: 'POST',
+      headers,
+    })
+    if (res.ok) {
+      backendSuccess = true
+    }
+  } catch (err) {
+    console.warn('[clearLiveAnnouncementBanner] Backend API notice:', err)
+  }
+
+  try {
+    const { data: currentNotice } = await adminSupabase
+      .from('showcase_config')
+      .select('value')
+      .eq('key', 'system_config')
+      .maybeSingle()
+
+    const currentVal = currentNotice?.value || {}
+    await upsertShowcaseConfig('system_config', {
+      ...currentVal,
+      system_notice: '',
+      banner_image_url: '',
+      banner_link_url: '',
+      banner_title: '',
+      notice_banner_enabled: false,
+      system_notice_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    return true
+  } catch (err) {
+    console.warn('[clearLiveAnnouncementBanner] Direct Supabase update notice:', err)
+    return backendSuccess
   }
 }
 

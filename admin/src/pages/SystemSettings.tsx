@@ -11,6 +11,7 @@ import {
   saveSubscriptionConfig,
   getBackendBaseUrl,
   getAdminHeaders,
+  uploadShowcasePhotoResilient,
 } from '../adminSupabaseClient';
 import { Link } from 'react-router-dom';
 import {
@@ -89,6 +90,11 @@ export interface SystemRemoteConfig {
   support_address: string;
   support_hours: string;
   system_notice: string;
+  notice_banner_enabled?: boolean;
+  system_notice_active?: boolean;
+  banner_image_url?: string;
+  banner_link_url?: string;
+  banner_title?: string;
   video_tutorial: VideoTutorial;
   video_tutorials: VideoTutorial[];
   api_documentation: string;
@@ -255,7 +261,12 @@ const DEFAULT_CONFIG: SystemRemoteConfig = {
   support_whatsapp: "+8801712963652",
   support_address: "Level 14, Banani Tower, Dhaka, Bangladesh",
   support_hours: "24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)",
-  system_notice: "Welcome to SwapnoPay! Automatic SMS matching and merchant ledger active.",
+  system_notice: "",
+  notice_banner_enabled: false,
+  system_notice_active: false,
+  banner_image_url: "",
+  banner_link_url: "",
+  banner_title: "",
   video_tutorial: {
     id: "vid_bkash",
     title: "bKash Automatic SMS Matching",
@@ -377,8 +388,33 @@ export default function SystemSettings() {
     gateway_api_key: '',
   });
   const [subSaving, setSubSaving] = useState(false);
+  const [broadcastPriceUpdate, setBroadcastPriceUpdate] = useState(true);
   const [showGatewayApiKey, setShowGatewayApiKey] = useState(false);
   const [copiedApiKey, setCopiedApiKey] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const bannerFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingBanner(true);
+      const { imageUrl } = await uploadShowcasePhotoResilient(file, 'banners');
+      setConfig((prev) => ({
+        ...prev,
+        banner_image_url: imageUrl,
+        notice_banner_enabled: true,
+        system_notice_active: true,
+      }));
+      setStatusMsg('Banner image uploaded! Click "Save Configuration" to apply changes live.');
+      setTimeout(() => setStatusMsg(''), 4000);
+    } catch (err: any) {
+      alert('Failed to upload banner image: ' + err.message);
+    } finally {
+      setIsUploadingBanner(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -391,9 +427,16 @@ export default function SystemSettings() {
 
         if (data?.value) {
           const val = data.value;
+          const isBannerActive = val.notice_banner_enabled ?? val.system_notice_active ?? Boolean((val.system_notice && val.system_notice.trim()) || (val.banner_image_url && val.banner_image_url.trim()));
           setConfig({
             ...DEFAULT_CONFIG,
             ...val,
+            system_notice: typeof val.system_notice === 'string' ? val.system_notice : '',
+            notice_banner_enabled: Boolean(isBannerActive),
+            system_notice_active: Boolean(isBannerActive),
+            banner_image_url: typeof val.banner_image_url === 'string' ? val.banner_image_url : '',
+            banner_link_url: typeof val.banner_link_url === 'string' ? val.banner_link_url : '',
+            banner_title: typeof val.banner_title === 'string' ? val.banner_title : '',
             video_tutorial: { ...DEFAULT_CONFIG.video_tutorial, ...(val.video_tutorial || {}) },
             video_tutorials: Array.isArray(val.video_tutorials) && val.video_tutorials.length > 0 ? val.video_tutorials : DEFAULT_CONFIG.video_tutorials,
             api_documentation: typeof val.api_documentation === 'string' ? val.api_documentation : DEFAULT_CONFIG.api_documentation,
@@ -474,10 +517,15 @@ export default function SystemSettings() {
 
   const handleSaveSubscriptionConfig = async () => {
     setSubSaving(true);
-    setStatusMsg('Saving subscription pricing and gateway credentials across backend, web & Android app...');
+    setStatusMsg('Saving subscription pricing and broadcasting across backend, web & Android app...');
     try {
-      await saveSubscriptionConfig(subConfig);
-      setStatusMsg('SUCCESS: Subscription pricing, gateway credentials, and trial settings updated live across Web and Mobile App!');
+      await saveSubscriptionConfig({
+        ...subConfig,
+        broadcast_to_merchants: broadcastPriceUpdate,
+        broadcastTitle: 'Subscription Pricing Updated',
+        broadcastMessage: `Platform subscription pricing updated: Monthly ৳${subConfig.monthly_fee}, Quarterly ৳${subConfig.quarterly_fee}, Yearly ৳${subConfig.yearly_fee}. Trial: ${subConfig.trial_days} days.`,
+      });
+      setStatusMsg('SUCCESS: Subscription pricing, gateway credentials, and broadcast notification sent live across Web & Mobile Apps!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save subscription config: ' + err.message);
@@ -489,7 +537,7 @@ export default function SystemSettings() {
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSaving(true);
-    setStatusMsg('Saving system configuration to Supabase...');
+    setStatusMsg('Saving system configuration and subscription pricing...');
 
     try {
       const payload: SystemRemoteConfig = {
@@ -497,7 +545,15 @@ export default function SystemSettings() {
         last_updated: Date.now(),
       };
 
-      await upsertShowcaseConfig('system_config', payload);
+      await Promise.all([
+        upsertShowcaseConfig('system_config', payload),
+        saveSubscriptionConfig({
+          ...subConfig,
+          broadcast_to_merchants: broadcastPriceUpdate,
+          broadcastTitle: 'System & Subscription Updated',
+          broadcastMessage: `Platform system configuration and subscription pricing have been updated: Monthly ৳${subConfig.monthly_fee}, Quarterly ৳${subConfig.quarterly_fee}, Yearly ৳${subConfig.yearly_fee}.`,
+        }),
+      ]);
 
       // Real-time broadcast dispatch via backend API (Socket.io -> all merchant dashboards)
       try {
@@ -512,7 +568,7 @@ export default function SystemSettings() {
         console.warn('[SystemSettings] Backend API broadcast notice:', backendErr);
       }
 
-      setStatusMsg('SUCCESS: Successfully saved and broadcasted via Supabase Realtime & Socket.io!');
+      setStatusMsg('SUCCESS: Successfully saved and broadcasted all system & subscription changes via Supabase Realtime & Socket.io!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save: ' + err.message);
@@ -949,15 +1005,27 @@ export default function SystemSettings() {
                     Dynamically adjust monthly, quarterly, and yearly subscription fees, trial duration, and enforce 1-NID = 1-Account anti-abuse verification.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleSaveSubscriptionConfig}
-                  disabled={subSaving}
-                >
-                  <Save size={13} />
-                  {subSaving ? 'Saving...' : 'Save Subscription & Gateway Settings'}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={broadcastPriceUpdate}
+                      onChange={(e) => setBroadcastPriceUpdate(e.target.checked)}
+                      style={{ accentColor: 'var(--brand-primary)' }}
+                    />
+                    <span>Broadcast alert to all merchants</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSaveSubscriptionConfig}
+                    disabled={subSaving}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {subSaving ? <RefreshCw size={13} className="spin" /> : <Megaphone size={13} />}
+                    {subSaving ? 'Broadcasting...' : 'Save & Broadcast Pricing'}
+                  </button>
+                </div>
               </div>
 
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1815,18 +1883,223 @@ export default function SystemSettings() {
                 <span className="form-hint">Official company registration and office location.</span>
               </div>
 
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">
-                  System Broadcast Announcement
-                </label>
-                <textarea
-                  className="input"
-                  value={config.system_notice}
-                  onChange={(e) => setConfig({ ...config, system_notice: e.target.value })}
-                  placeholder="Broadcast message shown to all merchants..."
-                  style={{ minHeight: 70 }}
-                />
-                <span className="form-hint">Broadcast banner message displayed on top of the merchant dashboard.</span>
+              {/* Live Merchant Announcement & Clickable Image Banner */}
+              <div
+                style={{
+                  gridColumn: '1 / -1',
+                  padding: 20,
+                  borderRadius: 'var(--radius-md)',
+                  background: config.notice_banner_enabled ? 'rgba(245, 197, 24, 0.07)' : 'var(--bg-subtle)',
+                  border: `1px solid ${config.notice_banner_enabled ? 'rgba(245, 197, 24, 0.4)' : 'var(--border-default)'}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 16,
+                }}
+              >
+                {/* Header Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>
+                        📢 Live Merchant Announcement &amp; Clickable Image Banner
+                      </label>
+                      <span className={`badge ${config.notice_banner_enabled ? 'badge-warning' : 'badge-subtle'}`} style={{ fontSize: 10, padding: '2px 8px' }}>
+                        {config.notice_banner_enabled ? 'SHOWING ON (LIVE)' : 'SHOWING OFF (HIDDEN)'}
+                      </span>
+                    </div>
+                    <span className="form-hint" style={{ marginTop: 2 }}>
+                      Control the live banner shown on top of the Merchant Mobile App &amp; Web Dashboard. Supports clickable images and marquee text.
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      type="button"
+                      className="btn btn-subtle btn-sm"
+                      onClick={() => setConfig({
+                        ...config,
+                        system_notice: '',
+                        banner_image_url: '',
+                        banner_link_url: '',
+                        banner_title: '',
+                        notice_banner_enabled: false,
+                        system_notice_active: false,
+                      })}
+                      title="Clear banner and turn off"
+                    >
+                      Clear &amp; Turn Off
+                    </button>
+                    <label className="switch" style={{ margin: 0, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        aria-checked={Boolean(config.notice_banner_enabled)}
+                        checked={Boolean(config.notice_banner_enabled)}
+                        onChange={(e) => setConfig({
+                          ...config,
+                          notice_banner_enabled: e.target.checked,
+                          system_notice_active: e.target.checked,
+                        })}
+                      />
+                      <span className="slider" />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Banner Image Upload & Preview Section */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label className="form-label" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                    🖼️ Banner Image (Optional - Clickable in Mobile App &amp; Web Dashboard)
+                  </label>
+                  
+                  <input
+                    type="file"
+                    ref={bannerFileInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleBannerImageUpload}
+                  />
+
+                  {config.banner_image_url ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div
+                        style={{
+                          position: 'relative',
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          border: '1px solid var(--border-default)',
+                          maxHeight: 180,
+                          background: '#090d16',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <img
+                          src={config.banner_image_url}
+                          alt="Banner Preview"
+                          style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-subtle btn-sm"
+                          disabled={isUploadingBanner}
+                          onClick={() => bannerFileInputRef.current?.click()}
+                        >
+                          <UploadCloud size={13} style={{ marginRight: 6 }} />
+                          {isUploadingBanner ? 'Uploading...' : 'Replace Image'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-subtle btn-sm"
+                          style={{ color: '#ef4444' }}
+                          onClick={() => setConfig({ ...config, banner_image_url: '' })}
+                        >
+                          <Trash2 size={13} style={{ marginRight: 6 }} />
+                          Remove Image
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => !isUploadingBanner && bannerFileInputRef.current?.click()}
+                      style={{
+                        border: '2px dashed var(--border-default)',
+                        borderRadius: 8,
+                        padding: '16px 20px',
+                        textAlign: 'center',
+                        cursor: isUploadingBanner ? 'not-allowed' : 'pointer',
+                        background: 'var(--bg-default)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 6,
+                        transition: 'border-color 0.2s',
+                      }}
+                    >
+                      <UploadCloud size={24} color="var(--brand-primary)" />
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>
+                        {isUploadingBanner ? 'Uploading banner image...' : 'Click to Upload Banner Image (PNG, JPG, WebP)'}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                        Recommended ratio: 16:9 or 3:1 (e.g. 1200x400 px or 800x400 px). Max 5MB.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Banner Click Destination Link & Badge */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                      🔗 Clickable Destination Link URL (Optional)
+                    </label>
+                    <input
+                      type="url"
+                      className="input"
+                      value={config.banner_link_url || ''}
+                      onChange={(e) => setConfig({ ...config, banner_link_url: e.target.value })}
+                      placeholder="https://example.com/promo or https://swapnopay.top/..."
+                      style={{ opacity: config.notice_banner_enabled ? 1 : 0.65 }}
+                    />
+                    <span className="form-hint">
+                      When merchants tap or click the banner, this URL will open in their browser or app.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                      🏷️ Banner Title / Badge (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={config.banner_title || ''}
+                      onChange={(e) => setConfig({ ...config, banner_title: e.target.value })}
+                      placeholder="e.g. 📢 ঈদ অফার or জরুরি বিজ্ঞপ্তি"
+                      style={{ opacity: config.notice_banner_enabled ? 1 : 0.65 }}
+                    />
+                    <span className="form-hint">
+                      Displayed as a badge or headline on the banner.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Notice Text / Caption */}
+                <div>
+                  <label className="form-label" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                    📝 Text Announcement / Caption
+                  </label>
+                  <textarea
+                    className="input"
+                    value={config.system_notice}
+                    onChange={(e) => setConfig({ ...config, system_notice: e.target.value })}
+                    placeholder="Enter broadcast message or caption to show with the banner..."
+                    style={{ minHeight: 65, opacity: config.notice_banner_enabled ? 1 : 0.65 }}
+                  />
+                  <span className="form-hint">
+                    Text displayed in the marquee banner, or as the caption overlay under the uploaded image banner.
+                  </span>
+                </div>
+
+                {/* Status Indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <span>
+                    Status:{' '}
+                    {config.notice_banner_enabled && (config.banner_image_url || config.system_notice.trim()) ? (
+                      <strong style={{ color: '#10b981' }}>
+                        ✅ ACTIVE &amp; LIVE: Showing {config.banner_image_url ? 'Clickable Image Banner' : 'Text Announcement'}
+                        {config.banner_link_url ? ` (Link: ${config.banner_link_url})` : ''}
+                      </strong>
+                    ) : (
+                      <span style={{ color: '#ef4444' }}>
+                        🚫 OFF / HIDDEN on mobile app &amp; merchant dashboard
+                      </span>
+                    )}
+                  </span>
+                </div>
               </div>
 
               <div

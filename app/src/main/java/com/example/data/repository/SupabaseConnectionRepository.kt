@@ -207,7 +207,15 @@ object SupabaseConnectionRepository {
                         onFailure(json.optString("error", "Project creation returned empty reference"))
                     }
                 } else {
-                    onFailure("Project Creation Error (${response.code})")
+                    val errDetail = try {
+                        if (!bodyStr.isNullOrBlank()) {
+                            val json = JSONObject(bodyStr)
+                            json.optString("error", json.optString("message", "HTTP ${response.code}"))
+                        } else "HTTP ${response.code}"
+                    } catch (_: Exception) {
+                        bodyStr?.take(200) ?: "HTTP ${response.code}"
+                    }
+                    onFailure("Project Creation Error (${response.code}): $errDetail")
                 }
             }
         } catch (e: Exception) {

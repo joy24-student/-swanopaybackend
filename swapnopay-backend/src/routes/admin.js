@@ -293,10 +293,23 @@ router.post('/showcase', async (req, res) => {
     if (payload.key && typeof payload.key === 'string' && payload.value !== undefined) {
       saved = await upsertShowcaseConfig(payload.key, payload.value)
       if (payload.key === 'system_config' && req.io) {
-        const notice = payload.value?.system_notice || ''
+        const isBannerDisabled = payload.value?.notice_banner_enabled === false || payload.value?.system_notice_active === false || payload.value?.banner_enabled === false
+        const rawNotice = typeof payload.value?.system_notice === 'string' ? payload.value.system_notice.trim() : ''
+        const rawImageUrl = typeof payload.value?.banner_image_url === 'string' ? payload.value.banner_image_url.trim() : ''
+        const rawLinkUrl = typeof payload.value?.banner_link_url === 'string' ? payload.value.banner_link_url.trim() : ''
+        const rawTitle = typeof payload.value?.banner_title === 'string' ? payload.value.banner_title.trim() : ''
+        const hasContent = Boolean(rawNotice || rawImageUrl)
+        const isBannerEnabled = Boolean(!isBannerDisabled && hasContent)
+        const notice = isBannerEnabled ? rawNotice : ''
+
         req.io.emit('system_notice', {
           system_notice: notice,
-          title: 'System Notice',
+          notice_banner_enabled: isBannerEnabled,
+          system_notice_active: isBannerEnabled,
+          banner_image_url: isBannerEnabled ? rawImageUrl : '',
+          banner_link_url: isBannerEnabled ? rawLinkUrl : '',
+          banner_title: isBannerEnabled ? rawTitle : '',
+          title: rawTitle || 'System Notice',
           message: notice,
           updated_at: new Date().toISOString()
         })
@@ -498,15 +511,19 @@ router.post('/notifications/broadcast', async (req, res) => {
     // Real-time distribution via Socket.io
     if (req.io) {
       req.io.emit('broadcast:notification', result)
-      const bannerText = result.system_notice || (Boolean(updateBanner) ? (title.trim() ? `${title.trim()} — ${message.trim()}` : message.trim()) : '')
-      req.io.emit('system_notice', {
-        system_notice: bannerText,
-        title: cleanType,
-        message: message.trim(),
-        severity: cleanSeverity,
-        banner_updated: Boolean(updateBanner),
-        created_at: result.created_at || new Date().toISOString(),
-      })
+      if (Boolean(updateBanner)) {
+        const bannerText = result.system_notice || (title.trim() ? `${title.trim()} — ${message.trim()}` : message.trim())
+        req.io.emit('system_notice', {
+          system_notice: bannerText,
+          notice_banner_enabled: true,
+          system_notice_active: true,
+          title: cleanType,
+          message: message.trim(),
+          severity: cleanSeverity,
+          banner_updated: true,
+          created_at: result.created_at || new Date().toISOString(),
+        })
+      }
       if (target && target !== 'ALL' && target !== 'ACTIVE') {
         req.io.to(`merchant:${target}`).emit('merchant:notification', result)
       }
@@ -561,6 +578,31 @@ router.delete('/notifications/broadcasts/:batchId', async (req, res) => {
   } catch (err) {
     console.error('[admin/notifications/broadcasts/:batchId DELETE]', err.message)
     res.status(500).json({ error: 'Failed to delete broadcast: ' + err.message })
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// POST /v1/admin/notifications/clear-banner
+// Turn off and clear live announcement banner across all apps
+// ────────────────────────────────────────────────────────────────────────────
+router.post('/notifications/clear-banner', async (req, res) => {
+  try {
+    const { clearSystemNoticeBanner } = await import('../services/adminSupabase.js')
+    const result = await clearSystemNoticeBanner(req.adminJwt || null)
+    if (req.io) {
+      req.io.emit('system_notice', {
+        system_notice: '',
+        notice_banner_enabled: false,
+        system_notice_active: false,
+        title: '',
+        message: '',
+        updated_at: new Date().toISOString()
+      })
+    }
+    res.json(result)
+  } catch (err) {
+    console.error('[admin/notifications/clear-banner POST]', err.message)
+    res.status(500).json({ error: 'Failed to clear announcement banner: ' + err.message })
   }
 })
 

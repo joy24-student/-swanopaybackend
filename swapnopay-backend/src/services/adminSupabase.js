@@ -1787,7 +1787,7 @@ export async function upsertShowcaseConfig(key, valueData) {
     const admin = getAdminClient()
     const { data: existing } = await admin
       .from('showcase_config')
-      .select('id, key')
+      .select('key')
       .eq('key', key)
       .maybeSingle()
 
@@ -3383,12 +3383,12 @@ export async function broadcastNotification({
   // 6. Update live dashboard announcement banner & latest_broadcast in system_config
   // so Android Merchant App checkAdminNoticeFromBackend() (/v1/system-notice) delivers popup + banner
   const formattedNotice = cleanTitle ? `${cleanTitle} — ${cleanMessage}` : cleanMessage
-  const shouldSetNotice = Boolean(updateBanner) || target === 'ALL' || target === 'ACTIVE'
+  const shouldSetNotice = Boolean(updateBanner)
   try {
     const current = await getShowcaseConfig('system_config') || {}
     await upsertShowcaseConfig('system_config', {
       ...current,
-      ...(shouldSetNotice ? { system_notice: formattedNotice } : {}),
+      ...(shouldSetNotice ? { system_notice: formattedNotice, notice_banner_enabled: true, system_notice_active: true } : {}),
       latest_broadcast: {
         id: batchId,
         batch_id: batchId,
@@ -3417,6 +3417,8 @@ export async function broadcastNotification({
     message: cleanMessage,
     banner_updated: Boolean(updateBanner),
     system_notice: shouldSetNotice ? formattedNotice : '',
+    notice_banner_enabled: shouldSetNotice,
+    system_notice_active: shouldSetNotice,
     created_at: nowIso,
   }
 }
@@ -3531,6 +3533,8 @@ export async function deleteBroadcastBatch(batchId, adminJwt = null) {
       await upsertShowcaseConfig('system_config', {
         ...current,
         system_notice: '',
+        notice_banner_enabled: false,
+        system_notice_active: false,
         latest_broadcast: null,
         updated_at: new Date().toISOString(),
       })
@@ -3550,6 +3554,28 @@ export async function deleteBroadcastBatch(batchId, adminJwt = null) {
   }
 
   return { ok: true, batch_id: batchId, notice_cleared: noticeCleared }
+}
+
+/**
+ * Turn off / Clear the live system announcement banner in system_config.
+ */
+export async function clearSystemNoticeBanner(adminJwt = null) {
+  try {
+    const current = (await getShowcaseConfig('system_config')) || {}
+    const updated = await upsertShowcaseConfig('system_config', {
+      ...current,
+      system_notice: '',
+      banner_image_url: '',
+      banner_link_url: '',
+      banner_title: '',
+      notice_banner_enabled: false,
+      system_notice_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    return { ok: true, notice_cleared: true, config: updated }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
 }
 
 

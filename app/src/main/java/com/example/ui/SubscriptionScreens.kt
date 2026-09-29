@@ -111,6 +111,14 @@ data class AdminNoticePopup(
     val isDismissible: Boolean = true
 )
 
+data class NoticeBannerState(
+    val enabled: Boolean = false,
+    val text: String = "",
+    val title: String = "",
+    val imageUrl: String = "",
+    val linkUrl: String = ""
+)
+
 /**
  * Pixel-Perfect Subscription Screen matching media_1789961305625.png
  * Dedicated, standalone professional layout with complete database & editing capabilities.

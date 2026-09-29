@@ -1392,3 +1392,39 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Notice: Auto-confirm user trigger skipped: %', SQLERRM;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SHOWCASE_CONFIG & ADMIN LIVE BANNER REMOTE CONFIGURATION
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.showcase_config (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_showcase_config_key ON public.showcase_config(key);
+ALTER TABLE public.showcase_config ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public can view showcase_config" ON public.showcase_config;
+CREATE POLICY "Public can view showcase_config"
+    ON public.showcase_config FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Service role and authenticated admins can modify showcase_config" ON public.showcase_config;
+CREATE POLICY "Service role and authenticated admins can modify showcase_config"
+    ON public.showcase_config FOR ALL TO service_role, authenticated USING (true) WITH CHECK (true);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+          AND schemaname = 'public' 
+          AND tablename = 'showcase_config'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.showcase_config;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END $$;
+
