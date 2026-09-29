@@ -8600,5 +8600,1059 @@ private fun LivePreviewModal(
                             if (primaryProduct.customSections.isNotEmpty()) {
                                 primaryProduct.customSections.filter { it.isVisible }.forEach { section ->
                                     when (section.type) {
-                                        
-... [truncated for diff preview]
+                                        "FAQ" -> {
+                                            if (!themeConfig.hideFaq) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text("❓", fontSize = 13.sp)
+                                                        Text(
+                                                            text = section.title.ifBlank { "Frequently Asked Questions" },
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textSecondary
+                                                        )
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+
+                                                    val faqPairs = remember(section.content) {
+                                                        val blocks = section.content.split(Regex("\n\\s*\n"))
+                                                        blocks.mapNotNull { b ->
+                                                            val lines = b.lines()
+                                                            val qLine = lines.firstOrNull { it.trim().startsWith("Q:") }
+                                                                ?: lines.firstOrNull()
+                                                            val aLines = lines.filter { !it.trim().startsWith("Q:") }
+                                                            val q = qLine?.removePrefix("Q:")?.trim().orEmpty()
+                                                            val a = (if (aLines.isNotEmpty()) aLines.joinToString("\n") { it.removePrefix("A:").trim() } else "").trim()
+                                                            if (q.isNotBlank()) (q to a) else null
+                                                        }
+                                                    }
+
+                                                    Card(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                        border = BorderStroke(0.8.dp, cardBorder),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column {
+                                                            faqPairs.forEachIndexed { fIdx, (qText, aText) ->
+                                                                val itemKey = "${section.id}_$fIdx"
+                                                                val isExpanded = itemKey in previewExpandedFaqIndices
+                                                                Surface(
+                                                                    onClick = {
+                                                                        previewExpandedFaqIndices = if (isExpanded) {
+                                                                            previewExpandedFaqIndices - itemKey
+                                                                        } else {
+                                                                            previewExpandedFaqIndices + itemKey
+                                                                        }
+                                                                    },
+                                                                    color = Color.Transparent,
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                                                        Row(
+                                                                            modifier = Modifier.fillMaxWidth(),
+                                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                                            verticalAlignment = Alignment.CenterVertically
+                                                                        ) {
+                                                                            Text(
+                                                                                text = qText,
+                                                                                fontSize = 11.5.sp,
+                                                                                fontWeight = FontWeight.SemiBold,
+                                                                                color = textPrimary,
+                                                                                modifier = Modifier.weight(1f)
+                                                                            )
+                                                                            Icon(
+                                                                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                                                contentDescription = null,
+                                                                                tint = textSecondary,
+                                                                                modifier = Modifier.size(18.dp)
+                                                                            )
+                                                                        }
+                                                                        if (isExpanded && aText.isNotBlank()) {
+                                                                            Spacer(Modifier.height(6.dp))
+                                                                            Text(
+                                                                                text = aText,
+                                                                                fontSize = 11.sp,
+                                                                                color = textSecondary,
+                                                                                lineHeight = 16.sp
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                                if (fIdx < faqPairs.lastIndex) {
+                                                                    HorizontalDivider(color = cardBorder.copy(alpha = 0.5f), thickness = 0.6.dp)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "REVIEWS" -> {
+                                            if (!themeConfig.hideReviews) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text("💬", fontSize = 13.sp)
+                                                        Text(
+                                                            text = section.title.ifBlank { "Customer Reviews" },
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = textSecondary
+                                                        )
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+                                                    Card(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                        border = BorderStroke(0.8.dp, cardBorder),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                    repeat(5) {
+                                                                        Text("★", color = Color(0xFFF59E0B), fontSize = 13.sp)
+                                                                    }
+                                                                }
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(4.dp),
+                                                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                                                ) {
+                                                                    Text(
+                                                                        "✓ Verified Buyer",
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color(0xFF10B981),
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                            Text(
+                                                                text = section.content.ifBlank { "Excellent product! Exceeded expectations and delivery was swift." },
+                                                                fontSize = 11.5.sp,
+                                                                color = textPrimary,
+                                                                lineHeight = 16.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "FEATURES" -> {
+                                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text("⭐", fontSize = 13.sp)
+                                                    Text(
+                                                        text = section.title.ifBlank { "Key Features" },
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textSecondary
+                                                    )
+                                                }
+                                                if (section.subtitle.isNotBlank()) {
+                                                    Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                }
+                                                Card(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                    border = BorderStroke(0.8.dp, cardBorder),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        val featureLines = section.content.lines().filter { it.isNotBlank() }
+                                                        if (featureLines.isNotEmpty()) {
+                                                            featureLines.forEach { line ->
+                                                                Row(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    verticalAlignment = Alignment.Top
+                                                                ) {
+                                                                    Text("✓", color = Color(0xFF10B981), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                                    Text(line.trim(), fontSize = 11.5.sp, color = textPrimary)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            Text(section.content, fontSize = 11.5.sp, color = textPrimary)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        "ASSURANCES" -> {
+                                            if (!themeConfig.hideAssurances) {
+                                                Card(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF131F1C) else Color(0xFFECFDF5)),
+                                                    border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(10.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(Icons.Outlined.VerifiedUser, null, tint = Color(0xFF10B981), modifier = Modifier.size(20.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = section.title.ifBlank { "100% Satisfaction Guarantee" },
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = textPrimary
+                                                            )
+                                                            Text(
+                                                                text = section.content.ifBlank { "Safe delivery, inspected quality, full merchant warranty." },
+                                                                fontSize = 10.5.sp,
+                                                                color = textSecondary
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else -> {
+                                            // CUSTOM
+                                            Card(
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF141923) else Color(0xFFF8FAFC)),
+                                                border = BorderStroke(0.8.dp, cardBorder),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    if (section.title.isNotBlank()) {
+                                                        Text(section.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                                    }
+                                                    if (section.subtitle.isNotBlank()) {
+                                                        Text(section.subtitle, fontSize = 10.5.sp, color = textSecondary)
+                                                    }
+                                                    if (section.content.isNotBlank()) {
+                                                        Text(section.content, fontSize = 11.sp, color = textPrimary)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 11. Multi-product support if form has more than 1 product
+                            if (formProducts.size > 1) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("MORE PRODUCTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                    formProducts.drop(1).forEach { product ->
+                                        val pPrice = product.salePrice.takeIf { it > 0.0 } ?: product.price
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (product.imageUrl.isNotBlank()) {
+                                                AsyncImage(
+                                                    model = product.imageUrl,
+                                                    contentDescription = product.title,
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(product.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = textPrimary)
+                                                if (product.sku.isNotBlank()) Text(product.sku, fontSize = 10.sp, color = textSecondary)
+                                            }
+                                            Text("$curr${"%,.0f".format(pPrice)}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = goldText)
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = cardBorder, thickness = 1.dp)
+                        }
+
+                        // Dynamic Fields in Preview Modal
+                        if (formFields.isNotEmpty()) {
+                            HorizontalDivider(color = cardBorder, thickness = 1.dp)
+                            Text("FORM FIELDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+
+                            formFields.filter { field ->
+                                val matchesPage = formPages.size <= 1 || field.pageIndex == previewPageIndex
+                                if (!matchesPage) return@filter false
+                                val dependencyId = field.dependsOnFieldId
+                                if (dependencyId.isNullOrBlank()) true else {
+                                    val actual = previewDynamicValues[dependencyId]
+                                        ?: formFields.firstOrNull { it.id == dependencyId }?.defaultValue
+                                        ?: ""
+                                    when (field.conditionOperator.uppercase()) {
+                                        "NOT_EQUALS" -> actual != field.conditionValue
+                                        "CONTAINS" -> actual.contains(field.conditionValue)
+                                        else -> actual == field.conditionValue
+                                    }
+                                }
+                            }.forEach { field ->
+                                val currentVal = previewDynamicValues[field.id] ?: ""
+                                val fieldError = previewErrors[field.id]
+
+                                when (field.type) {
+                                    FormFieldType.PRODUCT, FormFieldType.PRODUCT_LIST -> {
+                                        val allMedia = listOfNotNull(field.mediaUrl.takeIf { it.isNotBlank() }) + field.galleryUrls
+                                        var activeImgIdx by remember(field.id) { mutableIntStateOf(0) }
+                                        val currentImg = allMedia.getOrNull(activeImgIdx) ?: field.mediaUrl
+
+                                        var selectedVariantId by remember(field.id) {
+                                            mutableStateOf(field.productVariants.firstOrNull()?.id)
+                                        }
+                                        val selectedVariant = field.productVariants.firstOrNull { it.id == selectedVariantId }
+                                        val effectivePrice = selectedVariant?.price ?: (field.minValue ?: field.defaultValue.toDoubleOrNull() ?: 0.0)
+
+                                        val isSelected = currentVal == "selected" || (field.isRequired && currentVal != "unselected")
+                                        Surface(
+                                            onClick = {
+                                                if (!field.isRequired) {
+                                                    previewDynamicValues = previewDynamicValues + (field.id to if (isSelected) "unselected" else "selected")
+                                                    if (fieldError != null) previewErrors = previewErrors - field.id
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) goldDarkBg else cardBg,
+                                            border = BorderStroke(1.dp, if (isSelected) parsedPrimaryColor else cardBorder),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(52.dp)
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(if (isDark) Color(0xFF281E0A) else Color(0xFFFEF3C7)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        if (currentImg.isNotBlank()) {
+                                                            AsyncImage(
+                                                                model = currentImg,
+                                                                contentDescription = field.label,
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        } else {
+                                                            Icon(Icons.Outlined.ShoppingBag, null, tint = goldText, modifier = Modifier.size(22.dp))
+                                                        }
+                                                    }
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            fontSize = 13.sp,
+                                                            color = textPrimary
+                                                        )
+                                                        Text(
+                                                            text = "BDT ${"%,.2f".format(effectivePrice)}${if (selectedVariant != null) " (${selectedVariant.name})" else ""}",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = parsedPrimaryColor
+                                                        )
+                                                    }
+                                                    Checkbox(
+                                                        checked = isSelected,
+                                                        enabled = !field.isRequired,
+                                                        onCheckedChange = { checked ->
+                                                            previewDynamicValues = previewDynamicValues + (field.id to if (checked) "selected" else "unselected")
+                                                            if (fieldError != null) previewErrors = previewErrors - field.id
+                                                        }
+                                                    )
+                                                }
+
+                                                if (allMedia.size > 1) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                                                    ) {
+                                                        allMedia.forEachIndexed { idx, url ->
+                                                            val isImgSel = idx == activeImgIdx
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(36.dp)
+                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                    .border(
+                                                                        width = if (isImgSel) 2.dp else 1.dp,
+                                                                        color = if (isImgSel) parsedPrimaryColor else cardBorder,
+                                                                        shape = RoundedCornerShape(6.dp)
+                                                                    )
+                                                                    .clickable { activeImgIdx = idx }
+                                                            ) {
+                                                                AsyncImage(
+                                                                    model = url,
+                                                                    contentDescription = null,
+                                                                    modifier = Modifier.fillMaxSize(),
+                                                                    contentScale = ContentScale.Crop
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (field.productVariants.isNotEmpty()) {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text("SELECT VARIANT:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                                                        Row(
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                                                        ) {
+                                                            field.productVariants.forEach { pv ->
+                                                                val isVarSel = pv.id == selectedVariantId
+                                                                Surface(
+                                                                    onClick = {
+                                                                        selectedVariantId = pv.id
+                                                                        previewDynamicValues = previewDynamicValues + (field.id to "selected")
+                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant" to pv.name)
+                                                                        previewDynamicValues = previewDynamicValues + ("${field.id}_variant_price" to pv.price.toString())
+                                                                    },
+                                                                    shape = RoundedCornerShape(8.dp),
+                                                                    color = if (isVarSel) parsedPrimaryColor.copy(alpha = 0.15f) else Color.Transparent,
+                                                                    border = BorderStroke(1.dp, if (isVarSel) parsedPrimaryColor else cardBorder)
+                                                                ) {
+                                                                    Text(
+                                                                        text = "${pv.name} • BDT ${pv.price.toInt()}",
+                                                                        fontSize = 11.sp,
+                                                                        fontWeight = if (isVarSel) FontWeight.Bold else FontWeight.Normal,
+                                                                        color = if (isVarSel) parsedPrimaryColor else textSecondary,
+                                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    FormFieldType.CUSTOM_CODE -> {
+                                        val fieldHtml = remember(field.customCodeHtml, previewDynamicValues) {
+                                            var content = field.customCodeHtml.ifBlank { field.defaultValue }
+                                            content = content.replace("{{form_title}}", formTitle)
+                                            content = content.replace("{{form_description}}", formDescription)
+                                            formFields.forEach { f ->
+                                                val v = previewDynamicValues[f.id] ?: f.defaultValue
+                                                content = content.replace("{{${f.id}}}", v)
+                                                val key = f.label.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+                                                content = content.replace("{{field_$key}}", v)
+                                            }
+                                            unescapeHtmlString(content)
+                                        }
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
+                                            border = BorderStroke(1.dp, cardBorder),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                if (field.label.isNotBlank() && field.label != "Custom Code Block" && field.label != "Custom Code" && field.label != "HTML/CSS block") {
+                                                    Text(field.label, fontWeight = FontWeight.Bold, color = textPrimary, fontSize = 13.sp)
+                                                }
+                                                if (fieldHtml.isBlank()) {
+                                                    Text("Custom HTML/CSS Block (Empty)", fontSize = 11.sp, color = textSecondary)
+                                                } else {
+                                                    FormHtmlPreview(
+                                                        htmlContent = fieldHtml,
+                                                        cssContent = field.customCodeCss,
+                                                        isDark = isDark,
+                                                        modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp, max = 350.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                FormFieldType.CHECKBOX -> {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            val isChecked = currentVal == "true"
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = { checked ->
+                                                    previewDynamicValues = previewDynamicValues + (field.id to checked.toString())
+                                                    if (fieldError != null) previewErrors = previewErrors - field.id
+                                                }
+                                            )
+                                            Text(
+                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                                fontSize = 12.5.sp,
+                                                color = textPrimary
+                                            )
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 32.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.DATE -> {
+                                    val calendar = Calendar.getInstance()
+                                    val datePickerDialog = DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            val formattedDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                                            previewDynamicValues = previewDynamicValues + (field.id to formattedDate)
+                                            if (fieldError != null) previewErrors = previewErrors - field.id
+                                        },
+                                        calendar.get(Calendar.YEAR),
+                                        calendar.get(Calendar.MONTH),
+                                        calendar.get(Calendar.DAY_OF_MONTH)
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = textSecondary
+                                        )
+                                        Surface(
+                                            onClick = { datePickerDialog.show() },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = cardBg,
+                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.CalendarToday,
+                                                        contentDescription = null,
+                                                        tint = if (currentVal.isNotBlank()) goldPrimary else textSecondary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select Date (YYYY-MM-DD)" }),
+                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
+                                                        fontSize = 14.sp
+                                                    )
+                                                }
+                                                if (currentVal.isNotBlank()) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            previewDynamicValues = previewDynamicValues - field.id
+                                                        },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Clear,
+                                                            contentDescription = "Clear",
+                                                            tint = textSecondary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.FILE_UPLOAD, FormFieldType.CAMERA_UPLOAD -> {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = textSecondary
+                                        )
+                                        Surface(
+                                            onClick = {
+                                                activeUploadFieldId = field.id
+                                                previewFileLauncher.launch("*/*")
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isDark) Color(0xFF19140C) else Color(0xFFFBFBFE),
+                                            border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(44.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isDark) Color(0xFF281E0A) else Color(0xFFFFFBEB)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (field.type == FormFieldType.CAMERA_UPLOAD) Icons.Outlined.PhotoCamera else Icons.Outlined.CloudUpload,
+                                                        contentDescription = null,
+                                                        tint = goldPrimary,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                                if (currentVal.isNotBlank()) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CheckCircle,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFF10B981),
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Text(
+                                                            text = currentVal,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            fontSize = 13.sp,
+                                                            color = textPrimary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    TextButton(
+                                                        onClick = {
+                                                            previewDynamicValues = previewDynamicValues - field.id
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text("Remove File", color = Color(0xFFEF4444), fontSize = 12.sp)
+                                                    }
+                                                } else {
+                                                    Text(
+                                                        text = field.placeholder.ifBlank { "Tap to choose file / document" },
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = textPrimary,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                    Text(
+                                                        text = "PDF, DOCX, PNG, JPG up to 10MB",
+                                                        fontSize = 11.sp,
+                                                        color = textSecondary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.DROPDOWN -> {
+                                    var expandedDropdown by remember { mutableStateOf(false) }
+                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = textSecondary
+                                        )
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            Surface(
+                                                onClick = { expandedDropdown = true },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = cardBg,
+                                                border = BorderStroke(1.dp, if (fieldError != null) Color(0xFFEF4444) else cardBorder),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text(
+                                                        text = if (currentVal.isNotBlank()) currentVal else (field.placeholder.ifBlank { "Select option" }),
+                                                        color = if (currentVal.isNotBlank()) textPrimary else textSecondary,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Icon(
+                                                        imageVector = if (expandedDropdown) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                                        contentDescription = null,
+                                                        tint = textSecondary
+                                                    )
+                                                }
+                                            }
+                                            DropdownMenu(
+                                                expanded = expandedDropdown,
+                                                onDismissRequest = { expandedDropdown = false }
+                                            ) {
+                                                options.forEach { option ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(option, fontSize = 13.5.sp) },
+                                                        onClick = {
+                                                            previewDynamicValues = previewDynamicValues + (field.id to option)
+                                                            if (fieldError != null) previewErrors = previewErrors - field.id
+                                                            expandedDropdown = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.RADIO -> {
+                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = textSecondary
+                                        )
+                                        options.forEach { option ->
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
+                                                        if (fieldError != null) previewErrors = previewErrors - field.id
+                                                    }
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = currentVal == option,
+                                                    onClick = {
+                                                        previewDynamicValues = previewDynamicValues + (field.id to option)
+                                                        if (fieldError != null) previewErrors = previewErrors - field.id
+                                                    }
+                                                )
+                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
+                                            }
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.MULTI_SELECT -> {
+                                    val options = field.options.ifEmpty { listOf("Option 1", "Option 2") }
+                                    val selectedSet = remember(currentVal) {
+                                        if (currentVal.isBlank()) emptySet()
+                                        else currentVal.split(", ").filter { it.isNotBlank() }.toSet()
+                                    }
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = textSecondary
+                                        )
+                                        options.forEach { option ->
+                                            val isSelected = option in selectedSet
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        val newSet = if (isSelected) selectedSet - option else selectedSet + option
+                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
+                                                        if (fieldError != null) previewErrors = previewErrors - field.id
+                                                    }
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Checkbox(
+                                                    checked = isSelected,
+                                                    onCheckedChange = { checked ->
+                                                        val newSet = if (checked) selectedSet + option else selectedSet - option
+                                                        previewDynamicValues = previewDynamicValues + (field.id to newSet.joinToString(", "))
+                                                        if (fieldError != null) previewErrors = previewErrors - field.id
+                                                    }
+                                                )
+                                                Text(option, fontSize = 13.5.sp, color = textPrimary)
+                                            }
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.TOGGLE -> {
+                                    val isToggled = currentVal == "true"
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${field.label}${if (field.isRequired) " *" else ""}",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = textPrimary
+                                            )
+                                            Switch(
+                                                checked = isToggled,
+                                                onCheckedChange = { toggled ->
+                                                    previewDynamicValues = previewDynamicValues + (field.id to toggled.toString())
+                                                    if (fieldError != null) previewErrors = previewErrors - field.id
+                                                }
+                                            )
+                                        }
+                                        if (fieldError != null) {
+                                            Text(
+                                                text = fieldError,
+                                                color = Color(0xFFEF4444),
+                                                fontSize = 11.5.sp,
+                                                modifier = Modifier.padding(start = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                FormFieldType.COUPON -> {
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF18140E) else Color(0xFFF8FAFC)),
+                                        border = BorderStroke(1.dp, if (isDark) Color(0xFF332918) else Color(0xFFE2E8F0)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    "🎟️ ${field.label.ifBlank { "Promo / Coupon Code" }}",
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = textPrimary
+                                                )
+                                                val hint = field.options.firstOrNull()?.substringBefore(':') ?: "SAVE10"
+                                                Text("e.g. $hint", fontSize = 11.sp, color = textSecondary)
+                                            }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                OutlinedTextField(
+                                                    value = currentVal,
+                                                    onValueChange = { previewDynamicValues = previewDynamicValues + (field.id to it) },
+                                                    placeholder = { Text(field.placeholder.ifBlank { "Enter code" }, fontSize = 12.sp, color = textSecondary) },
+                                                    modifier = Modifier.weight(1f),
+                                                    singleLine = true,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                Button(
+                                                    onClick = { /* simulated apply in builder */ },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = goldPrimary),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                                ) {
+                                                    Text("Apply", fontSize = 12.sp, color = Color.White)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    OutlinedTextField(
+                                        value = currentVal,
+                                        onValueChange = { inputVal ->
+                                            previewDynamicValues = previewDynamicValues + (field.id to inputVal)
+                                            if (fieldError != null) previewErrors = previewErrors - field.id
+
+                                            // CSV Backend Frontend Autofill
+                                            if (themeConfig.enableCsvBackend && inputVal.length >= 2) {
+                                                val isLookupField = field.label.contains(themeConfig.csvLookupColumn, ignoreCase = true) ||
+                                                        themeConfig.csvLookupColumn.contains(field.label, ignoreCase = true) ||
+                                                        field.placeholder.contains(themeConfig.csvLookupColumn, ignoreCase = true)
+                                                if (isLookupField) {
+                                                    val matched = viewModel.lookupCsvRecord(inputVal)
+                                                    if (matched != null) {
+                                                        val newMap = previewDynamicValues.toMutableMap()
+                                                        formFields.forEach { f ->
+                                                            if (f.id != field.id) {
+                                                                matched.forEach { (col, v) ->
+                                                                    if (f.label.equals(col, ignoreCase = true) || f.label.contains(col, ignoreCase = true) || col.contains(f.label, ignoreCase = true)) {
+                                                                        newMap[f.id] = v
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        previewDynamicValues = newMap
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        isError = fieldError != null,
+                                        supportingText = {
+                                            if (fieldError != null) {
+                                                Text(fieldError, color = Color(0xFFEF4444), fontSize = 11.5.sp)
+                                            }
+                                        },
+                                        label = { Text("${field.label}${if (field.isRequired) " *" else ""}") },
+                                        placeholder = { Text(field.placeholder.ifBlank { "Enter value" }, color = textSecondary) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text("This form has no fields yet.", fontSize = 13.sp, color = textSecondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+            }
+
+            val isClosedForm = viewModel.isFormClosed()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (formPages.size > 1 && previewPageIndex > 0) {
+                    OutlinedButton(
+                        onClick = { previewPageIndex = (previewPageIndex - 1).coerceAtLeast(0) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = parsedButtonShape,
+                        border = BorderStroke(1.dp, cardBorder)
+                    ) {
+                        Text("← Back", color = textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+
+                if (formPages.size > 1 && previewPageIndex < formPages.size - 1) {
+                    Button(
+                        onClick = {
+                            val curPageFields = formFields.filter { it.pageIndex == previewPageIndex }
+                            val pageValidation = FormValidationEngine.validateFormSubmission(
+                                fields = curPageFields,
+                                values = previewDynamicValues,
+                                enforceRequiredFields = themeConfig.enforceRequiredFields,
+                                strictFormatValidation = themeConfig.strictFormatValidation,
+                                enforceQuantityRange = themeConfig.enforceQuantityRange
+                            )
+                            if (!pageValidation.isValid) {
+                                previewErrors = pageValidation.errors
+                                Toast.makeText(context, pageValidation.summaryMessage, Toast.LENGTH_SHORT).show()
+                            } else {
+                                previewErrors = emptyMap()
+                                previewPageIndex++
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(48.dp),
+                        shape = parsedButtonShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = parsedPrimaryColor,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text("Next Page →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                } else {
+                     Button(
+                        onClick = {
+                            if (isClosedForm) {
+                                Toast.makeText(context, themeConfig.closedMessage, Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            val validation = FormValidationEngine.validateFormSubmission(
+                                fields = formFields,
+                                values = previewDynamicValues,
+                                enforceRequiredFields = themeConfig.enforceRequiredFields,
+                                strictFormatValidation = themeConfig.strictFormatValidation,
+                                enforceQuantityRange = themeConfig.enforceQuantityRange
+                            )
+                            if (!validation.isValid) {
+                                previewErrors = validation.errors
+                                Toast.makeText(context, validation.summaryMessage as CharSequence, Toast.LENGTH_SHORT).show()
+                            } else {
+                                previewErrors = emptyMap()
+                                // C6 Fix: Submit real form data to Room DB + Supabase instead of just showing a Toast
+                                val formId = viewModel.activeFormId.value
+                                viewModel.submitFormFieldAnswers(
+                                    formId = formId,
+                                    answers = previewDynamicValues
+                                ) { success, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    if (success) onDismiss()
+                                }
+                            }
+                        },
+                        enabled = !isClosedForm,
+                        modifier = Modifier
+                            .weight(if (formPages.size > 1 && previewPageIndex > 0) 1.5f else 1f)
+                            .height(48.dp),
+                        shape = parsedButtonShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isClosedForm) Color.Gray else parsedPrimaryColor,
+                            contentColor = if (isClosedForm) Color.White else Color.Black
+                        )
+                    ) {
+                        Text(
+                            text = if (isClosedForm) "Form Closed (সময়সীমা শেষ)" else "Submit / Complete Form",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.5.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
