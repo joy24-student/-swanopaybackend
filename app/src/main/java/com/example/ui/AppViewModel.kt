@@ -17996,7 +17996,15 @@ data class FormThemeConfig(
     var hideSpecs: Boolean = false,
     var hideDelivery: Boolean = false,
     var hideFaq: Boolean = false,
-    var hideReviews: Boolean = false
+    var hideReviews: Boolean = false,
+    var brandName: String = "",
+    var brandBadge: String = "",
+    var assurance1Title: String = "Fast & Free Delivery",
+    var assurance1Subtitle: String = "Complimentary express 2-day delivery across Bangladesh",
+    var assurance2Title: String = "30-Day Risk Free",
+    var assurance2Subtitle: String = "Keep only what fits your listening needs",
+    var assurance3Title: String = "2-Year Protection",
+    var assurance3Subtitle: String = "Full replacement manufacturer warranty"
 )
 
 data class CustomVariable(
