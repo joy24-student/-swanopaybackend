@@ -213,9 +213,18 @@ export async function getMerchantCredentials(merchantId) {
     (merchantRow?.user_id && inMemoryMerchantGatewaySettings.get(merchantRow.user_id)) ||
     null
 
-  const effectiveName = data?.merchant_name || merchantRow?.business_name || memSettings?.merchant_name || null
-  const effectiveLogo = data?.merchant_logo_url || merchantRow?.photo_url || memSettings?.merchant_logo_url || null
-  const receiving = data?.receiving_numbers || memSettings?.receiving_numbers || (merchantRow?.default_number ? { bKash: merchantRow.default_number } : {})
+  const fallbackSingleNumber = (!isFakeNumber(merchantRow?.default_number) ? merchantRow?.default_number : null)
+    || (!isFakeNumber(merchantRow?.phone) ? merchantRow?.phone : null)
+    || null
+
+  const receiving = { ...(data?.receiving_numbers || memSettings?.receiving_numbers || {}) }
+  if (fallbackSingleNumber) {
+    ['bKash', 'Nagad', 'Rocket', 'Upay'].forEach(m => {
+      if (!receiving[m] || isFakeNumber(receiving[m])) {
+        receiving[m] = fallbackSingleNumber
+      }
+    })
+  }
   const mStatus = merchantRow?.status || 'ACTIVE'
 
   const effectiveSupabaseUrl = data?.supabase_url || merchantRow?.supabase_url || memSettings?.supabase_url || null
@@ -232,6 +241,8 @@ export async function getMerchantCredentials(merchantId) {
       merchant_name: effectiveName,
       merchant_logo_url: effectiveLogo,
       receiving_numbers: receiving,
+      default_number: fallbackSingleNumber,
+      phone: merchantRow?.phone || null,
       status: mStatus,
       merchant_id: merchantRow?.id || merchantId,
     }
@@ -727,34 +738,66 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
   mergeSimple(effectiveQrCodes, memSettings?.qr_codes)
 
   // Also query merchant_numbers table if available in Admin Supabase for THIS merchant only
+  let numRows = null
   try {
     const admin = getAdminClient()
-    const numberMerchantId = creds?.merchant_id || merchantId
-    let numberQuery = admin.from('merchant_numbers').select('*').eq('active', true)
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(numberMerchantId)) {
-      numberQuery = numberQuery.or(`merchant_id.eq.${numberMerchantId},user_id.eq.${numberMerchantId}`)
-    } else {
-      numberQuery = numberQuery.eq('merchant_id', numberMerchantId)
+    const targetMid = merchantRow?.id || creds?.merchant_id || merchantId
+    if (targetMid) {
+      const { data } = await admin
+        .from('merchant_numbers')
+        .select('*')
+        .eq('merchant_id', targetMid)
+      numRows = data
     }
-    const { data: numRows } = await numberQuery
-    if (Array.isArray(numRows) && numRows.length > 0) {
-      for (const row of numRows) {
-        const method = canonicalMethodName(row.type || row.method)
-        const num = String(row.number || '').trim()
-        if (method && num && !isFakeNumber(num)) {
-          if (!effectiveReceiving[method]) {
-            effectiveReceiving[method] = num
-          }
-          if (row.account_type) {
-            effectiveAccountTypes[method] = row.account_type
-          }
-          if (row.qr_code_url && !effectiveQrCodes[method]) {
-            effectiveQrCodes[method] = row.qr_code_url
-          }
+  } catch (err) {
+    console.warn('[getMerchantGatewayConfig] merchant_numbers query notice:', err.message)
+  }
+
+  if (Array.isArray(numRows) && numRows.length > 0) {
+    for (const row of numRows) {
+      if (row.active === false || row.is_active === false) continue
+      const method = canonicalMethodName(row.type || row.method)
+      const num = String(row.number || '').trim()
+      if (method && num && !isFakeNumber(num)) {
+        if (!effectiveReceiving[method]) {
+          effectiveReceiving[method] = num
+        }
+        if (row.account_type) {
+          effectiveAccountTypes[method] = row.account_type
+        }
+        if (row.qr_code_url && !effectiveQrCodes[method]) {
+          effectiveQrCodes[method] = row.qr_code_url
         }
       }
     }
-  } catch (_) {}
+  }
+
+  // Unified Single/Default Number Resolution:
+  // If the merchant has configured ONE number (or marked a default number, or has a profile phone number),
+  // automatically make it available as fallback across ALL supported methods (bKash, Nagad, Rocket, Upay).
+  let resolvedDefaultNum = null
+  if (Array.isArray(numRows) && numRows.length > 0) {
+    const defRow = numRows.find(r => (r.is_default || r.default) && r.number && !isFakeNumber(r.number))
+      || numRows.find(r => r.number && !isFakeNumber(r.number))
+    if (defRow) resolvedDefaultNum = String(defRow.number).trim()
+  }
+  if (!resolvedDefaultNum) {
+    const candidate = merchantRow?.default_number || merchantRow?.phone || creds?.default_number || creds?.phone || memSettings?.default_number || Object.values(effectiveReceiving).find(n => n && !isFakeNumber(n))
+    if (candidate && !isFakeNumber(candidate)) {
+      resolvedDefaultNum = String(candidate).trim()
+    }
+  }
+
+  if (resolvedDefaultNum) {
+    ['bKash', 'Nagad', 'Rocket', 'Upay'].forEach(m => {
+      if (!effectiveReceiving[m] || isFakeNumber(effectiveReceiving[m])) {
+        effectiveReceiving[m] = resolvedDefaultNum
+      }
+      if (!effectiveAccountTypes[m]) {
+        effectiveAccountTypes[m] = 'Personal'
+      }
+    })
+  }
 
   const hasNumbers = Object.values(effectiveReceiving).some(Boolean)
 
@@ -786,6 +829,8 @@ export async function getMerchantGatewayConfig(merchantId, heartbeatMap = null) 
     receiving_numbers:    effectiveReceiving,
     account_types:        effectiveAccountTypes,
     qr_codes:             effectiveQrCodes,
+    default_number:       resolvedDefaultNum,
+    phone:                merchantRow?.phone || creds?.phone || null,
     auto_appeal_matching: merchantRow?.auto_appeal_matching ?? memSettings?.auto_appeal_matching ?? false,
     merchant_customized:  Boolean(merchantRow || memSettings || creds || hasNumbers),
     merchant_logo_url:    effectiveLogo,
@@ -2688,8 +2733,9 @@ export async function createSubscriptionOrder({
 
   if (admin) {
     try {
-      await admin.from('merchant_subscriptions').insert({
-        id: orderId,
+      const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId || ''))
+      const subRecord = {
+        order_id: orderId,
         merchant_id: merchantId,
         nid_number: orderRecord.nid_number,
         plan_type: cleanPlan,
@@ -2697,7 +2743,14 @@ export async function createSubscriptionOrder({
         payment_method: method,
         status: 'PENDING',
         created_at: orderRecord.created_at
-      })
+      }
+      if (isSubUuid) {
+        subRecord.id = orderId
+      }
+      const { error: insErr } = await admin.from('merchant_subscriptions').insert(subRecord)
+      if (insErr && !isSubUuid) {
+        await admin.from('merchant_subscriptions').insert({ ...subRecord, id: orderId }).catch(() => {})
+      }
     } catch (err) {
       console.warn('[subscription] DB insert notice:', err.message)
     }
@@ -2818,8 +2871,10 @@ export async function verifyAndActivateSubscription({ merchantId, orderId, trxId
       }
       await updQuery
 
-      await admin.from('merchant_subscriptions').upsert({
-        id: orderId || ('sub_' + randomUUID().slice(0, 8)),
+      const resolvedSubId = orderId || ('sub_' + randomUUID().slice(0, 8))
+      const isSubUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(resolvedSubId || ''))
+      const upsertRecord = {
+        order_id: orderId,
         merchant_id: merchantId,
         nid_number: nidNumber,
         plan_type: plan,
@@ -2828,7 +2883,14 @@ export async function verifyAndActivateSubscription({ merchantId, orderId, trxId
         payment_method: method,
         status: 'COMPLETED',
         verified_at: new Date().toISOString()
-      })
+      }
+      if (isSubUuid) {
+        upsertRecord.id = resolvedSubId
+      }
+      const { error: upErr } = await admin.from('merchant_subscriptions').upsert(upsertRecord)
+      if (upErr && !isSubUuid) {
+        await admin.from('merchant_subscriptions').upsert({ ...upsertRecord, id: resolvedSubId }).catch(() => {})
+      }
     } catch (dbErr) {
       console.warn('[subscription] DB update notice:', dbErr.message)
     }

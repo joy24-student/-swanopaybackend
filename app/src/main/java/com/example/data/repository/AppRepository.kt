@@ -54,6 +54,10 @@ class AppRepository(private val context: Context) {
         }
     }
 
+    suspend fun reassignAllDataToMerchant(newId: String) {
+        dao.reassignAllDataToMerchant(newId)
+    }
+
     // Supabase profiles operations
     fun observeSupabaseProfiles(): Flow<List<SupabaseProfileEntity>> {
         return dao.observeSupabaseProfiles().map { list ->

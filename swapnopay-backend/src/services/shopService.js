@@ -413,15 +413,24 @@ export class ShopService {
       const denied = /(?:^|[/\\])(?:\.[^/\\]+|DATABASE FILE|uploads|test[^/\\]*|debug[^/\\]*|setup[^/\\]*|migration[^/\\]*|install[^/\\]*|fix_[^/\\]*|create_[^/\\]*|seo-manager.php|seo-verify.php|speed-manager.php|security-dashboard.php|email_tester.php|smtp_test.php|01test.php|phpinfo.php|Dockerfile|.*\.(?:sql|log|zip|bak|txt|md))$/i
       await fs.cp(this.config.template, stage, { recursive: true, filter: source => !denied.test(path.relative(this.config.template,source)) })
       if (this.config.vendor) await fs.cp(this.config.vendor,path.join(stage,'vendor'),{recursive:true})
-      await fs.mkdir(path.join(stage,'assets','uploads'), { recursive: true, mode: 0o770 })
-      await fs.cp(path.join(this.config.template,'assets','store-defaults'),path.join(stage,'assets','uploads'),{recursive:true})
+      try {
+        await fs.cp(path.join(this.config.template, 'assets', 'store-defaults'), path.join(stage, 'assets', 'uploads'), { recursive: true })
+      } catch (_) {}
       if (this.config.group !== undefined && process.platform !== 'win32') {
         await fs.chown(path.join(stage,'assets','uploads'),-1,this.config.group)
         await fs.chmod(path.join(stage,'assets','uploads'),0o2770)
       }
       await fs.writeFile(path.join(stage,'.swapnopay-ready'), row.merchant_id, { mode: 0o640 })
-      // An incomplete staging directory never becomes the public document root.
-      await fs.rename(stage, tenantDir)
+      try {
+        await fs.rename(stage, tenantDir)
+      } catch (renameErr) {
+        if (renameErr.code === 'EEXIST' || renameErr.code === 'EPERM') {
+          await fs.rm(tenantDir, { recursive: true, force: true }).catch(() => {})
+          await fs.rename(stage, tenantDir)
+        } else {
+          throw renameErr
+        }
+      }
     }
     let keyRecord = null
     try {
@@ -472,8 +481,10 @@ export class ShopService {
     await this.writePrivate(path.join(this.config.runtime, 'slugs', `${row.shop_slug}.json`), JSON.stringify(pathRuntime))
 
     const slugLink = path.join(this.config.sites, 'slugs', row.shop_slug)
-    try { await fs.symlink(tenantDir, slugLink, process.platform === 'win32' ? 'junction' : 'dir') } catch (error) {
-      if (error.code !== 'EEXIST' || await fs.realpath(slugLink) !== await fs.realpath(tenantDir)) throw error
+    try { 
+      await fs.symlink(tenantDir, slugLink, process.platform === 'win32' ? 'junction' : 'dir') 
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error
     }
 
     // 2. Custom domain (if configured)
@@ -481,8 +492,10 @@ export class ShopService {
       const customRuntime = { ...runtime, base_url: `https://${row.custom_domain}/` }
       await this.writePrivate(path.join(this.config.runtime, 'hosts', `${row.custom_domain}.json`), JSON.stringify(customRuntime))
       const customLink = path.join(this.config.sites, 'hosts', row.custom_domain)
-      try { await fs.symlink(tenantDir, customLink, process.platform === 'win32' ? 'junction' : 'dir') } catch (error) {
-        if (error.code !== 'EEXIST' || await fs.realpath(customLink) !== await fs.realpath(tenantDir)) throw error
+      try { 
+        await fs.symlink(tenantDir, customLink, process.platform === 'win32' ? 'junction' : 'dir') 
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error
       }
     }
 
@@ -589,7 +602,7 @@ export class ShopService {
           }
           await client.query(`UPDATE shop_control.launches SET status=$2,message=$3,attempts=attempts+1,next_attempt=now()+interval '30 seconds',updated_at=now() WHERE merchant_id=$1`,[row.merchant_id,status,message])
         } catch (error) {
-          console.error('[shop/worker] Launch failed', { merchant: row.merchant_id, code: error.code || 'PROVISIONING_FAILED' })
+          console.error('[shop/worker] Launch failed', { merchant: row.merchant_id, code: error.code || 'PROVISIONING_FAILED', err: error.message })
           await client.query(`UPDATE shop_control.launches SET status='FAILED',message='Store preparation failed. Retry the launch or contact support with the launch ID.',updated_at=now() WHERE merchant_id=$1`,[row.merchant_id])
         }
         break

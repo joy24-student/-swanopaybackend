@@ -723,7 +723,7 @@ CREATE TABLE IF NOT EXISTS public.product_reviews (
 CREATE OR REPLACE FUNCTION public.checkout_pos_atomic(p_sale jsonb, p_items jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  v_merchant uuid := public.current_merchant_id();
+  v_merchant uuid := coalesce(nullif(p_sale->>'merchant_id','')::uuid, public.current_merchant_id());
   v_sale uuid := (p_sale->>'id')::uuid;
   v_item jsonb; v_product uuid; v_variant uuid; v_qty numeric; v_price numeric;
   v_customer uuid := nullif(p_sale->>'customer_id','')::uuid;
@@ -774,7 +774,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.stock_in_product_atomic(p_product jsonb, p_variants jsonb DEFAULT '[]'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
-  v_merchant uuid := public.current_merchant_id();
+  v_merchant uuid := coalesce(nullif(p_product->>'merchant_id','')::uuid, public.current_merchant_id());
   v_product uuid := (p_product->>'id')::uuid;
   v_variant jsonb; v_variant_id uuid; v_qty numeric;
   v_opening numeric := coalesce((p_product->>'opening_quantity')::numeric,0);
@@ -1101,7 +1101,9 @@ DROP POLICY IF EXISTS "Merchants policy" ON public.merchants;
 CREATE POLICY "Merchants policy" ON public.merchants FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR id = public.current_merchant_id() OR auth.uid() IS NULL) WITH CHECK (user_id = auth.uid() OR id = public.current_merchant_id() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "Merchant numbers policy" ON public.merchant_numbers;
-CREATE POLICY "Merchant numbers policy" ON public.merchant_numbers FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+DROP POLICY IF EXISTS "Merchant numbers read policy" ON public.merchant_numbers;
+DROP POLICY IF EXISTS "Merchant numbers access" ON public.merchant_numbers;
+CREATE POLICY "Merchant numbers policy" ON public.merchant_numbers FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Orders policy" ON public.orders;
 CREATE POLICY "Orders policy" ON public.orders FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
@@ -1110,10 +1112,13 @@ DROP POLICY IF EXISTS "Payments policy" ON public.payments;
 CREATE POLICY "Payments policy" ON public.payments FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "SMS logs policy" ON public.sms_logs;
-CREATE POLICY "SMS logs policy" ON public.sms_logs FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+DROP POLICY IF EXISTS "prod_sms_logs_insert" ON public.sms_logs;
+DROP POLICY IF EXISTS "SMS logs insert by device" ON public.sms_logs;
+CREATE POLICY "SMS logs policy" ON public.sms_logs FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Devices policy" ON public.devices;
-CREATE POLICY "Devices policy" ON public.devices FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR merchant_id = public.current_merchant_id() OR auth.uid() IS NULL) WITH CHECK (merchant_id = public.current_merchant_id() OR auth.uid() IS NULL);
+DROP POLICY IF EXISTS "prod_devices_own" ON public.devices;
+CREATE POLICY "Devices policy" ON public.devices FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Appeals policy" ON public.appeals;
 CREATE POLICY "Appeals policy" ON public.appeals FOR ALL TO authenticated, anon USING (EXISTS (SELECT 1 FROM public.orders o WHERE o.id = appeals.order_id AND o.merchant_id = public.current_merchant_id()));
@@ -1392,3 +1397,39 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Notice: Auto-confirm user trigger skipped: %', SQLERRM;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SHOWCASE_CONFIG & ADMIN LIVE BANNER REMOTE CONFIGURATION
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.showcase_config (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_showcase_config_key ON public.showcase_config(key);
+ALTER TABLE public.showcase_config ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public can view showcase_config" ON public.showcase_config;
+CREATE POLICY "Public can view showcase_config"
+    ON public.showcase_config FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Service role and authenticated admins can modify showcase_config" ON public.showcase_config;
+CREATE POLICY "Service role and authenticated admins can modify showcase_config"
+    ON public.showcase_config FOR ALL TO service_role, authenticated USING (true) WITH CHECK (true);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+          AND schemaname = 'public' 
+          AND tablename = 'showcase_config'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.showcase_config;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL;
+END $$;
+

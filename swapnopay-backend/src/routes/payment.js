@@ -111,7 +111,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         ok: true,
         // Gateway options
         enabled_methods:            config.enabled_methods,
-        gateway_configured: Object.entries(config.enabled_methods || {}).some(([method, enabled]) => enabled && Boolean(String(config.receiving_numbers?.[method] || '').trim())),
+        gateway_configured: Object.entries(config.enabled_methods || {}).some(([method, enabled]) => enabled && Boolean(String(config.receiving_numbers?.[method] || '').trim())) || Boolean(config.default_number),
         payment_timeout_seconds:    config.payment_timeout_seconds,
         processing_timeout_seconds: config.processing_timeout_seconds,
         min_amount:                 config.min_amount,
@@ -119,6 +119,8 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         default_success_url:        config.default_success_url,
         default_fail_url:           config.default_fail_url,
         default_cancel_url:         config.default_cancel_url,
+        default_number:             config.default_number || null,
+        phone:                      config.phone || null,
         receiving_numbers:          config.receiving_numbers || {},
         account_types:              config.account_types || {},
         // Per-method uploaded QR code image URLs (override auto-generated QR in widget)

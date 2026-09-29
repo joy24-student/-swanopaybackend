@@ -40,8 +40,16 @@ export function createShopRouter({ service = getShopService, authenticate = requ
         ? (req.query.merchant_id || req.headers['x-merchant-id'])
         : (req.body?.merchant_id || req.headers['x-merchant-id'] || req.query.merchant_id)
       const target = merchantId(rawParam)
-      if (req.query.merchant_id && req.query.merchant_id !== target || req.body?.merchant_id && req.body.merchant_id !== target) throw new ShopError(400,'MERCHANT_MISMATCH','Conflicting merchant identifiers.')
+      if (req.query.merchant_id && merchantId(req.query.merchant_id) !== target) {
+        throw new ShopError(400, 'MERCHANT_MISMATCH', 'Conflicting merchant identifiers.')
+      }
+      if (req.body?.merchant_id && merchantId(req.body.merchant_id) !== target) {
+        throw new ShopError(400, 'MERCHANT_MISMATCH', 'Conflicting merchant identifiers.')
+      }
       req.shopMerchantId = target
+      if (req.body && typeof req.body === 'object') {
+        req.body.merchant_id = target
+      }
       next()
     } catch(error) { res.status(400).json({ok:false,error:error.message}) }
   })

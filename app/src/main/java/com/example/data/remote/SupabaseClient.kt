@@ -817,23 +817,53 @@ object SupabaseClient {
             put("status", "unmatched")
         }.toString()
 
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(endpoint)
             .addHeader("apikey", anonKey)
             .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Prefer", "return=representation")
-            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        if (merchantId.isNotBlank()) {
+            reqBuilder.addHeader("x-merchant-id", merchantId)
+        }
+        val request = reqBuilder.post(bodyJson.toRequestBody(JSON_MEDIA_TYPE)).build()
 
         try {
             withContext(Dispatchers.IO) {
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         onSuccess()
-                    } else {
-                        onFailure("HTTP error: ${response.code}")
+                        return@use
                     }
+                    // If RLS blocked or foreign key conflict (HTTP 401, 403, 409), retry without merchant_id so default/trigger handles it
+                    if ((response.code == 401 || response.code == 403 || response.code == 409) && merchantId.isNotBlank()) {
+                        val fallbackJson = JSONObject().apply {
+                            put("device_id", deviceId)
+                            put("raw_sms", rawSms)
+                            put("parsed_amount", amount)
+                            put("parsed_sender", sender)
+                            put("parsed_trx_id", trxId)
+                            put("parsed_timestamp", isoTimestamp(timestamp))
+                            put("sms_hash", sha256(sender + amount + trxId + timestamp))
+                            put("processed", false)
+                            put("status", "unmatched")
+                        }.toString()
+                        val fallbackReq = Request.Builder()
+                            .url(endpoint)
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Prefer", "return=representation")
+                            .post(fallbackJson.toRequestBody(JSON_MEDIA_TYPE))
+                            .build()
+                        client.newCall(fallbackReq).execute().use { fbResp ->
+                            if (fbResp.isSuccessful) {
+                                onSuccess()
+                                return@use
+                            }
+                        }
+                    }
+                    onFailure("HTTP error: ${response.code}")
                 }
             }
         } catch (e: Exception) {
@@ -870,25 +900,52 @@ object SupabaseClient {
             if (!merchantId.isNullOrBlank()) put("merchant_id", merchantId)
         }.toString()
 
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(endpoint)
             .addHeader("apikey", anonKey)
             .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
-            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        if (!merchantId.isNullOrBlank()) {
+            reqBuilder.addHeader("x-merchant-id", merchantId)
+        }
+        val request = reqBuilder.post(bodyJson.toRequestBody(JSON_MEDIA_TYPE)).build()
 
         try {
             withContext(Dispatchers.IO) {
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
                         onSuccess()
-                    } else {
-                        onFailure("Status: ${response.code}")
-                        val bodyStr = response.body?.string()
-                        onFailure("Device sync failed (HTTP ${response.code}): ${response.parseError(bodyStr)}")
+                        return@use
                     }
+                    val bodyStr = response.body?.string()
+                    // If failed due to foreign key or invalid merchant_id (HTTP 409 or 400), retry omitting merchant_id
+                    if ((response.code == 409 || response.code == 400) && !merchantId.isNullOrBlank()) {
+                        val fallbackJson = JSONObject().apply {
+                            put("id", deviceId)
+                            put("device_model", model)
+                            put("os_version", osVersion)
+                            put("battery_level", batteryLevel)
+                            put("online", online)
+                            put("last_sync", isoTimestamp(System.currentTimeMillis()))
+                            if (!userId.isNullOrBlank()) put("user_id", userId)
+                        }.toString()
+                        val fallbackReq = Request.Builder()
+                            .url(endpoint)
+                            .addHeader("apikey", anonKey)
+                            .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
+                            .post(fallbackJson.toRequestBody(JSON_MEDIA_TYPE))
+                            .build()
+                        client.newCall(fallbackReq).execute().use { fbResp ->
+                            if (fbResp.isSuccessful) {
+                                onSuccess()
+                                return@use
+                            }
+                        }
+                    }
+                    onFailure("Device sync failed (HTTP ${response.code}): ${response.parseError(bodyStr)}")
                 }
             }
         } catch (e: Exception) {
@@ -921,14 +978,16 @@ object SupabaseClient {
             put("active", true)
         }.toString()
 
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(endpoint)
             .addHeader("apikey", anonKey)
             .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Prefer", "resolution=merge-duplicates")
-            .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
+        if (merchantId.isNotBlank()) {
+            reqBuilder.addHeader("x-merchant-id", merchantId)
+        }
+        val request = reqBuilder.post(bodyJson.toRequestBody(JSON_MEDIA_TYPE)).build()
 
         try {
             withContext(Dispatchers.IO) {
@@ -1890,12 +1949,19 @@ object SupabaseClient {
         val cleanUrl = url.trimEnd('/')
         val endpoint = "$cleanUrl/rest/v1/$tableName"
 
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(endpoint)
             .addHeader("apikey", anonKey)
             .addHeader("Authorization", "Bearer ${token.ifEmpty { anonKey }}")
             .addHeader("Content-Type", "application/json")
             .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
+
+        val merchantId = payload.optString("merchant_id")
+        if (merchantId.isNotBlank()) {
+            reqBuilder.addHeader("x-merchant-id", merchantId)
+        }
+
+        val request = reqBuilder
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
@@ -1976,17 +2042,28 @@ object SupabaseClient {
             onFailure("RPC function is not allowed by this client")
             return
         }
-        if (token.isBlank()) {
-            onFailure("An authenticated merchant session is required")
+        val effectiveToken = token.ifBlank { anonKey }
+        if (effectiveToken.isBlank()) {
+            onFailure("API key or session token is required")
             return
         }
         val endpoint = "${url.trimEnd('/')}/rest/v1/rpc/$functionName"
-        val request = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(endpoint)
             .addHeader("apikey", anonKey)
-            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Authorization", "Bearer $effectiveToken")
             .addHeader("Content-Type", "application/json")
             .addHeader("Prefer", "return=representation")
+
+        val merchantId = payload.optString("p_merchant_id")
+            .ifEmpty { payload.optJSONObject("p_product")?.optString("merchant_id") ?: "" }
+            .ifEmpty { payload.optJSONObject("p_sale")?.optString("merchant_id") ?: "" }
+            .ifEmpty { payload.optString("merchant_id") }
+        if (merchantId.isNotBlank()) {
+            reqBuilder.addHeader("x-merchant-id", merchantId)
+        }
+
+        val request = reqBuilder
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
         try {

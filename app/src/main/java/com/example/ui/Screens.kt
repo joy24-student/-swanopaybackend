@@ -15573,6 +15573,9 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
     LaunchedEffect(gatewayProfile.id) {
         viewModel.refreshGatewayConfig()
         viewModel.fetchMerchantApiKey()
+        if (isRealDb) {
+            viewModel.alignAndSyncWithSupabase()
+        }
         if (!gatewayConnected && isRealDb) {
             viewModel.runSupabaseSystemTest()
         }
@@ -16176,6 +16179,30 @@ fun PaymentGatewaySettingsScreen(viewModel: AppViewModel) {
                                         Icon(
                                             imageVector = Icons.Outlined.ContentCopy,
                                             contentDescription = "Copy Merchant ID",
+                                            tint = goldColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.alignAndSyncWithSupabase { success, msg ->
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    if (success) {
+                                                        if (isBangla) "সুপাবেস ডাটাবেজের সাথে আইডি ও সকল তথ্য সিঙ্ক সম্পন্ন হয়েছে!" else "Synced ID & all data with Supabase!"
+                                                    } else {
+                                                        msg
+                                                    },
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = "Sync Cloud Data",
                                             tint = goldColor,
                                             modifier = Modifier.size(16.dp)
                                         )

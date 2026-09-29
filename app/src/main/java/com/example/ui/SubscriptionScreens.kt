@@ -62,7 +62,7 @@ data class SubscriptionStatusState(
     val isSubscriptionActive: Boolean = false,
     val subscriptionPlan: String? = "FREE",
     val subscriptionExpiresAt: String? = null,
-    val isTrialActive: Boolean = false,
+    val isTrialActive: Boolean = true,
     val trialDaysTotal: Int = 90,
     val trialRemainingDays: Int = 90,
     val trialEndsAt: String? = null,

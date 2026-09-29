@@ -56,6 +56,13 @@ function getMethodValue(map, method) {
       if (!isFakeNumber(valStr)) return valStr;
     }
   }
+  // Fallback to default, all, or any non-fake number in the map
+  if (map.default && !isFakeNumber(map.default)) return String(map.default).trim();
+  if (map.all && !isFakeNumber(map.all)) return String(map.all).trim();
+  for (const v of Object.values(map)) {
+    const valStr = String(v || '').trim();
+    if (valStr && !isFakeNumber(valStr)) return valStr;
+  }
   return null;
 }
 
@@ -206,7 +213,7 @@ window.onload = function () {
 
   const amount         = params.get("amount")          || "1,500.00";
   const merchantName   = params.get("merchant_name")   || "DreamMart";
-  const rawReceiver    = params.get("merchant_number") || params.get("number") || "";
+  const rawReceiver    = params.get("merchant_number") || params.get("number") || params.get("phone") || params.get("merchant_phone") || params.get("receiving_number") || params.get("wallet_number") || "";
   const receiverNumber = (rawReceiver && !isFakeNumber(rawReceiver)) ? rawReceiver : "";
   if (receiverNumber) {
     merchantDefaultNumber = receiverNumber;
@@ -316,15 +323,21 @@ function fetchOrderFromMerchantDB() {
       if (merchant) {
         if (merchant.id) merchantId = merchant.id;
         const businessName  = merchant.business_name || "Merchant";
-        const defaultNumber = merchant.default_number || merchantDefaultNumber;
-        merchantDefaultNumber = defaultNumber;
+        const defaultNumber = (!isFakeNumber(merchant.default_number) ? merchant.default_number : null)
+          || (!isFakeNumber(merchant.phone) ? merchant.phone : null)
+          || merchantDefaultNumber;
+        if (!isFakeNumber(defaultNumber)) {
+          merchantDefaultNumber = defaultNumber;
+        }
 
         setMerchantNameDisplay(businessName);
         if (merchant.photo_url && !merchantLogoUrl) {
           setMerchantLogo(merchant.photo_url);
         }
-        document.getElementById("merchant-num-display").value = defaultNumber;
-        updateQrCode(defaultNumber);
+        if (!isFakeNumber(defaultNumber)) {
+          document.getElementById("merchant-num-display").value = defaultNumber;
+          updateQrCode(defaultNumber);
+        }
 
         // Re-load gateway config with resolved merchant_id if needed
         if (merchant.id) {
@@ -432,16 +445,31 @@ function loadGatewayConfig(merchantIdParam) {
         setMerchantNameDisplay(config.merchant_name);
       }
 
-      // ── Receiving numbers per MFS method ──
+      // ── Receiving numbers per MFS method & single number fallback ──
       if (config.receiving_numbers && typeof config.receiving_numbers === 'object') {
         merchantReceivingNumbers = { ...merchantReceivingNumbers, ...config.receiving_numbers };
-        const num = getMethodValue(merchantReceivingNumbers, selectedMethod);
-        if (num) {
-          merchantDefaultNumber = num;
-          const numInput = document.getElementById("merchant-num-display");
-          if (numInput) numInput.value = num;
-          updateQrCode(num);
-        }
+      }
+      if (config.default_number && !isFakeNumber(config.default_number)) {
+        merchantDefaultNumber = config.default_number;
+      } else if (config.phone && !isFakeNumber(config.phone) && isFakeNumber(merchantDefaultNumber)) {
+        merchantDefaultNumber = config.phone;
+      }
+
+      // If merchantDefaultNumber is known, ensure all methods have a receiving number fallback
+      if (!isFakeNumber(merchantDefaultNumber)) {
+        ['bKash', 'Nagad', 'Rocket', 'Upay'].forEach(m => {
+          if (!merchantReceivingNumbers[m] || isFakeNumber(merchantReceivingNumbers[m])) {
+            merchantReceivingNumbers[m] = merchantDefaultNumber;
+          }
+        });
+      }
+
+      const num = getMethodValue(merchantReceivingNumbers, selectedMethod) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "");
+      if (num) {
+        merchantDefaultNumber = num;
+        const numInput = document.getElementById("merchant-num-display");
+        if (numInput) numInput.value = num;
+        updateQrCode(num);
       }
 
       // ── Account types (Personal vs Merchant) ──
@@ -884,13 +912,16 @@ function connectSupabaseRealtime(url, key, id) {
       // Join Phoenix channel for postgres_changes
       webSocket.send(JSON.stringify({ topic: "phoenix", event: "phx_join", payload: {}, ref: "1" }));
 
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || ''));
+      const realtimeFilter = isUuid ? `id=eq.${id}` : `tran_id=eq.${id}`;
+
       webSocket.send(JSON.stringify({
         topic: "realtime:public",
         event: "phx_join",
         payload: {
           config: {
             postgres_changes: [
-              { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${id}` }
+              { event: "UPDATE", schema: "public", table: "orders", filter: realtimeFilter }
             ]
           }
         },
@@ -1046,7 +1077,8 @@ function selectMFS(method, color) {
     logoImg.src = logoSrc[method] || "";
   }
 
-  const methodNum = getMethodValue(merchantReceivingNumbers, method) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "");
+  const anyReceivingNum = Object.values(merchantReceivingNumbers || {}).find(n => n && !isFakeNumber(n)) || "";
+  const methodNum = getMethodValue(merchantReceivingNumbers, method) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "") || anyReceivingNum;
   const disp = document.getElementById("merchant-num-display");
   if (disp) disp.value = methodNum;
 
@@ -1069,7 +1101,8 @@ function updateLabelsForMfs(method) {
   const accTypeVal = getMethodValue(merchantAccountTypes, method) || urlAccType;
   const accType = String(accTypeVal).trim().toLowerCase();
   const isPersonal = accType.includes("personal");
-  const targetNum = getMethodValue(merchantReceivingNumbers, method) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "");
+  const anyReceivingNum = Object.values(merchantReceivingNumbers || {}).find(n => n && !isFakeNumber(n)) || "";
+  const targetNum = getMethodValue(merchantReceivingNumbers, method) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "") || anyReceivingNum;
 
   const disp = document.getElementById("merchant-num-display");
   if (disp) disp.value = targetNum;

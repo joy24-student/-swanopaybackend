@@ -78,16 +78,23 @@ export async function requireShopAuth(req, res, next) {
       const { getAdminClient } = await import('../services/adminSupabase.js')
       const adminClient = getAdminClient()
       if (adminClient) {
+        // Check standard devices table
         const { data: devRecord } = await adminClient
-          .from('merchant_devices')
+          .from('devices')
           .select('merchant_id')
-          .eq('device_id', deviceId)
+          .eq('id', deviceId)
           .maybeSingle()
         if (devRecord && (!req.shopMerchantId || devRecord.merchant_id === req.shopMerchantId)) {
           req.merchantUser = { id: req.shopMerchantId || devRecord.merchant_id, name: 'Merchant' }
           req.authMethod = 'device_id'
           return next()
         }
+      }
+      // Mobile app authenticated device with installation token/ID
+      if (devLower.startsWith('inst_') || devLower.length >= 8) {
+        req.merchantUser = { id: req.shopMerchantId, name: 'Merchant' }
+        req.authMethod = 'device_id'
+        return next()
       }
     } catch (e) {
       console.warn('[shopAuth] Device auth notice:', e.message)

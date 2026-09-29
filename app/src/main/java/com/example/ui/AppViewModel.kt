@@ -4475,6 +4475,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun alignAndSyncWithSupabase(onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val effectiveMerchantId = getEffectiveMerchantUuid()
+                repository.reassignAllDataToMerchant(effectiveMerchantId)
+                forceSyncSupabase()
+                syncSecuritySettingsToSupabase()
+                withContext(Dispatchers.Main) {
+                    onComplete(true, "Synced successfully")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onComplete(false, "Sync notice: ${e.message}")
+                }
+            }
+        }
+    }
+
     // Database observables
     val orders: StateFlow<List<CachedOrderEntity>> = activeProfile.flatMapLatest { repository.observeOrders(it.id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
