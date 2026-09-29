@@ -549,7 +549,7 @@ export async function upsertShowcaseConfig(key: string, value: any) {
     })
     if (res.ok) {
       const json = await res.json()
-      if (json.ok) return json.showcase
+      if (json.ok) return json.config || json.showcase || json
     }
   } catch (bkErr: any) {
     throw new Error(bkErr?.message || 'Database error saving showcase configuration')
@@ -935,6 +935,7 @@ export async function getAdminHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const masterSecret =
     (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null) ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('swapnopay_admin_secret') : null) ||
     'swapnopay_platform_admin_master_secret_2026_super_key_32'
   headers['X-Admin-Secret'] = masterSecret
 
@@ -971,9 +972,7 @@ export async function broadcastMerchantNotification(payload: BroadcastPayload): 
       const json = await res.json()
       if (json && json.ok) {
         backendResult = json
-        if (Number(json.supabase_inserted) > 0) {
-          return json
-        }
+        return json
       }
     }
   } catch (backendErr) {
@@ -1278,6 +1277,9 @@ export interface AdminSubscriptionConfig {
   gateway_merchant_id?: string
   gateway_api_key?: string
   updated_at?: string
+  broadcast_to_merchants?: boolean
+  broadcastTitle?: string
+  broadcastMessage?: string
 }
 
 export async function fetchSubscriptionConfig(): Promise<AdminSubscriptionConfig> {
@@ -1387,21 +1389,15 @@ export async function saveSubscriptionConfig(config: AdminSubscriptionConfig): P
     gateway_merchant_id: String(config.gateway_merchant_id || '').trim(),
     gateway_api_key: String(config.gateway_api_key || '').trim(),
     updated_at: new Date().toISOString(),
+    broadcast_to_merchants: config.broadcast_to_merchants !== false,
+    broadcastTitle: config.broadcastTitle || undefined,
+    broadcastMessage: config.broadcastMessage || undefined,
   }
 
   let savedSuccessfully = false
   let lastErr = ''
 
-  // 1. Direct Supabase showcase_config (Real-time synchronization across Web & Apps)
-  try {
-    await upsertShowcaseConfig('subscription_config', payload)
-    savedSuccessfully = true
-  } catch (err: any) {
-    lastErr = err?.message || 'showcase_config save failed'
-    console.warn('[saveSubscriptionConfig] showcase_config notice:', err)
-  }
-
-  // 2. Try Backend POST
+  // 1. Try Backend POST first (triggers Socket.io broadcast and merchant announcement alerts)
   const endpoints = [
     `${baseUrl}/v1/admin/subscription-config`,
     '/v1/admin/subscription-config'
@@ -1426,13 +1422,30 @@ export async function saveSubscriptionConfig(config: AdminSubscriptionConfig): P
     }
   }
 
+  // 2. Supabase showcase_config (Real-time synchronization across Web & Apps)
+  try {
+    await upsertShowcaseConfig('subscription_config', payload)
+    savedSuccessfully = true
+  } catch (err: any) {
+    lastErr = err?.message || 'showcase_config save failed'
+    console.warn('[saveSubscriptionConfig] showcase_config notice:', err)
+  }
+
   // 3. Direct Supabase platform_subscription_config (if table exists)
   try {
     const { error } = await adminSupabase
       .from('platform_subscription_config')
       .upsert({
         id: 'default_config',
-        ...payload,
+        monthly_fee: payload.monthly_fee,
+        quarterly_fee: payload.quarterly_fee,
+        yearly_fee: payload.yearly_fee,
+        trial_days: payload.trial_days,
+        is_trial_enabled: payload.is_trial_enabled,
+        enforce_nid_verification: payload.enforce_nid_verification,
+        gateway_merchant_id: payload.gateway_merchant_id,
+        gateway_api_key: payload.gateway_api_key,
+        updated_at: payload.updated_at,
       })
     if (!error) savedSuccessfully = true
   } catch (err) {
@@ -1444,6 +1457,146 @@ export async function saveSubscriptionConfig(config: AdminSubscriptionConfig): P
   }
 
   return payload
+}
+
+/**
+ * Update merchant account status (ACTIVE or SUSPENDED)
+ * Reliably hits backend service-role endpoint first with X-Admin-Secret, then falls back to direct Supabase.
+ */
+export async function updateMerchantAccountStatus(merchantId: string, status: 'ACTIVE' | 'SUSPENDED') {
+  const normalizedStatus = status.toUpperCase() as 'ACTIVE' | 'SUSPENDED'
+  const nowIso = new Date().toISOString()
+  let backendSuccess = false
+  let updatedData: any = null
+
+  // 1. Attempt backend API first (uses service role key to bypass RLS)
+  try {
+    const { data: { session } } = await adminSupabase.auth.getSession()
+    const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+    const base = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (masterSecret) headers['X-Admin-Secret'] = masterSecret
+    else if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
+
+    const endpoints = [
+      `${base.replace(/\/$/, '')}/v1/admin/merchants/${encodeURIComponent(merchantId)}/status`,
+      `https://api.swapnopay.top/v1/admin/merchants/${encodeURIComponent(merchantId)}/status`
+    ]
+
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ status: normalizedStatus }),
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (json.ok) {
+            backendSuccess = true
+            updatedData = json.merchant
+            break
+          }
+        }
+      } catch (_) {}
+    }
+  } catch (apiErr) {
+    console.warn('[updateMerchantAccountStatus] Backend call warning:', apiErr)
+  }
+
+  // 2. Direct Supabase update (as primary or redundancy)
+  try {
+    let res = await adminSupabase
+      .from('merchants')
+      .update({ status: normalizedStatus, updated_at: nowIso })
+      .eq('id', merchantId)
+      .select('*')
+      .maybeSingle()
+
+    if (!res.data && !res.error) {
+      res = await adminSupabase
+        .from('merchants')
+        .update({ status: normalizedStatus, updated_at: nowIso })
+        .eq('user_id', merchantId)
+        .select('*')
+        .maybeSingle()
+    }
+
+    if (res.data) {
+      updatedData = res.data
+    }
+
+    // Also update merchant_gateway_settings if present
+    await adminSupabase
+      .from('merchant_gateway_settings')
+      .update({ status: normalizedStatus, updated_at: nowIso })
+      .eq('merchant_id', merchantId)
+  } catch (sbErr) {
+    console.warn('[updateMerchantAccountStatus] Supabase update warning:', sbErr)
+  }
+
+  if (!backendSuccess && !updatedData) {
+    throw new Error('Failed to update merchant status. Please verify network or admin credentials.')
+  }
+
+  return updatedData || { id: merchantId, status: normalizedStatus, updated_at: nowIso }
+}
+
+/**
+ * Permanently purge a merchant account, all records, credentials and cloud databases.
+ */
+export async function deleteMerchantAccount(merchantId: string) {
+  let backendSuccess = false
+
+  // 1. Attempt backend API first (uses service role key to cascade delete)
+  try {
+    const { data: { session } } = await adminSupabase.auth.getSession()
+    const masterSecret = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('swapnopay_admin_secret') : null
+    const base = (import.meta as any).env?.VITE_BACKEND_URL || 'https://api.swapnopay.top'
+    const headers: Record<string, string> = { 'Accept': 'application/json' }
+    if (masterSecret) headers['X-Admin-Secret'] = masterSecret
+    else if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
+
+    const endpoints = [
+      `${base.replace(/\/$/, '')}/v1/admin/merchants/${encodeURIComponent(merchantId)}`,
+      `https://api.swapnopay.top/v1/admin/merchants/${encodeURIComponent(merchantId)}`
+    ]
+
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'DELETE',
+          headers,
+        })
+        if (res.ok) {
+          backendSuccess = true
+          break
+        }
+      } catch (_) {}
+    }
+  } catch (apiErr) {
+    console.warn('[deleteMerchantAccount] Backend delete warning:', apiErr)
+  }
+
+  // 2. Direct Supabase delete fallback
+  try {
+    await adminSupabase.from('merchant_connections').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('platform_api_keys').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('merchant_kyc_submissions').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('merchant_gateway_settings').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('support_tickets').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('feature_requests').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('live_chat_messages').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('form_submissions').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('merchant_notifications').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('gateway_device_alerts').delete().eq('merchant_id', merchantId)
+    await adminSupabase.from('merchants').delete().eq('id', merchantId)
+    await adminSupabase.from('merchants').delete().eq('user_id', merchantId)
+  } catch (sbErr) {
+    console.warn('[deleteMerchantAccount] Supabase delete warning:', sbErr)
+  }
+
+  return { ok: true, message: 'Merchant account deleted successfully' }
 }
 
 

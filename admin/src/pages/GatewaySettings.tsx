@@ -109,9 +109,9 @@ export default function GatewaySettings() {
   // Auth & Backend URL for API calls
   const defaultBackend =
     ((import.meta as any).env?.VITE_BACKEND_URL as string) ||
-    (typeof window !== 'undefined' && window.location.hostname.includes('swapnopay.top') ? window.location.origin : 'https://api.swapnopay.top');
+    'https://api.swapnopay.top';
   const storedBackend = localStorage.getItem('swapnopay_backend_url');
-  const backendUrl = (storedBackend && !storedBackend.includes('pay.swapnopay.top')) ? storedBackend : defaultBackend;
+  const backendUrl = (storedBackend && !storedBackend.includes('pay.swapnopay.top') && !storedBackend.includes('admin.swapnopay.top')) ? storedBackend : defaultBackend;
   const [adminSecret, setAdminSecret] = useState(sessionStorage.getItem('swapnopay_admin_secret') || '');
 
   const getAuthHeaders = useCallback(() => {

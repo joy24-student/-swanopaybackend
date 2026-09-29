@@ -27,7 +27,9 @@ import {
   BroadcastPayload,
   BroadcastHistoryItem,
   NotificationType,
-  NotificationSeverity
+  NotificationSeverity,
+  getBackendBaseUrl,
+  getAdminHeaders,
 } from '../adminSupabaseClient'
 import { useNotifications } from '../components/ToastProvider'
 
@@ -36,6 +38,20 @@ interface MerchantOption {
   business_name: string
   status?: string
   email?: string
+}
+
+const BANNER_STORAGE_KEY = 'admin_broadcast_update_banner'
+
+const getInitialBannerToggle = (): boolean => {
+  try {
+    const saved = localStorage.getItem(BANNER_STORAGE_KEY)
+    if (saved !== null) {
+      return saved === 'true'
+    }
+  } catch {
+    // fallback
+  }
+  return false
 }
 
 export default function BroadcastNotifications() {
@@ -48,8 +64,17 @@ export default function BroadcastNotifications() {
   const [severity, setSeverity] = useState<NotificationSeverity>('INFO')
   const [targetMode, setTargetMode] = useState<'ALL' | 'ACTIVE' | 'SINGLE'>('ALL')
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>('')
-  const [updateBanner, setUpdateBanner] = useState(true)
+  const [updateBanner, setUpdateBanner] = useState<boolean>(getInitialBannerToggle)
   const [isSending, setIsSending] = useState(false)
+
+  const handleToggleBanner = (nextVal: boolean) => {
+    setUpdateBanner(nextVal)
+    try {
+      localStorage.setItem(BANNER_STORAGE_KEY, String(nextVal))
+    } catch {
+      // ignore
+    }
+  }
 
   // Data State
   const [merchants, setMerchants] = useState<MerchantOption[]>([])
@@ -68,14 +93,34 @@ export default function BroadcastNotifications() {
         .select('id, business_name, status, email')
         .order('business_name', { ascending: true })
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         setMerchants(data as MerchantOption[])
-        if (data.length > 0 && !selectedMerchantId) {
+        if (!selectedMerchantId) {
           setSelectedMerchantId(data[0].id)
         }
+        return
       }
     } catch (err) {
-      console.warn('[BroadcastNotifications] Could not load merchants:', err)
+      console.warn('[BroadcastNotifications] Could not load merchants from Supabase:', err)
+    }
+
+    // Backend fallback
+    try {
+      const baseUrl = getBackendBaseUrl()
+      const headers = await getAdminHeaders()
+      const res = await fetch(`${baseUrl}/v1/admin/merchants`, { headers })
+      if (res.ok) {
+        const json = await res.json()
+        const list = json.merchants || (Array.isArray(json) ? json : [])
+        if (list.length > 0) {
+          setMerchants(list as MerchantOption[])
+          if (!selectedMerchantId) {
+            setSelectedMerchantId(list[0].id)
+          }
+        }
+      }
+    } catch (bkErr) {
+      console.warn('[BroadcastNotifications] Backend fallback merchants load failed:', bkErr)
     }
   }
 
@@ -171,7 +216,7 @@ export default function BroadcastNotifications() {
         // Reset form
         setTitle('')
         setMessage('')
-        setUpdateBanner(false)
+        handleToggleBanner(false)
         // Refresh history
         await loadHistory()
       } else {
@@ -487,34 +532,54 @@ export default function BroadcastNotifications() {
                 <span className="form-hint">Detailed message shown when merchants tap or view the notification.</span>
               </div>
 
-              {/* 5. Dual Channel Delivery Switch */}
+              {/* 5. Dual Channel Delivery Switch (Toggle Button) */}
               <div
                 style={{
-                  padding: 14,
+                  padding: '14px 16px',
                   borderRadius: 'var(--radius-md)',
                   background: updateBanner ? 'rgba(245, 197, 24, 0.08)' : 'var(--bg-subtle)',
                   border: `1px solid ${updateBanner ? 'rgba(245, 197, 24, 0.3)' : 'var(--border-default)'}`,
                   display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 12,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
                   cursor: 'pointer',
+                  userSelect: 'none',
+                  transition: 'background 0.2s ease, border-color 0.2s ease',
                 }}
-                onClick={() => setUpdateBanner(!updateBanner)}
+                onClick={() => handleToggleBanner(!updateBanner)}
               >
-                <input
-                  type="checkbox"
-                  checked={updateBanner}
-                  onChange={e => setUpdateBanner(e.target.checked)}
-                  style={{ marginTop: 3, cursor: 'pointer', accentColor: 'var(--brand-primary)' }}
-                />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Also update live Dashboard Announcement Banner (system_notice)
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Also update live Dashboard Announcement Banner (system_notice)
+                    </span>
+                    <span
+                      className={`badge ${updateBanner ? 'badge-warning' : 'badge-subtle'}`}
+                      style={{ fontSize: 10, padding: '2px 8px', fontWeight: 600 }}
+                    >
+                      {updateBanner ? 'ENABLED' : 'DISABLED'}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
                     Displays this message as a prominent marquee banner across the top of the Merchant Dashboard in real time.
                   </div>
                 </div>
+
+                <label
+                  className="switch"
+                  style={{ flexShrink: 0, margin: 0, cursor: 'pointer' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-checked={updateBanner}
+                    checked={updateBanner}
+                    onChange={e => handleToggleBanner(e.target.checked)}
+                  />
+                  <span className="slider" />
+                </label>
               </div>
             </div>
 
@@ -525,7 +590,7 @@ export default function BroadcastNotifications() {
                 onClick={() => {
                   setTitle('')
                   setMessage('')
-                  setUpdateBanner(false)
+                  handleToggleBanner(false)
                 }}
                 disabled={isSending}
               >

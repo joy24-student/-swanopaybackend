@@ -2776,7 +2776,33 @@
 
     // Live Subscription Pricing Sync from Admin Panel (Supabase Realtime + REST)
     (async function syncLiveSubscriptionPricing() {
-      // 1. Direct Supabase showcase_config query
+      // 1. First fetch latest verified pricing from backend REST endpoints
+      const endpoints = [
+        '/v1/subscription/config',
+        'https://api.swapnopay.top/v1/subscription/config',
+        '/v1/system-notice',
+        'https://api.swapnopay.top/v1/system-notice'
+      ];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (res.ok) {
+            const json = await res.json();
+            const cfg = json.config || json.subscription_config || json.pricing;
+            if (cfg && (cfg.monthly_fee || cfg.monthly || cfg.yearly_fee || cfg.yearly)) {
+              applySubscriptionConfig({
+                monthly_fee: cfg.monthly_fee || cfg.monthly,
+                quarterly_fee: cfg.quarterly_fee || cfg.quarterly,
+                yearly_fee: cfg.yearly_fee || cfg.yearly,
+                trial_days: cfg.trial_days
+              });
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Direct Supabase showcase_config query
       if (radymateSupabase) {
         try {
           const { data, error } = await radymateSupabase
@@ -2803,32 +2829,13 @@
         } catch (_) {}
       }
 
-      // 2. Fallback: query backend showcase key
+      // 3. Fallback: query backend showcase key
       try {
         const backendVal = await fetchBackendShowcaseKey('subscription_config');
         if (backendVal && (backendVal.monthly_fee || backendVal.yearly_fee)) {
           applySubscriptionConfig(backendVal);
-          return;
         }
       } catch (_) {}
-
-      // 3. Fallback: query REST endpoints
-      const endpoints = [
-        '/v1/subscription/config',
-        'https://api.swapnopay.top/v1/subscription/config'
-      ];
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep);
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.config) {
-              applySubscriptionConfig(json.config);
-              break;
-            }
-          }
-        } catch (_) {}
-      }
     })();
   </script>
 </body>

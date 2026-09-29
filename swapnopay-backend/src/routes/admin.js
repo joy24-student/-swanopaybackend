@@ -18,6 +18,7 @@ import {
   getMerchantById,
   upsertMerchantProfile,
   updateMerchantStatus,
+  deleteMerchantAccountPermanently,
   listApiKeyRecords,
   storeApiKeyRecord,
   revokeApiKeyRecord,
@@ -211,8 +212,7 @@ router.post('/merchants', async (req, res) => {
   }
 })
 
-// PATCH /v1/admin/merchants/:id/status — Update merchant status (ACTIVE, SUSPENDED, MAINTENANCE)
-router.patch('/merchants/:id/status', async (req, res) => {
+const handleUpdateStatus = async (req, res) => {
   try {
     const { status } = req.body
     if (!status || !['ACTIVE', 'SUSPENDED', 'MAINTENANCE'].includes(status.toUpperCase())) {
@@ -221,8 +221,25 @@ router.patch('/merchants/:id/status', async (req, res) => {
     const updated = await updateMerchantStatus(req.params.id, status.toUpperCase())
     res.json({ ok: true, merchant: updated })
   } catch (err) {
-    console.error('[admin/merchants/:id/status PATCH]', err.message)
+    console.error('[admin/merchants/:id/status]', err.message)
     res.status(500).json({ error: 'Failed to update status: ' + err.message })
+  }
+}
+router.patch('/merchants/:id/status', handleUpdateStatus)
+router.post('/merchants/:id/status', handleUpdateStatus)
+
+// DELETE /v1/admin/merchants/:id — Permanently delete merchant account & data
+router.delete('/merchants/:id', async (req, res) => {
+  try {
+    const merchantId = req.params.id
+    if (!merchantId) {
+      return res.status(400).json({ error: 'Merchant ID is required' })
+    }
+    const result = await deleteMerchantAccountPermanently(merchantId)
+    res.json(result)
+  } catch (err) {
+    console.error('[admin/merchants/:id DELETE]', err.message)
+    res.status(500).json({ error: 'Failed to delete merchant: ' + err.message })
   }
 })
 

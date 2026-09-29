@@ -377,6 +377,7 @@ export default function SystemSettings() {
     gateway_api_key: '',
   });
   const [subSaving, setSubSaving] = useState(false);
+  const [broadcastPriceUpdate, setBroadcastPriceUpdate] = useState(true);
   const [showGatewayApiKey, setShowGatewayApiKey] = useState(false);
   const [copiedApiKey, setCopiedApiKey] = useState(false);
 
@@ -474,10 +475,15 @@ export default function SystemSettings() {
 
   const handleSaveSubscriptionConfig = async () => {
     setSubSaving(true);
-    setStatusMsg('Saving subscription pricing and gateway credentials across backend, web & Android app...');
+    setStatusMsg('Saving subscription pricing and broadcasting across backend, web & Android app...');
     try {
-      await saveSubscriptionConfig(subConfig);
-      setStatusMsg('SUCCESS: Subscription pricing, gateway credentials, and trial settings updated live across Web and Mobile App!');
+      await saveSubscriptionConfig({
+        ...subConfig,
+        broadcast_to_merchants: broadcastPriceUpdate,
+        broadcastTitle: 'Subscription Pricing Updated',
+        broadcastMessage: `Platform subscription pricing updated: Monthly ৳${subConfig.monthly_fee}, Quarterly ৳${subConfig.quarterly_fee}, Yearly ৳${subConfig.yearly_fee}. Trial: ${subConfig.trial_days} days.`,
+      });
+      setStatusMsg('SUCCESS: Subscription pricing, gateway credentials, and broadcast notification sent live across Web & Mobile Apps!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save subscription config: ' + err.message);
@@ -489,7 +495,7 @@ export default function SystemSettings() {
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSaving(true);
-    setStatusMsg('Saving system configuration to Supabase...');
+    setStatusMsg('Saving system configuration and subscription pricing...');
 
     try {
       const payload: SystemRemoteConfig = {
@@ -497,7 +503,15 @@ export default function SystemSettings() {
         last_updated: Date.now(),
       };
 
-      await upsertShowcaseConfig('system_config', payload);
+      await Promise.all([
+        upsertShowcaseConfig('system_config', payload),
+        saveSubscriptionConfig({
+          ...subConfig,
+          broadcast_to_merchants: broadcastPriceUpdate,
+          broadcastTitle: 'System & Subscription Updated',
+          broadcastMessage: `Platform system configuration and subscription pricing have been updated: Monthly ৳${subConfig.monthly_fee}, Quarterly ৳${subConfig.quarterly_fee}, Yearly ৳${subConfig.yearly_fee}.`,
+        }),
+      ]);
 
       // Real-time broadcast dispatch via backend API (Socket.io -> all merchant dashboards)
       try {
@@ -512,7 +526,7 @@ export default function SystemSettings() {
         console.warn('[SystemSettings] Backend API broadcast notice:', backendErr);
       }
 
-      setStatusMsg('SUCCESS: Successfully saved and broadcasted via Supabase Realtime & Socket.io!');
+      setStatusMsg('SUCCESS: Successfully saved and broadcasted all system & subscription changes via Supabase Realtime & Socket.io!');
       setTimeout(() => setStatusMsg(''), 5000);
     } catch (err: any) {
       setStatusMsg('ERROR: Failed to save: ' + err.message);
@@ -949,15 +963,27 @@ export default function SystemSettings() {
                     Dynamically adjust monthly, quarterly, and yearly subscription fees, trial duration, and enforce 1-NID = 1-Account anti-abuse verification.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleSaveSubscriptionConfig}
-                  disabled={subSaving}
-                >
-                  <Save size={13} />
-                  {subSaving ? 'Saving...' : 'Save Subscription & Gateway Settings'}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={broadcastPriceUpdate}
+                      onChange={(e) => setBroadcastPriceUpdate(e.target.checked)}
+                      style={{ accentColor: 'var(--brand-primary)' }}
+                    />
+                    <span>Broadcast alert to all merchants</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSaveSubscriptionConfig}
+                    disabled={subSaving}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {subSaving ? <RefreshCw size={13} className="spin" /> : <Megaphone size={13} />}
+                    {subSaving ? 'Broadcasting...' : 'Save & Broadcast Pricing'}
+                  </button>
+                </div>
               </div>
 
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

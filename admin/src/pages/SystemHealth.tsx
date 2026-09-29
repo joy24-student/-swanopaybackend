@@ -32,11 +32,11 @@ export default function SystemHealth() {
   const { session } = useAuth();
   const defaultBackend =
     ((import.meta as any).env?.VITE_BACKEND_URL as string) ||
-    (typeof window !== 'undefined' && window.location.hostname.includes('swapnopay.top') ? window.location.origin : 'https://api.swapnopay.top');
+    'https://api.swapnopay.top';
 
   const [backendUrl, setBackendUrl] = useState(() => {
     const saved = localStorage.getItem('swapnopay_backend_url');
-    if (saved && !saved.includes('pay.swapnopay.top')) {
+    if (saved && !saved.includes('pay.swapnopay.top') && !saved.includes('admin.swapnopay.top')) {
       return saved;
     }
     return defaultBackend;

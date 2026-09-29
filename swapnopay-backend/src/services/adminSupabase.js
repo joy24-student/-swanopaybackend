@@ -1502,7 +1502,21 @@ export function getDefaultGatewayConfig() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function listMerchants() {
-  const { data, error } = await getAdminClient()
+  const adminClient = getAdminClient()
+  try {
+    const { data: merchantsList, error: mErr } = await adminClient
+      .from('merchants')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (!mErr && Array.isArray(merchantsList) && merchantsList.length > 0) {
+      return merchantsList
+    }
+  } catch (err) {
+    console.warn('[listMerchants] merchants table query notice:', err.message)
+  }
+
+  // Fallback to merchant_gateway_settings
+  const { data, error } = await adminClient
     .from('merchant_gateway_settings')
     .select('*')
     .order('updated_at', { ascending: false })
@@ -1512,7 +1526,28 @@ export async function listMerchants() {
 }
 
 export async function getMerchantById(merchantId) {
-  const { data, error } = await getAdminClient()
+  const adminClient = getAdminClient()
+  try {
+    let { data: mData } = await adminClient
+      .from('merchants')
+      .select('*')
+      .eq('id', merchantId)
+      .maybeSingle()
+    if (!mData) {
+      const res2 = await adminClient
+        .from('merchants')
+        .select('*')
+        .eq('user_id', merchantId)
+        .maybeSingle()
+      mData = res2.data
+    }
+    if (mData) return mData
+  } catch (err) {
+    console.warn('[getMerchantById] merchants table query notice:', err.message)
+  }
+
+  // Fallback to merchant_gateway_settings
+  const { data, error } = await adminClient
     .from('merchant_gateway_settings')
     .select('*')
     .eq('merchant_id', merchantId)
@@ -1557,15 +1592,130 @@ export async function upsertMerchantProfile(profile) {
 }
 
 export async function updateMerchantStatus(merchantId, status) {
-  const { data, error } = await getAdminClient()
-    .from('merchant_gateway_settings')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('merchant_id', merchantId)
-    .select('*')
-    .single()
+  const adminClient = getAdminClient()
+  const nowIso = new Date().toISOString()
+  const normalizedStatus = String(status || '').toUpperCase()
 
-  if (error) throw new Error('Failed to update merchant status: ' + error.message)
-  return data
+  let updatedMerchant = null
+
+  // 1. Update in merchants table
+  try {
+    let { data: mData, error: mErr } = await adminClient
+      .from('merchants')
+      .update({ status: normalizedStatus, updated_at: nowIso })
+      .eq('id', merchantId)
+      .select('*')
+      .maybeSingle()
+
+    if (!mData && !mErr) {
+      const res2 = await adminClient
+        .from('merchants')
+        .update({ status: normalizedStatus, updated_at: nowIso })
+        .eq('user_id', merchantId)
+        .select('*')
+        .maybeSingle()
+      mData = res2.data
+      mErr = res2.error
+    }
+
+    if (mData) {
+      updatedMerchant = mData
+    }
+  } catch (err) {
+    console.warn('[updateMerchantStatus] merchants table update notice:', err.message)
+  }
+
+  // 2. Also update in merchant_gateway_settings if present
+  try {
+    const { data: gData } = await adminClient
+      .from('merchant_gateway_settings')
+      .update({ status: normalizedStatus, updated_at: nowIso })
+      .eq('merchant_id', merchantId)
+      .select('*')
+      .maybeSingle()
+
+    if (!updatedMerchant && gData) {
+      updatedMerchant = gData
+    }
+  } catch (err) {
+    console.warn('[updateMerchantStatus] merchant_gateway_settings update notice:', err.message)
+  }
+
+  // 3. Update in-memory settings if present
+  if (inMemoryMerchantGatewaySettings.has(merchantId)) {
+    const cur = inMemoryMerchantGatewaySettings.get(merchantId) || {}
+    cur.status = normalizedStatus
+    cur.updated_at = nowIso
+    inMemoryMerchantGatewaySettings.set(merchantId, cur)
+    saveMerchantSettingsToDisk()
+  }
+
+  return updatedMerchant || { id: merchantId, merchant_id: merchantId, status: normalizedStatus, updated_at: nowIso }
+}
+
+export async function deleteMerchantAccountPermanently(merchantId) {
+  if (!merchantId) throw new Error('merchantId is required')
+  const adminClient = getAdminClient()
+
+  // 1. Find merchant record to retrieve any linked user_id
+  let userId = null
+  try {
+    const { data: m } = await adminClient
+      .from('merchants')
+      .select('id, user_id')
+      .or(`id.eq.${merchantId},user_id.eq.${merchantId}`)
+      .maybeSingle()
+    if (m?.user_id) {
+      userId = m.user_id
+    }
+  } catch (e) {
+    console.warn('[deleteMerchantAccountPermanently] Find user notice:', e.message)
+  }
+
+  // 2. Cascade delete dependent child tables
+  const targetIds = [merchantId]
+  if (userId && userId !== merchantId) targetIds.push(userId)
+
+  for (const tid of targetIds) {
+    try { await adminClient.from('merchant_connections').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('platform_api_keys').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('merchant_kyc_submissions').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('merchant_gateway_settings').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('support_tickets').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('feature_requests').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('live_chat_messages').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('form_submissions').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('merchant_notifications').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('gateway_device_alerts').delete().eq('merchant_id', tid) } catch (_) {}
+    try { await adminClient.from('supabase_connections').delete().eq('user_id', tid) } catch (_) {}
+  }
+
+  // 3. Delete from merchants table
+  try {
+    await adminClient.from('merchants').delete().eq('id', merchantId)
+    if (userId) {
+      await adminClient.from('merchants').delete().eq('user_id', userId)
+    }
+  } catch (err) {
+    console.warn('[deleteMerchantAccountPermanently] merchants delete notice:', err.message)
+  }
+
+  // 4. Delete Auth user if exists
+  if (userId) {
+    try {
+      await adminClient.auth.admin.deleteUser(userId)
+    } catch (authErr) {
+      console.warn('[deleteMerchantAccountPermanently] Auth user delete notice:', authErr.message)
+    }
+  }
+
+  // 5. Clean up disk and in-memory cache
+  if (inMemoryMerchantGatewaySettings.has(merchantId)) {
+    inMemoryMerchantGatewaySettings.delete(merchantId)
+    saveMerchantSettingsToDisk()
+  }
+
+  return { ok: true, message: 'Merchant account and all associated data permanently deleted' }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

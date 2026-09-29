@@ -594,7 +594,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                 }
                                 Column(modifier = Modifier.weight(1f, fill = false)) {
                                     Text(
-                                        text = "Custom Domain (নিজস্ব ডোমেইন)",
+                                        text = "Custom Domain",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = primaryText,

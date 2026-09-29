@@ -45,6 +45,21 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
     val activeProfile by viewModel.activeSupabaseProfile.collectAsState()
     val isConnected by viewModel.supabaseConnected.collectAsState()
 
+    // Exclude platform/admin database from merchant's management view
+    val isPlatformDb: (SupabaseProfileEntity?) -> Boolean = { p ->
+        p == null ||
+        p.id == "00000000-0000-0000-0000-000000000001" ||
+        p.supabaseUrl.trimEnd('/') == viewModel.PLATFORM_SUPABASE_URL.trimEnd('/') ||
+        p.businessName.equals("SwapnoPay Main Cloud", ignoreCase = true)
+    }
+
+    val merchantProfiles = remember(profiles) {
+        profiles.filterNot(isPlatformDb)
+    }
+    val merchantActiveProfile = remember(activeProfile) {
+        if (isPlatformDb(activeProfile)) null else activeProfile
+    }
+
     val diagnosticSteps by viewModel.realtimeDiagnosticSteps.collectAsState()
     val isRunningDiagnostics by viewModel.isRunningRealtimeDiagnostics.collectAsState()
     val diagnosticsSuccess by viewModel.realtimeDiagnosticsOverallSuccess.collectAsState()
@@ -70,6 +85,13 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                 onBack = { viewModel.goBack() },
                 gradient = if (isDarkMode) listOf(Color(0xFF1E1E24), Color(0xFF141418)) else listOf(Color(0xFF4F46E5), Color(0xFF3730A3))
             ) {
+                IconButton(
+                    onClick = {
+                        viewModel.startControlPlaneOAuth(context)
+                    }
+                ) {
+                    Icon(Icons.Default.CloudSync, contentDescription = "Connect with Supabase", tint = Color.White)
+                }
                 IconButton(
                     onClick = {
                         viewModel.forceSyncSupabase()
@@ -100,19 +122,19 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
             // ── ACTIVE BACKEND HERO CARD ──
             item {
                 ActiveBackendHeroCard(
-                    activeProfile = activeProfile,
-                    isConnected = isConnected,
+                    activeProfile = merchantActiveProfile,
+                    isConnected = isConnected && merchantActiveProfile != null,
                     revealAnonKey = revealAnonKey,
                     onToggleRevealKey = { revealAnonKey = !revealAnonKey },
                     onCopyUrl = {
-                        val url = activeProfile?.supabaseUrl.orEmpty()
+                        val url = merchantActiveProfile?.supabaseUrl.orEmpty()
                         if (url.isNotBlank()) {
                             clipboardManager.setText(AnnotatedString(url))
                             Toast.makeText(context, "Supabase URL copied", Toast.LENGTH_SHORT).show()
                         }
                     },
                     onCopyKey = {
-                        val key = activeProfile?.anonKey.orEmpty()
+                        val key = merchantActiveProfile?.anonKey.orEmpty()
                         if (key.isNotBlank()) {
                             clipboardManager.setText(AnnotatedString(key))
                             Toast.makeText(context, "Anon Key copied", Toast.LENGTH_SHORT).show()
@@ -120,11 +142,17 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                     },
                     onRunDiagnostics = {
                         showDiagnosticsModal = true
-                        viewModel.runRealtimeSupabaseDiagnostics()
+                        viewModel.runRealtimeSupabaseDiagnostics(
+                            merchantActiveProfile?.supabaseUrl.orEmpty(),
+                            merchantActiveProfile?.anonKey.orEmpty()
+                        )
                     },
                     onEditActive = {
-                        profileToEdit = activeProfile
+                        profileToEdit = merchantActiveProfile
                         showAddEditDialog = true
+                    },
+                    onConnectSupabase = {
+                        viewModel.startControlPlaneOAuth(context)
                     },
                     isDarkMode = isDarkMode
                 )
@@ -155,7 +183,7 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                             color = if (isDarkMode) Color(0xFF27272E) else Color(0xFFE2E8F0)
                         ) {
                             Text(
-                                text = "${profiles.size}",
+                                text = "${merchantProfiles.size}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = textPrimary,
@@ -164,22 +192,40 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                         }
                     }
 
-                    TextButton(
-                        onClick = {
-                            profileToEdit = null
-                            showAddEditDialog = true
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add New", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = {
+                                viewModel.startControlPlaneOAuth(context)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Connect Supabase", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        TextButton(
+                            onClick = {
+                                profileToEdit = null
+                                showAddEditDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Manual", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
 
             // ── LIST OF ALL PROFILES ──
-            if (profiles.isEmpty()) {
+            if (merchantProfiles.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -201,35 +247,34 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                                 modifier = Modifier.size(48.dp)
                             )
                             Text(
-                                text = "No Backend Profiles Configured",
+                                text = "No Merchant Supabase Profiles",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = textPrimary
                             )
                             Text(
-                                text = "Add a Supabase backend to enable multi-tenant data sync and real-time ledger operations.",
+                                text = "Connect your private Supabase database to enable secure, isolated cloud sync and real-time ledger operations.",
                                 fontSize = 13.sp,
                                 color = textSecondary,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                             Button(
                                 onClick = {
-                                    profileToEdit = null
-                                    showAddEditDialog = true
+                                    viewModel.startControlPlaneOAuth(context)
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
                             ) {
-                                Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Add Supabase Profile")
+                                Text("⚡ Connect with Supabase", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
             } else {
-                items(profiles, key = { it.id }) { profile ->
-                    val isActive = activeProfile?.id == profile.id || profile.isActive
+                items(merchantProfiles, key = { it.id }) { profile ->
+                    val isActive = merchantActiveProfile?.id == profile.id || profile.isActive
                     ProfileItemCard(
                         profile = profile,
                         isActive = isActive,
@@ -248,7 +293,7 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
                         onDelete = {
                             profileToDelete = profile
                         },
-                        canDelete = profiles.size > 1 && !isActive,
+                        canDelete = merchantProfiles.size > 1 && !isActive,
                         isDarkMode = isDarkMode
                     )
                 }
@@ -327,6 +372,10 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
         AddEditProfileDialog(
             initialProfile = profileToEdit,
             onDismiss = { showAddEditDialog = false },
+            onConnectSupabase = {
+                showAddEditDialog = false
+                viewModel.startControlPlaneOAuth(context)
+            },
             onSave = { name, url, key, makeActive ->
                 viewModel.addOrUpdateSupabaseProfile(
                     profileId = profileToEdit?.id,
@@ -437,8 +486,74 @@ private fun ActiveBackendHeroCard(
     onCopyKey: () -> Unit,
     onRunDiagnostics: () -> Unit,
     onEditActive: () -> Unit,
+    onConnectSupabase: () -> Unit = {},
     isDarkMode: Boolean
 ) {
+    if (activeProfile == null) {
+        val cardBg = if (isDarkMode) Color(0xFF141418) else Color.White
+        val textPrimary = if (isDarkMode) Color.White else Color(0xFF0F172A)
+        val textSecondary = if (isDarkMode) Color(0xFF9CA3AF) else Color(0xFF64748B)
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = cardBg),
+            border = BorderStroke(1.5.dp, Color(0xFF6366F1).copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF6366F1).copy(alpha = 0.15f),
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.CloudSync,
+                            contentDescription = null,
+                            tint = Color(0xFF6366F1),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "No Merchant Database Connected",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+
+                Text(
+                    text = "Connect your private Supabase database to start auto-syncing orders, customers, and ledger data in real time.",
+                    fontSize = 12.sp,
+                    color = textSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+
+                Button(
+                    onClick = onConnectSupabase,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1))
+                ) {
+                    Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("⚡ Connect with Supabase", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        return
+    }
+
     val cardGradient = if (isDarkMode) {
         listOf(Color(0xFF131B2E), Color(0xFF0F172A))
     } else {
@@ -858,6 +973,7 @@ private fun ProfileItemCard(
 private fun AddEditProfileDialog(
     initialProfile: SupabaseProfileEntity?,
     onDismiss: () -> Unit,
+    onConnectSupabase: () -> Unit = {},
     onSave: (name: String, url: String, anonKey: String, makeActive: Boolean) -> Unit,
     isDarkMode: Boolean
 ) {
@@ -865,6 +981,7 @@ private fun AddEditProfileDialog(
     var supabaseUrl by remember { mutableStateOf(initialProfile?.supabaseUrl.orEmpty()) }
     var anonKey by remember { mutableStateOf(initialProfile?.anonKey.orEmpty()) }
     var makeActive by remember { mutableStateOf(initialProfile?.isActive ?: true) }
+    var showManualFields by remember { mutableStateOf(initialProfile != null) }
 
     var testStatus by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
@@ -897,12 +1014,83 @@ private fun AddEditProfileDialog(
             ) {
                 // Header
                 Text(
-                    text = if (initialProfile == null) "Add Supabase Profile" else "Edit Supabase Profile",
+                    text = if (initialProfile == null) "Add Supabase Backend" else "Edit Supabase Profile",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
 
+                // 1-Tap Connect with Supabase Button
+                Surface(
+                    onClick = onConnectSupabase,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.12f),
+                    border = BorderStroke(1.5.dp, Color(0xFF10B981)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF10B981),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Connect with Supabase",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDarkMode) Color.White else Color(0xFF065F46)
+                            )
+                            Text(
+                                text = "1-Tap OAuth (No manual keys needed)",
+                                fontSize = 11.sp,
+                                color = textSecondary
+                            )
+                        }
+                        Icon(
+                            Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Toggle for manual key input
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showManualFields = !showManualFields }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (showManualFields) "▼ Manual URL & Key Config" else "▶ Or enter URL & Keys manually (Advanced)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF6366F1)
+                    )
+                }
+
+                AnimatedVisibility(visible = showManualFields) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Business / Instance Name
                 OutlinedTextField(
                     value = businessName,

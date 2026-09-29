@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { adminSupabase } from '../adminSupabaseClient'
+import { adminSupabase, updateMerchantAccountStatus, deleteMerchantAccount } from '../adminSupabaseClient'
 import AddMerchantModal from '../components/AddMerchantModal'
 import DetailDrawer from '../components/DetailDrawer'
 import KycInspectionModal from '../components/KycInspectionModal'
@@ -21,7 +21,8 @@ import {
   Mail,
   Phone,
   Store,
-  Calendar
+  Calendar,
+  Trash2
 } from 'lucide-react'
 
 interface MerchantRecord {
@@ -53,6 +54,7 @@ export default function Merchants() {
   const [selectedMerchant, setSelectedMerchant] = useState<MerchantRecord | null>(null)
   const [inspectKycMerchant, setInspectKycMerchant] = useState<MerchantRecord | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const loadMerchants = async () => {
@@ -152,19 +154,44 @@ export default function Merchants() {
     const nextStatus = currentStatus === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
     if (!window.confirm(`Are you sure you want to mark this merchant as ${nextStatus}?`)) return
 
+    setActionLoadingId(merchantId)
     try {
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq('id', merchantId)
-
-      if (error) throw new Error(error.message)
+      await updateMerchantAccountStatus(merchantId, nextStatus)
       await loadMerchants()
       if (selectedMerchant?.id === merchantId) {
         setSelectedMerchant(prev => prev ? { ...prev, status: nextStatus } : null)
       }
+      alert(`Merchant status changed to ${nextStatus} successfully.`)
     } catch (err: any) {
       alert('Failed to update status: ' + err.message)
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  // Permanently Delete Merchant
+  const handleDeleteMerchant = async (merchantId: string, businessName?: string) => {
+    if (!window.confirm(`⚠️ PERMANENT ACCOUNT DELETION\n\nAre you sure you want to delete "${businessName || merchantId}"?\n\nThis will purge all merchant data, dynamic API keys, KYC documents, and records. This action cannot be undone.`)) {
+      return
+    }
+    const check = window.prompt(`To confirm permanent deletion, type "DELETE" below:`)
+    if (check !== 'DELETE') {
+      alert('Deletion cancelled: confirmation keyword did not match.')
+      return
+    }
+
+    setActionLoadingId(merchantId)
+    try {
+      await deleteMerchantAccount(merchantId)
+      await loadMerchants()
+      if (selectedMerchant?.id === merchantId) {
+        setSelectedMerchant(null)
+      }
+      alert('Merchant account and all associated data have been permanently deleted.')
+    } catch (err: any) {
+      alert('Failed to delete merchant: ' + err.message)
+    } finally {
+      setActionLoadingId(null)
     }
   }
 

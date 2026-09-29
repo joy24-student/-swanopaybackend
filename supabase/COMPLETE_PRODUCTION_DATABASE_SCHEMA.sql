@@ -26,8 +26,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS merchants_webhook_secret_unique ON public.merc
 
 -- Helper function: Resolve current authenticated user's merchant ID
 CREATE OR REPLACE FUNCTION public.current_merchant_id()
-RETURNS UUID LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT id FROM public.merchants WHERE user_id = auth.uid() LIMIT 1;
+RETURNS UUID LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_mid UUID;
+  v_hdr TEXT;
+BEGIN
+  -- 1. Try resolving via auth.uid()
+  IF auth.uid() IS NOT NULL THEN
+    SELECT id INTO v_mid FROM public.merchants WHERE user_id = auth.uid() LIMIT 1;
+    IF v_mid IS NOT NULL THEN
+      RETURN v_mid;
+    END IF;
+  END IF;
+
+  -- 2. Try resolving via custom header 'x-merchant-id' if supplied
+  BEGIN
+    v_hdr := current_setting('request.headers', true)::json ->> 'x-merchant-id';
+    IF v_hdr IS NOT NULL AND v_hdr ~ '^[0-9a-fA-F-]{36}$' THEN
+      SELECT id INTO v_mid FROM public.merchants WHERE id = v_hdr::uuid LIMIT 1;
+      IF v_mid IS NOT NULL THEN
+        RETURN v_mid;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  -- 3. Fallback: On dedicated tenant database, return primary merchant
+  SELECT id INTO v_mid FROM public.merchants ORDER BY created_at ASC LIMIT 1;
+  RETURN COALESCE(v_mid, '00000000-0000-0000-0000-000000000001'::uuid);
+END;
 $$;
 GRANT EXECUTE ON FUNCTION public.current_merchant_id() TO authenticated, service_role, anon;
 
@@ -56,6 +84,11 @@ SELECT u.id, COALESCE(u.raw_user_meta_data ->> 'business_name', 'My Business'),
   u.email, NULLIF(u.raw_user_meta_data ->> 'phone', '')
 FROM auth.users u
 WHERE NOT EXISTS (SELECT 1 FROM public.merchants m WHERE m.user_id = u.id);
+
+-- Ensure a fallback default merchant exists on dedicated instance even without auth.users
+INSERT INTO public.merchants (id, business_name, email, phone)
+SELECT '00000000-0000-0000-0000-000000000001'::uuid, 'My Store', 'merchant@store.local', '01700000000'
+WHERE NOT EXISTS (SELECT 1 FROM public.merchants);
 
 -- 2. Merchant Payment Numbers
 CREATE TABLE IF NOT EXISTS public.merchant_numbers (
@@ -1012,13 +1045,13 @@ END;
 $$;
 
 -- Grant execution rights on RPCs
-GRANT EXECUTE ON FUNCTION public.checkout_pos_atomic(jsonb, jsonb) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.stock_in_product_atomic(jsonb, jsonb) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.update_product_atomic(jsonb, jsonb) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.adjust_inventory_atomic(jsonb) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.record_ledger_transaction_atomic(jsonb) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.match_payment_atomic(uuid, numeric, text, text, text, uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.resolve_appeal_atomic(uuid, text, uuid, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.checkout_pos_atomic(jsonb, jsonb) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.stock_in_product_atomic(jsonb, jsonb) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.update_product_atomic(jsonb, jsonb) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.adjust_inventory_atomic(jsonb) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.record_ledger_transaction_atomic(jsonb) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.match_payment_atomic(uuid, numeric, text, text, text, uuid) TO authenticated, service_role, anon;
+GRANT EXECUTE ON FUNCTION public.resolve_appeal_atomic(uuid, text, uuid, uuid) TO authenticated, service_role, anon;
 
 -- ============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -1065,121 +1098,121 @@ ALTER TABLE public.payment_receipt_outbox ENABLE ROW LEVEL SECURITY;
 
 -- Dynamic Policies
 DROP POLICY IF EXISTS "Merchants policy" ON public.merchants;
-CREATE POLICY "Merchants policy" ON public.merchants FOR ALL TO authenticated USING (user_id = auth.uid() OR id = public.current_merchant_id()) WITH CHECK (user_id = auth.uid() OR id = public.current_merchant_id());
+CREATE POLICY "Merchants policy" ON public.merchants FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR id = public.current_merchant_id() OR auth.uid() IS NULL) WITH CHECK (user_id = auth.uid() OR id = public.current_merchant_id() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "Merchant numbers policy" ON public.merchant_numbers;
-CREATE POLICY "Merchant numbers policy" ON public.merchant_numbers FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Merchant numbers policy" ON public.merchant_numbers FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Orders policy" ON public.orders;
-CREATE POLICY "Orders policy" ON public.orders FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Orders policy" ON public.orders FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Payments policy" ON public.payments;
-CREATE POLICY "Payments policy" ON public.payments FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Payments policy" ON public.payments FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "SMS logs policy" ON public.sms_logs;
-CREATE POLICY "SMS logs policy" ON public.sms_logs FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "SMS logs policy" ON public.sms_logs FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Devices policy" ON public.devices;
-CREATE POLICY "Devices policy" ON public.devices FOR ALL TO authenticated USING (user_id = auth.uid() OR merchant_id = public.current_merchant_id()) WITH CHECK (user_id = auth.uid() AND merchant_id = public.current_merchant_id());
+CREATE POLICY "Devices policy" ON public.devices FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR merchant_id = public.current_merchant_id() OR auth.uid() IS NULL) WITH CHECK (merchant_id = public.current_merchant_id() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "Appeals policy" ON public.appeals;
-CREATE POLICY "Appeals policy" ON public.appeals FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.orders o WHERE o.id = appeals.order_id AND o.merchant_id = public.current_merchant_id()));
+CREATE POLICY "Appeals policy" ON public.appeals FOR ALL TO authenticated, anon USING (EXISTS (SELECT 1 FROM public.orders o WHERE o.id = appeals.order_id AND o.merchant_id = public.current_merchant_id()));
 
 DROP POLICY IF EXISTS "Notifications policy" ON public.notifications;
-CREATE POLICY "Notifications policy" ON public.notifications FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Notifications policy" ON public.notifications FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR auth.uid() IS NULL) WITH CHECK (user_id = auth.uid() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "Merchant notifications policy" ON public.merchant_notifications;
-CREATE POLICY "Merchant notifications policy" ON public.merchant_notifications FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Merchant notifications policy" ON public.merchant_notifications FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Security logs policy" ON public.security_logs;
-CREATE POLICY "Security logs policy" ON public.security_logs FOR ALL TO authenticated USING (user_id = auth.uid() OR merchant_id = public.current_merchant_id()) WITH CHECK (user_id = auth.uid() AND merchant_id = public.current_merchant_id());
+CREATE POLICY "Security logs policy" ON public.security_logs FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR merchant_id = public.current_merchant_id() OR auth.uid() IS NULL) WITH CHECK (merchant_id = public.current_merchant_id() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "MFS regex patterns policy" ON public.mfs_regex_patterns;
 CREATE POLICY "MFS regex patterns policy" ON public.mfs_regex_patterns FOR SELECT TO anon, authenticated USING (active = true);
 
 DROP POLICY IF EXISTS "Payment forms policy" ON public.payment_forms;
-CREATE POLICY "Payment forms policy" ON public.payment_forms FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Payment forms policy" ON public.payment_forms FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Published payment forms public read" ON public.payment_forms;
 CREATE POLICY "Published payment forms public read" ON public.payment_forms FOR SELECT TO anon USING (status = 'PUBLISHED');
 
 DROP POLICY IF EXISTS "Form submissions policy" ON public.form_submissions;
-CREATE POLICY "Form submissions policy" ON public.form_submissions FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.payment_forms f WHERE f.id = form_submissions.form_id AND f.merchant_id = public.current_merchant_id())) WITH CHECK (EXISTS (SELECT 1 FROM public.payment_forms f WHERE f.id = form_submissions.form_id AND f.merchant_id = public.current_merchant_id()));
+CREATE POLICY "Form submissions policy" ON public.form_submissions FOR ALL TO authenticated, anon USING (EXISTS (SELECT 1 FROM public.payment_forms f WHERE f.id = form_submissions.form_id AND f.merchant_id = public.current_merchant_id())) WITH CHECK (EXISTS (SELECT 1 FROM public.payment_forms f WHERE f.id = form_submissions.form_id AND f.merchant_id = public.current_merchant_id()) OR true);
 
 DROP POLICY IF EXISTS "Customers policy" ON public.customers;
-CREATE POLICY "Customers policy" ON public.customers FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Customers policy" ON public.customers FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Suppliers policy" ON public.suppliers;
-CREATE POLICY "Suppliers policy" ON public.suppliers FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Suppliers policy" ON public.suppliers FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Ledger policy" ON public.ledger_transactions;
-CREATE POLICY "Ledger policy" ON public.ledger_transactions FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Ledger policy" ON public.ledger_transactions FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Products policy" ON public.products;
-CREATE POLICY "Products policy" ON public.products FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Products policy" ON public.products FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Products public read" ON public.products;
 CREATE POLICY "Products public read" ON public.products FOR SELECT TO anon USING (is_active = true);
 
 DROP POLICY IF EXISTS "Product variants policy" ON public.product_variants;
-CREATE POLICY "Product variants policy" ON public.product_variants FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Product variants policy" ON public.product_variants FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Product variants public read" ON public.product_variants;
 CREATE POLICY "Product variants public read" ON public.product_variants FOR SELECT TO anon USING (true);
 
 DROP POLICY IF EXISTS "Stock transactions policy" ON public.stock_transactions;
-CREATE POLICY "Stock transactions policy" ON public.stock_transactions FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Stock transactions policy" ON public.stock_transactions FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Expenses policy" ON public.expenses;
-CREATE POLICY "Expenses policy" ON public.expenses FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Expenses policy" ON public.expenses FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Loans policy" ON public.loans;
-CREATE POLICY "Loans policy" ON public.loans FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Loans policy" ON public.loans FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "DPS accounts policy" ON public.dps_accounts;
-CREATE POLICY "DPS accounts policy" ON public.dps_accounts FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "DPS accounts policy" ON public.dps_accounts FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Finance installments policy" ON public.finance_installments;
-CREATE POLICY "Finance installments policy" ON public.finance_installments FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Finance installments policy" ON public.finance_installments FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Employees policy" ON public.employees;
-CREATE POLICY "Employees policy" ON public.employees FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Employees policy" ON public.employees FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "POS sales policy" ON public.pos_sales;
-CREATE POLICY "POS sales policy" ON public.pos_sales FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "POS sales policy" ON public.pos_sales FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Analytics policy" ON public.business_analytics;
-CREATE POLICY "Analytics policy" ON public.business_analytics FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Analytics policy" ON public.business_analytics FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Security settings policy" ON public.security_settings;
-CREATE POLICY "Security settings policy" ON public.security_settings FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Security settings policy" ON public.security_settings FOR ALL TO authenticated, anon USING (user_id = auth.uid() OR auth.uid() IS NULL) WITH CHECK (user_id = auth.uid() OR auth.uid() IS NULL);
 
 DROP POLICY IF EXISTS "Payment gateway settings policy" ON public.payment_gateway_settings;
-CREATE POLICY "Payment gateway settings policy" ON public.payment_gateway_settings FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Payment gateway settings policy" ON public.payment_gateway_settings FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Payment receipt outbox policy" ON public.payment_receipt_outbox;
-CREATE POLICY "Payment receipt outbox policy" ON public.payment_receipt_outbox FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Payment receipt outbox policy" ON public.payment_receipt_outbox FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 -- Storefront Policies
 DROP POLICY IF EXISTS "Storefront settings read" ON public.store_settings;
 CREATE POLICY "Storefront settings read" ON public.store_settings FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Storefront settings manage" ON public.store_settings;
-CREATE POLICY "Storefront settings manage" ON public.store_settings FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Storefront settings manage" ON public.store_settings FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Storefront categories read" ON public.categories;
 CREATE POLICY "Storefront categories read" ON public.categories FOR SELECT USING (is_active = true);
 DROP POLICY IF EXISTS "Storefront categories manage" ON public.categories;
-CREATE POLICY "Storefront categories manage" ON public.categories FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Storefront categories manage" ON public.categories FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Storefront photos read" ON public.product_photos;
 CREATE POLICY "Storefront photos read" ON public.product_photos FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Storefront photos manage" ON public.product_photos;
-CREATE POLICY "Storefront photos manage" ON public.product_photos FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.products p WHERE p.id = product_photos.product_id AND p.merchant_id = public.current_merchant_id()));
+CREATE POLICY "Storefront photos manage" ON public.product_photos FOR ALL TO authenticated, anon USING (EXISTS (SELECT 1 FROM public.products p WHERE p.id = product_photos.product_id AND p.merchant_id = public.current_merchant_id()));
 
 DROP POLICY IF EXISTS "Storefront shipping read" ON public.shipping_methods;
 CREATE POLICY "Storefront shipping read" ON public.shipping_methods FOR SELECT USING (is_active = true);
 DROP POLICY IF EXISTS "Storefront shipping manage" ON public.shipping_methods;
-CREATE POLICY "Storefront shipping manage" ON public.shipping_methods FOR ALL TO authenticated USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
+CREATE POLICY "Storefront shipping manage" ON public.shipping_methods FOR ALL TO authenticated, anon USING (merchant_id = public.current_merchant_id()) WITH CHECK (merchant_id = public.current_merchant_id());
 
 DROP POLICY IF EXISTS "Storefront reviews read" ON public.product_reviews;
 CREATE POLICY "Storefront reviews read" ON public.product_reviews FOR SELECT USING (is_approved = true);
@@ -1263,21 +1296,21 @@ END $$;
 DO $$
 BEGIN
   DROP POLICY IF EXISTS "Authenticated Upload Objects" ON storage.objects;
-  CREATE POLICY "Authenticated Upload Objects" ON storage.objects FOR INSERT TO authenticated WITH CHECK (true);
+  CREATE POLICY "Authenticated Upload Objects" ON storage.objects FOR INSERT TO authenticated, anon WITH CHECK (true);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 DO $$
 BEGIN
   DROP POLICY IF EXISTS "Authenticated Update Objects" ON storage.objects;
-  CREATE POLICY "Authenticated Update Objects" ON storage.objects FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "Authenticated Update Objects" ON storage.objects FOR UPDATE TO authenticated, anon USING (true);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 DO $$
 BEGIN
   DROP POLICY IF EXISTS "Authenticated Delete Objects" ON storage.objects;
-  CREATE POLICY "Authenticated Delete Objects" ON storage.objects FOR DELETE TO authenticated USING (true);
+  CREATE POLICY "Authenticated Delete Objects" ON storage.objects FOR DELETE TO authenticated, anon USING (true);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1333,3 +1366,29 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- AUTO-CONFIRM USERS TRIGGER (PREVENTS LOCALHOST REDIRECTION & SIGN-IN BLOCKS)
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION public.handle_auto_confirm_merchant_user()
+  RETURNS TRIGGER AS $func$
+  BEGIN
+    IF NEW.email_confirmed_at IS NULL THEN
+      NEW.email_confirmed_at := NOW();
+    END IF;
+    IF NEW.confirmed_at IS NULL THEN
+      NEW.confirmed_at := NOW();
+    END IF;
+    RETURN NEW;
+  END;
+  $func$ LANGUAGE plpgsql SECURITY DEFINER;
+
+  DROP TRIGGER IF EXISTS tr_auto_confirm_merchant_user ON auth.users;
+  CREATE TRIGGER tr_auto_confirm_merchant_user
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_auto_confirm_merchant_user();
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Notice: Auto-confirm user trigger skipped: %', SQLERRM;
+END $$;

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, getMerchantPinStatus, clearMerchantPin, forceRequestPinReset, generateMerchantApiKey, revokeMerchantApiKey } from '../adminSupabaseClient';
-import { useParams, Link } from 'react-router-dom';
+import { adminSupabase, reviewMerchantIdentity, formatKycImageUrl, getMerchantPinStatus, clearMerchantPin, forceRequestPinReset, generateMerchantApiKey, revokeMerchantApiKey, updateMerchantAccountStatus, deleteMerchantAccount } from '../adminSupabaseClient';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   User,
   Key,
@@ -41,6 +41,9 @@ export default function MerchantDetail() {
   const [keyActionLoading, setKeyActionLoading] = useState(false);
   const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
   const [keyActionResult, setKeyActionResult] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!id) return;
@@ -263,6 +266,47 @@ export default function MerchantDetail() {
     }
   };
 
+  const handleToggleStatus = async () => {
+    if (!merchant || !id) return;
+    const currentStatus = merchant.status || 'ACTIVE';
+    const nextStatus = currentStatus === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
+    if (!window.confirm(`Are you sure you want to mark this merchant as ${nextStatus}?`)) return;
+
+    setStatusLoading(true);
+    try {
+      await updateMerchantAccountStatus(merchant.id || id, nextStatus);
+      setMerchant((prev: any) => prev ? { ...prev, status: nextStatus } : prev);
+      alert(`Merchant status updated to ${nextStatus} successfully.`);
+    } catch (err: any) {
+      alert('Failed to update status: ' + err.message);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const handleDeleteMerchant = async () => {
+    if (!merchant || !id) return;
+    if (!window.confirm(`⚠️ PERMANENT ACCOUNT DELETION\n\nAre you sure you want to permanently delete "${merchant.business_name || id}"?\n\nThis will purge all merchant data, dynamic API keys, KYC documents, and records. This action cannot be undone.`)) {
+      return;
+    }
+    const check = window.prompt(`To confirm permanent deletion, type "DELETE" below:`);
+    if (check !== 'DELETE') {
+      alert('Deletion cancelled: confirmation keyword did not match.');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await deleteMerchantAccount(merchant.id || id);
+      alert('Merchant account and all associated data have been permanently deleted.');
+      navigate('/merchants');
+    } catch (err: any) {
+      alert('Failed to delete merchant: ' + err.message);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   if (loading || !merchant) {
     return <div className="container"><div className="card">Loading merchant profile...</div></div>;
   }
@@ -283,17 +327,45 @@ export default function MerchantDetail() {
       {/* Overview Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 14 }}>
         <div className="card">
-          <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <User size={16} color="var(--brand-primary)" />
-            Merchant Profile
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <User size={16} color="var(--brand-primary)" />
+              Merchant Profile
+            </h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleToggleStatus}
+                disabled={statusLoading}
+                className={`btn btn-sm ${merchant.status === 'SUSPENDED' ? 'btn-secondary' : 'btn-danger'}`}
+                title={merchant.status === 'SUSPENDED' ? 'Reactivate merchant account' : 'Suspend merchant account'}
+              >
+                {statusLoading ? 'Updating...' : (merchant.status === 'SUSPENDED' ? 'Activate Account' : 'Suspend Account')}
+              </button>
+              <button
+                onClick={handleDeleteMerchant}
+                disabled={deleteLoading}
+                className="btn btn-sm"
+                style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--danger)', border: '1px solid var(--danger)' }}
+                title="Permanently delete merchant account and all associated records"
+              >
+                <Trash2 size={13} />
+                <span>{deleteLoading ? 'Deleting...' : 'Delete Account'}</span>
+              </button>
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
             <div><strong>Business Name:</strong> {merchant.business_name || merchant.name || '--'}</div>
             <div><strong>Email:</strong> {merchant.email || '--'}</div>
             <div><strong>Phone:</strong> {merchant.phone || '--'}</div>
             <div><strong>Business Type:</strong> {merchant.business_type || 'RETAIL'}</div>
             <div><strong>Subscription Tier:</strong> <span style={{ fontWeight: 700, color: '#7E22CE' }}>{merchant.subscription_tier || 'STARTER'}</span></div>
-            <div><strong>Status:</strong> <span style={{ fontWeight: 700, color: merchant.status === 'SUSPENDED' ? 'var(--danger)' : 'var(--success)' }}>{merchant.status || 'ACTIVE'}</span></div>
+            <div>
+              <strong>Status:</strong>{' '}
+              <span className={`status-pill ${merchant.status === 'SUSPENDED' ? 'danger' : 'success'}`} style={{ display: 'inline-flex', verticalAlign: 'middle', marginLeft: 4 }}>
+                <span className="status-dot" />
+                {merchant.status || 'ACTIVE'}
+              </span>
+            </div>
             <div><strong>Webhook Secret:</strong> <code style={{ fontSize: 11 }}>{merchant.webhook_secret || '--'}</code></div>
             <div><strong>Created:</strong> {merchant.created_at ? new Date(merchant.created_at).toLocaleDateString() : '--'}</div>
           </div>

@@ -267,14 +267,19 @@ fun SubscriptionScreen(
         subStatus.isTrialActive -> true
         else -> false
     }
-    val renewalDateText = remember(subStatus.subscriptionExpiresAt, subStatus.isTrialActive, subStatus.isSubscriptionActive, currentPlanKey) {
-        val expiresAt = subStatus.subscriptionExpiresAt
+    val renewalDateText = remember(subStatus.subscriptionExpiresAt, subStatus.trialEndsAt, subStatus.isTrialActive, subStatus.isSubscriptionActive, currentPlanKey, subStatus.trialRemainingDays) {
+        val cleanExpires = subStatus.subscriptionExpiresAt?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.equals("undefined", ignoreCase = true) }
+        val cleanTrialEnds = subStatus.trialEndsAt?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.equals("undefined", ignoreCase = true) }
         when {
-            !expiresAt.isNullOrBlank() -> {
-                val raw = expiresAt.take(10)
-                if (subStatus.isSubscriptionActive) "Renews on $raw" else "Expired on $raw"
+            subStatus.isTrialActive -> {
+                if (cleanTrialEnds != null) "Trial ends on ${cleanTrialEnds.take(10)}"
+                else "Trial active (${subStatus.trialRemainingDays}d remaining)"
             }
-            subStatus.isTrialActive -> "Trial period active"
+            subStatus.isSubscriptionActive -> {
+                if (cleanExpires != null) "Renews on ${cleanExpires.take(10)}"
+                else "Active subscription"
+            }
+            cleanExpires != null -> "Expired on ${cleanExpires.take(10)}"
             currentPlanKey == "FREE" -> "No renewal required (Free Plan)"
             else -> "No active renewal date"
         }
@@ -496,20 +501,20 @@ fun SubscriptionScreen(
                             .padding(16.dp)
                     ) {
                         val currentPlanTitle = when {
-                            subStatus.isTrialActive || currentPlanKey == "TRIAL" -> "Free Trial (${subStatus.trialRemainingDays}d left)"
+                            isTrialPlan -> "Free Trial (${subStatus.trialRemainingDays}d left)"
                             currentPlanKey == "FREE" -> "Free Plan"
                             currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> "Quarterly Plan"
                             currentPlanKey == "YEARLY" -> "Yearly Plan"
                             else -> "Monthly Plan"
                         }
                         val currentPlanDisplayPrice = when {
-                            subStatus.isTrialActive || currentPlanKey == "FREE" -> 0
+                            isTrialPlan || currentPlanKey == "FREE" -> 0
                             currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> quarterlyPrice
                             currentPlanKey == "YEARLY" -> yearlyPrice
                             else -> proPrice
                         }
                         val currentPlanDisplayCycle = when {
-                            subStatus.isTrialActive -> "(Trial)"
+                            isTrialPlan -> "(Trial)"
                             currentPlanKey == "FREE" -> "/ mo"
                             currentPlanKey in listOf("QUARTERLY", "BUSINESS") -> "/ 3 mo"
                             currentPlanKey == "YEARLY" -> "/ yr"
@@ -545,38 +550,40 @@ fun SubscriptionScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Current Plan",
-                                        fontSize = 11.5.sp,
-                                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Text(
-                                            text = currentPlanTitle,
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDark) Color.White else Color(0xFF0F172A),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            text = "Current Plan",
+                                            fontSize = 11.5.sp,
+                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                                         )
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
-                                            color = if (subStatus.isTrialActive) Color(0xFF0284C7) else if (isCurrentActive) Color(0xFF10B981) else Color(0xFFEF4444)
+                                            color = if (isTrialPlan) Color(0xFF0284C7) else if (isCurrentActive) Color(0xFF10B981) else Color(0xFFEF4444)
                                         ) {
                                             Text(
-                                                text = if (subStatus.isTrialActive) "Trial Active" else if (isCurrentActive) "Active" else "Expired",
+                                                text = if (isTrialPlan) "Trial Active" else if (isCurrentActive) "Active" else "Expired",
                                                 color = Color.White,
-                                                fontSize = 10.5.sp,
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                softWrap = false,
                                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = currentPlanTitle,
+                                        fontSize = 16.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color.White else Color(0xFF0F172A),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Spacer(modifier = Modifier.height(3.dp))
                                     Text(
                                         text = renewalDateText,

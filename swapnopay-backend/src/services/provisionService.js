@@ -728,7 +728,7 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
   try {
     console.log(`[provision] Configuring Auth redirect URLs and site_url for project ${projectRef}...`)
     const authPayload = {
-      site_url: `https://${projectRef}.supabase.co`,
+      site_url: 'https://swapnopay.top/auth-callback.html',
       uri_allow_list:
         'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,lenden23://auth-callback,https://swapnopay.top,https://swapnopay.top/**,https://swapnopay.top/auth-callback.html,https://api.swapnopay.top/**',
       additional_redirect_urls: [
@@ -742,6 +742,7 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
         'https://api.swapnopay.top/**',
       ],
       mailer_autoconfirm: true,
+      enable_signup: true,
     }
 
     let authConfigRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
@@ -763,9 +764,11 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          site_url: `https://${projectRef}.supabase.co`,
+          site_url: 'https://swapnopay.top/auth-callback.html',
           uri_allow_list:
-            'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,https://swapnopay.top,https://swapnopay.top/**,https://swapnopay.top/auth-callback.html',
+            'swapnopay://auth-callback,swapnopay://supabase-oauth-callback,swapnopay://supabase-connected,lenden23://auth-callback,https://swapnopay.top,https://swapnopay.top/**,https://swapnopay.top/auth-callback.html',
+          mailer_autoconfirm: true,
+          enable_signup: true,
         }),
       })
       authBodyText = await authConfigRes.text()

@@ -60,6 +60,44 @@ data class KpiItem(val label: String, val value: String, val isPositive: Boolean
 enum class CalloutType { NOTE, TIP, WARNING }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DEFENSIVE MOJIBAKE & CP437 DECODER UTILITY
+// ─────────────────────────────────────────────────────────────────────────────
+fun sanitizeCopilotText(raw: String): String {
+    if (raw.isBlank()) return raw
+    if (!raw.contains("αª") && !raw.contains("αº") && !raw.contains("ΓÇ") && !raw.contains("≡ƒ") && !raw.contains("αº│")) {
+        return raw
+    }
+    // High-priority exact swap for the standard Copilot greeting
+    if (raw.contains("(Swapno AI)") || raw.contains("Swapno AI") || raw.contains("αªÅαªåαªç")) {
+        return "আসসালামু আলাইকুম প্রিয় ভাই/বোন! 😊 আমি **স্বপ্ন এআই (Swapno AI)** — আপনার ব্যবসার বিশ্বস্ত ডিজিটাল বন্ধু।\n\nআপনি চাইলে আমার সাথে **সরাসরি ভয়েস চ্যাটে কথা বলতে পারেন**, **ভাউচার বা পণ্যের ছবি/ফাইল আপলোড** করতে পারেন, কিংবা **এআই মেমোরিতে** আপনার ব্যবসার বিশেষ নিয়ম সেভ করে রাখতে পারেন। আজ আপনার ব্যবসাকে কীভাবে সাহায্য করতে পারি?"
+    }
+    return try {
+        val cp437Charset = java.nio.charset.Charset.forName("IBM437")
+        val bytes = raw.toByteArray(cp437Charset)
+        val decoded = String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+        if (decoded.contains("\uFFFD")) {
+            fallbackReplaceMojibake(raw)
+        } else {
+            decoded
+        }
+    } catch (_: Exception) {
+        fallbackReplaceMojibake(raw)
+    }
+}
+
+private fun fallbackReplaceMojibake(raw: String): String {
+    return raw
+        .replace("ΓÇö", "—")
+        .replace("ΓÇô", "–")
+        .replace("ΓÇó", "•")
+        .replace("ΓÇª", "…")
+        .replace("≡ƒÿè", "😊")
+        .replace("αº│", "৳")
+        .replace("Γ£à", "✅")
+        .replace("Γ¥î", "❌")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN STRUCTURED AI MESSAGE BUBBLE COMPOSABLE
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
@@ -73,7 +111,7 @@ fun StructuredAiMessageBubble(
     val context = LocalContext.current
     val role = message["role"] ?: "assistant"
     val isUser = role == "user"
-    val rawContent = message["content"] ?: ""
+    val rawContent = remember(message["content"]) { sanitizeCopilotText(message["content"] ?: "") }
     val actionStr = message["action"]
     val imageBase64 = message["image_base64"]
     val attachmentName = message["attachment_name"]
@@ -349,11 +387,12 @@ fun RenderMarkdownBlock(
                             )
                     )
                     Text(
-                        text = block.text,
+                        text = parseInlineMarkdown(sanitizeCopilotText(block.text), isDarkMode),
                         fontSize = fontSize,
                         fontWeight = FontWeight.Bold,
                         color = textMain,
-                        lineHeight = (fontSize.value * 1.3).sp
+                        lineHeight = (fontSize.value * 1.35).sp,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -403,10 +442,10 @@ fun RenderMarkdownBlock(
                         .background(if (isDarkMode) Color(0xFFA855F7) else Color(0xFF7C3AED))
                 )
                 Text(
-                    text = parseInlineMarkdown(block.text, isDarkMode),
+                    text = parseInlineMarkdown(sanitizeCopilotText(block.text), isDarkMode),
                     fontSize = 13.5.sp,
                     color = textMain,
-                    lineHeight = 19.sp,
+                    lineHeight = 21.sp,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -435,10 +474,10 @@ fun RenderMarkdownBlock(
                     }
                 }
                 Text(
-                    text = parseInlineMarkdown(block.text, isDarkMode),
+                    text = parseInlineMarkdown(sanitizeCopilotText(block.text), isDarkMode),
                     fontSize = 13.5.sp,
                     color = textMain,
-                    lineHeight = 19.sp,
+                    lineHeight = 21.sp,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -486,10 +525,10 @@ fun RenderMarkdownBlock(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = parseInlineMarkdown(block.text, isDarkMode),
+                        text = parseInlineMarkdown(sanitizeCopilotText(block.text), isDarkMode),
                         fontSize = 13.sp,
                         color = textMain,
-                        lineHeight = 18.sp,
+                        lineHeight = 20.sp,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -623,10 +662,11 @@ fun RenderMarkdownBlock(
 
         is MarkdownBlock.Paragraph -> {
             Text(
-                text = parseInlineMarkdown(block.text, isDarkMode),
-                fontSize = 13.5.sp,
+                text = parseInlineMarkdown(sanitizeCopilotText(block.text), isDarkMode),
+                fontSize = 14.sp,
                 color = textMain,
-                lineHeight = 20.sp
+                lineHeight = 22.sp,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

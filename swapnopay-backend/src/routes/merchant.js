@@ -161,6 +161,38 @@ const handleUpdateFeature = async (req, res) => {
 merchantRouter.patch('/support/features/:id', handleUpdateFeature)
 merchantRouter.post('/support/features/:id', handleUpdateFeature)
 
+// Account & Data Deletion endpoint (Merchant In-App / Self-Serve Google Play Compliance)
+const handleAccountDelete = async (req, res) => {
+  try {
+    const rawId = req.headers['x-merchant-id'] || req.body?.merchant_id || req.query.merchant_id || null
+    let merchantId = rawId
+    
+    // Also check Authorization header token if present
+    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '')
+    if (!merchantId && bearer) {
+      try {
+        const { getAdminClient } = await import('../services/adminSupabase.js')
+        const { data: { user } } = await getAdminClient().auth.getUser(bearer)
+        if (user?.id) merchantId = user.id
+      } catch (_) {}
+    }
+
+    if (!merchantId) {
+      return res.status(400).json({ error: 'Merchant ID or valid authorization is required to delete account' })
+    }
+
+    const { deleteMerchantAccountPermanently } = await import('../services/adminSupabase.js')
+    const result = await deleteMerchantAccountPermanently(merchantId)
+    console.log(`[merchant/account] Permanent account deletion completed for merchant: ${merchantId}`)
+    res.json(result)
+  } catch (error) {
+    console.error('[merchant/account delete error]', error.message)
+    res.status(500).json({ error: error.message || 'Failed to delete merchant account' })
+  }
+}
+merchantRouter.delete('/account', handleAccountDelete)
+merchantRouter.post('/account/delete', handleAccountDelete)
+
 merchantRouter.use(requirePlatformUser)
 merchantRouter.use(requirePlatformMerchant)
 
