@@ -378,25 +378,27 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       if (admin) {
         const effId = resolvedMerchantRow?.id || creds?.merchant_id || merchant_id
         const cleanDevId = device_id || `dev_${effId.slice(0, 8)}`
-        admin
-          .from('devices')
-          .upsert({
-            id: cleanDevId,
-            merchant_id: effId,
-            device_model: device_model || 'Android App',
-            os_version: os_version || 'Android',
-            battery_level: battery_level ?? 100,
-            online: true,
-            last_sync: nowIso,
-            disabled: false,
-          }, { onConflict: 'id' })
-          .catch(e => console.warn('[payment/heartbeat] devices upsert notice:', e.message))
+        Promise.resolve(
+          admin
+            .from('devices')
+            .upsert({
+              id: cleanDevId,
+              merchant_id: effId,
+              device_model: device_model || 'Android App',
+              os_version: os_version || 'Android',
+              battery_level: battery_level ?? 100,
+              online: true,
+              last_sync: nowIso,
+              disabled: false,
+            }, { onConflict: 'id' })
+        ).catch(e => console.warn('[payment/heartbeat] devices upsert notice:', e.message))
 
-        admin
-          .from('merchants')
-          .update({ last_sync: nowIso, updated_at: nowIso })
-          .eq('id', effId)
-          .catch(e => console.warn('[payment/heartbeat] merchants update notice:', e.message))
+        Promise.resolve(
+          admin
+            .from('merchants')
+            .update({ last_sync: nowIso, updated_at: nowIso })
+            .eq('id', effId)
+        ).catch(e => console.warn('[payment/heartbeat] merchants update notice:', e.message))
       }
 
       // Broadcast to merchant room for real-time dashboard listeners

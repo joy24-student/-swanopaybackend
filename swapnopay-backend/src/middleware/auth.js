@@ -268,7 +268,7 @@ export async function requireMerchantOrAdminAuth(req, res, next) {
 
             if (isOwner) {
               if (merchantRecord && (!merchantRecord.user_id || merchantRecord.user_id === targetMerchantId)) {
-                adminClient.from('merchants').update({ user_id: user.id }).eq('id', targetMerchantId).catch(() => {})
+                Promise.resolve(adminClient.from('merchants').update({ user_id: user.id }).eq('id', targetMerchantId)).catch(() => {})
               }
               req.merchantUser = { ...user, id: targetMerchantId, merchant_id: targetMerchantId, userId: user.id }
               req.authMethod = 'supabase'
