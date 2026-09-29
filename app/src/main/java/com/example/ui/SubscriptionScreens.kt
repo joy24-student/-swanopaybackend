@@ -261,10 +261,11 @@ fun SubscriptionScreen(
     }
 
     val currentPlanKey = (subStatus.subscriptionPlan ?: "FREE").uppercase()
+    val isTrialPlan = subStatus.isTrialActive || currentPlanKey == "TRIAL"
     val isCurrentActive = when {
         currentPlanKey == "FREE" -> true
         subStatus.isSubscriptionActive -> true
-        subStatus.isTrialActive -> true
+        isTrialPlan -> true
         else -> false
     }
     val renewalDateText = remember(subStatus.subscriptionExpiresAt, subStatus.trialEndsAt, subStatus.isTrialActive, subStatus.isSubscriptionActive, currentPlanKey, subStatus.trialRemainingDays) {

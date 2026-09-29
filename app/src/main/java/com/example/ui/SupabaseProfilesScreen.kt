@@ -49,7 +49,7 @@ fun SupabaseProfilesScreen(viewModel: AppViewModel) {
     val isPlatformDb: (SupabaseProfileEntity?) -> Boolean = { p ->
         p == null ||
         p.id == "00000000-0000-0000-0000-000000000001" ||
-        p.supabaseUrl.trimEnd('/') == viewModel.PLATFORM_SUPABASE_URL.trimEnd('/') ||
+        p.supabaseUrl.trimEnd('/') == PLATFORM_SUPABASE_URL.trimEnd('/') ||
         p.businessName.equals("SwapnoPay Main Cloud", ignoreCase = true)
     }
 
@@ -1220,8 +1220,10 @@ private fun AddEditProfileDialog(
                         )
                     }
                 }
+            }
+        }
 
-                HorizontalDivider(color = if (isDarkMode) Color(0xFF27272E) else Color(0xFFE2E8F0))
+        HorizontalDivider(color = if (isDarkMode) Color(0xFF27272E) else Color(0xFFE2E8F0))
 
                 // Dialog Buttons
                 Row(

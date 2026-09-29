@@ -14576,7 +14576,7 @@ function executePayment() {
         onParsedDetails: (name: String, phone: String, product: String, qty: String, amount: Double, type: String, note: String) -> Unit,
         onError: (String) -> Unit
     ) {
-        val bengaliDigits = charArrayOf('αºª', 'αºº', 'αº¿', 'αº⌐', 'αº¬', 'αº½', 'αº¼', 'αº¡', 'αº«', 'αº»')
+        val bengaliDigits = charArrayOf('\u09E6', '\u09E7', '\u09E8', '\u09E9', '\u09EA', '\u09EB', '\u09EC', '\u09ED', '\u09EE', '\u09EF')
         val englishDigits = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
         var normalized = speechText
         for (i in 0..9) {
