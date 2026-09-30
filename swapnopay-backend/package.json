@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test src/**/*.test.js",
-    "test:shop-php": "node scripts/test-shop-php.js"
+    "test:shop-php": "node scripts/test-shop-php.js",
+    "reapply-merchant-migration": "node scripts/reapply-merchant-self-provisioning.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.3.2",

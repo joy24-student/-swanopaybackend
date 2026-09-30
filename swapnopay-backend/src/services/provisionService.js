@@ -73,6 +73,31 @@ function getMasterSchemaSql() {
   return null
 }
 
+function getMerchantSelfProvisioningSql() {
+  const candidates = [
+    path.resolve(__dirname, '../../sql/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(__dirname, '../sql/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(process.cwd(), 'sql/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(process.cwd(), 'swapnopay-backend/sql/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(__dirname, '../../../supabase/migrations/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(__dirname, '../../../../supabase/migrations/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(process.cwd(), 'supabase/migrations/31_merchant_self_provisioning_policies.sql'),
+    path.resolve(process.cwd(), '../supabase/migrations/31_merchant_self_provisioning_policies.sql'),
+  ]
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        console.log('[provision-schema] Loaded merchant self-provisioning SQL from:', candidate)
+        return fs.readFileSync(candidate, 'utf-8')
+      }
+    } catch (_) {}
+  }
+
+  console.warn('[provision-schema] Merchant self-provisioning SQL file not found on disk; this project will miss the no-user-required tenant fix.')
+  return null
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper: Execute Master SQL in Robust Phases (Fast single-shot with chunked fallback)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -692,6 +717,7 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
     smsWebhookConfigured: false,
     authConfigured: false,
     keysFound: false,
+    selfProvisioning: false,
   }
 
   // 1. Execute Master PostgreSQL Schema (DDL Tables, Functions, Triggers, RLS)
@@ -706,25 +732,36 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
     summary.databaseTables = false
   }
 
-  // 2. Ensure Storage Buckets & Policies
-  console.log(`[provision] 2/5 Configuring storage buckets & access policies...`)
+  // 2. Ensure merchant self-provisioning SQL is applied on every merchant-owned project
+  const selfProvisioningSql = getMerchantSelfProvisioningSql()
+  if (selfProvisioningSql) {
+    console.log(`[provision] 2/5 Applying merchant self-provisioning tenant fix...`)
+    const selfProvisioningResult = await executeSchemaInPhases(projectRef, accessToken, selfProvisioningSql)
+    console.log(`[provision] Merchant self-provisioning fix applied: ${selfProvisioningResult.ok ? 'SUCCESS' : 'NOTICE'}`)
+    summary.selfProvisioning = selfProvisioningResult.ok
+  } else {
+    summary.selfProvisioning = false
+  }
+
+  // 3. Ensure Storage Buckets & Policies
+  console.log(`[provision] 3/5 Configuring storage buckets & access policies...`)
   const storageRes = await executeSqlQuery(projectRef, accessToken, STORAGE_BUCKETS_SQL)
   summary.storageBuckets = storageRes.ok
   console.log(`[provision] Storage buckets configured: ${storageRes.ok ? 'SUCCESS' : 'NOTICE'}`)
 
-  // 3. Ensure Realtime Publications
-  console.log(`[provision] 3/5 Enabling Realtime publications on tables...`)
+  // 4. Ensure Realtime Publications
+  console.log(`[provision] 4/5 Enabling Realtime publications on tables...`)
   const realtimeRes = await executeSqlQuery(projectRef, accessToken, REALTIME_SETUP_SQL)
   summary.realtimePublication = realtimeRes.ok
   console.log(`[provision] Realtime publication configured: ${realtimeRes.ok ? 'SUCCESS' : 'NOTICE'}`)
 
-  // 4. Deploy Edge Functions & Configure Secrets
-  console.log(`[provision] 4/5 Deploying Edge Functions to project ${projectRef}...`)
+  // 5. Deploy Edge Functions & Configure Secrets
+  console.log(`[provision] 5/5 Deploying Edge Functions to project ${projectRef}...`)
   const functionResults = await deployEdgeFunctions(projectRef, accessToken)
   summary.edgeFunctions = functionResults.some((f) => f.ok)
   summary.functionDetails = functionResults
 
-  // 4b. Configure Auth Redirect URLs & Auto-confirm (eliminates localhost redirect)
+  // 5b. Configure Auth Redirect URLs & Auto-confirm (eliminates localhost redirect)
   try {
     console.log(`[provision] Configuring Auth redirect URLs and site_url for project ${projectRef}...`)
     const authPayload = {
@@ -780,9 +817,9 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
     console.warn('[provision-auth] Notice: Could not set auth config automatically:', authErr.message)
   }
 
-  // 4c. Configure Automated SMS Webhook Trigger (pg_net)
+  // 5c. Configure Automated SMS Webhook Trigger (pg_net)
   try {
-    console.log(`[provision] 4c/5 Configuring automated SMS webhook trigger for ${projectRef}...`)
+    console.log(`[provision] 5c/5 Configuring automated SMS webhook trigger for ${projectRef}...`)
     const webhookRes = await configureSmsWebhookTrigger(projectRef, accessToken)
     summary.smsWebhookConfigured = Boolean(webhookRes?.ok)
     console.log(`[provision] SMS webhook trigger configured: ${webhookRes?.ok ? 'SUCCESS' : 'NOTICE'}`)
@@ -790,8 +827,8 @@ export async function provisionProject({ projectRef, accessToken, userId, dbPass
     console.warn('[provision-webhook] Notice: Could not set SMS webhook trigger automatically:', webhookErr.message)
   }
 
-  // 5. Retrieve API Keys & Configure/Save Default DB Password & Pooler URL
-  console.log(`[provision] 5/5 Retrieving API keys and saving default DB password...`)
+  // 6. Retrieve API Keys & Configure/Save Default DB Password & Pooler URL
+  console.log(`[provision] 6/6 Retrieving API keys and saving default DB password...`)
   const savedCreds = await saveDefaultProjectCredentials({
     userId,
     projectRef,

@@ -310,6 +310,9 @@ interface AppDao {
     @Query("SELECT * FROM supabase_profiles WHERE isActive = 1 LIMIT 1")
     suspend fun getActiveSupabaseProfile(): SupabaseProfileEntity?
 
+    @Query("SELECT * FROM supabase_profiles ORDER BY isActive DESC")
+    suspend fun getAllSupabaseProfiles(): List<SupabaseProfileEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSupabaseProfile(profile: SupabaseProfileEntity)
 

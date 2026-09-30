@@ -559,7 +559,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 put("active_methods", org.json.JSONObject(safeConfig.activeMethods))
             }
             securityPrefs.edit().putString("gateway_config_json", json.toString()).apply()
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveActiveForGateway()
             if (active != null) {
                 val payload = org.json.JSONObject().apply {
                     put("merchant_id", _activeProfile.value.id)
@@ -690,10 +690,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshGatewayConfig() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             pullMerchantConfigFromBackendDirect(_activeProfile.value.id)
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
-                ?: _activeSupabaseProfile.value
-                ?: repository.getActiveSupabaseProfile()
-                ?: return@launch
+            val active = resolveActiveForGateway() ?: return@launch
             if (active.supabaseUrl.isBlank() || active.anonKey.isBlank()) return@launch
             val isReal = active.supabaseUrl.isNotBlank() && !active.supabaseUrl.contains("abc123xyz") && !active.supabaseUrl.contains("def456uvw")
             if (isReal) supabaseConnected.value = true
@@ -786,7 +783,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         if (_merchantApiKey.value.isNotBlank()) {
                             setRequestProperty("x-api-key", _merchantApiKey.value)
                         }
-                        val token = resolvePlatformAuthToken().ifBlank { _activeSupabaseProfile.value?.authSessionToken.orEmpty() }
+                        val token = resolvePlatformAuthToken()
                         if (token.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $token")
                         }
@@ -2955,6 +2952,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .build()
     private val platformSessionMutex = kotlinx.coroutines.sync.Mutex()
 
+    /**
+     * Last platform access token resolved by [resolvePlatformAuthToken]. Lets non-suspend
+     * call sites (for example the web-shop request builder) attach the platform session
+     * Bearer header without blocking on a token refresh.
+     */
+    @Volatile
+    private var cachedPlatformToken: String = ""
+
     private suspend fun resolvePlatformAuthToken(): String {
         return try {
             platformSessionMutex.withLock {
@@ -2982,14 +2987,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
+                    cachedPlatformToken = profile.authSessionToken
                     return@withLock profile.authSessionToken
                 }
-                val activeToken = _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
-                if (activeToken != null) return@withLock activeToken
                 ""
             }
         } catch (_: Exception) {
-            _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() } ?: ""
+            ""
         }
     }
 
@@ -3316,6 +3320,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             repository.insertSupabaseProfile(profile)
             repository.selectActiveSupabaseProfile(profile.id)
             _activeSupabaseProfile.value = profile
+            _activeMerchantSupabaseProfile.value = profile
             supabaseUrl.value = profile.supabaseUrl
             supabaseAnonKey.value = profile.anonKey
             _supabaseUrlInput.value = profile.supabaseUrl
@@ -4003,11 +4008,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun validSupabaseSession(profile: SupabaseProfileEntity): SupabaseProfileEntity? {
-        if (profile.authSessionToken.isBlank()) return null
+        // Anon-only profiles (no authSessionToken) are valid for merchant DB operations
+        if (profile.authSessionToken.isBlank()) return profile
         return if (profile.authTokenExpiresAt == 0L || profile.authTokenExpiresAt > System.currentTimeMillis() + 60_000L) {
             profile
         } else {
-            refreshSupabaseSession(profile)
+            val refreshed = refreshSupabaseSession(profile)
+            // If refresh failed and this is NOT the platform profile, return the profile
+            // with its anon key so merchant DB reads can still proceed
+            if (refreshed == null && !profile.isPlatformProfile()) profile else refreshed
         }
     }
 
@@ -4280,6 +4289,70 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _activeSupabaseProfile = MutableStateFlow<com.example.data.local.SupabaseProfileEntity?>(null)
     val activeSupabaseProfile: StateFlow<com.example.data.local.SupabaseProfileEntity?> = _activeSupabaseProfile.asStateFlow()
+
+    private val _activeMerchantSupabaseProfile = MutableStateFlow<com.example.data.local.SupabaseProfileEntity?>(null)
+    val activeMerchantSupabaseProfile: StateFlow<com.example.data.local.SupabaseProfileEntity?> = _activeMerchantSupabaseProfile.asStateFlow()
+
+    /** Returns true if this profile is the SwapnoPay platform (shared) database. */
+    private fun com.example.data.local.SupabaseProfileEntity.isPlatformProfile(): Boolean =
+        id == "00000000-0000-0000-0000-000000000001" ||
+        supabaseUrl.trimEnd('/') == PLATFORM_SUPABASE_URL
+
+    /**
+     * Resolves the best Supabase profile for merchant-specific business data tables
+     * (customers, suppliers, products, ledger, pos_sales, stock, expenses, loans, dps,
+     * finance, business_analytics, store_settings).
+     * Prefers the dedicated merchant profile; falls back to the platform profile only if
+     * no merchant DB has been configured.
+     */
+    private suspend fun resolveMerchantSupabaseProfile(): com.example.data.local.SupabaseProfileEntity? {
+        val merchant = _activeMerchantSupabaseProfile.value
+            ?: _activeSupabaseProfile.value?.takeIf { !it.isPlatformProfile() }
+        if (merchant != null) return validSupabaseSession(merchant) ?: merchant
+        // No merchant DB → try to find one among all stored profiles
+        val allProfiles = repository.getAllSupabaseProfiles()
+        val nonPlatform = allProfiles.firstOrNull { !it.isPlatformProfile() }
+        if (nonPlatform != null) {
+            _activeMerchantSupabaseProfile.value = nonPlatform
+            return validSupabaseSession(nonPlatform) ?: nonPlatform
+        }
+        return null
+    }
+
+    /**
+     * Resolves the merchant profile for routine merchant data operations.
+     * Returns null if no merchant DB is configured (caller should skip the operation).
+     */
+    private suspend fun resolveMerchantForOps(): com.example.data.local.SupabaseProfileEntity? =
+        resolveMerchantSupabaseProfile()
+
+    /**
+     * Resolves the profile to use for payment form CRUD (updatePaymentForm, deletePaymentForm,
+     * fetchPaymentForms). Payment forms live in the merchant DB when configured, otherwise
+     * the platform DB is used as fallback.
+     */
+    private suspend fun resolveProfileForPaymentForms(): com.example.data.local.SupabaseProfileEntity? {
+        val merchant = resolveMerchantSupabaseProfile()
+        if (merchant != null) return merchant
+        // Fall back to platform DB
+        val platform = getOrCreatePlatformSupabaseProfile()
+        return validSupabaseSession(platform) ?: platform
+    }
+
+    /**
+     * Resolves the profile for gateway-related operations.
+     * payment_gateway_settings, merchant_numbers, orders, payments, appeals, devices,
+     * merchant_notifications, form_submissions, security_logs all live on the
+     * PLATFORM DB — always use the platform profile here.
+     */
+    // Employee / team-roster records are merchant-owned: they are only ever read from and
+    // written to the merchant's own Supabase project via resolveMerchantForOps(),
+    // never the shared platform database.
+    private suspend fun resolveActiveForGateway(): com.example.data.local.SupabaseProfileEntity? {
+        val platform = getOrCreatePlatformSupabaseProfile()
+        val refreshed = validSupabaseSession(platform)
+        return refreshed ?: platform
+    }
 
     // --- SUPABASE MULTI-PROFILE & REALTIME DIAGNOSTICS ---
     private val _realtimeDiagnosticSteps = MutableStateFlow<List<RealtimeDiagnosticStep>>(emptyList())
@@ -4694,7 +4767,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val merchantId = activeProfile.value.id
             repository.markMerchantNotificationRead(notificationId, merchantId)
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return@launch
+            val active = resolveActiveForGateway() ?: return@launch
             com.example.data.remote.SupabaseClient.callRpc(
                 active.supabaseUrl, active.anonKey, active.authSessionToken, "mark_merchant_notification_read",
                 org.json.JSONObject().put("p_notification_id", notificationId).put("p_read_at", toIsoTimestamp(System.currentTimeMillis())),
@@ -4707,7 +4780,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val merchantId = activeProfile.value.id
             repository.markAllMerchantNotificationsRead(merchantId)
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return@launch
+            val active = resolveActiveForGateway() ?: return@launch
             com.example.data.remote.SupabaseClient.callRpc(
                 active.supabaseUrl, active.anonKey, active.authSessionToken, "mark_all_merchant_notifications_read",
                 org.json.JSONObject().put("p_read_at", toIsoTimestamp(System.currentTimeMillis())),
@@ -4861,17 +4934,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restoreFromCloudSupabase(context: Context, onComplete: (Boolean, String) -> Unit) {
-        val configuredProfile = _activeSupabaseProfile.value
-        if (configuredProfile == null || configuredProfile.supabaseUrl.isEmpty() || configuredProfile.anonKey.isEmpty()) {
-            onComplete(false, "Supabase connection is not configured or offline. Please configure in settings.")
-            return
-        }
-
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = validSupabaseSession(configuredProfile)
-            if (active == null) {
+            val active = resolveMerchantSupabaseProfile()
+            if (active == null || active.supabaseUrl.isEmpty() || active.anonKey.isEmpty()) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onComplete(false, "Session expired. Please sign in to Supabase.")
+                    onComplete(false, "Supabase connection is not configured or offline. Please configure in settings.")
                 }
                 return@launch
             }
@@ -5765,6 +5832,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // Make the selected profile immediately available to the following
         // onboarding authentication step; persistence continues asynchronously.
         _activeSupabaseProfile.value = newProfile
+        if (!newProfile.isPlatformProfile()) {
+            _activeMerchantSupabaseProfile.value = newProfile
+        }
         _activeProfile.value = connectedLocalProfile
         viewModelScope.launch {
             if (previousLocalProfile.id == "00000000-0000-0000-0000-000000000001") {
@@ -6377,8 +6447,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             isDirty = true
                         )
                     )
-                    val active = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-                    if (active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
+                    val active = resolveProfileForPaymentForms()
+                    if (active != null && active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
                         com.example.data.remote.SupabaseClient.updatePaymentForm(
                             url = active.supabaseUrl,
                             anonKey = active.anonKey,
@@ -6387,7 +6457,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             payload = org.json.JSONObject().put("status", "DRAFT")
                         )
                     }
-                    val platformToken = resolvePlatformAuthToken().ifBlank { active.authSessionToken }
+                    val platformToken = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
                     val candidateRouters = listOf(
                         hostedFormRouterOrigin,
                         "https://swapnopay.top",
@@ -6436,8 +6506,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 repository.deletePaymentFormCache(targetId)
 
                 // Delete from Supabase cloud database
-                val active = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-                if (active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
+                val active = resolveProfileForPaymentForms()
+                if (active != null && active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
                     com.example.data.remote.SupabaseClient.deletePaymentForm(
                         url = active.supabaseUrl,
                         anonKey = active.anonKey,
@@ -6453,7 +6523,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // Unregister route from all candidate routers
-                val platformToken = resolvePlatformAuthToken().ifBlank { active.authSessionToken }
+                val platformToken = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
                 val candidateRouters = listOf(
                     hostedFormRouterOrigin,
                     "https://swapnopay.top",
@@ -6496,16 +6566,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun registerBrandedHostedFormRoute(form: HostedFormModel) {
-        val configuredProfile = _activeSupabaseProfile.value
         val fallbackUrl = PLATFORM_SUPABASE_URL
         val fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
-        val projectUrl = configuredProfile?.supabaseUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
-        val publishableKey = configuredProfile?.anonKey?.ifBlank { fallbackKey } ?: fallbackKey
 
         hostedFormRouteStatus.update { it + (form.id to "PENDING") }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = if (configuredProfile != null) validSupabaseSession(configuredProfile) else null
-            val token = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
+            val resolvedProfile = resolveProfileForPaymentForms()
+            val projectUrl = resolvedProfile?.supabaseUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
+            val publishableKey = resolvedProfile?.anonKey?.ifBlank { fallbackKey } ?: fallbackKey
+            val token = resolvePlatformAuthToken().ifBlank { resolvedProfile?.authSessionToken.orEmpty() }
             val payloadJson = hostedFormToJson(form)
             val candidateRouters = listOf(
                 "https://swapnopay.top",
@@ -6551,13 +6620,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun syncAllCachedFormsToVps() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val configuredProfile = _activeSupabaseProfile.value
                 val fallbackUrl = PLATFORM_SUPABASE_URL
                 val fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsZHVib2plb2tneW9jbHhuemtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjcwODMsImV4cCI6MjEwMzM0MzA4M30.vlgmNEJ0_DpdbsZEQMA2Z82vwY4hwTxpgS4o9p5oEb0"
-                val projectUrl = configuredProfile?.supabaseUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
-                val publishableKey = configuredProfile?.anonKey?.ifBlank { fallbackKey } ?: fallbackKey
-                val active = if (configuredProfile != null) validSupabaseSession(configuredProfile) else null
-                val token = resolvePlatformAuthToken().ifBlank { active?.authSessionToken.orEmpty() }
+                val resolvedProfile = resolveProfileForPaymentForms()
+                val projectUrl = resolvedProfile?.supabaseUrl?.ifBlank { fallbackUrl } ?: fallbackUrl
+                val publishableKey = resolvedProfile?.anonKey?.ifBlank { fallbackKey } ?: fallbackKey
+                val token = resolvePlatformAuthToken().ifBlank { resolvedProfile?.authSessionToken.orEmpty() }
 
                 val cachedForms = repository.observePaymentFormCache(activeProfile.value.id).firstOrNull().orEmpty()
                 for (cached in cachedForms) {
@@ -6622,21 +6690,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openHostedFormAttachment(context: Context, submissionId: String, fieldId: String) {
-        val configuredProfile = _activeSupabaseProfile.value ?: run {
-            logFirebaseStatus("Sign in to Supabase before opening a private form attachment.")
-            return
-        }
         val slug = formSlug.value.trim()
         if (slug.isBlank() || submissionId.isBlank() || fieldId.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = validSupabaseSession(configuredProfile) ?: run {
-                logFirebaseStatus("Your Supabase session expired. Sign in again to open attachments.")
+            val active = resolveProfileForPaymentForms() ?: run {
+                logFirebaseStatus("Configure a Supabase project to open private form attachments.")
                 return@launch
             }
             com.example.data.remote.SupabaseClient.fetchHostedAttachmentUrl(
                 url = active.supabaseUrl,
                 anonKey = active.anonKey,
-                token = active.authSessionToken,
+                token = active.authSessionToken.ifBlank { active.anonKey },
                 formSlug = slug,
                 submissionId = submissionId,
                 fieldId = fieldId,
@@ -7790,7 +7854,7 @@ function executePayment() {
     private fun refreshGatewayReceiptHealth() {
         viewModelScope.launch {
             try {
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return@launch
+                val active = resolveActiveForGateway() ?: return@launch
                 com.example.data.remote.SupabaseClient.callRpc(
                     active.supabaseUrl, active.anonKey, active.authSessionToken,
                     "ping_receipt_worker", org.json.JSONObject(),
@@ -9953,31 +10017,28 @@ function executePayment() {
         registerBrandedHostedFormRoute(form)
 
         // Then, if a custom Supabase profile is configured, also sync to it in the background
-        val configuredProfile = _activeSupabaseProfile.value
-        if (configuredProfile != null && configuredProfile.supabaseUrl.isNotBlank() && configuredProfile.anonKey.isNotBlank()) {
-            val payload = hostedFormToJson(form)
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val active = validSupabaseSession(configuredProfile)
-                if (active != null) {
-                    com.example.data.remote.SupabaseClient.upsertRecord(
-                        active.supabaseUrl,
-                        active.anonKey,
-                        active.authSessionToken,
-                        "payment_forms",
-                        payload,
-                        onSuccess = {
-                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                repository.upsertPaymentFormCache(
-                                    PaymentFormCacheEntity(form.id, activeProfile.value.id, payload.toString(), isDirty = false)
-                                )
-                            }
-                            logFirebaseStatus("Form published and synced to merchant Supabase: ${form.slug}")
-                        },
-                        onFailure = {
-                            logFirebaseStatus("Custom Supabase sync notice: $it (form is active on platform router)")
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val active = resolveProfileForPaymentForms()
+            if (active != null && active.supabaseUrl.isNotBlank() && active.anonKey.isNotBlank()) {
+                val payload = hostedFormToJson(form)
+                com.example.data.remote.SupabaseClient.upsertRecord(
+                    active.supabaseUrl,
+                    active.anonKey,
+                    active.authSessionToken.ifBlank { active.anonKey },
+                    "payment_forms",
+                    payload,
+                    onSuccess = {
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            repository.upsertPaymentFormCache(
+                                PaymentFormCacheEntity(form.id, activeProfile.value.id, payload.toString(), isDirty = false)
+                            )
                         }
-                    )
-                }
+                        logFirebaseStatus("Form published and synced to merchant Supabase: ${form.slug}")
+                    },
+                    onFailure = {
+                        logFirebaseStatus("Custom Supabase sync notice: $it (form is active on platform router)")
+                    }
+                )
             }
         }
         return validation
@@ -10027,7 +10088,7 @@ function executePayment() {
                     isDirty = true
                 )
             )
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveActiveForGateway()
             if (active != null) {
                 try {
                     upsertRemoteOrThrow(active.supabaseUrl, active.anonKey, active.authSessionToken, "form_submissions", payload)
@@ -10093,7 +10154,7 @@ function executePayment() {
                     )
                 )
                 // Attempt cloud sync
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveActiveForGateway()
                 if (active != null) {
                     try {
                         upsertRemoteOrThrow(active.supabaseUrl, active.anonKey, active.authSessionToken, "form_submissions", payload)
@@ -10283,7 +10344,7 @@ function executePayment() {
         _step1Progress.value = 0.1f
         _step1Logs.value = listOf("Initiating Supabase project verification...")
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val profile = _activeSupabaseProfile.value
+            val profile = resolveMerchantSupabaseProfile()
             if (profile != null && profile.supabaseUrl.isNotBlank()) {
                 _step1Logs.value = listOf(
                     "Connecting to Supabase endpoint: ${profile.supabaseUrl}",
@@ -10320,7 +10381,7 @@ function executePayment() {
         _step3Progress.value = 0.1f
         _step3Logs.value = listOf("Verifying database schema tables and RPC functions...")
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val profile = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val profile = resolveMerchantSupabaseProfile()
             if (profile == null) {
                 _step3Logs.value = listOf("Sign in to the merchant Supabase project before schema verification.")
                 _step3SqlState.value = "ERROR"
@@ -10360,7 +10421,7 @@ function executePayment() {
         _step4Progress.value = 0.2f
         _step4Logs.value = listOf("Checking Edge Functions routing status...")
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val profile = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val profile = resolveMerchantSupabaseProfile()
             if (profile == null) {
                 _step4Logs.value = listOf("Sign in before checking Edge Function routes.")
                 _step4CliState.value = "ERROR"
@@ -10396,7 +10457,7 @@ function executePayment() {
         _step5Progress.value = 0.2f
         _step5Logs.value = listOf("Testing webhook verification & trigger endpoints...")
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val profile = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val profile = resolveMerchantSupabaseProfile()
             if (profile == null) {
                 _step5Logs.value = listOf("Sign in before checking webhook database readiness.")
                 _step5HookState.value = "ERROR"
@@ -10616,7 +10677,7 @@ function executePayment() {
             repository.insertSupplier(supplier)
             logFirebaseStatus("Added new supplier: $name ($assignedCode)")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", supplier.id)
@@ -10871,7 +10932,7 @@ function executePayment() {
     }
 
     private suspend fun syncOrderToSupabase(order: CachedOrderEntity) {
-        val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return
+        val active = resolveActiveForGateway() ?: return
         val payload = org.json.JSONObject().apply {
             put("id", order.id)
             put("tran_id", order.id)
@@ -10917,7 +10978,7 @@ function executePayment() {
         if (status !in setOf("APPROVED", "REJECTED")) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val appeal = appeals.value.find { it.id == appealId } ?: return@launch
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveActiveForGateway()
             if (active == null) {
                 logFirebaseStatus("Appeal resolution requires an authenticated network connection.")
                 return@launch
@@ -11010,8 +11071,7 @@ function executePayment() {
     }
 
     private suspend fun syncMerchantNumberToSupabase(entity: MerchantNumberEntity) {
-        val rawActive = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-        val active = validSupabaseSession(rawActive) ?: rawActive
+        val active = resolveActiveForGateway() ?: return
         if (active.supabaseUrl.isBlank() || active.anonKey.isBlank()) return
         val id = merchantNumberRemoteId(entity.merchantId, entity.number)
         val payload = org.json.JSONObject().apply {
@@ -11184,6 +11244,11 @@ function executePayment() {
         joinedDate = item.joinedDate
     )
 
+    /**
+     * Employees are merchant-owned records. They are written to the merchant's own
+     * Supabase project (never the shared platform database) so the team roster stays
+     * together with the rest of the merchant business data.
+     */
     private fun syncEmployeeToSupabase(item: EmployeeItem) {
         val json = org.json.JSONObject().apply {
             put("id", item.id)
@@ -11197,10 +11262,14 @@ function executePayment() {
             put("status", item.status)
             put("avatar_url", item.avatarUrl ?: org.json.JSONObject.NULL)
             put("permissions", org.json.JSONArray(item.permissions))
-            put("joined_date", item.joinedDate)
+            put("joined_date", normalizeEmployeeJoinedDate(item.joinedDate))
+            put("updated_at", toIsoTimestamp(System.currentTimeMillis()))
         }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return@launch
+            val active = resolveMerchantForOps() ?: run {
+                logFirebaseStatus("Employee '${item.name}' saved locally. Connect the merchant Supabase project to sync the team roster.")
+                return@launch
+            }
             if (active.supabaseUrl.isBlank() || active.anonKey.isBlank()) return@launch
             com.example.data.remote.SupabaseClient.upsertRecord(
                 active.supabaseUrl,
@@ -11208,8 +11277,8 @@ function executePayment() {
                 active.authSessionToken,
                 "employees",
                 json,
-                onSuccess = {},
-                onFailure = { logFirebaseStatus("Employee sync failed: $it") }
+                onSuccess = { logFirebaseStatus("Employee '${item.name}' synced to the merchant database.") },
+                onFailure = { logFirebaseStatus("Employee sync to merchant database failed: $it") }
             )
         }
     }
@@ -11259,7 +11328,7 @@ function executePayment() {
             repository.deleteEmployee(id)
             logFirebaseStatus("Removed employee ID: $id")
             revokeEmployeeAccess(id)
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 com.example.data.remote.SupabaseClient.deleteRecord(
                     active.supabaseUrl,
@@ -11308,13 +11377,9 @@ function executePayment() {
     }
 
     fun syncAllScreensToSupabase() {
-        val configuredProfile = _activeSupabaseProfile.value ?: return
-        if (configuredProfile.supabaseUrl.isEmpty() || configuredProfile.anonKey.isEmpty()) return
-
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val active = validSupabaseSession(configuredProfile)
-            if (active == null) {
-                logFirebaseStatus("Cloud sync skipped: sign in again to renew tenant database access.")
+            val active = resolveMerchantForOps() ?: run {
+                logFirebaseStatus("Cloud sync skipped: please configure and connect your merchant Supabase project.")
                 return@launch
             }
             val url = active.supabaseUrl
@@ -11582,7 +11647,10 @@ function executePayment() {
                         put("phone", emp.phone)
                         put("department", emp.department)
                         put("status", emp.status)
-                        put("joined_date", emp.joinedDate)
+                        put("avatar_url", emp.avatarUrl ?: org.json.JSONObject.NULL)
+                        put("permissions", org.json.JSONArray(emp.permissions))
+                        put("joined_date", normalizeEmployeeJoinedDate(emp.joinedDate))
+                        put("updated_at", toIsoTimestamp(System.currentTimeMillis()))
                     }
                     upsertRemoteOrThrow(url, key, token, "employees", json)
                 }
@@ -11668,10 +11736,7 @@ function executePayment() {
 
     fun fetchPaymentForms() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val configuredProfile = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-            val active = if (configuredProfile.supabaseUrl.isNotBlank() && configuredProfile.anonKey.isNotBlank()) {
-                validSupabaseSession(configuredProfile) ?: configuredProfile
-            } else null
+            val active = resolveProfileForPaymentForms()?.takeIf { it.supabaseUrl.isNotBlank() && it.anonKey.isNotBlank() }
 
             val dirtyIds = repository.observePaymentFormCache(activeProfile.value.id).firstOrNull()
                 .orEmpty().filter(PaymentFormCacheEntity::isDirty).mapTo(mutableSetOf(), PaymentFormCacheEntity::id)
@@ -11762,7 +11827,6 @@ function executePayment() {
     }
 
     fun fetchFormSubmissions(formId: String? = null) {
-        val configuredProfile = _activeSupabaseProfile.value
         val targetFormId = formId ?: activeFormId.value
         val currentForm = hostedFormsList.value.find { it.id == targetFormId }
         val targetSlug = currentForm?.slug?.trim().orEmpty()
@@ -11772,9 +11836,7 @@ function executePayment() {
                 .orEmpty().filter(FormSubmissionCacheEntity::isDirty).mapTo(mutableSetOf(), FormSubmissionCacheEntity::id)
 
             // 1. If merchant has custom Supabase DB configured, query it
-            val activeCustom = if (configuredProfile != null && configuredProfile.supabaseUrl.isNotEmpty() && configuredProfile.anonKey.isNotEmpty()) {
-                validSupabaseSession(configuredProfile)
-            } else null
+            val activeCustom = resolveProfileForPaymentForms()
 
             if (activeCustom != null) {
                 com.example.data.remote.SupabaseClient.fetchFormSubmissions(
@@ -12122,7 +12184,7 @@ function executePayment() {
                         phone = item.optString("phone"), department = item.optString("department", "General"),
                         status = item.optString("status", "Active"), avatarUrl = item.optNullableString("avatar_url"),
                         permissionsJson = item.optJSONArray("permissions")?.toString() ?: "[]",
-                        joinedDate = item.optString("joined_date", ""), updatedAt = parseRemoteTimestamp(item.optString("updated_at"))
+                        joinedDate = normalizeEmployeeJoinedDate(item.optString("joined_date", "")), updatedAt = parseRemoteTimestamp(item.optString("updated_at"))
                     )
                 }
             })
@@ -12175,9 +12237,9 @@ function executePayment() {
             pullMerchantConfigFromBackendDirect(effectiveMid)
 
             // 4. Pull business data from Supabase (customers, suppliers, products, ledgers, pos, etc.)
-            val rawTarget = _activeSupabaseProfile.value ?: getOrCreatePlatformSupabaseProfile()
-            val targetProfile = validSupabaseSession(rawTarget) ?: rawTarget
-            if (targetProfile.supabaseUrl.isNotBlank() && targetProfile.anonKey.isNotBlank()) {
+            val targetProfile = resolveMerchantSupabaseProfile()
+            if (targetProfile != null && !targetProfile.isPlatformProfile() &&
+                targetProfile.supabaseUrl.isNotBlank() && targetProfile.anonKey.isNotBlank()) {
                 pullAllBusinessDataFromSupabase(targetProfile, effectiveMid)
             }
 
@@ -12249,23 +12311,16 @@ function executePayment() {
             repository.upsertPaymentFormCache(
                 PaymentFormCacheEntity(formId, activeProfile.value.id, payload.toString(), isDirty = true)
             )
-            val configuredProfile = _activeSupabaseProfile.value
-            if (configuredProfile == null || configuredProfile.supabaseUrl.isBlank() || configuredProfile.anonKey.isBlank()) {
+            val active = resolveProfileForPaymentForms()
+            if (active == null || active.supabaseUrl.isBlank() || active.anonKey.isBlank()) {
                 isFormLoading.value = false
-                onComplete(true)
-                return@launch
-            }
-            val active = validSupabaseSession(configuredProfile)
-            if (active == null) {
-                isFormLoading.value = false
-                logFirebaseStatus("Form saved locally; sign in again to synchronize it.")
                 onComplete(true)
                 return@launch
             }
             com.example.data.remote.SupabaseClient.insertPaymentForm(
                 url = active.supabaseUrl,
                 anonKey = active.anonKey,
-                token = active.authSessionToken,
+                token = active.authSessionToken.ifBlank { active.anonKey },
                 payload = payload,
                 onSuccess = {
                     isFormLoading.value = false
@@ -12324,23 +12379,16 @@ function executePayment() {
             repository.upsertPaymentFormCache(
                 PaymentFormCacheEntity(formId, activeProfile.value.id, payload.toString(), isDirty = true)
             )
-            val configuredProfile = _activeSupabaseProfile.value
-            if (configuredProfile == null || configuredProfile.supabaseUrl.isBlank() || configuredProfile.anonKey.isBlank()) {
+            val active = resolveProfileForPaymentForms()
+            if (active == null || active.supabaseUrl.isBlank() || active.anonKey.isBlank()) {
                 isFormLoading.value = false
-                onComplete(true)
-                return@launch
-            }
-            val active = validSupabaseSession(configuredProfile)
-            if (active == null) {
-                isFormLoading.value = false
-                logFirebaseStatus("Form saved locally; sign in again to synchronize it.")
                 onComplete(true)
                 return@launch
             }
             com.example.data.remote.SupabaseClient.updatePaymentForm(
                 url = active.supabaseUrl,
                 anonKey = active.anonKey,
-                token = active.authSessionToken,
+                token = active.authSessionToken.ifBlank { active.anonKey },
                 formId = formId,
                 payload = payload,
                 onSuccess = {
@@ -12382,6 +12430,17 @@ function executePayment() {
         java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
         }.format(java.util.Date(timestamp))
+
+    /** Normalises an employee joined date to a Postgres DATE literal (yyyy-MM-dd); falls back to today. */
+    private fun normalizeEmployeeJoinedDate(value: String): String {
+        val candidate = value.trim().take(10)
+        val parts = candidate.split("-")
+        val valid = parts.size == 3 && parts[0].length == 4 && parts[1].length == 2 && parts[2].length == 2 &&
+            parts.all { part -> part.isNotEmpty() && part.all(Char::isDigit) }
+        if (valid) return candidate
+        return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+    }
+
 
     // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
     // BOOKKEEPING & OPENROUTER AI BUSINESS COPILOT METHODS
@@ -12637,7 +12696,7 @@ function executePayment() {
                 return@launch
             }
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null) {
                 val payload = org.json.JSONObject().apply {
                     put("p_sale", org.json.JSONObject().apply {
@@ -12751,7 +12810,7 @@ function executePayment() {
                 }
                 repository.createProductWithVariants(mainProduct, variants, movements)
 
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveMerchantForOps()
                 if (active != null) {
                     val payload = org.json.JSONObject().apply {
                         put("p_product", org.json.JSONObject().apply {
@@ -13167,7 +13226,7 @@ function executePayment() {
             repository.insertCustomer(customer)
             logFirebaseStatus("Added new customer: $name ($assignedCode)")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", customer.id)
@@ -13195,7 +13254,7 @@ function executePayment() {
             repository.deleteCustomerById(id)
             logFirebaseStatus("Deleted customer ID: $id")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 com.example.data.remote.SupabaseClient.deleteRecord(
                     active.supabaseUrl, active.anonKey, active.authSessionToken, "customers", "id", id, {},
@@ -13218,7 +13277,7 @@ function executePayment() {
                 repository.insertCustomer(customer)
                 logFirebaseStatus("Updated customer: ${customer.name} (${customer.code})")
 
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveMerchantForOps()
                 if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                     val json = org.json.JSONObject().apply {
                         put("id", customer.id)
@@ -13251,7 +13310,7 @@ function executePayment() {
             repository.deleteSupplierById(id)
             logFirebaseStatus("Deleted supplier ID: $id")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 com.example.data.remote.SupabaseClient.deleteRecord(
                     active.supabaseUrl, active.anonKey, active.authSessionToken, "suppliers", "id", id, {},
@@ -13274,7 +13333,7 @@ function executePayment() {
                 repository.insertSupplier(supplier)
                 logFirebaseStatus("Updated supplier: ${supplier.name} (${supplier.code})")
 
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveMerchantForOps()
                 if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                     val json = org.json.JSONObject().apply {
                         put("id", supplier.id)
@@ -13332,7 +13391,7 @@ function executePayment() {
             }
             logFirebaseStatus("Logged ledger transaction of $amount BDT ($type)")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", tx.id)
@@ -13370,7 +13429,7 @@ function executePayment() {
                 val bytes = com.example.data.local.ProductImageCompressor.readUpload(context, media.reference)
                 val fileName = "prod_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}.jpg"
 
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveMerchantForOps()
                 if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                     com.example.data.remote.SupabaseClient.uploadStorageObject(
                         url = active.supabaseUrl,
@@ -13555,7 +13614,7 @@ function executePayment() {
             }
             logFirebaseStatus("Added new product item: $name")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val payload = org.json.JSONObject().apply {
                     put("p_product", org.json.JSONObject().apply {
@@ -13622,7 +13681,7 @@ function executePayment() {
                 return@launch
             }
             logFirebaseStatus("Updated product: ${product.name}")
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val payload = org.json.JSONObject().apply {
                     put("p_product", org.json.JSONObject().apply {
@@ -13715,7 +13774,7 @@ function executePayment() {
             repository.recordStockTransaction(tx)
             logFirebaseStatus("Logged stock change for product $productId: $qty $type")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val movement = org.json.JSONObject().apply {
                     put("id", tx.id)
@@ -13756,7 +13815,7 @@ function executePayment() {
             repository.insertExpense(exp)
             logFirebaseStatus("Logged business expense: $amount in $category")
 
-            val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+            val active = resolveMerchantForOps()
             if (active != null && active.supabaseUrl.isNotEmpty() && active.anonKey.isNotEmpty()) {
                 val json = org.json.JSONObject().apply {
                     put("id", exp.id)
@@ -13906,7 +13965,7 @@ function executePayment() {
                     onResult(false, "Installment was already paid or does not belong to this merchant")
                     return@launch
                 }
-                val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) }
+                val active = resolveMerchantForOps()
                 if (active != null) {
                     com.example.data.remote.SupabaseClient.callRpc(
                         active.supabaseUrl,
@@ -13983,7 +14042,7 @@ function executePayment() {
         dps: DpsAccountEntity?,
         installments: List<FinanceInstallmentEntity>
     ): Boolean {
-        val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return false
+        val active = resolveMerchantForOps() ?: return false
         val merchantId = activeProfile.value.id
         val accountJson = if (accountType == "LOAN") {
             requireNotNull(loan).let {
@@ -14037,7 +14096,7 @@ function executePayment() {
     }
 
     private suspend fun syncPendingFinanceData(): Boolean {
-        if (_activeSupabaseProfile.value?.let { validSupabaseSession(it) } == null) return false
+        val active = resolveMerchantForOps() ?: return false
         val merchantId = activeProfile.value.id
         val schedules = repository.observeFinanceInstallments(merchantId).firstOrNull().orEmpty()
         var allSynced = true
@@ -14053,7 +14112,6 @@ function executePayment() {
                 allSynced = false
             }
         }
-        val active = _activeSupabaseProfile.value?.let { validSupabaseSession(it) } ?: return false
         schedules.filter { it.status == "PAID" && !it.isSynced }.forEach { installment ->
             val method = installment.paymentMethod
             val reference = installment.paymentReference
@@ -15103,7 +15161,14 @@ function executePayment() {
     }
 
     private fun getWebShopAuthToken(): String {
-        return _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
+        // Refresh the platform session in the background so the next request uses a fresh JWT,
+        // then return the best token available right now (this helper is called from
+        // non-suspend request builders).
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { resolvePlatformAuthToken() }
+        }
+        return cachedPlatformToken.takeIf { it.isNotBlank() }
+            ?: _activeSupabaseProfile.value?.authSessionToken?.takeIf { it.isNotBlank() }
             ?: _sessionInfo.value.token?.takeIf { it.isNotBlank() }
             ?: _activeSupabaseProfile.value?.anonKey?.takeIf { it.isNotBlank() }
             ?: ""

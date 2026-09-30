@@ -111,6 +111,19 @@ class AppRepository(private val context: Context) {
         )
     }
 
+    suspend fun getAllSupabaseProfiles(): List<SupabaseProfileEntity> {
+        return dao.getAllSupabaseProfiles().map { p ->
+            p.copy(
+                supabaseUrl = CryptoManager.decrypt(p.supabaseUrl),
+                anonKey = CryptoManager.decrypt(p.anonKey),
+                serviceRoleKey = CryptoManager.decrypt(p.serviceRoleKey),
+                authEmail = CryptoManager.decrypt(p.authEmail),
+                authSessionToken = CryptoManager.decrypt(p.authSessionToken),
+                authRefreshToken = CryptoManager.decrypt(p.authRefreshToken)
+            )
+        }
+    }
+
     private suspend fun getAuthenticatedSupabaseProfile(): SupabaseProfileEntity? {
         val profile = getActiveSupabaseProfile() ?: return null
         if (profile.authSessionToken.isBlank()) {
