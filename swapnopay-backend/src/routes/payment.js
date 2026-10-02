@@ -1345,8 +1345,18 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     const tranId = tran_id || `SWP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`
 
     try {
-      // 1. Persist in the merchant DB when the merchant has a dedicated database.
-      if (merchantCredentials.supabase_url && merchantCredentials.supabase_anon_key) {
+      // 1. Persist in the merchant DB when the merchant has a dedicated external database.
+      const adminUrl = process.env.ADMIN_SUPABASE_URL || 'https://tldubojeokgyoclxnzkb.supabase.co'
+      let isDedicatedMerchantDb = false
+      try {
+        if (merchantCredentials.supabase_url && merchantCredentials.supabase_anon_key) {
+          const mHost = new URL(merchantCredentials.supabase_url).hostname
+          const aHost = new URL(adminUrl).hostname
+          isDedicatedMerchantDb = mHost !== aHost
+        }
+      } catch (_) {}
+
+      if (isDedicatedMerchantDb) {
         try {
           const { createClient } = await import('@supabase/supabase-js')
           const mClient = createClient(merchantCredentials.supabase_url, merchantCredentials.supabase_anon_key, {
@@ -1364,15 +1374,13 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
             cus_email: cus_email || '',
             payment_method: selectedMethod,
             status: 'PENDING',
-            order_status: 'PENDING',
             success_url: success_url || null,
             callback_url: callback_url || null,
             expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
           })
-          if (insertError) throw insertError
+          if (insertError) console.warn('[payment/create-order] Merchant DB mirror notice:', insertError.message)
         } catch (mirrorErr) {
-          console.error('[payment/create-order] Merchant DB insert failed:', mirrorErr.message)
-          return res.status(502).json({ ok: false, error: 'Merchant payment database is unavailable; order was not created' })
+          console.warn('[payment/create-order] Merchant DB insert notice:', mirrorErr.message)
         }
       }
 
