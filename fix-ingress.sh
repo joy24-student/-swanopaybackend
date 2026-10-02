@@ -17,40 +17,35 @@ echo -e "${CYAN}====================================================${NC}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 1. Update Nginx configuration: Disable conflicting 443/80 listeners
-echo -e "${YELLOW}[1/4] Configuring Nginx to listen on internal port 8088...${NC}"
+# 1. Update Nginx configuration: isolate swapnopay.top on port 8088 only
+echo -e "${YELLOW}[1/4] Configuring Nginx to listen exclusively on port 8088...${NC}"
 
-# Remove conflicting default and duckdns configs from sites-enabled
-rm -f /etc/nginx/sites-enabled/default
-rm -f /etc/nginx/sites-enabled/*duckdns*
-rm -f /etc/nginx/sites-enabled/*swapno.duckdns*
+# Remove ALL old/conflicting sites from sites-enabled (clears out old duckdns, default, etc.)
+rm -f /etc/nginx/sites-enabled/*
 
+# Move any conf.d files to backup so they don't conflict
+if compgen -G "/etc/nginx/conf.d/*.conf" > /dev/null; then
+    mkdir -p /etc/nginx/conf.d.bak
+    mv /etc/nginx/conf.d/*.conf /etc/nginx/conf.d.bak/ 2>/dev/null || true
+fi
+
+# Use clean swapnopay.top.conf template from repository
 CONF_SRC="$SCRIPT_DIR/deploy/swapnopay.top.conf"
 if [ ! -f "$CONF_SRC" ]; then
     CONF_SRC="/var/www/swapnopay/deploy/swapnopay.top.conf"
 fi
 
-if [ -f "$CONF_SRC" ]; then
-    cp "$CONF_SRC" /etc/nginx/sites-available/swapnopay.top
-fi
+cp "$CONF_SRC" /etc/nginx/sites-available/swapnopay.top
 
-# Replace ALL port 80 and 443 listeners across all Nginx configs with internal ports (8088 / 8443)
-for dir in /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/conf.d; do
-    if [ -d "$dir" ]; then
-        for f in "$dir"/*; do
-            if [ -f "$f" ]; then
-                # Port 80 -> 8088
-                sed -i -E 's/listen ([^;]* )?80([^0-9;]*);/listen \18088\2;/g' "$f" 2>/dev/null || true
-                sed -i -E 's/listen \[::\]:80([^0-9;]*);/listen [::]:8088\1;/g' "$f" 2>/dev/null || true
-                # Port 443 -> 8443 (Caddy handles external 443)
-                sed -i -E 's/listen ([^;]* )?443([^0-9;]*);/listen \18443\2;/g' "$f" 2>/dev/null || true
-                sed -i -E 's/listen \[::\]:443([^0-9;]*);/listen [::]:8443\1;/g' "$f" 2>/dev/null || true
-            fi
-        done
-    fi
-done
+# Replace all listen 80 directives with internal port 8088
+sed -i -E 's/listen ([^;]* )?80([^0-9;]*);/listen \18088\2;/g' /etc/nginx/sites-available/swapnopay.top
+sed -i -E 's/listen \[::\]:80([^0-9;]*);/listen [::]:8088\1;/g' /etc/nginx/sites-available/swapnopay.top
 
-# Ensure swapnopay.top is enabled
+# Ensure NO 443 listeners exist in swapnopay.top
+sed -i -E 's/listen ([^;]* )?443([^0-9;]*);//g' /etc/nginx/sites-available/swapnopay.top 2>/dev/null || true
+sed -i -E 's/listen \[::\]:443([^0-9;]*);//g' /etc/nginx/sites-available/swapnopay.top 2>/dev/null || true
+
+# Symlink clean swapnopay.top into sites-enabled
 ln -sf /etc/nginx/sites-available/swapnopay.top /etc/nginx/sites-enabled/swapnopay.top
 
 echo -e "${YELLOW}Testing Nginx syntax...${NC}"
@@ -62,7 +57,7 @@ systemctl restart nginx || {
     journalctl -xeu nginx.service --no-pager -n 15
     exit 1
 }
-echo -e "${GREEN}✓ Nginx is active and listening on internal port 8088!${NC}"
+echo -e "${GREEN}✓ Nginx is active and listening exclusively on internal port 8088!${NC}"
 
 # 2. Get Docker Gateway IP for Caddy
 echo -e "${YELLOW}[2/4] Detecting Caddy Docker network gateway IP...${NC}"
