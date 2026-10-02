@@ -13,7 +13,7 @@ import {
   getAdminHeaders,
   uploadShowcasePhotoResilient,
 } from '../adminSupabaseClient';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Globe,
   CreditCard,
@@ -366,8 +366,23 @@ type SettingsTab =
   | 'tickets';
 
 export default function SystemSettings() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab') as SettingsTab | null;
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('links');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    return urlTab || 'links';
+  });
+
+  useEffect(() => {
+    if (urlTab && urlTab !== activeTab) {
+      setActiveTab(urlTab);
+    }
+  }, [urlTab]);
+
+  const handleTabSelect = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -818,7 +833,7 @@ export default function SystemSettings() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => handleTabSelect(tab.key)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1764,7 +1779,7 @@ export default function SystemSettings() {
         {/* ════════════════ TAB 6: SUPPORT CONTACTS ════════════════ */}
         {activeTab === 'support_contacts' && (
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <PhoneCall size={16} color="var(--brand-primary)" />
@@ -1774,6 +1789,16 @@ export default function SystemSettings() {
                   Contact details displayed on the merchant app Support screen, including hotline dialing, WhatsApp chat, and live announcements.
                 </p>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleSave()}
+                disabled={isSaving}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 170, height: 34 }}
+              >
+                {isSaving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />}
+                {isSaving ? 'Broadcasting...' : 'Save Contact Details'}
+              </button>
             </div>
 
             <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
@@ -1881,6 +1906,28 @@ export default function SystemSettings() {
                   placeholder="Level 14, Banani Tower, Dhaka, Bangladesh"
                 />
                 <span className="form-hint">Official company registration and office location.</span>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', paddingTop: 6, paddingBottom: 6 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => handleSave()}
+                  disabled={isSaving}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 220, height: 38 }}
+                >
+                  {isSaving ? (
+                    <>
+                      <RefreshCw size={14} className="spin" />
+                      Broadcasting Changes...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      Save & Broadcast Contact Details
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Live Merchant Announcement & Clickable Image Banner */}

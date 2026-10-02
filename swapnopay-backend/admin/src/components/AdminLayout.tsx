@@ -28,7 +28,8 @@ import {
   ChevronDown,
   Layers,
   Sparkles,
-  Megaphone
+  Megaphone,
+  PhoneCall
 } from 'lucide-react'
 
 interface AdminLayoutProps {
@@ -154,6 +155,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           label: 'Support Tickets',
           icon: <HelpCircle size={17} />,
           badge: unreadCount > 0 ? unreadCount : undefined
+        },
+        {
+          to: '/settings?tab=support_contacts',
+          label: 'Contact & Support Info',
+          icon: <PhoneCall size={17} />
         },
         {
           to: '/health',

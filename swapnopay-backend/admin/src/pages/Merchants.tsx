@@ -22,7 +22,8 @@ import {
   Phone,
   Store,
   Calendar,
-  Trash2
+  Trash2,
+  Edit
 } from 'lucide-react'
 
 interface MerchantRecord {
@@ -55,7 +56,56 @@ export default function Merchants() {
   const [inspectKycMerchant, setInspectKycMerchant] = useState<MerchantRecord | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [editingMerchant, setEditingMerchant] = useState<MerchantRecord | null>(null)
+  const [editBusinessName, setEditBusinessName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editBusinessType, setEditBusinessType] = useState('RETAIL')
+  const [savingContact, setSavingContact] = useState(false)
+  const [contactFeedback, setContactFeedback] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  const handleOpenEditContact = (merchant: MerchantRecord) => {
+    setEditingMerchant(merchant)
+    setEditBusinessName(merchant.business_name || '')
+    setEditEmail(merchant.email || '')
+    setEditPhone(merchant.phone || '')
+    setEditBusinessType(merchant.business_type || 'RETAIL')
+    setContactFeedback(null)
+  }
+
+  const handleSaveContact = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingMerchant) return
+    setSavingContact(true)
+    setContactFeedback(null)
+    try {
+      const updated = {
+        business_name: editBusinessName.trim(),
+        email: editEmail.trim().toLowerCase(),
+        phone: editPhone.trim(),
+        business_type: editBusinessType.trim(),
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = await adminSupabase
+        .from('merchants')
+        .update(updated)
+        .eq('id', editingMerchant.id)
+
+      if (error) throw error
+
+      setRows(prev => prev.map(m => m.id === editingMerchant.id ? { ...m, ...updated } : m))
+      if (selectedMerchant && selectedMerchant.id === editingMerchant.id) {
+        setSelectedMerchant(prev => prev ? { ...prev, ...updated } : null)
+      }
+      setEditingMerchant(null)
+      alert('Merchant contact details updated successfully!')
+    } catch (err: any) {
+      setContactFeedback('Error: ' + err.message)
+    } finally {
+      setSavingContact(false)
+    }
+  }
 
   const loadMerchants = async () => {
     try {
@@ -469,6 +519,17 @@ export default function Merchants() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
+                            handleOpenEditContact(r)
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          title="Edit merchant contact info (phone, email, business name)"
+                        >
+                          <Edit size={12} />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
                             handleToggleStatus(r.id, r.status)
                           }}
                           disabled={actionLoadingId === r.id}
@@ -563,9 +624,21 @@ export default function Merchants() {
               flexDirection: 'column',
               gap: 12
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Store size={18} color="var(--brand-primary)" />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Business Information</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Store size={18} color="var(--brand-primary)" />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Business Information</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditContact(selectedMerchant)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '3px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                  title="Edit phone number, email address, or business name"
+                >
+                  <Edit size={11} />
+                  <span>Edit Contact</span>
+                </button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                 <span style={{ color: 'var(--text-muted)' }}>Business Type:</span>
@@ -674,6 +747,206 @@ export default function Merchants() {
           loadMerchants()
         }}
       />
+
+      {/* Edit Merchant Contact Modal */}
+      {editingMerchant && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 16
+        }}>
+          <div style={{
+            background: 'var(--bg-surface, #1e293b)',
+            borderRadius: 16,
+            maxWidth: 500,
+            width: '100%',
+            padding: 24,
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+            border: '1px solid var(--border-default, #334155)',
+            color: 'var(--text-primary, #f8fafc)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: 'rgba(59,130,246,0.15)',
+                  color: '#3b82f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Edit size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Edit Merchant Details</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary, #94a3b8)' }}>Update business contact info, phone number & email</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingMerchant(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary, #94a3b8)',
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  lineHeight: 1,
+                  padding: 4
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {contactFeedback && (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: 8,
+                marginBottom: 16,
+                fontSize: 13,
+                background: contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                color: contactFeedback.startsWith('✅') ? '#4ade80' : '#f87171',
+                border: `1px solid ${contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`
+              }}>
+                {contactFeedback}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveContact}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
+                  Business / Brand Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editBusinessName}
+                  onChange={(e) => setEditBusinessName(e.target.value)}
+                  placeholder="e.g. Acme Tech Solutions"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-input, #0f172a)',
+                    border: '1px solid var(--border-default, #334155)',
+                    color: '#fff',
+                    fontSize: 14,
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
+                  Phone Number
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    required
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="e.g. +8801700000000"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px 10px 36px',
+                      borderRadius: 8,
+                      background: 'var(--bg-input, #0f172a)',
+                      border: '1px solid var(--border-default, #334155)',
+                      color: '#fff',
+                      fontSize: 14,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <Phone size={15} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-secondary, #94a3b8)' }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
+                  Email Address
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="e.g. merchant@company.com"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px 10px 36px',
+                      borderRadius: 8,
+                      background: 'var(--bg-input, #0f172a)',
+                      border: '1px solid var(--border-default, #334155)',
+                      color: '#fff',
+                      fontSize: 14,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <Mail size={15} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-secondary, #94a3b8)' }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
+                  Business Category / Type
+                </label>
+                <select
+                  value={editBusinessType}
+                  onChange={(e) => setEditBusinessType(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-input, #0f172a)',
+                    border: '1px solid var(--border-default, #334155)',
+                    color: '#fff',
+                    fontSize: 14,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="RETAIL">Retail / Shop</option>
+                  <option value="ECOMMERCE">E-Commerce</option>
+                  <option value="SAAS">Software / SaaS</option>
+                  <option value="DIGITAL_GOODS">Digital Goods / Gaming</option>
+                  <option value="SERVICES">Services / Freelancing</option>
+                  <option value="EDUCATION">Education / Coaching</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingMerchant(null)}
+                  disabled={savingContact}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingContact}
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  {savingContact ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
