@@ -63,6 +63,11 @@ export function shopConfiguration(env = process.env) {
     }
   }
 
+  const urlSslMode = rawDbUrl ? (new URL(rawDbUrl).searchParams.get('sslmode')) : null
+  const isLocalHost = ['127.0.0.1', 'localhost'].includes(dbHost)
+  const defaultSslMode = isLocalHost ? 'disable' : 'require'
+  const effectiveSslMode = env.SHOP_DB_SSLMODE || urlSslMode || defaultSslMode
+
   return {
     connectionString,
     useEmbedded: !rawDbUrl,
@@ -70,7 +75,7 @@ export function shopConfiguration(env = process.env) {
     baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shop.swapnopay.top'),
     runtime, sites, template,
     dbHost, dbPort, dbName, dbUser, dbPass,
-    sslmode: env.SHOP_DB_SSLMODE || 'require',
+    sslmode: effectiveSslMode,
     group: env.SHOP_RUNTIME_GID ? Number(env.SHOP_RUNTIME_GID) : undefined,
     backendUrl: env.SHOP_BACKEND_URL || 'https://api.swapnopay.top',
     vendor: env.SHOP_VENDOR_DIR || '',
@@ -148,7 +153,7 @@ export class ShopService {
       this.pool = dependencies.pool
     } else if (config.connectionString) {
       let connStr = config.connectionString
-      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(config.sslmode && config.sslmode !== 'disable')
+      const isSsl = config.sslmode !== 'disable' && !connStr.includes('sslmode=disable') && (/sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(config.sslmode && config.sslmode !== 'disable'))
       if (isSsl) {
         try {
           const u = new URL(connStr)
