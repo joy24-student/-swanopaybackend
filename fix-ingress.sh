@@ -88,8 +88,8 @@ with open('$CADDYFILE', 'w') as f:
 # Append clean SwapnoPay block
 cat << EOF >> "$CADDYFILE"
 
-# ── SwapnoPay Platform (Admin, Web & API) ──────────────────────────────────────
-admin.swapnopay.top, pay.swapnopay.top, swapnopay.top, www.swapnopay.top, api.swapnopay.top {
+# ── SwapnoPay Platform (Admin, Web, API & Merchant Storefronts) ───────────────
+admin.swapnopay.top, pay.swapnopay.top, swapnopay.top, www.swapnopay.top, api.swapnopay.top, shop.swapnopay.top, shops.swapnopay.top {
     reverse_proxy ${GATEWAY_IP}:8088
 }
 EOF
