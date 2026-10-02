@@ -746,25 +746,30 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = "DNS Configuration Guide (ডোমেইন পয়েন্ট করুন):",
+                                        text = "DNS Setup Guide (ডোমেইন পয়েন্ট করার নিয়ম):",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF065F46)
                                     )
                                     Text(
-                                        text = "1. CNAME Record: Host '@' or 'www' points to '${webShopState.vpsHost.ifBlank { "vps.swapnopay.top" }}'",
+                                        text = "1. Main Domain (e.g. yourbrand.com):\n   Type: A Record | Host: @ | Value: 80.225.247.237",
                                         fontSize = 11.5.sp,
                                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                         color = primaryText
                                     )
                                     Text(
-                                        text = "2. Or CNAME Record: Points to Server Host '${webShopState.vpsHost.ifBlank { "vps.swapnopay.top" }}'",
+                                        text = "2. Subdomain (e.g. www বা shop.yourbrand.com):\n   Type: CNAME | Host: www | Value: shop.swapnopay.top\n   (Or A Record to 80.225.247.237)",
                                         fontSize = 11.5.sp,
                                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                         color = primaryText
                                     )
                                     Text(
-                                        text = "Note: DNS changes typically propagate within 5-30 minutes worldwide.",
+                                        text = "3. Auto HTTPS: SSL certificate is automatically issued for free via Let's Encrypt / Caddy once DNS points to our server.",
+                                        fontSize = 11.sp,
+                                        color = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669)
+                                    )
+                                    Text(
+                                        text = "Note: DNS changes typically take 5-30 minutes to propagate worldwide.",
                                         fontSize = 10.5.sp,
                                         color = secondaryText
                                     )

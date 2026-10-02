@@ -23,8 +23,8 @@ export function shopConfiguration(env = process.env) {
 
   const defaultKey = crypto.createHash('sha256').update(env.ADMIN_SECRET || 'swapnopay-default-shop-config-secret-key-32').digest('hex')
   const key = hasConfigKey ? env.SHOP_CONFIG_KEY : defaultKey
-  const rawAddresses = (env.SHOP_SERVER_IPS || '127.0.0.1').split(',').map(x => x.trim()).filter(Boolean)
-  const addresses = rawAddresses.length && rawAddresses.every(x => net.isIP(x)) ? rawAddresses : ['127.0.0.1']
+  const rawAddresses = (env.SHOP_SERVER_IPS || '80.225.247.237,127.0.0.1').split(',').map(x => x.trim()).filter(Boolean)
+  const addresses = rawAddresses.length && rawAddresses.every(x => net.isIP(x)) ? rawAddresses : ['80.225.247.237', '127.0.0.1']
 
   const defaultTemplate = path.resolve(base, '../../../shop')
   const defaultRuntime = path.resolve(base, '../../data/shop-runtime')
@@ -147,9 +147,11 @@ export class ShopService {
     if (dependencies.pool) {
       this.pool = dependencies.pool
     } else if (config.connectionString) {
-      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(config.connectionString) || Boolean(config.sslmode && config.sslmode !== 'disable')
+      const isExplicitDisable = /sslmode=disable/i.test(config.connectionString) || /127\.0\.0\.1|localhost/i.test(config.connectionString)
+      const isSsl = !isExplicitDisable && (/sslmode=require|supabase|amazonaws|pooler/i.test(config.connectionString) || Boolean(config.sslmode && config.sslmode !== 'disable'))
+      const connUrl = config.connectionString.replace(/([?&])sslmode=[^&]+(&|$)/i, '$1').replace(/[?&]$/, '')
       this.pool = new Pool({
-        connectionString: config.connectionString,
+        connectionString: connUrl,
         max: 6,
         connectionTimeoutMillis: 8000,
         idleTimeoutMillis: 30000,
@@ -270,8 +272,9 @@ export class ShopService {
       let pool = this.tenantPools.get(resolved.connectionString)
       if (!pool) {
         const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(resolved.connectionString) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
+        const connUrl = resolved.connectionString.replace(/([?&])sslmode=[^&]+(&|$)/i, '$1').replace(/[?&]$/, '')
         pool = new Pool({
-          connectionString: resolved.connectionString,
+          connectionString: connUrl,
           max: 4,
           connectionTimeoutMillis: 8000,
           idleTimeoutMillis: 30000,

@@ -85,11 +85,29 @@ with open('$CADDYFILE', 'w') as f:
     f.writelines(clean)
 " 2>/dev/null || sed -i '/swapnopay/Id' "$CADDYFILE"
 
-# Append clean SwapnoPay block
+# Ensure global on_demand_tls block exists at top of Caddyfile
+python3 -c "
+with open('$CADDYFILE', 'r') as f:
+    content = f.read()
+if 'on_demand_tls' not in content:
+    global_block = '{\n    on_demand_tls {\n        ask http://172.20.0.1:4000/v1/shop/tls/authorize\n    }\n}\n\n'
+    with open('$CADDYFILE', 'w') as f:
+        f.write(global_block + content)
+" 2>/dev/null || true
+
+# Append clean SwapnoPay platform and custom domains block
 cat << EOF >> "$CADDYFILE"
 
 # ── SwapnoPay Platform (Admin, Web, API & Merchant Storefronts) ───────────────
 admin.swapnopay.top, pay.swapnopay.top, swapnopay.top, www.swapnopay.top, api.swapnopay.top, shop.swapnopay.top, shops.swapnopay.top {
+    reverse_proxy ${GATEWAY_IP}:8088
+}
+
+# ── SwapnoPay Merchant Custom Domains (On-Demand Automatic HTTPS) ──────────────
+https:// {
+    tls {
+        on_demand
+    }
     reverse_proxy ${GATEWAY_IP}:8088
 }
 EOF

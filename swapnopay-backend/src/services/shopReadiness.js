@@ -26,7 +26,7 @@ export async function checkShopDns(host, expectedAddresses, lookup = dns.lookup,
     if (expectedAddresses.length === 1 && expectedAddresses[0] === '127.0.0.1') {
       return pool.every(record => record.address === '127.0.0.1' || record.address === '::1')
     }
-    return pool.every(record => expectedAddresses.includes(record.address))
+    return pool.some(record => expectedAddresses.includes(record.address))
   }
 
   return false
