@@ -553,6 +553,8 @@ export class ShopService {
         await client.query('UPDATE shop_control.launches SET secret_config=$2 WHERE merchant_id=$1', [row.merchant_id, encryptConfig(secrets, this.config.key)])
       } catch (_) {}
     }
+    const schema = schemaName(row.merchant_id)
+    const quoted = identifier(schema)
     const tenantPool = await this.getTenantPool(row.merchant_id)
     const useSeparateTenantDb = tenantPool && tenantPool !== this.pool
     const dbClient = useSeparateTenantDb ? await tenantPool.connect() : client

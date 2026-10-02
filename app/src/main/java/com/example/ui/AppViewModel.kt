@@ -15812,7 +15812,9 @@ function executePayment() {
                     .substringBefore('/')
                     .substringBefore(':')
                     .trim()
-                val cleanSlug = shopSlug.trim().lowercase().replace(Regex("[^a-z0-9-]"), "-").trim('-').ifBlank { "store" }
+                val rawSlug = shopSlug.trim().lowercase().replace(Regex("[^a-z0-9-]+"), "-").trim('-').ifBlank { "store" }
+                val merchantDigits = merchantId.filter { it.isDigit() }.takeLast(4).ifBlank { "1001" }
+                val cleanSlug = if (rawSlug.any { it.isDigit() }) rawSlug else "$rawSlug-$merchantDigits"
 
                 val isUsableCustomDomain = cleanDomain.isNotBlank() &&
                     cleanDomain.contains(".") &&

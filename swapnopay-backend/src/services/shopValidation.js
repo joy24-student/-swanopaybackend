@@ -25,11 +25,38 @@ export function hostname(value) {
   return host
 }
 const reserved = new Set(['www','api','admin','pay','shop','shops','mail','smtp','ftp','localhost','portal','docs','status'])
+export function generateShopSlug(storeName, merchantId) {
+  const base = String(storeName || 'store')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36) || 'store'
+
+  const digitsOnly = String(merchantId || '').replace(/\D/g, '')
+  const uniqueDigits = digitsOnly.length >= 4 
+    ? digitsOnly.slice(-4) 
+    : String(Math.abs(crypto.createHash('md5').update(String(merchantId || 'seed')).digest().readUInt16BE(0)) % 9000 + 1000)
+
+  if (/\d{2,}$/.test(base)) {
+    return base
+  }
+  return `${base}-${uniqueDigits}`
+}
+
 export function launchInput(body, existing = null) {
   const id = merchantId(body.merchant_id)
   const name = String(body.store_name ?? existing?.store_name ?? '').trim()
-  const slug = String(body.shop_slug ?? existing?.shop_slug ?? `store-${id.slice(0,8)}`).trim().toLowerCase()
   if (!name || name.length > 100 || /[\u0000-\u001f<>]/.test(name)) throw new ShopError(400, 'INVALID_NAME', 'Use a store name between 1 and 100 characters.')
+
+  let slug = ''
+  if (body.shop_slug !== undefined && body.shop_slug !== null && String(body.shop_slug).trim()) {
+    slug = String(body.shop_slug).trim().toLowerCase()
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,46})[a-z0-9]$/.test(slug) || reserved.has(slug)) {
+      throw new ShopError(400, 'INVALID_SLUG', 'Use 3–48 lowercase letters, numbers or hyphens for the store address.')
+    }
+  } else {
+    slug = existing?.shop_slug ?? generateShopSlug(name, id)
+  }
   if (!/^[a-z0-9](?:[a-z0-9-]{1,46})[a-z0-9]$/.test(slug) || reserved.has(slug)) throw new ShopError(400, 'INVALID_SLUG', 'Use 3–48 lowercase letters, numbers or hyphens for the store address.')
   const currency = String(body.primary_currency ?? existing?.currency ?? 'BDT').toUpperCase()
   if (currency !== 'BDT') throw new ShopError(400, 'UNSUPPORTED_CURRENCY', 'The storefront payment integration currently supports BDT.')

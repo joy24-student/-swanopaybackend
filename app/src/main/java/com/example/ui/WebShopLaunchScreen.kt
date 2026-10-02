@@ -72,7 +72,14 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
         if (sSlug.isNotBlank() && !sSlug.equals("null", ignoreCase = true)) {
             storeSubdomain = sSlug
         } else if (storeSubdomain.isBlank() || storeSubdomain.equals("null", ignoreCase = true)) {
-            storeSubdomain = activeProfile.businessName.lowercase().replace(Regex("[^a-z0-9]"), "").take(16).ifBlank { "myshop" }
+            val merchantDigits = activeProfile.id.filter { it.isDigit() }.takeLast(4).ifBlank { "1001" }
+            val cleanStore = (activeProfile.businessName.ifBlank { activeProfile.name })
+                .lowercase()
+                .replace(Regex("[^a-z0-9]+"), "-")
+                .trim('-')
+                .take(32)
+                .ifBlank { "store" }
+            storeSubdomain = "$cleanStore-$merchantDigits"
         }
         val cDomain = webShopState.customDomain.trim()
         if (cDomain.isNotBlank() && !cDomain.equals("null", ignoreCase = true) && !cDomain.equals("undefined", ignoreCase = true)) {
