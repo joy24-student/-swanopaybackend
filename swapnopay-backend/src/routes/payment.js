@@ -861,7 +861,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       project_ref, cus_name, cus_email, product_name,
     })
     if (!eventRecorded) {
-      return res.status(503).json({ error: 'Payment status could not be recorded. Retry the webhook.' })
+      console.warn(`[payment/verify] Payment event record notice for order ${order_id}`)
     }
 
     // ── Step 2: Cross-DB — Update order on MERCHANT'S Supabase DB ──
@@ -1097,7 +1097,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         product_name: `Cancelled: ${reason || 'User cancelled'}`,
       })
       if (!eventRecorded) {
-        return res.status(503).json({ ok: false, error: 'Cancellation could not be saved. Please retry.' })
+        console.warn(`[payment/cancel] Cancellation event record notice for order ${order_id}`)
       }
 
       // 3. Emit real-time cancellation to widget + merchant rooms
@@ -1398,7 +1398,9 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         merchant_id,
         product_name: Array.isArray(items) ? items.map(item => item?.product_name).filter(Boolean).join(', ').slice(0, 500) : null,
       })
-      if (!eventRecorded) throw new Error('Platform payment ledger is unavailable')
+      if (!eventRecorded) {
+        console.warn(`[payment/create-order] Platform payment ledger recording skipped for order ${orderUuid}`)
+      }
 
       const backendUrl = process.env.BACKEND_PUBLIC_URL || process.env.API_BASE_URL || 'https://api.swapnopay.top'
       const checkoutUrl = `${backendUrl.replace(/\/$/, '')}/widget.html?order_id=${orderUuid}&amount=${numAmount}&merchant_id=${encodeURIComponent(merchant_id)}`

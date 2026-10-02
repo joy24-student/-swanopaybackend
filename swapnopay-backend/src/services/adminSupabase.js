@@ -1375,6 +1375,17 @@ export async function recordPaymentEvent(orderId, eventData) {
     if (duplicateError) throw duplicateError
     if (existingEvent) return true
 
+    const metadata = {
+      ...(eventData.metadata || {}),
+      cus_name: eventData.cus_name || null,
+      cus_email: eventData.cus_email || null,
+      cus_phone: eventData.cus_phone || null,
+      product_name: eventData.product_name || null,
+      project_ref: eventData.project_ref || null,
+      order_number: eventData.order_number || null,
+      payment_time: eventData.payment_time || null,
+    }
+
     const { error } = await admin
       .from('payment_events')
       .insert({
@@ -1386,19 +1397,13 @@ export async function recordPaymentEvent(orderId, eventData) {
         currency:       eventData.currency || 'BDT',
         payment_method: eventData.payment_method || null,
         sender_number:  eventData.sender_number || null,
-        payment_time:   eventData.payment_time
-          ? new Date(eventData.payment_time).toISOString()
-          : new Date().toISOString(),
         merchant_id:    eventData.merchant_id || null,
         merchant_name:  eventData.merchant_name || null,
-        project_ref:    eventData.project_ref || null,
-        cus_name:       eventData.cus_name || null,
-        cus_email:      eventData.cus_email || null,
-        product_name:   eventData.product_name || null,
+        metadata,
       })
 
     if (error) {
-      console.error('[admin-supabase] recordPaymentEvent notice:', error.message)
+      console.warn('[admin-supabase] recordPaymentEvent notice:', error.message)
       return false
     }
     return true

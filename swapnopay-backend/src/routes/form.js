@@ -1409,7 +1409,7 @@ export function formRouter(io = null) {
             payment_method: payment_method || (paymentRequired ? 'bKash' : 'Free'),
             created_at: new Date().toISOString()
           }
-          await admin.from('orders').insert(preOrderRecord).catch(() => {})
+          await admin.from('orders').insert(preOrderRecord)
 
           await admin.from('form_submissions')
             .insert({
@@ -1424,7 +1424,7 @@ export function formRouter(io = null) {
               answers: answers,
               payment_method: payment_method || (paymentRequired ? 'bKash' : 'Free'),
               payment_status: paymentRequired ? 'PENDING' : 'FREE'
-            }).catch(subErr => console.warn('[form-router] Admin form_submissions insert notice:', subErr.message))
+            })
         }
       } catch {}
 
@@ -1557,7 +1557,7 @@ export function formRouter(io = null) {
         try {
           const admin = getAdminClient()
           if (admin) {
-            await admin.from('orders').upsert(orderRecord, { onConflict: 'id' }).catch(() => {})
+            await admin.from('orders').upsert(orderRecord, { onConflict: 'id' })
           }
         } catch (ordErr) {
           console.warn('[form-router] Admin order insert notice:', ordErr.message)
@@ -1589,7 +1589,7 @@ export function formRouter(io = null) {
               const mClient = createClient(creds.supabase_url, creds.supabase_anon_key, {
                 auth: { persistSession: false, autoRefreshToken: false }
               })
-              await mClient.from('orders').upsert(orderRecord, { onConflict: 'id' }).catch(() => {})
+              await mClient.from('orders').upsert(orderRecord, { onConflict: 'id' })
             }
           }
         } catch (mOrdErr) {
