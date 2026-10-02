@@ -2404,6 +2404,8 @@
       customer_email: customerEmail,
       customer_address: customerAddress,
       amount: finalAmount,
+      selected_product_id: (Array.isArray(formConfig?.products) && formConfig.products[0]?.id) ? formConfig.products[0].id : null,
+      quantity: currentQty,
       answers: answersMap
     };
 

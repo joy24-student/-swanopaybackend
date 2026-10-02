@@ -165,6 +165,20 @@ export function sanitizeThemeForPublic(theme = {}) {
   return sanitized
 }
 
+/**
+ * Resolves the canonical public HTTPS origin for forms, checkouts and payment callbacks.
+ * Guarantees HTTPS when behind reverse-proxies (Caddy/Nginx) or on production domains.
+ */
+export function resolvePublicOrigin(req) {
+  if (process.env.PAYMENT_ROUTER_ORIGIN) {
+    return process.env.PAYMENT_ROUTER_ORIGIN.replace(/\/+$/, '')
+  }
+  const rawProto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim()
+  const rawHost = req.get('x-forwarded-host') || req.get('host') || 'pay.swapnopay.top'
+  const isHttps = rawProto === 'https' || rawHost.includes('swapnopay.top') || !rawHost.includes('localhost')
+  return `${isHttps ? 'https' : 'http'}://${rawHost}`
+}
+
 
 // Persistent route & submissions storage file paths
 const DATA_DIR = path.resolve(__dirname, '../../data')
@@ -562,8 +576,7 @@ export function formRouter(io = null) {
         console.warn('[form-router] Admin DB sync error:', dbErr.message)
       }
 
-      const reqOrigin = req.get('host') ? `${req.protocol}://${req.get('host')}` : null
-      const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || reqOrigin || 'https://pay.swapnopay.top'
+      const publicOrigin = resolvePublicOrigin(req)
       const publicUrl = `${publicOrigin}/f/${normalizedSlug || cleanFormId}`
 
       console.log(`[form-router] Route registered: ${publicUrl}`)
@@ -1598,8 +1611,7 @@ export function formRouter(io = null) {
           amount: calculatedAmount
         })
 
-        const reqOrigin = req.get('host') ? `${req.protocol}://${req.get('host')}` : null
-        const publicOrigin = process.env.PAYMENT_ROUTER_ORIGIN || reqOrigin || 'https://pay.swapnopay.top'
+        const publicOrigin = resolvePublicOrigin(req)
         let merchantParam = form.merchant_id ? `&merchant_id=${encodeURIComponent(form.merchant_id)}` : ''
         const methodParam = payment_method ? `&method=${encodeURIComponent(payment_method)}` : ''
         let numberParam = ''
@@ -1660,10 +1672,14 @@ export function formRouter(io = null) {
         } catch (_) {}
 
         // Build return URLs so customer returns to the form on success or cancel
+        const isProductLayout = isProductRoute(form.slug || form.id) ||
+          ['FLAGSHIP_PRODUCT', 'SINGLE_PRODUCT', 'PRODUCT', 'PRODUCT_SHOWCASE', 'ECOMMERCE', 'CART'].includes(String(form.template_type || theme.template_type || '').toUpperCase()) ||
+          (Array.isArray(form.products) && form.products.length > 0)
+        const returnPrefix = isProductLayout ? 'p' : 'f'
         const defaultSuccessUrl = (theme.redirect_type === 'REDIRECT_URL' && theme.redirect_url)
           ? theme.redirect_url
-          : `${publicOrigin}/f/${form.slug || form.id}?status=paid&order_id=${encodeURIComponent(orderUuid)}&amount=${calculatedAmount}&trx_id=${encodeURIComponent(tranId)}`
-        const defaultCancelUrl = `${publicOrigin}/f/${form.slug || form.id}?status=cancelled`
+          : `${publicOrigin}/${returnPrefix}/${form.slug || form.id}?status=paid&order_id=${encodeURIComponent(orderUuid)}&amount=${calculatedAmount}&trx_id=${encodeURIComponent(tranId)}`
+        const defaultCancelUrl = `${publicOrigin}/${returnPrefix}/${form.slug || form.id}?status=cancelled`
         const successParam = `&success_url=${encodeURIComponent(defaultSuccessUrl)}`
         const cancelParam = `&cancel_url=${encodeURIComponent(defaultCancelUrl)}`
         const redirectUrl = `/widget.html?order_id=${encodeURIComponent(orderUuid)}&amount=${calculatedAmount}&merchant_name=${encodeURIComponent(form.title || 'SwapnoPay')}&cus_name=${encodeURIComponent(clientName)}&cus_phone=${encodeURIComponent(clientPhone)}${merchantParam}${methodParam}${numberParam}${accTypeParam}${logoParam}${successParam}${cancelParam}`
@@ -1787,18 +1803,29 @@ export function formRouter(io = null) {
       console.warn('[form-router] submissions DB fetch error:', dbErr.message)
     }
 
-    const merged = Array.from(memMap.values()).map(item => {
-      const amt = Number(item.amount_bdt !== undefined ? item.amount_bdt : (item.amount || 0))
-      return {
-        ...item,
-        amount: amt,
-        amount_bdt: amt
-      }
-    }).sort((a, b) => {
-      const tA = new Date(a.created_at || 0).getTime()
-      const tB = new Date(b.created_at || 0).getTime()
-      return tB - tA
-    })
+    const merged = Array.from(memMap.values())
+      .filter(item => {
+        if (!item) return false
+        const matchId = String(item.form_id || '').toLowerCase()
+        const matchSlug = String(item.form_slug || '').toLowerCase()
+        const targetId = String(formId || '').toLowerCase()
+        const targetSlug = String(formSlug || '').toLowerCase()
+        const targetIdent = identifier.toLowerCase()
+        return (matchId && (matchId === targetId || matchId === targetIdent)) ||
+               (matchSlug && (matchSlug === targetSlug || matchSlug === targetIdent))
+      })
+      .map(item => {
+        const amt = Number(item.amount_bdt !== undefined ? item.amount_bdt : (item.amount || 0))
+        return {
+          ...item,
+          amount: amt,
+          amount_bdt: amt
+        }
+      }).sort((a, b) => {
+        const tA = new Date(a.created_at || 0).getTime()
+        const tB = new Date(b.created_at || 0).getTime()
+        return tB - tA
+      })
 
     return res.json({ ok: true, submissions: merged })
   })

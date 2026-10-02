@@ -14,7 +14,7 @@ $payment_data = $_SESSION['payment_data'] ?? [];
 $billing_details = $_SESSION['billing_address_details'] ?? [];
 $shipping_details = $_SESSION['shipping_address_details'] ?? [];
 
-$selected_method = strip_tags($_POST['mfs_provider'] ?? 'bKash');
+$selected_method = strip_tags($_POST['mfs_provider'] ?? ($_GET['provider'] ?? 'bKash'));
 if (!in_array($selected_method, ['bKash', 'Nagad', 'Rocket', 'Upay'])) {
     $selected_method = 'bKash';
 }

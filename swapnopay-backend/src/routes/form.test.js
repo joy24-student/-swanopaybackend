@@ -408,6 +408,9 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
       assert.equal(keyResult.merchant_id, merchantId)
       assert.ok(keyResult.api_key.startsWith('sp_live_'))
 
+      const testFormId = 'key-auth-form-' + Date.now()
+      const testSlug = 'key-auth-checkout-' + Date.now()
+
       // 1. Register form route using x-api-key and x-merchant-id (no x-admin-secret)
       const regRes = await fetch(`${pubUrl}/routes`, {
         method: 'POST',
@@ -417,15 +420,15 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
           'x-merchant-id': merchantId
         },
         body: JSON.stringify({
-          form_id: 'key-auth-form-001',
-          slug: 'key-auth-checkout',
+          form_id: testFormId,
+          slug: testSlug,
           merchant_id: merchantId,
           project_url: 'https://custom-merchant.supabase.co',
           publishable_key: 'anon-key-123',
           payload: {
-            id: 'key-auth-form-001',
+            id: testFormId,
             title: 'Dynamic Key Authenticated Form',
-            slug: 'key-auth-checkout',
+            slug: testSlug,
             status: 'PUBLISHED',
             amount: 1200,
             receiving_numbers: { bKash: '01711223344' },
@@ -457,7 +460,7 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
       assert.equal(mismatchRes.status, 401)
 
       // 3. Submit customer response to the published form
-      const subRes = await fetch(`${pubUrl}/forms/key-auth-checkout/submit`, {
+      const subRes = await fetch(`${pubUrl}/forms/${testSlug}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -473,13 +476,13 @@ test('Form Router: Registration, Resolution, and Submissions', async (t) => {
       assert.equal(subData.amount, 1200)
 
       // 4. Unauthenticated GET /forms/:slug/submissions fails with 401
-      const unauthSubRes = await fetch(`${pubUrl}/forms/key-auth-checkout/submissions`, {
+      const unauthSubRes = await fetch(`${pubUrl}/forms/${testSlug}/submissions`, {
         headers: { 'x-merchant-id': merchantId }
       })
       assert.equal(unauthSubRes.status, 401)
 
       // 5. Authenticated GET /forms/:slug/submissions with x-api-key + x-merchant-id succeeds
-      const authSubRes = await fetch(`${pubUrl}/forms/key-auth-checkout/submissions`, {
+      const authSubRes = await fetch(`${pubUrl}/forms/${testSlug}/submissions`, {
         headers: {
           'x-api-key': keyResult.api_key,
           'x-merchant-id': merchantId
