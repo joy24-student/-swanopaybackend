@@ -1900,6 +1900,31 @@
     renderProduct(defaultConfig);
   }
 
+  function applyThemeStyle(theme) {
+    if (!theme || typeof theme !== 'object') return;
+    const root = document.documentElement;
+    const primaryColor = theme.primary_color || theme.primaryColorHex || theme.theme_color || theme.themeColor;
+    if (primaryColor) {
+      root.style.setProperty('--accent', primaryColor);
+      root.style.setProperty('--accent-emerald', primaryColor);
+    }
+    const fontFamily = theme.font_family || theme.fontFamily;
+    if (fontFamily) {
+      root.style.setProperty('--font-main', `'${fontFamily}', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`);
+    }
+    const buttonShape = String(theme.button_shape || theme.buttonShape || '').toUpperCase();
+    if (buttonShape === 'PILL' || buttonShape === 'ROUND') {
+      root.style.setProperty('--btn-radius', '9999px');
+    } else if (buttonShape === 'SQUARE' || buttonShape === 'SHARP') {
+      root.style.setProperty('--btn-radius', '4px');
+    } else if (buttonShape === 'ROUNDED') {
+      root.style.setProperty('--btn-radius', '12px');
+    }
+    if (theme.is_dark_mode === true || theme.darkMode === true) {
+      document.body.classList.add('dark-mode');
+    }
+  }
+
   // ── Render 100% Real Form Config ───────────────────────────────────────────
   function renderProduct(config) {
     loadingState.style.display = 'none';
