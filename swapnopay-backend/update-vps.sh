@@ -71,9 +71,9 @@ if [ -n "$BACKEND_APP_DIR" ]; then
     # Restart PM2 process
     if command -v pm2 >/dev/null 2>&1; then
         echo -e "${YELLOW}🔄 Restarting Backend via PM2...${NC}"
-        if pm2 list | grep -q "swapnopay-backend"; then
-            pm2 restart swapnopay-backend --update-env
-        elif [ -f ecosystem.config.cjs ]; then
+        cd "$BACKEND_APP_DIR"
+        pm2 delete swapnopay-backend 2>/dev/null || true
+        if [ -f ecosystem.config.cjs ]; then
             pm2 start ecosystem.config.cjs --env production
         elif [ -f ecosystem.config.js ]; then
             pm2 start ecosystem.config.js --env production
