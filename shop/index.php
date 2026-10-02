@@ -31,7 +31,15 @@ $hero_slider_autoplay = isset($s['hero_slider_autoplay']) ? (int)$s['hero_slider
 $hero_slider_interval = !empty($s['hero_slider_interval']) ? (int)$s['hero_slider_interval'] : 4500;
 
 // Query Hero Slides from Supabase
-$heroSlides = $pdo->query("SELECT * FROM tbl_slider WHERE is_active = 1 ORDER BY slide_order ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+try {
+    $heroSlides = $pdo->query("SELECT * FROM tbl_slider WHERE is_active = 1 ORDER BY slide_order ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $_) {
+    try {
+        $heroSlides = $pdo->query("SELECT * FROM tbl_slider ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $__) {
+        $heroSlides = [];
+    }
+}
 if (empty($heroSlides)) {
     $fallbackImg = !empty($s['hero_image']) ? $s['hero_image'] : 'https://oaudxkhxwdrdsybyaheb.supabase.co/storage/v1/object/public/storefront/assets/hero_products_collage.jpg';
     $heroSlides = [['id' => 1, 'photo' => $fallbackImg]];
