@@ -440,12 +440,13 @@ export class ShopService {
     } finally { client.release() }
   }
   async writePrivate(file, data) {
-    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o750 })
-    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(path.dirname(file),-1,this.config.group)
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o755 })
+    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(path.dirname(file),-1,this.config.group).catch(() => {})
     const temporary = `${file}.${crypto.randomUUID()}.tmp`
-    await fs.writeFile(temporary, data, { mode: 0o640 })
-    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(temporary, -1, this.config.group)
+    await fs.writeFile(temporary, data, { mode: 0o644 })
+    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(temporary, -1, this.config.group).catch(() => {})
     await fs.rename(temporary, file)
+    await fs.chmod(file, 0o644).catch(() => {})
   }
   async publishFiles(row, secrets) {
     const tenantDir = path.join(this.config.sites, 'stores', row.merchant_id)
