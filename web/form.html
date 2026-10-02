@@ -1054,6 +1054,41 @@
       return trimmed;
     }
 
+    function extractItemGalleryUrls(item) {
+      if (!item) return [];
+      const rawList = [
+        item.imageUrl, item.image_url, item.mediaUrl, item.media_url,
+        ...(Array.isArray(item.gallery_urls) ? item.gallery_urls : (item.gallery_urls ? [item.gallery_urls] : [])),
+        ...(Array.isArray(item.galleryUrls) ? item.galleryUrls : (item.galleryUrls ? [item.galleryUrls] : [])),
+        ...(Array.isArray(item.photos) ? item.photos : (item.photos ? [item.photos] : [])),
+        ...(Array.isArray(item.images) ? item.images : (item.images ? [item.images] : []))
+      ];
+      const urls = [];
+      rawList.forEach(entry => {
+        if (!entry) return;
+        if (typeof entry === 'string') {
+          const trimmed = entry.trim();
+          if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            try {
+              const arr = JSON.parse(trimmed);
+              if (Array.isArray(arr)) {
+                arr.forEach(sub => {
+                  const u = typeof sub === 'string' ? sub : (sub?.photo || sub?.url || sub?.src || sub?.image_url || '');
+                  if (u) urls.push(u);
+                });
+                return;
+              }
+            } catch (_) {}
+          }
+          urls.push(trimmed);
+        } else if (typeof entry === 'object') {
+          const u = entry.photo || entry.url || entry.src || entry.image_url || '';
+          if (u) urls.push(u);
+        }
+      });
+      return [...new Set(urls.map(sanitizeImageUrl).filter(Boolean))];
+    }
+
     function switchProductGalleryImage(fId, url, thumbEl) {
       const safeUrl = sanitizeImageUrl(url);
       const img = document.getElementById(`prod-main-img-${fId}`);
@@ -1652,10 +1687,8 @@
             const pCard = document.createElement("div");
             pCard.className = "product-card";
             pCard.id = `prod-card-${pId}`;
-            const pImgUrl = p.imageUrl || p.image_url || p.mediaUrl || p.media_url;
-            const pGallery = (p.gallery_urls || p.galleryUrls || []).filter(Boolean);
-            const allPImgs = [pImgUrl].concat(pGallery).filter(Boolean);
-            const mainPImg = sanitizeImageUrl(allPImgs[0] || '');
+            const allPImgs = extractItemGalleryUrls(p);
+            const mainPImg = allPImgs[0] || '';
 
             const imgHtml = mainPImg
               ? `<img src="${mainPImg}" id="prod-main-img-${pId}" class="product-card-img" onerror="handleProductImgError(this)" alt="${p.title || 'Product'}" />`
@@ -1785,10 +1818,8 @@
             prodDiv.className = `product-card ${selectedProductsMap[fId].selected ? 'selected' : ''}`;
             prodDiv.id = `prod-card-${fId}`;
 
-            const mediaUrl = f.mediaUrl || f.media_url;
-            const gallery = (f.gallery_urls || f.galleryUrls || []).filter(Boolean);
-            const allMedia = [mediaUrl].concat(gallery).filter(Boolean);
-            const mainImg = sanitizeImageUrl(allMedia[0] || '');
+            const allMedia = extractItemGalleryUrls(f);
+            const mainImg = allMedia[0] || '';
 
             const imgHtml = mainImg
               ? `<img src="${mainImg}" id="prod-main-img-${fId}" class="product-card-img" onerror="handleProductImgError(this)" alt="${f.label || 'Product'}" />`
