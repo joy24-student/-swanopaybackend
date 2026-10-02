@@ -78,12 +78,20 @@ export async function requireShopAuth(req, res, next) {
       const { getAdminClient } = await import('../services/adminSupabase.js')
       const adminClient = getAdminClient()
       if (adminClient) {
-        // Check standard devices table
-        const { data: devRecord } = await adminClient
+        // Check standard devices table, fallback to merchant_devices
+        let { data: devRecord } = await adminClient
           .from('devices')
           .select('merchant_id')
           .eq('id', deviceId)
           .maybeSingle()
+        if (!devRecord) {
+          const res = await adminClient
+            .from('merchant_devices')
+            .select('merchant_id')
+            .eq('device_id', deviceId)
+            .maybeSingle()
+          devRecord = res?.data
+        }
         if (devRecord && (!req.shopMerchantId || devRecord.merchant_id === req.shopMerchantId)) {
           req.merchantUser = { id: req.shopMerchantId || devRecord.merchant_id, name: 'Merchant' }
           req.authMethod = 'device_id'

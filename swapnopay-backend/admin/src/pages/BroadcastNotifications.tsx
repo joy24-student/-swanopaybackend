@@ -17,7 +17,10 @@ import {
   ArrowRight,
   ShieldAlert,
   Sliders,
-  Check
+  Check,
+  Image as ImageIcon,
+  Upload,
+  Link as LinkIcon
 } from 'lucide-react'
 import {
   adminSupabase,
@@ -66,7 +69,34 @@ export default function BroadcastNotifications() {
   const [targetMode, setTargetMode] = useState<'ALL' | 'ACTIVE' | 'SINGLE'>('ALL')
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>('')
   const [updateBanner, setUpdateBanner] = useState<boolean>(getInitialBannerToggle)
+  const [bannerImageUrl, setBannerImageUrl] = useState<string>('')
+  const [bannerLinkUrl, setBannerLinkUrl] = useState<string>('')
   const [isSending, setIsSending] = useState(false)
+
+  const handleBannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      addToast('error', 'Please select a valid image file.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      addToast('error', 'Image size must be less than 5 MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setBannerImageUrl(reader.result)
+        setUpdateBanner(true)
+        addToast('success', 'Banner image loaded successfully.')
+      }
+    }
+    reader.onerror = () => {
+      addToast('error', 'Failed to read image file.')
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleToggleBanner = (nextVal: boolean) => {
     setUpdateBanner(nextVal)
@@ -247,7 +277,10 @@ export default function BroadcastNotifications() {
         type,
         severity,
         target,
-        updateBanner,
+        updateBanner: updateBanner || Boolean(bannerImageUrl.trim()),
+        banner_image_url: bannerImageUrl.trim(),
+        banner_link_url: bannerLinkUrl.trim(),
+        banner_title: title.trim(),
       }
 
       const res = await broadcastMerchantNotification(payload)
@@ -259,6 +292,8 @@ export default function BroadcastNotifications() {
         // Reset form
         setTitle('')
         setMessage('')
+        setBannerImageUrl('')
+        setBannerLinkUrl('')
         handleToggleBanner(false)
         // Refresh history
         await loadHistory()
@@ -624,6 +659,153 @@ export default function BroadcastNotifications() {
                   <span className="slider" />
                 </label>
               </div>
+
+              {/* 6. Admin Banner Upload & Configuration Section */}
+              <div
+                style={{
+                  padding: '16px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-subtle)',
+                  border: '1px solid var(--border-default)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ImageIcon size={16} color="var(--brand-primary)" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Notice & Announcement Banner Image
+                    </span>
+                    <span className="badge badge-subtle" style={{ fontSize: 10 }}>Optional</span>
+                  </div>
+                  {bannerImageUrl && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setBannerImageUrl('')}
+                      style={{ fontSize: 11, padding: '2px 8px', height: 26 }}
+                    >
+                      <Trash2 size={11} /> Clear Banner
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1, minWidth: 200, fontSize: 12.5 }}
+                    placeholder="Paste banner image URL (e.g. https://... or data:image/...)"
+                    value={bannerImageUrl}
+                    onChange={e => setBannerImageUrl(e.target.value)}
+                  />
+                  <label
+                    className="btn btn-secondary"
+                    style={{
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '7px 12px',
+                      margin: 0,
+                    }}
+                  >
+                    <Upload size={13} />
+                    <span>Upload / Pick Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleBannerFileUpload}
+                    />
+                  </label>
+                </div>
+
+                {/* Preset Banner Quick Chips */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Presets:</span>
+                  {[
+                    { label: '⚡ Maintenance', url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800&q=80' },
+                    { label: '🎉 Promo & Offers', url: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&q=80' },
+                    { label: '🛡️ Security Notice', url: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=800&q=80' },
+                  ].map(preset => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setBannerImageUrl(preset.url)
+                        setUpdateBanner(true)
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: '3px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-default)',
+                        background: bannerImageUrl === preset.url ? 'rgba(245, 197, 24, 0.15)' : 'var(--bg-card)',
+                        color: bannerImageUrl === preset.url ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontWeight: bannerImageUrl === preset.url ? 700 : 500,
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Destination Link URL */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <LinkIcon size={13} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--text-tertiary)' }} />
+                    <input
+                      className="input"
+                      style={{ paddingLeft: 30, fontSize: 12.5 }}
+                      placeholder="Destination / Action Link URL (Optional - opened when merchant taps the banner)"
+                      value={bannerLinkUrl}
+                      onChange={e => setBannerLinkUrl(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Image Preview */}
+                {bannerImageUrl && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      borderRadius: 'var(--radius-sm)',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border-default)',
+                      position: 'relative',
+                      maxHeight: 120,
+                      background: '#0f111a',
+                    }}
+                  >
+                    <img
+                      src={bannerImageUrl}
+                      alt="Banner Preview"
+                      style={{ width: '100%', height: 120, objectFit: 'cover' }}
+                      onError={e => {
+                        ;(e.target as HTMLElement).style.display = 'none'
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 6,
+                        left: 8,
+                        fontSize: 10.5,
+                        background: 'rgba(0,0,0,0.7)',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      Banner Preview
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="card-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -633,6 +815,8 @@ export default function BroadcastNotifications() {
                 onClick={() => {
                   setTitle('')
                   setMessage('')
+                  setBannerImageUrl('')
+                  setBannerLinkUrl('')
                   handleToggleBanner(false)
                 }}
                 disabled={isSending}
@@ -764,6 +948,19 @@ export default function BroadcastNotifications() {
                   </div>
                   <span style={{ fontSize: 10, color: '#64748b' }}>Just now</span>
                 </div>
+
+                {bannerImageUrl && (
+                  <div style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid #2a2e42', maxHeight: 110, margin: '2px 0 6px' }}>
+                    <img
+                      src={bannerImageUrl}
+                      alt="Broadcast Banner Preview"
+                      style={{ width: '100%', height: 110, objectFit: 'cover' }}
+                      onError={e => {
+                        ;(e.target as HTMLElement).style.display = 'none'
+                      }}
+                    />
+                  </div>
+                )}
 
                 <div>
                   <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: '#ffffff' }}>

@@ -863,7 +863,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                     Toast.makeText(context, "Admin panel URL not configured. Deploy your store first.", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            enabled = (webShopState.isDeployed || webShopState.status in listOf("LIVE", "WAITING_TLS", "ONLINE", "ACTIVE")) && adminLoginUrl.isNotBlank(),
+                            enabled = webShopState.isDeployed && adminLoginUrl.isNotBlank(),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(46.dp),
@@ -876,7 +876,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                             Icon(Icons.Default.RocketLaunch, null, modifier = Modifier.size(18.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (webShopState.isDeployed || webShopState.status in listOf("LIVE", "WAITING_TLS", "ONLINE", "ACTIVE")) "LAUNCH STORE ADMIN PANEL" else "ADMIN PANEL AVAILABLE AFTER VPS LAUNCH",
+                                text = if (webShopState.isDeployed) "LAUNCH STORE ADMIN PANEL" else "ADMIN PANEL AVAILABLE AFTER VPS LAUNCH",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -1411,7 +1411,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            enabled = !webShopState.isSyncing && (webShopState.isDeployed || webShopState.status in listOf("LIVE", "WAITING_TLS", "ONLINE", "ACTIVE")),
+                            enabled = !webShopState.isSyncing && (webShopState.isDeployed || webShopState.status == "LIVE"),
                             modifier = Modifier.fillMaxWidth().height(44.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -1427,7 +1427,7 @@ fun WebShopLaunchScreen(viewModel: AppViewModel) {
                                 Icon(Icons.Default.Sync, null, modifier = Modifier.size(16.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (webShopState.isDeployed || webShopState.status in listOf("LIVE", "WAITING_TLS", "ONLINE", "ACTIVE")) "Sync Local Products to Store" else "Launch Store First to Sync Products",
+                                    text = if (webShopState.isDeployed || webShopState.status == "LIVE") "Sync Local Products to Store" else "Launch Store First to Sync Products",
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White

@@ -90,6 +90,138 @@ INSERT INTO public.merchants (id, business_name, email, phone)
 SELECT '00000000-0000-0000-0000-000000000001'::uuid, 'My Store', 'merchant@store.local', '01700000000'
 WHERE NOT EXISTS (SELECT 1 FROM public.merchants);
 
+-- Self-provisioning merchant_id normalization: accept the app merchant UUID and create the tenant on demand.
+CREATE OR REPLACE FUNCTION public.fn_normalize_merchant_id()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_hdr TEXT;
+  v_mid UUID;
+  v_uid UUID;
+  v_name TEXT;
+  v_email TEXT;
+  v_phone TEXT;
+BEGIN
+  BEGIN
+    v_hdr := NULLIF(btrim(coalesce(current_setting('request.headers', true)::json ->> 'x-merchant-id', '')), '');
+    v_name := NULLIF(btrim(coalesce(current_setting('request.headers', true)::json ->> 'x-business-name', '')), '');
+    v_email := NULLIF(btrim(coalesce(current_setting('request.headers', true)::json ->> 'x-merchant-email', '')), '');
+    v_phone := NULLIF(btrim(coalesce(current_setting('request.headers', true)::json ->> 'x-merchant-phone', '')), '');
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  BEGIN
+    v_uid := auth.uid();
+  EXCEPTION WHEN OTHERS THEN
+    v_uid := NULL;
+  END;
+
+  BEGIN
+    IF NEW.merchant_id IS NULL AND v_hdr ~ '^[0-9a-fA-F-]{36}$' THEN
+      v_mid := v_hdr::uuid;
+    ELSE
+      v_mid := NEW.merchant_id;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    v_mid := NEW.merchant_id;
+  END;
+
+  IF v_mid IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM public.merchants WHERE id = v_mid) THEN
+      BEGIN
+        INSERT INTO public.merchants (id, user_id, business_name, email, phone)
+        VALUES (v_mid, v_uid, COALESCE(v_name, 'My Store'), v_email, v_phone)
+        ON CONFLICT (id) DO NOTHING;
+      EXCEPTION WHEN OTHERS THEN
+        BEGIN
+          INSERT INTO public.merchants (id, business_name, email, phone)
+          VALUES (v_mid, COALESCE(v_name, 'My Store'), v_email, v_phone)
+          ON CONFLICT (id) DO NOTHING;
+        EXCEPTION WHEN OTHERS THEN
+          NULL;
+        END;
+      END;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM public.merchants WHERE id = v_mid) THEN
+      NEW.merchant_id := v_mid;
+      RETURN NEW;
+    END IF;
+    v_mid := NULL;
+  END IF;
+
+  IF v_uid IS NOT NULL THEN
+    SELECT id INTO v_mid FROM public.merchants WHERE user_id = v_uid LIMIT 1;
+  END IF;
+  IF v_mid IS NULL THEN
+    SELECT id INTO v_mid FROM public.merchants ORDER BY created_at ASC NULLS LAST LIMIT 1;
+  END IF;
+
+  IF v_mid IS NULL THEN
+    BEGIN
+      INSERT INTO public.merchants (user_id, business_name, email, phone)
+      VALUES (v_uid, COALESCE(v_name, 'My Store'), v_email, v_phone)
+      RETURNING id INTO v_mid;
+    EXCEPTION WHEN OTHERS THEN
+      INSERT INTO public.merchants (business_name, email, phone)
+      VALUES (COALESCE(v_name, 'My Store'), v_email, v_phone)
+      RETURNING id INTO v_mid;
+    END;
+  END IF;
+
+  NEW.merchant_id := v_mid;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  BEGIN
+    IF NEW.merchant_id IS NULL THEN
+      SELECT id INTO v_mid FROM public.merchants ORDER BY created_at ASC NULLS LAST LIMIT 1;
+      NEW.merchant_id := v_mid;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+  RETURN NEW;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.fn_normalize_merchant_id() TO authenticated, service_role, anon;
+
+DO $$
+DECLARE
+  t TEXT;
+  business_tables TEXT[] := ARRAY[
+    'merchants', 'merchant_numbers', 'orders', 'payments', 'sms_logs', 'devices', 'appeals', 'notifications',
+    'merchant_notifications', 'security_logs', 'security_settings', 'order_rate_limits', 'mfs_regex_patterns',
+    'payment_forms', 'form_submissions', 'customers', 'suppliers', 'ledger_transactions', 'products',
+    'product_variants', 'stock_transactions', 'expenses', 'loans', 'dps_accounts', 'finance_installments',
+    'pos_sales', 'business_analytics', 'employees', 'store_settings', 'categories', 'product_photos',
+    'order_items', 'customer_carts', 'coupons', 'shipping_methods', 'product_reviews', 'payment_gateway_settings',
+    'payment_receipt_outbox'
+  ];
+BEGIN
+  FOREACH t IN ARRAY business_tables LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = t AND column_name = 'merchant_id'
+    ) THEN
+      BEGIN
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END;
+
+      EXECUTE format('DROP TRIGGER IF EXISTS trg_%I_normalize_merchant ON public.%I', t, t);
+      EXECUTE format(
+        'CREATE TRIGGER trg_%I_normalize_merchant
+         BEFORE INSERT OR UPDATE OF merchant_id ON public.%I
+         FOR EACH ROW EXECUTE FUNCTION public.fn_normalize_merchant_id()',
+        t,
+        t
+      );
+    END IF;
+  END LOOP;
+END $$;
+
 -- 2. Merchant Payment Numbers
 CREATE TABLE IF NOT EXISTS public.merchant_numbers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

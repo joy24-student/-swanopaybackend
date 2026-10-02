@@ -6,6 +6,30 @@
   <title>Payment Form Gateway</title>
   <!-- Google Fonts: Outfit, Inter, Roboto -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script>
+    // SwapnoPay static-host config fallback.
+    // Sets window.SUPABASE_URL and window.SUPABASE_ANON_KEY from meta tags or /.well-known/swapnopay-config.json
+    (function(){
+      try {
+        if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) return;
+        const metaUrl = document.querySelector('meta[name="swapnopay-supabase-url"]')?.content;
+        const metaAnon = document.querySelector('meta[name="swapnopay-supabase-anon-key"]')?.content;
+        if (metaUrl) window.SUPABASE_URL = metaUrl;
+        if (metaAnon) window.SUPABASE_ANON_KEY = metaAnon;
+
+        // Best-effort: attempt to load a well-known JSON config on the same host.
+        if ((!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) && location.protocol.startsWith('http')) {
+          fetch('/.well-known/swapnopay-config.json', { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : null)
+            .then(cfg => {
+              if (!cfg) return;
+              if (!window.SUPABASE_URL && cfg.supabase_url) window.SUPABASE_URL = cfg.supabase_url;
+              if (!window.SUPABASE_ANON_KEY && cfg.supabase_anon_key) window.SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+            }).catch(() => {});
+        }
+      } catch (e) { /* non-fatal */ }
+    })();
+  </script>
   <style id="base-form-css">
     :root {
       --primary: #5d45ff;
