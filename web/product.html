@@ -1996,8 +1996,42 @@
     currencySymbol = (theme.currency_code === 'USD' || config.currency === 'USD') ? '$' : '৳';
 
     const firstProduct = (Array.isArray(config.products) && config.products[0]) ? config.products[0] : null;
-    basePrice = parseFloat(config.amount) || parseFloat(firstProduct?.price) || (isDemo ? 2490 : 0);
-    wasPriceVal = parseFloat(theme.was_price || theme.wasPrice || firstProduct?.sale_price || firstProduct?.salePrice || (isDemo ? 3290 : 0));
+    let resolvedSellingPrice = 0;
+    let resolvedWasPrice = 0;
+
+    if (firstProduct) {
+      const pPrice = Number(firstProduct.price || 0);
+      const sPrice = Number(firstProduct.sale_price || firstProduct.salePrice || 0);
+      if (sPrice > 0 && pPrice > 0) {
+        const hasVariantsMatchingP = Array.isArray(firstProduct.product_variants) && firstProduct.product_variants.some(v => Number(v.price) === pPrice);
+        if (hasVariantsMatchingP) {
+          resolvedSellingPrice = pPrice;
+          resolvedWasPrice = Number(theme.was_price || theme.wasPrice || 0);
+        } else if (sPrice < pPrice) {
+          resolvedSellingPrice = sPrice;
+          resolvedWasPrice = pPrice;
+        } else {
+          resolvedSellingPrice = pPrice;
+          resolvedWasPrice = sPrice;
+        }
+      } else if (pPrice > 0) {
+        resolvedSellingPrice = pPrice;
+        resolvedWasPrice = Number(theme.was_price || theme.wasPrice || 0);
+      } else if (sPrice > 0) {
+        resolvedSellingPrice = sPrice;
+        resolvedWasPrice = Number(theme.was_price || theme.wasPrice || 0);
+      }
+    }
+
+    if (!resolvedSellingPrice) {
+      resolvedSellingPrice = parseFloat(config.amount) || (isDemo ? 2490 : 0);
+    }
+    if (!resolvedWasPrice) {
+      resolvedWasPrice = parseFloat(theme.was_price || theme.wasPrice || (isDemo ? 3290 : 0));
+    }
+
+    basePrice = resolvedSellingPrice;
+    wasPriceVal = resolvedWasPrice;
 
     // 6. Rating
     const rScore = theme.rating_score || (isDemo ? 4.9 : 5.0);
@@ -2770,6 +2804,13 @@
       customer_email: customerEmail,
       customer_address: customerAddress,
       amount: finalAmount,
+      calculated_amount: finalAmount,
+      unit_price: basePrice,
+      variant_price: basePrice,
+      shipping_fee: selectedShippingFee,
+      discount_amount: discountAmount,
+      coupon_code: activePromoCode || undefined,
+      variant_name: selectedColor || selectedVariant || undefined,
       selected_product_id: (Array.isArray(formConfig?.products) && formConfig.products[0]?.id) ? formConfig.products[0].id : null,
       quantity: currentQty,
       answers: answersMap
@@ -2792,6 +2833,13 @@
             const resData = await res.json();
             if (resData.redirect_url || resData.gateway_url) {
               redirectUrl = resData.redirect_url || resData.gateway_url;
+              try {
+                const u = new URL(redirectUrl, window.location.origin);
+                if (finalAmount > 0) {
+                  u.searchParams.set('amount', finalAmount);
+                }
+                redirectUrl = u.pathname + u.search + u.hash;
+              } catch (_) {}
             } else if (resData.order_id) {
               const mid = resData.merchant_id || formConfig?.merchant_id || '';
               const mParam = mid ? `&merchant_id=${encodeURIComponent(mid)}` : '';

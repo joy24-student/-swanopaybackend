@@ -1217,19 +1217,72 @@ export function formRouter(io = null) {
         if (selectedProductsList.length > 0 && products.length > 0) {
           for (const sp of selectedProductsList) {
             const prod = products.find(p => String(p.id) === String(sp.id))
-            const uPrice = Number(sp.price || sp.unit_price || (prod ? (prod.sale_price > 0 ? prod.sale_price : prod.price) : 0))
+            const uPrice = Number(sp.price || sp.unit_price || (prod ? (prod.sale_price > 0 && prod.sale_price < (prod.price || Infinity) ? prod.sale_price : prod.price) : 0))
             const uQty = Math.max(1, Number(sp.quantity || sp.qty || 1))
             calculatedAmount += (uPrice * uQty)
           }
           if (selectedProductsList[0]?.title) {
             productName = selectedProductsList.map(p => p.title || p.name).filter(Boolean).join(', ')
           }
-        } else if (selected_product_id && products.length > 0) {
-          const prod = products.find(p => String(p.id) === String(selected_product_id))
+        } else if ((selected_product_id || products.length === 1) && products.length > 0) {
+          const prod = selected_product_id
+            ? products.find(p => String(p.id) === String(selected_product_id))
+            : products[0]
+
           if (prod) {
-            const unitPrice = prod.sale_price > 0 ? prod.sale_price : (prod.salePrice > 0 ? prod.salePrice : prod.price)
-            calculatedAmount = Number(unitPrice || 0) * Math.max(1, Number(quantity || 1))
             productName = prod.title || productName
+
+            // Check if a specific variant was selected
+            const selectedVariantName = String(req.body.variant_name || req.body.variant || answers['variant'] || answers['color'] || '').trim().toLowerCase()
+            const selectedVariantId = String(req.body.variant_id || answers['variant_id'] || '').trim().toLowerCase()
+            let matchedVariant = null
+            if (Array.isArray(prod.product_variants) && prod.product_variants.length > 0) {
+              matchedVariant = prod.product_variants.find(v =>
+                (selectedVariantId && String(v.id).toLowerCase() === selectedVariantId) ||
+                (selectedVariantName && String(v.name || v.label || '').toLowerCase() === selectedVariantName)
+              )
+            }
+
+            let unitPrice = 0
+            if (matchedVariant && Number(matchedVariant.price) > 0) {
+              unitPrice = Number(matchedVariant.price)
+            }
+
+            // Check client submitted unit_price or variant_price if it matches product or variant
+            const submittedUnitPrice = Number(req.body.unit_price || req.body.variant_price || answers['unit_price'] || answers['variant_price'] || 0)
+            if (!unitPrice && submittedUnitPrice > 0) {
+              const pPrice = Number(prod.price || 0)
+              const variantPrices = (prod.product_variants || []).map(v => Number(v.price)).filter(p => p > 0)
+              if (submittedUnitPrice === pPrice || variantPrices.includes(submittedUnitPrice)) {
+                unitPrice = submittedUnitPrice
+              }
+            }
+
+            // Fallback: resolve from prod.price and prod.sale_price
+            if (!unitPrice) {
+              const pPrice = Number(prod.price || 0)
+              const sPrice = Number(prod.sale_price || prod.salePrice || 0)
+              if (pPrice > 0 && sPrice > 0) {
+                const hasVariantsMatchingPrice = (prod.product_variants || []).some(v => Number(v.price) === pPrice)
+                if (hasVariantsMatchingPrice) {
+                  unitPrice = pPrice
+                } else if (sPrice < pPrice) {
+                  unitPrice = sPrice
+                } else {
+                  unitPrice = pPrice
+                }
+              } else if (pPrice > 0) {
+                unitPrice = pPrice
+              } else if (sPrice > 0) {
+                unitPrice = sPrice
+              }
+            }
+
+            if (!unitPrice && submittedUnitPrice > 0) {
+              unitPrice = submittedUnitPrice
+            }
+
+            calculatedAmount = Number(unitPrice || 0) * Math.max(1, Number(quantity || answers['quantity'] || 1))
           }
         }
 
@@ -1269,11 +1322,31 @@ export function formRouter(io = null) {
           }
         }
 
-        // Fallback to submitted amount or form-level amount
-        if (calculatedAmount === 0 && Number(req.body.amount || req.body.calculated_amount) > 0) {
-          calculatedAmount = Number(req.body.amount || req.body.calculated_amount)
-        } else if (calculatedAmount === 0 && Number(form.amount) > 0) {
-          calculatedAmount = Number(form.amount)
+        // Extract Shipping / Delivery Fee
+        let shippingFee = 0
+        if (req.body.shipping_fee !== undefined && !isNaN(Number(req.body.shipping_fee))) {
+          shippingFee = Math.max(0, Number(req.body.shipping_fee))
+        } else if (answers['shipping_fee'] !== undefined && !isNaN(Number(answers['shipping_fee']))) {
+          shippingFee = Math.max(0, Number(answers['shipping_fee']))
+        } else if (answers['shipping'] || answers['delivery'] || answers['shipping_method'] || answers['delivery_zone']) {
+          shippingFee = parseAmountFromText(answers['shipping'] || answers['delivery'] || answers['shipping_method'] || answers['delivery_zone'])
+        }
+
+        if (shippingFee === 0 && form.fields) {
+          const fields = Array.isArray(form.fields) ? form.fields : []
+          for (const f of fields) {
+            const fType = String(f.type || '').toUpperCase()
+            if (fType === 'SHIPPING' || fType === 'DELIVERY') {
+              const ansVal = answers[f.id]
+              if (ansVal) {
+                const parsed = parseAmountFromText(ansVal)
+                if (parsed > 0) {
+                  shippingFee = parsed
+                  break
+                }
+              }
+            }
+          }
         }
 
         // Tax calculation
@@ -1317,6 +1390,28 @@ export function formRouter(io = null) {
               discount: discountAmount
             }
           }
+        }
+
+        // Add Shipping Fee (shipping fee added after discounts)
+        if (shippingFee > 0) {
+          calculatedAmount += shippingFee
+        }
+
+        // Reconcile with client-submitted amount if provided
+        const submittedAmount = Number(req.body.amount || req.body.calculated_amount || 0)
+        if (submittedAmount > 0) {
+          if (calculatedAmount === 0) {
+            calculatedAmount = submittedAmount
+          } else if (Math.abs(calculatedAmount - submittedAmount) < 0.01) {
+            calculatedAmount = submittedAmount
+          } else if (Math.abs((calculatedAmount + shippingFee) - submittedAmount) < 0.01) {
+            calculatedAmount = submittedAmount
+          } else if (Math.abs(calculatedAmount - submittedAmount) <= 150) {
+            // Reconcile minor shipping zone or variant difference with client's exact order total
+            calculatedAmount = submittedAmount
+          }
+        } else if (calculatedAmount === 0 && Number(form.amount) > 0) {
+          calculatedAmount = Number(form.amount)
         }
       }
 
