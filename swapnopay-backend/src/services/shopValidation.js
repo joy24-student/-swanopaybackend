@@ -31,7 +31,6 @@ export function launchInput(body, existing = null) {
   const slug = String(body.shop_slug ?? existing?.shop_slug ?? `store-${id.slice(0,8)}`).trim().toLowerCase()
   if (!name || name.length > 100 || /[\u0000-\u001f<>]/.test(name)) throw new ShopError(400, 'INVALID_NAME', 'Use a store name between 1 and 100 characters.')
   if (!/^[a-z0-9](?:[a-z0-9-]{1,46})[a-z0-9]$/.test(slug) || reserved.has(slug)) throw new ShopError(400, 'INVALID_SLUG', 'Use 3–48 lowercase letters, numbers or hyphens for the store address.')
-  if (existing && slug !== existing.shop_slug) throw new ShopError(409, 'SLUG_LOCKED', 'The store address cannot change after its first launch. You can connect a custom domain.')
   const currency = String(body.primary_currency ?? existing?.currency ?? 'BDT').toUpperCase()
   if (currency !== 'BDT') throw new ShopError(400, 'UNSUPPORTED_CURRENCY', 'The storefront payment integration currently supports BDT.')
   const color = body.theme_color ?? existing?.theme_color ?? '#4F46E5'

@@ -63,11 +63,6 @@ export function shopConfiguration(env = process.env) {
     }
   }
 
-  const urlSslMode = rawDbUrl ? (new URL(rawDbUrl).searchParams.get('sslmode')) : null
-  const isLocalHost = ['127.0.0.1', 'localhost'].includes(dbHost)
-  const defaultSslMode = isLocalHost ? 'disable' : 'require'
-  const effectiveSslMode = env.SHOP_DB_SSLMODE || urlSslMode || defaultSslMode
-
   return {
     connectionString,
     useEmbedded: !rawDbUrl,
@@ -75,7 +70,7 @@ export function shopConfiguration(env = process.env) {
     baseDomain: hostname(env.SHOP_BASE_DOMAIN || 'shop.swapnopay.top'),
     runtime, sites, template,
     dbHost, dbPort, dbName, dbUser, dbPass,
-    sslmode: effectiveSslMode,
+    sslmode: env.SHOP_DB_SSLMODE || 'require',
     group: env.SHOP_RUNTIME_GID ? Number(env.SHOP_RUNTIME_GID) : undefined,
     backendUrl: env.SHOP_BACKEND_URL || 'https://api.swapnopay.top',
     vendor: env.SHOP_VENDOR_DIR || '',
@@ -152,21 +147,13 @@ export class ShopService {
     if (dependencies.pool) {
       this.pool = dependencies.pool
     } else if (config.connectionString) {
-      let connStr = config.connectionString
-      const isSsl = config.sslmode !== 'disable' && !connStr.includes('sslmode=disable') && (/sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(config.sslmode && config.sslmode !== 'disable'))
-      if (isSsl) {
-        try {
-          const u = new URL(connStr)
-          u.searchParams.set('sslmode', 'no-verify')
-          connStr = u.toString()
-        } catch (_) {}
-      }
+      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(config.connectionString) || Boolean(config.sslmode && config.sslmode !== 'disable')
       this.pool = new Pool({
-        connectionString: connStr,
+        connectionString: config.connectionString,
         max: 6,
         connectionTimeoutMillis: 8000,
         idleTimeoutMillis: 30000,
-        ssl: isSsl ? { rejectUnauthorized: false } : undefined
+        ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
       })
     } else if (config.useEmbedded) {
       const dbPath = path.resolve(config.runtime, 'shop-db')
@@ -282,21 +269,13 @@ export class ShopService {
     if (resolved.connectionString && resolved.connectionString !== this.config.connectionString) {
       let pool = this.tenantPools.get(resolved.connectionString)
       if (!pool) {
-        let connStr = resolved.connectionString
-        const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
-        if (isSsl) {
-          try {
-            const u = new URL(connStr)
-            u.searchParams.set('sslmode', 'no-verify')
-            connStr = u.toString()
-          } catch (_) {}
-        }
+        const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(resolved.connectionString) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
         pool = new Pool({
-          connectionString: connStr,
+          connectionString: resolved.connectionString,
           max: 4,
           connectionTimeoutMillis: 8000,
           idleTimeoutMillis: 30000,
-          ssl: isSsl ? { rejectUnauthorized: false } : undefined
+          ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
         })
         this.tenantPools.set(resolved.connectionString, pool)
       }
@@ -421,7 +400,7 @@ export class ShopService {
       const result = await client.query(`INSERT INTO shop_control.launches
         (merchant_id,store_name,shop_slug,custom_domain,currency,theme_color,admin_email,job_id,secret_config)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT(merchant_id) DO UPDATE SET store_name=$2,custom_domain=$4,currency=$5,theme_color=$6,admin_email=$7,
+        ON CONFLICT(merchant_id) DO UPDATE SET store_name=$2,shop_slug=$3,custom_domain=$4,currency=$5,theme_color=$6,admin_email=$7,
           job_id=$8,secret_config=$9,status='QUEUED',message='Preparing your storefront.',tls_allowed=false,attempts=0,next_attempt=now(),updated_at=now()
         RETURNING ${publicFields}`, values)
       for (const host of new Set([input.shop_slug, input.custom_domain].filter(Boolean))) {
@@ -440,13 +419,12 @@ export class ShopService {
     } finally { client.release() }
   }
   async writePrivate(file, data) {
-    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o755 })
-    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(path.dirname(file),-1,this.config.group).catch(() => {})
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o750 })
+    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(path.dirname(file),-1,this.config.group)
     const temporary = `${file}.${crypto.randomUUID()}.tmp`
-    await fs.writeFile(temporary, data, { mode: 0o644 })
-    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(temporary, -1, this.config.group).catch(() => {})
+    await fs.writeFile(temporary, data, { mode: 0o640 })
+    if (this.config.group !== undefined && process.platform !== 'win32') await fs.chown(temporary, -1, this.config.group)
     await fs.rename(temporary, file)
-    await fs.chmod(file, 0o644).catch(() => {})
   }
   async publishFiles(row, secrets) {
     const tenantDir = path.join(this.config.sites, 'stores', row.merchant_id)
@@ -550,11 +528,13 @@ export class ShopService {
       if (!activeHosts.has(host)) {
         await fs.unlink(path.join(this.config.sites, 'hosts', host)).catch(error => { if (error.code !== 'ENOENT') throw error })
         await fs.unlink(path.join(this.config.runtime, 'hosts', `${host}.json`)).catch(error => { if (error.code !== 'ENOENT') throw error })
+        await fs.unlink(path.join(this.config.sites, 'slugs', host)).catch(error => { if (error.code !== 'ENOENT') throw error })
+        await fs.unlink(path.join(this.config.runtime, 'slugs', `${host}.json`)).catch(error => { if (error.code !== 'ENOENT') throw error })
+        await this.pool.query('DELETE FROM shop_control.domains WHERE hostname=$1 AND merchant_id=$2', [host, row.merchant_id]).catch(() => {})
       }
     }
   }
   async provision(client, row) {
-    const schema = schemaName(row.merchant_id), quoted = identifier(schema)
     let secrets
     try {
       secrets = decryptConfig(row.secret_config, this.config.key)

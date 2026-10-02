@@ -40,9 +40,14 @@ if ($runtimeRoot) {
             if (is_file($slugFile)) {
                 $runtime = json_decode(file_get_contents($slugFile), true);
                 if ($runtime) {
-                    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                    $port = (!empty($_SERVER['SERVER_PORT']) && !in_array((int)$_SERVER['SERVER_PORT'], [80, 443], true)) ? ':' . $_SERVER['SERVER_PORT'] : '';
-                    $runtime['base_url'] = $proto . '://' . $host . $port . '/' . $candidateSlug . '/';
+                    if (empty($runtime['base_url'])) {
+                        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                            || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+                            || (!empty($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+                            || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+                        $proto = $isHttps ? 'https' : 'http';
+                        $runtime['base_url'] = $proto . '://' . $host . '/' . $candidateSlug . '/';
+                    }
                 }
             }
         }
