@@ -571,10 +571,13 @@ export class ShopService {
           await dbClient.query('SAVEPOINT role_sp')
           const role = await dbClient.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
           if (!role.rowCount) await dbClient.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
-          await dbClient.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
-            GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};
-            GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};
-            GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`)
+          const grantSql = [
+            `ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;`,
+            `GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};`,
+            `GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};`,
+            `GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`
+          ].join(' ')
+          await dbClient.query(grantSql)
           await dbClient.query('RELEASE SAVEPOINT role_sp')
         } catch (roleErr) {
           await dbClient.query('ROLLBACK TO SAVEPOINT role_sp').catch(() => {})

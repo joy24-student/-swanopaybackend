@@ -858,13 +858,13 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
       currency: currency || 'BDT',
       payment_method, sender_number: maskPhone(sender_number),
       payment_time, merchant_id, merchant_name,
-      project_ref, cus_name, cus_email, product_name,
+      project_ref, cus_name, cus_email, product_name
     })
     if (!eventRecorded) {
       console.warn(`[payment/verify] Payment event record notice for order ${order_id}`)
     }
 
-    // ── Step 2: Cross-DB — Update order on MERCHANT'S Supabase DB ──
+    // ── Step 2: Cross-DB — Update order on Merchant Supabase DB ──
     const merchantUpdateResult = await updateOrderStatusOnMerchantDB(
       merchant_id,
       order_id,
@@ -875,7 +875,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         payment_method,
         sender_number: maskPhone(sender_number),
         payment_time,
-        amount,
+        amount
       }
     )
     if (!merchantUpdateResult) {
