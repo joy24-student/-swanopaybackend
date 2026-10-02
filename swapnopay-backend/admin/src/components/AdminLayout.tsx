@@ -157,11 +157,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           badge: unreadCount > 0 ? unreadCount : undefined
         },
         {
-          to: '/settings?tab=support_contacts',
-          label: 'Contact & Support Info',
-          icon: <PhoneCall size={17} />
-        },
-        {
           to: '/health',
           label: 'System Health',
           icon: <Activity size={17} />
@@ -170,6 +165,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           to: '/connect-supabase',
           label: 'Connect Supabase',
           icon: <Database size={17} />
+        },
+        {
+          to: '/settings?tab=support_contacts',
+          label: 'Landing & App Contacts',
+          icon: <PhoneCall size={17} />
         },
         {
           to: '/settings',

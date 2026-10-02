@@ -13,7 +13,7 @@ import {
   getAdminHeaders,
   uploadShowcasePhotoResilient,
 } from '../adminSupabaseClient';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   Globe,
   CreditCard,
@@ -24,6 +24,7 @@ import {
   HelpCircle,
   BookOpen,
   FileText,
+  Smartphone,
   Tag,
   ShieldCheck,
   Check,
@@ -366,23 +367,8 @@ type SettingsTab =
   | 'tickets';
 
 export default function SystemSettings() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const urlTab = searchParams.get('tab') as SettingsTab | null;
   const [config, setConfig] = useState<SystemRemoteConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
-    return urlTab || 'links';
-  });
-
-  useEffect(() => {
-    if (urlTab && urlTab !== activeTab) {
-      setActiveTab(urlTab);
-    }
-  }, [urlTab]);
-
-  const handleTabSelect = (tab: SettingsTab) => {
-    setActiveTab(tab);
-    setSearchParams({ tab }, { replace: true });
-  };
+  const [activeTab, setActiveTab] = useState<SettingsTab>('links');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -592,6 +578,38 @@ export default function SystemSettings() {
     }
   };
 
+  const handleSaveContactDetails = async () => {
+    setIsSaving(true);
+    setStatusMsg('Saving official platform contact details & address...');
+    try {
+      const payload: SystemRemoteConfig = {
+        ...config,
+        last_updated: Date.now(),
+      };
+      await upsertShowcaseConfig('system_config', payload);
+
+      // Real-time broadcast dispatch via backend API (Socket.io -> landing page & merchant apps)
+      try {
+        const baseUrl = getBackendBaseUrl();
+        const headers = await getAdminHeaders();
+        await fetch(`${baseUrl}/v1/admin/showcase`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ key: 'system_config', value: payload }),
+        });
+      } catch (backendErr) {
+        console.warn('[SystemSettings] Backend API broadcast notice:', backendErr);
+      }
+
+      setStatusMsg('SUCCESS: Platform contact details & address saved and broadcasted to Landing Page & App!');
+      setTimeout(() => setStatusMsg(''), 5000);
+    } catch (err: any) {
+      setStatusMsg('ERROR: Failed to save contacts: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleGalleryUpload = async () => {
     if (!galleryUploadFile) {
       setStatusMsg('ERROR: Select an image before uploading to the Radymate gallery bucket.');
@@ -717,7 +735,7 @@ export default function SystemSettings() {
     { key: 'api_docs', label: 'API Documentation CMS', icon: Code2 },
     { key: 'gallery', label: 'Radymate Showcase', icon: ImageIcon, count: radymateGallery.length },
     { key: 'video', label: 'Video Tutorials', icon: Video, count: (config.video_tutorials || []).length },
-    { key: 'support_contacts', label: 'Support Contacts', icon: PhoneCall },
+    { key: 'support_contacts', label: 'Landing & App Contacts', icon: PhoneCall },
     { key: 'faqs', label: 'FAQs Manager', icon: HelpCircle, count: config.faqs.length },
     { key: 'guides', label: 'Integration Guides', icon: BookOpen, count: config.guides.length },
     { key: 'articles', label: 'Help Articles', icon: FileText, count: config.articles.length },
@@ -833,7 +851,7 @@ export default function SystemSettings() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => handleTabSelect(tab.key)}
+              onClick={() => setActiveTab(tab.key)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1776,34 +1794,71 @@ export default function SystemSettings() {
           </div>
         )}
 
-        {/* ════════════════ TAB 6: SUPPORT CONTACTS ════════════════ */}
+        {/* ════════════════ TAB 6: SUPPORT CONTACTS (LANDING & APP) ════════════════ */}
         {activeTab === 'support_contacts' && (
           <div className="card">
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <PhoneCall size={16} color="var(--brand-primary)" />
-                  Official Help & Support Contact Details
+                  <PhoneCall size={18} color="var(--brand-primary)" />
+                  Platform Landing Page &amp; App Contact Details
                 </h3>
-                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                  Contact details displayed on the merchant app Support screen, including hotline dialing, WhatsApp chat, and live announcements.
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Official support phone hotline, WhatsApp, email, and office address displayed live on both your <strong>Public Landing Page (swapnopay.top)</strong> and the <strong>Merchant Android Mobile App</strong>.
                 </p>
               </div>
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => handleSave()}
+                className="btn btn-primary"
                 disabled={isSaving}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 170, height: 34 }}
+                onClick={handleSaveContactDetails}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', fontWeight: 700 }}
               >
-                {isSaving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />}
-                {isSaving ? 'Broadcasting...' : 'Save Contact Details'}
+                <Save size={15} />
+                <span>{isSaving ? 'Saving Changes...' : 'Save Contact Details'}</span>
               </button>
+            </div>
+
+            {/* Live Preview Panel */}
+            <div style={{ padding: '16px 20px', background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-default)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--brand-primary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={14} />
+                Live Synchronization Preview (Landing Page &amp; Mobile App)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+                {/* Landing Page Preview */}
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 14, fontSize: 12.5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 8, color: '#38bdf8' }}>
+                    <Globe size={14} />
+                    <span>Public Landing Page (swapnopay.top Footer &amp; Contact)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, color: 'var(--text-secondary)' }}>
+                    <div>📞 <strong>Phone:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_hotline || 'Not configured'}</span></div>
+                    <div>✉️ <strong>Email:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_email || 'Not configured'}</span></div>
+                    <div>💬 <strong>WhatsApp:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_whatsapp || 'Not configured'}</span></div>
+                    <div>📍 <strong>Address:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_address || 'Not configured'}</span></div>
+                  </div>
+                </div>
+
+                {/* Mobile App Preview */}
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 14, fontSize: 12.5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 8, color: '#a855f7' }}>
+                    <Smartphone size={14} />
+                    <span>Merchant Android App (In-App Support Dialog)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, color: 'var(--text-secondary)' }}>
+                    <div>📞 <strong>Direct Dial Hotline:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_hotline || 'Not configured'}</span></div>
+                    <div>✉️ <strong>Inquiries Mail:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_email || 'Not configured'}</span></div>
+                    <div>💬 <strong>WhatsApp Chat:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_whatsapp || 'Not configured'}</span></div>
+                    <div>🕒 <strong>Operating Hours:</strong> <span style={{ color: 'var(--text-primary)' }}>{config.support_hours || '24/7 Support'}</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
               <div>
-                <label className="form-label">
+                <label className="form-label" style={{ fontWeight: 600 }}>
                   Hotline Phone Number (Direct Dial) *
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -1825,16 +1880,17 @@ export default function SystemSettings() {
                     </a>
                   )}
                 </div>
-                <span className="form-hint">Tapped by merchants for immediate operator phone support.</span>
+                <span className="form-hint">Shown in landing page footer and direct-dialed by merchant app users.</span>
               </div>
 
               <div>
-                <label className="form-label">
-                  Support Email Inquiries *
+                <label className="form-label" style={{ fontWeight: 600 }}>
+                  Official Support Email Address *
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     className="input"
+                    type="email"
                     value={config.support_email}
                     onChange={(e) => setConfig({ ...config, support_email: e.target.value })}
                     placeholder="support@swapnopay.top"
@@ -1851,12 +1907,12 @@ export default function SystemSettings() {
                     </a>
                   )}
                 </div>
-                <span className="form-hint">Primary contact email for business inquiries and billing queries.</span>
+                <span className="form-hint">Official public support email displayed on website and app.</span>
               </div>
 
               <div>
-                <label className="form-label">
-                  WhatsApp Support Link / Number *
+                <label className="form-label" style={{ fontWeight: 600 }}>
+                  WhatsApp Support Number / Link *
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
@@ -1879,54 +1935,47 @@ export default function SystemSettings() {
                     </a>
                   )}
                 </div>
-                <span className="form-hint">Opens directly into WhatsApp Messenger for live chat assistance.</span>
+                <span className="form-hint">Direct 1-tap WhatsApp chat button for instant merchant assistance.</span>
               </div>
 
               <div>
-                <label className="form-label">
-                  Operating Hours
+                <label className="form-label" style={{ fontWeight: 600 }}>
+                  Operating Hours / Working Times
                 </label>
                 <input
                   className="input"
                   value={config.support_hours}
                   onChange={(e) => setConfig({ ...config, support_hours: e.target.value })}
-                  placeholder="24/7 Chat & Ticket Support"
+                  placeholder="24/7 Chat & Ticket Support (9 AM - 11 PM Live Hotline)"
                 />
-                <span className="form-hint">Availability indicator shown to merchants.</span>
+                <span className="form-hint">Support availability hours shown on landing page and app.</span>
               </div>
 
               <div style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">
-                  Main Headquarters Address
+                <label className="form-label" style={{ fontWeight: 600 }}>
+                  Main Headquarters &amp; Physical Office Address *
                 </label>
                 <input
                   className="input"
                   value={config.support_address}
                   onChange={(e) => setConfig({ ...config, support_address: e.target.value })}
                   placeholder="Level 14, Banani Tower, Dhaka, Bangladesh"
+                  required
                 />
-                <span className="form-hint">Official company registration and office location.</span>
+                <span className="form-hint">Your official company registration, headquarters and office address.</span>
               </div>
 
-              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', paddingTop: 6, paddingBottom: 6 }}>
+              {/* Dedicated Save Action Row for Contact Details */}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 6, borderBottom: '1px solid var(--border-default)', paddingBottom: 16 }}>
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => handleSave()}
                   disabled={isSaving}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 220, height: 38 }}
+                  onClick={handleSaveContactDetails}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 22px', fontWeight: 700 }}
                 >
-                  {isSaving ? (
-                    <>
-                      <RefreshCw size={14} className="spin" />
-                      Broadcasting Changes...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={14} />
-                      Save & Broadcast Contact Details
-                    </>
-                  )}
+                  <Save size={15} />
+                  <span>{isSaving ? 'Saving Changes...' : 'Save Contact Details & Address (Updates Landing Page + App)'}</span>
                 </button>
               </div>
 

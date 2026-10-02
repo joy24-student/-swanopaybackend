@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getAdminClient } from '../services/adminSupabase.js'
+import { getAdminClient, getShowcaseConfig } from '../services/adminSupabase.js'
 import { requireData, requirePlatformUser, requirePlatformMerchant } from '../services/merchantAccount.js'
 import {
   saveChatMessage,
@@ -17,10 +17,14 @@ export const merchantRouter = Router()
 // Public system config & notices — accessible to all app clients without requiring active session
 merchantRouter.get('/system-config', async (_req, res) => {
   try {
-    const row = requireData(await getAdminClient().from('showcase_config').select('value')
-      .eq('key', 'system_config').maybeSingle(), 'Load official support settings')
-    if (!row) return res.status(503).json({ error: 'Official support settings have not been configured' })
-    res.json({ ok: true, config: row.value })
+    let config = await getShowcaseConfig('system_config')
+    if (!config) {
+      const { data } = await getAdminClient().from('showcase_config').select('value')
+        .eq('key', 'system_config').maybeSingle()
+      config = data?.value
+    }
+    if (!config) return res.status(503).json({ error: 'Official support settings have not been configured' })
+    res.json({ ok: true, config })
   } catch (error) { res.status(503).json({ error: error.message }) }
 })
 

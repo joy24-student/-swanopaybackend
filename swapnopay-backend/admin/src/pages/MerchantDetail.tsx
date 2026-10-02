@@ -16,11 +16,9 @@ import {
   Building,
   Save,
   AlertTriangle,
+  Lock,
   Trash2,
   RefreshCw,
-  Edit,
-  Phone,
-  Mail,
 } from 'lucide-react';
 
 export default function MerchantDetail() {
@@ -45,54 +43,7 @@ export default function MerchantDetail() {
   const [keyActionResult, setKeyActionResult] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [isEditingContact, setIsEditingContact] = useState(false);
-  const [editBusinessName, setEditBusinessName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editBusinessType, setEditBusinessType] = useState('RETAIL');
-  const [savingContact, setSavingContact] = useState(false);
-  const [contactFeedback, setContactFeedback] = useState<string | null>(null);
   const navigate = useNavigate();
-
-  const handleOpenEditContact = () => {
-    setEditBusinessName(merchant?.business_name || merchant?.name || '');
-    setEditEmail(merchant?.email || '');
-    setEditPhone(merchant?.phone || '');
-    setEditBusinessType(merchant?.business_type || 'RETAIL');
-    setContactFeedback(null);
-    setIsEditingContact(true);
-  };
-
-  const handleSaveContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id) return;
-    setSavingContact(true);
-    setContactFeedback(null);
-    try {
-      const updated = {
-        business_name: editBusinessName.trim(),
-        email: editEmail.trim().toLowerCase(),
-        phone: editPhone.trim(),
-        business_type: editBusinessType.trim(),
-        updated_at: new Date().toISOString(),
-      };
-      const { error } = await adminSupabase
-        .from('merchants')
-        .update(updated)
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setMerchant((prev: any) => ({ ...prev, ...updated }));
-      setIsEditingContact(false);
-      setContactFeedback('✅ Merchant contact details saved successfully!');
-      setTimeout(() => setContactFeedback(null), 4000);
-    } catch (err: any) {
-      setContactFeedback('❌ Error updating contact: ' + err.message);
-    } finally {
-      setSavingContact(false);
-    }
-  };
 
   useEffect(() => {
     if (!id) return;
@@ -381,17 +332,7 @@ export default function MerchantDetail() {
               <User size={16} color="var(--brand-primary)" />
               Merchant Profile
             </h3>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={handleOpenEditContact}
-                className="btn btn-secondary btn-sm"
-                title="Edit merchant name, phone number, and email"
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <Edit size={13} />
-                <span>Edit Contact Info</span>
-              </button>
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleToggleStatus}
                 disabled={statusLoading}
@@ -412,21 +353,6 @@ export default function MerchantDetail() {
               </button>
             </div>
           </div>
-
-          {contactFeedback && (
-            <div style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              marginBottom: 12,
-              fontSize: 13,
-              background: contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-              color: contactFeedback.startsWith('✅') ? '#4ade80' : '#f87171',
-              border: `1px solid ${contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`
-            }}>
-              {contactFeedback}
-            </div>
-          )}
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
             <div><strong>Business Name:</strong> {merchant.business_name || merchant.name || '--'}</div>
             <div><strong>Email:</strong> {merchant.email || '--'}</div>
@@ -995,206 +921,6 @@ export default function MerchantDetail() {
         </div>
 
       </div>
-
-      {/* Edit Merchant Contact Modal */}
-      {isEditingContact && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.65)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: 16
-        }}>
-          <div style={{
-            background: 'var(--bg-surface, #1e293b)',
-            borderRadius: 16,
-            maxWidth: 500,
-            width: '100%',
-            padding: 24,
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
-            border: '1px solid var(--border-default, #334155)',
-            color: 'var(--text-primary, #f8fafc)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: 'rgba(59,130,246,0.15)',
-                  color: '#3b82f6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Edit size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Edit Merchant Details</h3>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary, #94a3b8)' }}>Update business contact info, phone number & email</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditingContact(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-secondary, #94a3b8)',
-                  cursor: 'pointer',
-                  fontSize: 20,
-                  lineHeight: 1,
-                  padding: 4
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {contactFeedback && (
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: 8,
-                marginBottom: 16,
-                fontSize: 13,
-                background: contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                color: contactFeedback.startsWith('✅') ? '#4ade80' : '#f87171',
-                border: `1px solid ${contactFeedback.startsWith('✅') ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`
-              }}>
-                {contactFeedback}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveContact}>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
-                  Business / Brand Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editBusinessName}
-                  onChange={(e) => setEditBusinessName(e.target.value)}
-                  placeholder="e.g. Acme Tech Solutions"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: 'var(--bg-input, #0f172a)',
-                    border: '1px solid var(--border-default, #334155)',
-                    color: '#fff',
-                    fontSize: 14,
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
-                  Phone Number
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    required
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="e.g. +8801700000000"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px 10px 36px',
-                      borderRadius: 8,
-                      background: 'var(--bg-input, #0f172a)',
-                      border: '1px solid var(--border-default, #334155)',
-                      color: '#fff',
-                      fontSize: 14,
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <Phone size={15} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-secondary, #94a3b8)' }} />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
-                  Email Address
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="email"
-                    required
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    placeholder="e.g. merchant@company.com"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px 10px 36px',
-                      borderRadius: 8,
-                      background: 'var(--bg-input, #0f172a)',
-                      border: '1px solid var(--border-default, #334155)',
-                      color: '#fff',
-                      fontSize: 14,
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <Mail size={15} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-secondary, #94a3b8)' }} />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary, #cbd5e1)' }}>
-                  Business Category / Type
-                </label>
-                <select
-                  value={editBusinessType}
-                  onChange={(e) => setEditBusinessType(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: 'var(--bg-input, #0f172a)',
-                    border: '1px solid var(--border-default, #334155)',
-                    color: '#fff',
-                    fontSize: 14,
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <option value="RETAIL">Retail / Shop</option>
-                  <option value="ECOMMERCE">E-Commerce</option>
-                  <option value="SAAS">Software / SaaS</option>
-                  <option value="DIGITAL_GOODS">Digital Goods / Gaming</option>
-                  <option value="SERVICES">Services / Freelancing</option>
-                  <option value="EDUCATION">Education / Coaching</option>
-                  <option value="OTHER">Other</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingContact(false)}
-                  disabled={savingContact}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingContact}
-                  className="btn btn-primary"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                >
-                  {savingContact ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
