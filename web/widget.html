@@ -120,9 +120,18 @@
                 <h1 class="font-bold text-gray-900 text-sm md:text-base" id="merchant-name">DreamMart</h1>
                 <svg class="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path></svg>
               </div>
-              <p class="text-[10px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <p class="text-[10px] text-gray-400" data-translate="verifiedSecure">Verified Secure</p>
+                <span class="text-gray-300 text-[10px]">•</span>
+                <div id="realtime-device-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all duration-300 bg-amber-50 text-amber-700 border-amber-200">
+                  <span id="badge-dot-container" class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </span>
+                  <span id="realtime-device-badge-text">Checking Terminal...</span>
+                </div>
+              </div>
             </div>
-          </div>
 
           <!-- Language Selector -->
           <div class="flex gap-1">
@@ -211,6 +220,46 @@
         <!-- STEP 1: CHOOSE PAYMENT METHOD -->
         <div class="hidden" id="view1">
           <div>
+            <!-- Real-time Terminal Status Header Bar in Step 1 -->
+            <div id="step1-terminal-status-bar" class="mb-3 p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all duration-300 bg-gray-50 border-gray-200 text-gray-600">
+              <div class="flex items-center gap-2">
+                <span id="terminal-dot-pulse" class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-gray-500"></span>
+                </span>
+                <span id="terminal-status-title" class="font-extrabold text-[11px]">Connecting to Merchant Terminal...</span>
+              </div>
+              <span id="terminal-status-pill" class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-gray-200 text-gray-700">Checking</span>
+            </div>
+
+            <!-- Offline Warning Block (displayed when merchant phone is disconnected) -->
+            <div id="terminal-offline-block" class="hidden mb-4 bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 shadow-sm text-left">
+              <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center flex-shrink-0 text-lg mt-0.5">
+                  📵
+                </div>
+                <div class="flex-grow">
+                  <div class="flex items-center justify-between">
+                    <h4 class="font-black text-rose-900 text-xs flex items-center gap-1.5">
+                      Merchant Phone Offline
+                    </h4>
+                    <span class="text-[8px] font-black text-white bg-rose-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Payment Paused</span>
+                  </div>
+                  <p class="text-[11px] text-rose-800 font-semibold mt-1 leading-snug">
+                    The merchant's automated payment terminal is currently offline. You cannot proceed with payment until the merchant phone is connected.
+                  </p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <button type="button" onclick="retryDeviceCheck()" class="inline-flex items-center gap-1 text-[11px] font-black bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl shadow transition-all cursor-pointer">
+                      <span>🔄 Check Again</span>
+                    </button>
+                    <a id="offline-call-merchant-btn" href="#" class="inline-flex items-center gap-1 text-[11px] font-bold bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 px-3 py-1.5 rounded-xl transition-all">
+                      <span>📞 Call Merchant</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <h2 class="text-base font-bold text-gray-800 mb-0.5" data-translate="choosePay">Choose Payment Method</h2>
             <p class="text-[11px] text-gray-400 mb-4" data-translate="selectPref">Select your preferred payment option</p>
 
@@ -252,7 +301,7 @@
             </div>
           </div>
 
-          <button class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors text-xs mt-4" onclick="goToStep(2)" data-translate="continuePay">
+          <button id="btn-continue-step1" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors text-xs mt-4 cursor-pointer" onclick="goToStep(2)" data-translate="continuePay">
             Continue to Pay
           </button>
         </div>
@@ -260,6 +309,18 @@
         <!-- STEP 2: SCAN & PAY -->
         <div class="hidden" id="view2">
           <div>
+            <!-- Step 2 Terminal Offline Warning Banner -->
+            <div id="step2-offline-banner" class="hidden mb-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between shadow-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-base">📵</span>
+                <div>
+                  <p class="font-extrabold text-[11px] text-rose-900 leading-none">Merchant Phone Disconnected</p>
+                  <p class="text-[10px] text-rose-700 mt-0.5">Payment verification will resume once merchant terminal reconnects.</p>
+                </div>
+              </div>
+              <button type="button" onclick="retryDeviceCheck()" class="text-[10px] font-bold bg-rose-600 text-white px-2 py-1 rounded shadow-sm hover:bg-rose-700 transition-colors">Retry</button>
+            </div>
+
             <!-- Selected Payment Method Card -->
             <div class="flex items-center justify-between p-2.5 border border-rose-100 bg-white rounded-xl shadow-sm mb-3">
               <div class="flex items-center gap-3">

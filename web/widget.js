@@ -133,6 +133,12 @@ const translations = {
     appealFileError: "Screenshot upload is required.",
     helplineTitle: "Need Help?",
     helplineSub: "24/7 Helpline Support",
+    terminalOnline: "Gateway Online",
+    terminalOffline: "Terminal Disconnected",
+    terminalChecking: "Checking Connection...",
+    terminalReadyDesc: "Merchant Terminal Online & Ready",
+    terminalOfflineDesc: "Merchant Mobile Terminal Disconnected",
+    btnPhoneOffline: "Merchant Phone Offline — Cannot Continue",
   },
   bn: {
     stepOf: "ধাপ", of: "এর",
@@ -196,6 +202,12 @@ const translations = {
     appealFileError: "স্ক্রিনশট আপলোড করা আবশ্যক।",
     helplineTitle: "সহায়তা প্রয়োজন?",
     helplineSub: "২৪/৭ হেল্পলাইন সাপোর্ট",
+    terminalOnline: "গেটওয়ে অনলাইন",
+    terminalOffline: "টার্মিনাল অফলাইন",
+    terminalChecking: "সংযোগ যাচাই হচ্ছে...",
+    terminalReadyDesc: "মার্চেন্ট টার্মিনাল অনলাইন ও প্রস্তুত",
+    terminalOfflineDesc: "মার্চেন্ট মোবাইল ফোন বিচ্ছিন্ন রয়েছে",
+    btnPhoneOffline: "মার্চেন্ট ফোন অফলাইন — পেমেন্ট বন্ধ",
   }
 };
 
@@ -524,8 +536,9 @@ function loadGatewayConfig(merchantIdParam) {
       }
 
       // ── Device active gate ──
-      // device_active: true = proceed | false = show offline | null = skip check
+      // device_active: true = proceed | false = show offline & block payment | null = checking
       handleDeviceStatus(config.device_active, config.device_last_seen, config.device_count);
+      startDeviceStatusPolling();
     })
     .catch(err => console.warn('[gateway-config] Could not load config:', err.message));
 }
@@ -534,7 +547,43 @@ function loadGatewayConfig(merchantIdParam) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Device & Payment Method Active Gate — controls whether payment gateway is accessible
 // ──────────────────────────────────────────────────────────────────────────────
+window.isMerchantDeviceOnline = null; // null = checking, true = online, false = offline
+let devicePollingInterval = null;
+let lastKnownDeviceState = null;
+
+function showToastNotification(message, type = 'info') {
+  let toastContainer = document.getElementById("widget-toast-container");
+  if (!toastContainer) {
+    toastContainer = document.createElement("div");
+    toastContainer.id = "widget-toast-container";
+    toastContainer.className = "fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 max-w-sm w-full px-4 pointer-events-none";
+    document.body.appendChild(toastContainer);
+  }
+  const toast = document.createElement("div");
+  const isSuccess = type === 'success';
+  const isError = type === 'error';
+  toast.className = `p-3 rounded-xl shadow-xl text-xs font-bold pointer-events-auto border flex items-center gap-2 transform transition-all duration-300 translate-y-[-10px] opacity-0 ${
+    isSuccess ? 'bg-emerald-600 text-white border-emerald-700' :
+    isError ? 'bg-rose-600 text-white border-rose-700' :
+    'bg-gray-800 text-white border-gray-900'
+  }`;
+  toast.innerHTML = `<span>${isSuccess ? '🟢' : isError ? '🔴' : 'ℹ️'}</span><span class="flex-grow">${message}</span>`;
+  toastContainer.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-[-10px]', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+  });
+  setTimeout(() => {
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    toast.classList.add('translate-y-[-10px]', 'opacity-0');
+    setTimeout(() => toast.remove(), 350);
+  }, 4000);
+}
+
 function handleDeviceStatus(deviceActive, lastSeen, deviceCount) {
+  const isOnline = (deviceActive === true);
+  window.isMerchantDeviceOnline = isOnline;
+
   const hasReceivingNumbers = Boolean(
     (merchantReceivingNumbers && Object.values(merchantReceivingNumbers).some(v => v && !isFakeNumber(v) && String(v).trim().length > 5)) ||
     (!isFakeNumber(merchantDefaultNumber) && String(merchantDefaultNumber).trim().length > 5)
@@ -548,31 +597,157 @@ function handleDeviceStatus(deviceActive, lastSeen, deviceCount) {
     return;
   }
 
-  if (deviceActive === false) {
-    // Device is temporarily offline or reconnecting
-    hideMerchantOfflineView();
-    const banner = document.getElementById("merchant-offline-banner");
-    if (banner) {
-      banner.classList.remove("hidden");
-      const bannerText = banner.querySelector("p") || banner;
-      bannerText.innerText = "Merchant mobile terminal is temporarily reconnecting. Your payment verification will process smoothly once connected.";
-    }
+  // 1. Update Real-time Badge in Header
+  const badge = document.getElementById("realtime-device-badge");
+  const badgeText = document.getElementById("realtime-device-badge-text");
+  const dotContainer = document.getElementById("badge-dot-container");
 
-    const contactBtn  = document.getElementById("merchant-contact-btn");
-    const offlineContactBtn = document.getElementById("offline-contact-btn");
-    if (contactBtn) {
-      contactBtn.href = `tel:${merchantDefaultNumber}`;
-      contactBtn.innerText = `Call Merchant (${merchantDefaultNumber})`;
+  if (badge && badgeText) {
+    if (isOnline) {
+      badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold border transition-all duration-300 bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm";
+      badgeText.innerText = (currentLang === 'bn') ? "গেটওয়ে অনলাইন" : "Gateway Online";
+      if (dotContainer) {
+        dotContainer.innerHTML = `
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        `;
+      }
+    } else if (deviceActive === false) {
+      badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold border transition-all duration-300 bg-rose-50 text-rose-700 border-rose-300 shadow-sm";
+      badgeText.innerText = (currentLang === 'bn') ? "টার্মিনাল অফলাইন" : "Terminal Disconnected";
+      if (dotContainer) {
+        dotContainer.innerHTML = `
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+        `;
+      }
+    } else {
+      badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold border transition-all duration-300 bg-amber-50 text-amber-700 border-amber-300";
+      badgeText.innerText = (currentLang === 'bn') ? "সংযোগ যাচাই হচ্ছে..." : "Checking Terminal...";
+      if (dotContainer) {
+        dotContainer.innerHTML = `
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+        `;
+      }
     }
-    if (offlineContactBtn) {
-      offlineContactBtn.href = `tel:${merchantDefaultNumber}`;
+  }
+
+  // 2. Update Step 1 Status Bar
+  const statusBar = document.getElementById("step1-terminal-status-bar");
+  const statusTitle = document.getElementById("terminal-status-title");
+  const statusPill = document.getElementById("terminal-status-pill");
+  const dotPulse = document.getElementById("terminal-dot-pulse");
+
+  if (statusBar && statusTitle && statusPill) {
+    if (isOnline) {
+      statusBar.className = "mb-3 p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all duration-300 bg-emerald-50/80 border-emerald-200 text-emerald-900";
+      statusTitle.innerText = (currentLang === 'bn') ? "মার্চেন্ট টার্মিনাল অনলাইন ও প্রস্তুত" : "Merchant Terminal Online & Ready";
+      statusPill.className = "text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-600 text-white tracking-wider";
+      statusPill.innerText = "ONLINE";
+      if (dotPulse) {
+        dotPulse.innerHTML = `
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        `;
+      }
+    } else if (deviceActive === false) {
+      statusBar.className = "mb-3 p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all duration-300 bg-rose-50/80 border-rose-200 text-rose-900";
+      statusTitle.innerText = (currentLang === 'bn') ? "মার্চেন্ট মোবাইল ফোন বিচ্ছিন্ন রয়েছে" : "Merchant Mobile Terminal Disconnected";
+      statusPill.className = "text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-600 text-white tracking-wider";
+      statusPill.innerText = "OFFLINE";
+      if (dotPulse) {
+        dotPulse.innerHTML = `
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+        `;
+      }
+    } else {
+      statusBar.className = "mb-3 p-2.5 rounded-xl border flex items-center justify-between text-xs transition-all duration-300 bg-gray-50 border-gray-200 text-gray-600";
+      statusTitle.innerText = (currentLang === 'bn') ? "টার্মিনালে সংযোগ স্থাপন করা হচ্ছে..." : "Connecting to Merchant Terminal...";
+      statusPill.className = "text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-gray-200 text-gray-700 tracking-wider";
+      statusPill.innerText = "CHECKING";
+    }
+  }
+
+  // 3. Update Step 1 Offline Blocking Block & Continue Button
+  const offlineBlock = document.getElementById("terminal-offline-block");
+  const continueBtn = document.getElementById("btn-continue-step1");
+  const offlineCallBtn = document.getElementById("offline-call-merchant-btn");
+  if (offlineCallBtn && merchantDefaultNumber) {
+    offlineCallBtn.href = `tel:${merchantDefaultNumber}`;
+  }
+
+  const step2OfflineBanner = document.getElementById("step2-offline-banner");
+  const completePaymentBtn = document.getElementById("complete-payment-btn");
+
+  if (deviceActive === false) {
+    // ── MERCHANT PHONE IS OFFLINE: BLOCK PAYMENT COMPLETELY ──
+    hideMerchantOfflineView();
+    if (offlineBlock) offlineBlock.classList.remove("hidden");
+    if (continueBtn) {
+      continueBtn.disabled = true;
+      continueBtn.className = "w-full bg-gray-200 text-gray-500 font-bold py-3 rounded-xl text-xs mt-4 cursor-not-allowed border border-gray-300 shadow-none flex items-center justify-center gap-2 select-none";
+      continueBtn.innerHTML = (currentLang === 'bn')
+        ? '<span>📵</span> <span>মার্চেন্ট ফোন অফলাইন — পেমেন্ট বন্ধ</span>'
+        : '<span>📵</span> <span>Merchant Phone Offline — Cannot Continue</span>';
+    }
+    if (step2OfflineBanner) step2OfflineBanner.classList.remove("hidden");
+    if (completePaymentBtn) {
+      completePaymentBtn.setAttribute("data-offline-blocked", "true");
     }
   } else {
-    // Device is active or unknown — hide offline overlay and banner
+    // ── MERCHANT PHONE IS ONLINE OR VERIFIED ──
     hideMerchantOfflineView();
-    const banner = document.getElementById("merchant-offline-banner");
-    if (banner) banner.classList.add("hidden");
+    if (offlineBlock) offlineBlock.classList.add("hidden");
+    if (continueBtn) {
+      continueBtn.disabled = false;
+      continueBtn.className = "w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-colors text-xs mt-4 cursor-pointer";
+      continueBtn.innerText = translations[currentLang]?.continuePay || "Continue to Pay";
+    }
+    if (step2OfflineBanner) step2OfflineBanner.classList.add("hidden");
+    if (completePaymentBtn) {
+      completePaymentBtn.removeAttribute("data-offline-blocked");
+    }
   }
+
+  // If state transitioned from offline to online, show positive feedback
+  if (lastKnownDeviceState === false && isOnline === true) {
+    showToastNotification(
+      currentLang === 'bn' ? 'মার্চেন্ট ফোন সংযুক্ত হয়েছে! আপনি এখন পেমেন্ট করতে পারেন।' : 'Merchant phone connected! You may now proceed with payment.',
+      'success'
+    );
+  } else if (lastKnownDeviceState === true && deviceActive === false) {
+    showToastNotification(
+      currentLang === 'bn' ? 'মার্চেন্ট ফোন অফলাইনে চলে গেছে। পেমেন্ট প্রক্রিয়া স্থগিত করা হয়েছে।' : 'Merchant phone disconnected. Payment process paused.',
+      'error'
+    );
+  }
+
+  lastKnownDeviceState = deviceActive;
+}
+
+function startDeviceStatusPolling() {
+  if (devicePollingInterval) clearInterval(devicePollingInterval);
+  const qMid = merchantId || (new URLSearchParams(window.location.search).get("merchant_id"));
+  if (!qMid || !backendUrl) return;
+
+  devicePollingInterval = setInterval(() => {
+    if (paymentResolved) {
+      clearInterval(devicePollingInterval);
+      return;
+    }
+    fetch(`${backendUrl}/v1/payment/device-status?merchant_id=${encodeURIComponent(qMid)}`, {
+      signal: AbortSignal.timeout(4000)
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && typeof data.device_active !== 'undefined') {
+          handleDeviceStatus(data.device_active, data.device_last_seen, data.device_count);
+        }
+      })
+      .catch(() => {});
+  }, 6000);
 }
 
 function showMerchantOfflineView(lastSeen, mode = 'DEVICE_OFFLINE') {
@@ -796,6 +971,12 @@ function connectSwapnoPaySocket(url, orderIdParam) {
       // Join order room immediately
       socketClient.emit('join_order', { order_id: orderIdParam });
 
+      // Watch merchant device status in real time
+      const effMid = merchantId || (new URLSearchParams(window.location.search).get("merchant_id"));
+      if (effMid) {
+        socketClient.emit('watch_merchant', { merchant_id: effMid });
+      }
+
       // Start 15-second heartbeat to keep connection alive and detect fast disconnect
       if (socketHeartbeatInterval) clearInterval(socketHeartbeatInterval);
       socketHeartbeatInterval = setInterval(() => {
@@ -812,6 +993,31 @@ function connectSwapnoPaySocket(url, orderIdParam) {
     socketClient.on('pong_backend', () => {
       // Heartbeat acknowledged — connection is alive
     });
+
+    // ── Real-time Device Status Updates ──
+    const handleLiveDeviceUpdate = (data) => {
+      console.log('[socket.io] Live device status update:', data);
+      if (!data) return;
+      const effMid = merchantId || (new URLSearchParams(window.location.search).get("merchant_id"));
+      if (data.merchant_id && effMid && data.merchant_id !== effMid) return;
+      handleDeviceStatus(data.device_active, data.device_last_seen || data.last_seen, data.device_count);
+    };
+
+    socketClient.on('device_status_update', handleLiveDeviceUpdate);
+    socketClient.on('merchant_heartbeat', (data) => {
+      handleLiveDeviceUpdate({ ...data, device_active: true });
+    });
+    socketClient.on('merchant_device_online', (data) => {
+      handleLiveDeviceUpdate({ ...data, device_active: true });
+    });
+    socketClient.on('merchant_device_offline', (data) => {
+      handleLiveDeviceUpdate({ ...data, device_active: false });
+    });
+
+    const effWatchMid = merchantId || (new URLSearchParams(window.location.search).get("merchant_id"));
+    if (effWatchMid) {
+      socketClient.on(`device_status:${effWatchMid}`, handleLiveDeviceUpdate);
+    }
 
     // ── Payment status event — emitted by backend after /v1/payment/verify ──
     socketClient.on('payment_status', (data) => {
@@ -1260,6 +1466,23 @@ function updateFlowStage(step) {
 
 function goToStep(step) {
   if (step === 2) {
+    if (window.isMerchantDeviceOnline === false) {
+      const offlineBlock = document.getElementById("terminal-offline-block");
+      if (offlineBlock) {
+        offlineBlock.classList.remove("hidden");
+        offlineBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        offlineBlock.classList.add("ring-4", "ring-rose-400", "animate-pulse");
+        setTimeout(() => offlineBlock.classList.remove("ring-4", "ring-rose-400", "animate-pulse"), 2000);
+      }
+      showToastNotification(
+        currentLang === 'bn'
+          ? "মার্চেন্ট ফোন অফলাইনে রয়েছে। সংযোগ না হওয়া পর্যন্ত এগিয়ে যাওয়া যাবে না।"
+          : "Merchant phone is offline. You cannot proceed until terminal is connected.",
+        "error"
+      );
+      return;
+    }
+
     const phoneInput = document.getElementById("customer-phone").value.trim();
     if (!phoneInput || phoneInput.length < 10) {
       document.getElementById("phone-error-msg").classList.remove("hidden");

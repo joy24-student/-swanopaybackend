@@ -403,16 +403,23 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
         ).catch(e => console.warn('[payment/heartbeat] merchants update notice:', e.message))
       }
 
-      // Broadcast to merchant room for real-time dashboard listeners
+      // Broadcast to merchant room and watch rooms for real-time checkout & dashboard listeners
       if (io) {
         for (const k of candidateKeys) {
-          io.to(`merchant:${k}`).emit('merchant_heartbeat', {
+          const payload = {
             merchant_id: k,
             device_id: device_id || null,
             battery_level: battery_level ?? null,
             status: status || 'ONLINE',
+            device_active: true,
+            device_last_seen: nowIso,
+            device_count: 1,
             ts: now,
-          })
+          }
+          io.to(`merchant:${k}`).emit('merchant_heartbeat', payload)
+          io.to(`merchant:${k}`).emit('device_status_update', payload)
+          io.to(`merchant_watch:${k}`).emit('device_status_update', payload)
+          io.emit(`device_status:${k}`, payload)
         }
       }
 
@@ -1009,30 +1016,7 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     }
 
     try {
-      let order = await getOrderFromMerchantDB(merchantId, orderId)
-      if (!order) {
-        try {
-          const { getFormOrderSubmission } = await import('./form.js')
-          const formSub = getFormOrderSubmission(orderId)
-          if (formSub) {
-            order = {
-              id: formSub.order_id || formSub.id,
-              tran_id: formSub.tran_id,
-              amount: formSub.amount,
-              status: formSub.payment_status || 'PENDING',
-              cus_name: formSub.customer_name,
-              cus_phone: formSub.customer_phone,
-              cus_email: formSub.customer_email,
-              product_name: formSub.answers?.product_title || formSub.product_name || 'Product Order',
-              payment_method: formSub.payment_method || 'bKash',
-              merchant_id: formSub.merchant_id || merchantId,
-              merchant_name: formSub.merchant_name || null,
-              created_at: formSub.created_at
-            }
-          }
-        } catch (_) {}
-      }
-
+      const order = await getOrderFromMerchantDB(merchantId, orderId)
       if (!order) {
         return res.status(404).json({ ok: false, error: 'Order not found' })
       }
