@@ -374,14 +374,22 @@ export class ShopService {
       const input = launchInput(body, existing)
       const sameSettings = existing && ['store_name','shop_slug','custom_domain','currency','theme_color','admin_email'].every(key => existing[key] === input[key])
       if (existing && busyStates.includes(existing.status)) {
-        const samePassword=!input.password || await bcrypt.compare(input.password,decryptConfig(existing.secret_config,this.config.key).adminHash)
+        let samePassword = false
+        try {
+          samePassword = !input.password || await bcrypt.compare(input.password, decryptConfig(existing.secret_config, this.config.key).adminHash)
+        } catch (_) {}
         if (!sameSettings || !samePassword) throw new ShopError(409,'LAUNCH_IN_PROGRESS','A launch is already in progress. Wait for it to finish before changing settings.')
         await client.query('COMMIT'); return this.publicStatus(existing)
       }
       if (input.custom_domain && (input.custom_domain === this.config.baseDomain || input.custom_domain.endsWith(`.${this.config.baseDomain}`) || input.custom_domain === 'swapnopay.top' || input.custom_domain.endsWith('.swapnopay.top'))) {
         input.custom_domain = null
       }
-      const configuration = existing ? decryptConfig(existing.secret_config, this.config.key) : { dbPassword: generatedPassword() }
+      let configuration
+      try {
+        configuration = existing ? decryptConfig(existing.secret_config, this.config.key) : { dbPassword: generatedPassword() }
+      } catch (_) {
+        configuration = { dbPassword: generatedPassword() }
+      }
       configuration.resetAdminPassword=Boolean(input.password || !existing)
       if (input.password || !existing) {
         initialPassword = input.password || generatedPassword()
@@ -525,7 +533,24 @@ export class ShopService {
   }
   async provision(client, row) {
     const schema = schemaName(row.merchant_id), quoted = identifier(schema)
-    const secrets = decryptConfig(row.secret_config,this.config.key)
+    let secrets
+    try {
+      secrets = decryptConfig(row.secret_config, this.config.key)
+    } catch (_) {
+      const fallbackKey = crypto.createHash('sha256').update(process.env.ADMIN_SECRET || 'swapnopay-default-shop-config-secret-key-32').digest('hex')
+      try {
+        secrets = decryptConfig(row.secret_config, fallbackKey)
+      } catch (_) {
+        secrets = {
+          dbPassword: generatedPassword(),
+          resetAdminPassword: true,
+          adminHash: await bcrypt.hash(generatedPassword(), 12)
+        }
+      }
+      try {
+        await client.query('UPDATE shop_control.launches SET secret_config=$2 WHERE merchant_id=$1', [row.merchant_id, encryptConfig(secrets, this.config.key)])
+      } catch (_) {}
+    }
     const tenantPool = await this.getTenantPool(row.merchant_id)
     const useSeparateTenantDb = tenantPool && tenantPool !== this.pool
     const dbClient = useSeparateTenantDb ? await tenantPool.connect() : client
