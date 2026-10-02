@@ -17,11 +17,14 @@ echo -e "${CYAN}====================================================${NC}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 1. Update Nginx configuration to listen on port 8088
+# 1. Update Nginx configuration: Disable conflicting 443/80 listeners
 echo -e "${YELLOW}[1/4] Configuring Nginx to listen on internal port 8088...${NC}"
-rm -f /etc/nginx/sites-enabled/default
 
-# Use swapnopay.top.conf template
+# Remove conflicting default and duckdns configs from sites-enabled
+rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-enabled/*duckdns*
+rm -f /etc/nginx/sites-enabled/*swapno.duckdns*
+
 CONF_SRC="$SCRIPT_DIR/deploy/swapnopay.top.conf"
 if [ ! -f "$CONF_SRC" ]; then
     CONF_SRC="/var/www/swapnopay/deploy/swapnopay.top.conf"
@@ -29,27 +32,37 @@ fi
 
 if [ -f "$CONF_SRC" ]; then
     cp "$CONF_SRC" /etc/nginx/sites-available/swapnopay.top
-    # Replace all listen 80 directives with 8088
-    sed -i -E 's/listen ([^;]* )?80([^0-9;]*);/listen \18088\2;/g' /etc/nginx/sites-available/swapnopay.top
-    sed -i -E 's/listen \[::\]:80([^0-9;]*);/listen [::]:8088\1;/g' /etc/nginx/sites-available/swapnopay.top
 fi
 
-# Also replace in any existing enabled sites
-for f in /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*; do
-    if [ -f "$f" ]; then
-        sed -i -E 's/listen ([^;]* )?80([^0-9;]*);/listen \18088\2;/g' "$f" 2>/dev/null || true
-        sed -i -E 's/listen \[::\]:80([^0-9;]*);/listen [::]:8088\1;/g' "$f" 2>/dev/null || true
+# Replace ALL port 80 and 443 listeners across all Nginx configs with internal ports (8088 / 8443)
+for dir in /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/conf.d; do
+    if [ -d "$dir" ]; then
+        for f in "$dir"/*; do
+            if [ -f "$f" ]; then
+                # Port 80 -> 8088
+                sed -i -E 's/listen ([^;]* )?80([^0-9;]*);/listen \18088\2;/g' "$f" 2>/dev/null || true
+                sed -i -E 's/listen \[::\]:80([^0-9;]*);/listen [::]:8088\1;/g' "$f" 2>/dev/null || true
+                # Port 443 -> 8443 (Caddy handles external 443)
+                sed -i -E 's/listen ([^;]* )?443([^0-9;]*);/listen \18443\2;/g' "$f" 2>/dev/null || true
+                sed -i -E 's/listen \[::\]:443([^0-9;]*);/listen [::]:8443\1;/g' "$f" 2>/dev/null || true
+            fi
+        done
     fi
 done
 
+# Ensure swapnopay.top is enabled
 ln -sf /etc/nginx/sites-available/swapnopay.top /etc/nginx/sites-enabled/swapnopay.top
 
 echo -e "${YELLOW}Testing Nginx syntax...${NC}"
 nginx -t
 
 echo -e "${YELLOW}Restarting Nginx service...${NC}"
-systemctl restart nginx
-echo -e "${GREEN}✓ Nginx is active and listening on port 8088!${NC}"
+systemctl restart nginx || {
+    echo -e "${RED}❌ Nginx restart failed. Checking journal logs:${NC}"
+    journalctl -xeu nginx.service --no-pager -n 15
+    exit 1
+}
+echo -e "${GREEN}✓ Nginx is active and listening on internal port 8088!${NC}"
 
 # 2. Get Docker Gateway IP for Caddy
 echo -e "${YELLOW}[2/4] Detecting Caddy Docker network gateway IP...${NC}"
@@ -64,26 +77,28 @@ echo -e "${YELLOW}[3/4] Updating /opt/skillbridge/infra/Caddyfile...${NC}"
 CADDYFILE="/opt/skillbridge/infra/Caddyfile"
 
 # Backup Caddyfile
-cp "$CADDYFILE" "${CADDYFILE}.bak_$(date +%s)" 2>/dev/null || true
+cp "$CADDYFILE" "${CADDYFILE}.bak" 2>/dev/null || true
 
-# Strip any previous SwapnoPay lines
+# Strip any previous SwapnoPay lines cleanly using python
 python3 -c "
-with open('$CADDYFILE', 'r') as f:
+caddy_path = '$CADDYFILE'
+with open(caddy_path, 'r') as f:
     lines = f.readlines()
 clean = []
 skip = False
 for line in lines:
-    if 'SwapnoPay' in line or 'swapnopay.top' in line:
+    lower = line.lower()
+    if 'swapnopay' in lower or 'swapno.duckdns' in lower or '8088' in lower:
         skip = True
         continue
-    if skip and line.strip().startswith('}'):
-        skip = False
+    if skip:
+        if line.strip() == '}' or line.strip() == '}OF':
+            skip = False
         continue
-    if not skip:
-        clean.append(line)
-with open('$CADDYFILE', 'w') as f:
+    clean.append(line)
+with open(caddy_path, 'w') as f:
     f.writelines(clean)
-" 2>/dev/null || sed -i '/swapnopay/Id' "$CADDYFILE"
+" 2>/dev/null || true
 
 # Append clean SwapnoPay block
 cat << EOF >> "$CADDYFILE"
@@ -100,8 +115,8 @@ docker exec infra-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 echo -e "${GREEN}✓ Caddy reloaded successfully!${NC}"
 
 echo -e "${CYAN}====================================================${NC}"
-echo -e "${GREEN}  🎉 All set! Caddy is obtaining SSL certificates.    ${NC}"
+echo -e "${GREEN}  🎉 All set! Caddy is now securing SwapnoPay.        ${NC}"
 echo -e "${CYAN}====================================================${NC}"
-sleep 3
-echo -e "${YELLOW}Testing local response from Nginx on :8088...${NC}"
-curl -s -o /dev/null -w "Nginx port 8088 HTTP status: %{http_code}\n" -H "Host: admin.swapnopay.top" http://127.0.0.1:8088/ || true
+sleep 2
+echo -e "${YELLOW}Testing Nginx on port 8088...${NC}"
+curl -s -o /dev/null -w "HTTP response code: %{http_code}\n" -H "Host: admin.swapnopay.top" http://127.0.0.1:8088/ || true
