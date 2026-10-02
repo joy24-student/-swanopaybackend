@@ -147,13 +147,21 @@ export class ShopService {
     if (dependencies.pool) {
       this.pool = dependencies.pool
     } else if (config.connectionString) {
-      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(config.connectionString) || Boolean(config.sslmode && config.sslmode !== 'disable')
+      let connStr = config.connectionString
+      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(config.sslmode && config.sslmode !== 'disable')
+      if (isSsl) {
+        try {
+          const u = new URL(connStr)
+          u.searchParams.set('sslmode', 'no-verify')
+          connStr = u.toString()
+        } catch (_) {}
+      }
       this.pool = new Pool({
-        connectionString: config.connectionString,
+        connectionString: connStr,
         max: 6,
         connectionTimeoutMillis: 8000,
         idleTimeoutMillis: 30000,
-        ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
+        ssl: isSsl ? { rejectUnauthorized: false } : undefined
       })
     } else if (config.useEmbedded) {
       const dbPath = path.resolve(config.runtime, 'shop-db')
@@ -269,13 +277,21 @@ export class ShopService {
     if (resolved.connectionString && resolved.connectionString !== this.config.connectionString) {
       let pool = this.tenantPools.get(resolved.connectionString)
       if (!pool) {
-        const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(resolved.connectionString) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
+        let connStr = resolved.connectionString
+        const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(connStr) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
+        if (isSsl) {
+          try {
+            const u = new URL(connStr)
+            u.searchParams.set('sslmode', 'no-verify')
+            connStr = u.toString()
+          } catch (_) {}
+        }
         pool = new Pool({
-          connectionString: resolved.connectionString,
+          connectionString: connStr,
           max: 4,
           connectionTimeoutMillis: 8000,
           idleTimeoutMillis: 30000,
-          ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
+          ssl: isSsl ? { rejectUnauthorized: false } : undefined
         })
         this.tenantPools.set(resolved.connectionString, pool)
       }
