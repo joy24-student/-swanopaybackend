@@ -89,7 +89,7 @@ with open('$CADDYFILE', 'w') as f:
 cat << EOF >> "$CADDYFILE"
 
 # ── SwapnoPay Platform (Admin, Web, API & Merchant Storefronts) ───────────────
-admin.swapnopay.top, pay.swapnopay.top, swapnopay.top, www.swapnopay.top, api.swapnopay.top, shop.swapnopay.top, shops.swapnopay.top {
+admin.swapnopay.top, pay.swapnopay.top, swapnopay.top, www.swapnopay.top, api.swapnopay.top, shop.swapnopay.top {
     reverse_proxy ${GATEWAY_IP}:8088
 }
 EOF
