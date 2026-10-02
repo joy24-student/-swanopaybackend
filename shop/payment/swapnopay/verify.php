@@ -50,15 +50,21 @@ if (!empty($supabase_url) && !empty($supabase_service_key)) {
     if (!empty($numbers[0]['number'])) {
         $receiving_number = $numbers[0]['number'];
     }
-} else if ($merchant_id) {
-    // Hosted Storefront Mode: Query SwapnoPay Central Gateway
+}
+
+if (empty($receiving_number) && $merchant_id) {
+    // Hosted Storefront Mode or Fallback: Query SwapnoPay Central Gateway
     $ch = curl_init("{$api_url}/v1/payment/config?merchant_id=" . urlencode($merchant_id));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $res = curl_exec($ch);
     curl_close($ch);
     $config_res = json_decode($res, true);
     if (!empty($config_res['receiving_numbers'][$method])) {
         $receiving_number = $config_res['receiving_numbers'][$method];
+    } elseif (!empty($config_res['default_number'])) {
+        $receiving_number = $config_res['default_number'];
     }
 }
 $is_number_available = !empty($receiving_number);
