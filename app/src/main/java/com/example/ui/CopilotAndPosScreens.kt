@@ -10675,24 +10675,69 @@ fun ActionConfirmationCard(
                 letterSpacing = 0.5.sp
             )
             
-            var amountVal by remember { mutableStateOf(params.optDouble("amount", 0.0).toString()) }
-            var noteVal by remember { mutableStateOf(params.optString("note", params.optString("product_name", "General"))) }
+            var nameVal by remember {
+                mutableStateOf(params.optString("name", params.optString("customer_name", params.optString("product_name", params.optString("supplier_name", "")))))
+            }
+            var phoneVal by remember { mutableStateOf(params.optString("phone", params.optString("recipient_phone", ""))) }
+            var amountVal by remember {
+                mutableStateOf(params.optDouble("amount", params.optDouble("sale_price", params.optDouble("price", 0.0))).toString())
+            }
+            var noteVal by remember {
+                mutableStateOf(params.optString("note", params.optString("message", params.optString("description", params.optString("product_name", "")))))
+            }
             
             when (action) {
+                "add_customer" -> {
+                    Text("গ্রাহক যোগ (Add Customer): $nameVal", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    if (phoneVal.isNotBlank()) Text("মোবাইল: $phoneVal", color = SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                "add_supplier" -> {
+                    Text("মহাজন/সাপ্লায়ার যোগ (Add Supplier): $nameVal", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    if (phoneVal.isNotBlank()) Text("মোবাইল: $phoneVal", color = BrandPurple, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                "add_product" -> {
+                    val stock = params.optDouble("stock", params.optDouble("quantity", 0.0))
+                    val unit = params.optString("unit", "pcs")
+                    Text("পণ্য যোগ (Add Product): $nameVal", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("স্টক: $stock $unit | বিক্রয় মূল্য: ৳$amountVal", color = SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                "add_inventory", "update_inventory", "record_stock" -> {
+                    val pName = params.optString("product_name", nameVal)
+                    val qty = params.optDouble("quantity", params.optDouble("stock", 0.0))
+                    val type = if (params.optString("type", "in") == "out") "স্টক আউট (-)" else "স্টক ইন (+)"
+                    Text("ইনভেন্টরি আপডেট: $pName", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("প্রকার: $type | পরিমাণ: $qty", color = BrandPurple, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                "complete_sale", "create_sale", "new_sale" -> {
+                    val pName = params.optString("product_name", "General Sale")
+                    val payType = params.optString("payment_type", "Cash")
+                    Text("নতুন বিক্রয় (POS Sale): $pName", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("পেমেন্ট টাইপ: $payType | পরিমাণ: ৳$amountVal", color = SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                "send_sms", "send_due_sms", "send_offer_sms" -> {
+                    val smsType = params.optString("type", "individual").uppercase()
+                    Text("এসএমএস পাঠানো ($smsType SMS): $phoneVal", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+                "resolve_appeal", "approve_appeal", "reject_appeal" -> {
+                    val aId = params.optString("appeal_id").take(8)
+                    val aStatus = if (action == "reject_appeal" || params.optString("status").uppercase() == "REJECTED") "REJECTED" else "APPROVED"
+                    Text("পেমেন্ট আপিল নিষ্পত্তি: #$aId", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("সিদ্ধান্ত: $aStatus (গ্রাহককে ইমেইল পাঠানো হবে)", color = if (aStatus == "APPROVED") SuccessGreen else ErrorRed, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
                 "add_customer_credit", "add_customer_payment" -> {
-                    val name = params.optString("customer_name")
+                    val name = params.optString("customer_name", nameVal)
                     val typeLabel = if (action == "add_customer_credit") "বাকি (Credit)" else "জমা (Payment)"
                     Text("গ্রাহক: $name", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Text("প্রকার: $typeLabel", color = if (action == "add_customer_credit") ErrorRed else SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 "add_supplier_credit", "add_supplier_payment" -> {
-                    val name = params.optString("supplier_name")
+                    val name = params.optString("supplier_name", nameVal)
                     val typeLabel = if (action == "add_supplier_credit") "বাকি (Payable)" else "জমা (Paid)"
                     Text("মহাজন: $name", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Text("প্রকার: $typeLabel", color = if (action == "add_supplier_credit") ErrorRed else SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
                 "add_expense" -> {
-                    val category = params.optString("expense_category")
+                    val category = params.optString("expense_category", params.optString("category", "Others"))
                     Text("খরচের ক্যাটাগরি: $category", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
@@ -10700,7 +10745,7 @@ fun ActionConfirmationCard(
             OutlinedTextField(
                 value = amountVal,
                 onValueChange = { amountVal = it },
-                label = { Text("টাকার পরিমাণ (Amount)", fontSize = 10.sp) },
+                label = { Text("টাকার পরিমাণ / মূল্য (Amount/Price)", fontSize = 10.sp) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -10708,7 +10753,7 @@ fun ActionConfirmationCard(
             OutlinedTextField(
                 value = noteVal,
                 onValueChange = { noteVal = it },
-                label = { Text("নোট (Note)", fontSize = 10.sp) },
+                label = { Text("নোট / বিবরণ / বার্তা (Note/Message)", fontSize = 10.sp) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 textStyle = TextStyle(fontSize = 11.sp)
@@ -10728,8 +10773,23 @@ fun ActionConfirmationCard(
                 Button(
                     onClick = {
                         try {
-                            params.put("amount", amountVal.toDoubleOrNull() ?: 0.0)
+                            val parsedAmt = amountVal.toDoubleOrNull() ?: 0.0
+                            params.put("amount", parsedAmt)
+                            params.put("sale_price", parsedAmt)
+                            params.put("price", parsedAmt)
                             params.put("note", noteVal)
+                            params.put("message", noteVal)
+                            params.put("description", noteVal)
+                            if (nameVal.isNotBlank()) {
+                                params.put("name", nameVal)
+                                params.put("customer_name", nameVal)
+                                params.put("supplier_name", nameVal)
+                                params.put("product_name", nameVal)
+                            }
+                            if (phoneVal.isNotBlank()) {
+                                params.put("phone", phoneVal)
+                                params.put("recipient_phone", phoneVal)
+                            }
                             obj.put("parameters", params)
                         } catch(e: Exception) {}
                         

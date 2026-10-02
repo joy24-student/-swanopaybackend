@@ -1175,6 +1175,69 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
   })
 
   // ──────────────────────────────────────────────────────────────────────────
+  // POST /v1/payment/resolve-appeal
+  // Merchant or AI Copilot resolves an appeal (APPROVED / REJECTED)
+  // Sends notification email to customer via mailer service
+  // ──────────────────────────────────────────────────────────────────────────
+  router.post('/resolve-appeal', async (req, res) => {
+    const { appeal_id, order_id, status, trx_id, amount, customer_email, customer_phone, merchant_id, note, send_email = true } = req.body || {}
+
+    if (!appeal_id || !status) {
+      return res.status(400).json({ ok: false, error: 'Missing required: appeal_id, status' })
+    }
+
+    try {
+      const normalizedStatus = String(status).toUpperCase() === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+      console.log(`[payment/resolve-appeal] Resolving appeal: ${appeal_id} -> ${normalizedStatus} (order: ${order_id})`)
+
+      // 1. Notify customer via email if email provided and send_email is true
+      if (send_email && customer_email) {
+        try {
+          const { sendPaymentReceipt } = await import('../services/mailer.js')
+          await sendPaymentReceipt('customer', customer_email, {
+            order_id: order_id || appeal_id,
+            tran_id: trx_id || appeal_id,
+            amount: amount || '0.00',
+            currency: 'BDT',
+            status: normalizedStatus === 'APPROVED' ? 'PAID' : 'APPEAL_REJECTED',
+            payment_method: 'MFS',
+            merchant_name: 'SwapnoPay Merchant',
+            merchant_id: merchant_id || null,
+            product_name: `Payment Appeal (${normalizedStatus})`,
+            verification: normalizedStatus === 'APPROVED' ? 'MERCHANT_APPROVED_APPEAL' : 'APPEAL_REJECTED',
+            notes: note || (normalizedStatus === 'APPROVED' ? 'Your payment appeal was verified and approved.' : 'Your payment appeal could not be verified.')
+          })
+          console.log(`[payment/resolve-appeal] Customer email notification dispatched to ${customer_email}`)
+        } catch (mailErr) {
+          console.warn('[payment/resolve-appeal] Mailer notice:', mailErr.message)
+        }
+      }
+
+      // 2. Broadcast via socket to widget & merchant room
+      if (order_id) {
+        io.to(`order:${order_id}`).emit('payment_status_update', {
+          order_id,
+          status: normalizedStatus === 'APPROVED' ? 'PAID' : 'APPEAL_REJECTED',
+          appeal_id,
+          trx_id,
+          resolved_at: new Date().toISOString()
+        })
+      }
+
+      res.json({
+        ok: true,
+        appeal_id,
+        status: normalizedStatus,
+        email_sent: Boolean(send_email && customer_email),
+        message: `Appeal marked as ${normalizedStatus} successfully.`
+      })
+    } catch (err) {
+      console.error('[payment/resolve-appeal] Error:', err.message)
+      res.status(500).json({ ok: false, error: 'Failed to resolve appeal: ' + err.message })
+    }
+  })
+
+  // ──────────────────────────────────────────────────────────────────────────
   // POST /v1/payment/form-submission
   // Relay endpoint for hosted form / web checkout submissions
   // ──────────────────────────────────────────────────────────────────────────

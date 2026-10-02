@@ -20,6 +20,7 @@ let failUrl        = "/";
 let cancelUrl      = "/";
 let merchantReceivingNumbers = {};
 let merchantAccountTypes = {};
+let merchantQrCodes = {};
 let countdownSeconds = 600;
 let timerInterval    = null;
 let webSocket        = null;
@@ -464,19 +465,22 @@ function loadGatewayConfig(merchantIdParam) {
         });
       }
 
+      // ── Account types (Personal vs Merchant) & QR codes ──
+      if (config.account_types && typeof config.account_types === 'object') {
+        merchantAccountTypes = { ...merchantAccountTypes, ...config.account_types };
+      }
+      if (config.qr_codes && typeof config.qr_codes === 'object') {
+        merchantQrCodes = { ...merchantQrCodes, ...config.qr_codes };
+      }
+
       const num = getMethodValue(merchantReceivingNumbers, selectedMethod) || (!isFakeNumber(merchantDefaultNumber) ? merchantDefaultNumber : "");
       if (num) {
         merchantDefaultNumber = num;
         const numInput = document.getElementById("merchant-num-display");
         if (numInput) numInput.value = num;
-        updateQrCode(num);
-      }
-
-      // ── Account types (Personal vs Merchant) ──
-      if (config.account_types && typeof config.account_types === 'object') {
-        merchantAccountTypes = { ...merchantAccountTypes, ...config.account_types };
       }
       updateLabelsForMfs(selectedMethod);
+      updateQrCode(num);
 
       // ── Redirect URLs (respect query parameters if provided) ──
       const urlRedirectParams = new URLSearchParams(window.location.search);
@@ -527,26 +531,31 @@ function loadGatewayConfig(merchantIdParam) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Device Active Gate — controls whether payment gateway is accessible
+// ──────────────────────────────────────────────────────────────────────────────
+// Device & Payment Method Active Gate — controls whether payment gateway is accessible
 // ──────────────────────────────────────────────────────────────────────────────
 function handleDeviceStatus(deviceActive, lastSeen, deviceCount) {
   const hasReceivingNumbers = Boolean(
-    (merchantReceivingNumbers && Object.values(merchantReceivingNumbers).some(v => v && String(v).trim().length > 0)) ||
-    (merchantDefaultNumber && merchantDefaultNumber !== "017XXXXXXXX")
+    (merchantReceivingNumbers && Object.values(merchantReceivingNumbers).some(v => v && !isFakeNumber(v) && String(v).trim().length > 5)) ||
+    (!isFakeNumber(merchantDefaultNumber) && String(merchantDefaultNumber).trim().length > 5)
   );
 
+  // If merchant has no valid receiving numbers configured yet, display polite setup notice
+  if (!hasReceivingNumbers) {
+    showMerchantOfflineView(lastSeen, 'NO_NUMBERS');
+    const banner = document.getElementById("merchant-offline-banner");
+    if (banner) banner.classList.add("hidden");
+    return;
+  }
+
   if (deviceActive === false) {
-    if (hasReceivingNumbers) {
-      // Merchant has configured receiving numbers: do NOT block payment with full curtain!
-      // Only display the non-blocking inline warning banner
-      hideMerchantOfflineView();
-      const banner = document.getElementById("merchant-offline-banner");
-      if (banner) banner.classList.remove("hidden");
-    } else {
-      // Only show full blocking overlay if merchant has NO receiving numbers to pay to
-      showMerchantOfflineView(lastSeen);
-      const banner = document.getElementById("merchant-offline-banner");
-      if (banner) banner.classList.remove("hidden");
+    // Device is temporarily offline or reconnecting
+    hideMerchantOfflineView();
+    const banner = document.getElementById("merchant-offline-banner");
+    if (banner) {
+      banner.classList.remove("hidden");
+      const bannerText = banner.querySelector("p") || banner;
+      bannerText.innerText = "Merchant mobile terminal is temporarily reconnecting. Your payment verification will process smoothly once connected.";
     }
 
     const contactBtn  = document.getElementById("merchant-contact-btn");
@@ -566,16 +575,34 @@ function handleDeviceStatus(deviceActive, lastSeen, deviceCount) {
   }
 }
 
-function showMerchantOfflineView(lastSeen) {
+function showMerchantOfflineView(lastSeen, mode = 'DEVICE_OFFLINE') {
   const offlineView = document.getElementById("merchant-offline-view");
   if (!offlineView) return;
   offlineView.classList.remove("hidden");
 
+  const headingEl = document.getElementById("offline-heading");
+  const descEl = document.getElementById("offline-desc");
+  const iconEl = document.getElementById("offline-icon");
+
+  if (mode === 'NO_NUMBERS') {
+    if (iconEl) iconEl.innerText = "💳";
+    if (headingEl) headingEl.innerText = "Payment Details Being Configured";
+    if (descEl) descEl.innerText = "The merchant is currently updating their receiving payment methods. Please contact the seller directly or check back shortly to complete your order.";
+  } else {
+    if (iconEl) iconEl.innerText = "📵";
+    if (headingEl) headingEl.innerText = "Merchant Terminal Reconnecting";
+    if (descEl) descEl.innerText = "The merchant's automated payment terminal is temporarily reconnecting. Please contact the merchant directly or retry in a few moments.";
+  }
+
   // Set last seen text
   const lastSeenEl = document.getElementById("offline-last-seen-text");
-  if (lastSeenEl && lastSeen) {
-    const dt = new Date(lastSeen);
-    lastSeenEl.innerText = `Last active: ${dt.toLocaleString()}`;
+  if (lastSeenEl) {
+    if (lastSeen) {
+      const dt = new Date(lastSeen);
+      lastSeenEl.innerText = `Last active: ${dt.toLocaleString()}`;
+    } else {
+      lastSeenEl.innerText = "Merchant status: Updating credentials";
+    }
   }
 
   // Mirror merchant name/logo
@@ -1106,16 +1133,18 @@ function updateLabelsForMfs(method) {
 
   const disp = document.getElementById("merchant-num-display");
   if (disp) disp.value = targetNum;
-  updateQrCode(targetNum);
   const currentReceiverNum = targetNum || "";
 
   if (qrCard) {
     if (isPersonal) {
       qrCard.style.setProperty("display", "none", "important");
     } else {
+      qrCard.style.removeProperty("display");
       qrCard.style.display = "";
     }
   }
+
+  updateQrCode(targetNum);
 
   if (currentLang === "en") {
     if (instructionsHeader) instructionsHeader.innerText = isPersonal ? "Send Money Instructions" : "Scan & Pay Instructions";
@@ -1179,9 +1208,29 @@ function updateLabelsForMfs(method) {
 }
 
 function updateQrCode(number) {
+  const qrCard = document.getElementById("qr-code-card");
+  const urlAccType = new URLSearchParams(window.location.search).get("account_type") || "";
+  const accTypeVal = getMethodValue(merchantAccountTypes, selectedMethod) || urlAccType;
+  const isPersonal = String(accTypeVal || '').trim().toLowerCase().includes("personal");
+
+  if (isPersonal) {
+    if (qrCard) qrCard.style.setProperty("display", "none", "important");
+    return;
+  }
+
+  if (qrCard) {
+    qrCard.style.removeProperty("display");
+    qrCard.style.display = "";
+  }
+
   const qrImage = document.getElementById("qr-image");
   if (qrImage) {
-    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(selectedMethod.toLowerCase() + "://pay?num=" + number)}`;
+    const customQr = getMethodValue(merchantQrCodes, selectedMethod);
+    if (customQr && typeof customQr === 'string' && customQr.startsWith("http")) {
+      qrImage.src = customQr;
+    } else if (number && !isFakeNumber(number)) {
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(selectedMethod.toLowerCase() + "://pay?num=" + number)}`;
+    }
   }
 }
 

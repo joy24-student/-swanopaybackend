@@ -12906,51 +12906,6 @@ fun SettingsScreen(viewModel: AppViewModel) {
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
-
-                                HorizontalDivider(color = dividerColor, thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
-
-                                // Setup Wizard Row
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { viewModel.navigateTo("Setup") }
-                                        .padding(16.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        GradientIcon(
-                                            icon = Icons.Outlined.SettingsSuggest,
-                                            gradient = listOf(Color(0xFF10B981), Color(0xFF059669)),
-                                            size = 36.dp,
-                                            iconSize = 18.dp,
-                                            cornerRadius = 10.dp
-                                        )
-                                        Column {
-                                            Text(
-                                                text = if (languageState == "Bangla") "ডাটাবেজ সেটআপ উইজার্ড" else "Database Setup Wizard",
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = primaryText
-                                            )
-                                            Text(
-                                                text = if (languageState == "Bangla") "টেবিল স্কিমা, আরএলএস এবং স্টোরেজ কনফিগারেশন" else "Configure schema tables, RLS policies & storage buckets",
-                                                fontSize = 11.sp,
-                                                color = secondaryText
-                                            )
-                                        }
-                                    }
-                                    Icon(
-                                        imageVector = Icons.Default.ChevronRight,
-                                        contentDescription = null,
-                                        tint = secondaryText,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
                             }
                         }
                     }
@@ -14954,6 +14909,7 @@ fun AddNumberDialog(viewModel: AppViewModel, onDismiss: () -> Unit) {
     var selectedMethod by remember { mutableStateOf("bKash") }
     var selectedType by remember { mutableStateOf("Personal") }
     var qrCodeUrl by remember { mutableStateOf("") }
+    var applyToAllGateways by remember { mutableStateOf(false) }
 
     EnterpriseGestureModal(
         onDismissRequest = onDismiss,
@@ -15024,12 +14980,43 @@ fun AddNumberDialog(viewModel: AppViewModel, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(top = 2.dp, start = 4.dp).align(Alignment.Start)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Apply to all gateways checkbox
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { applyToAllGateways = !applyToAllGateways }
+                    .padding(vertical = 4.dp)
+            ) {
+                Checkbox(
+                    checked = applyToAllGateways,
+                    onCheckedChange = { applyToAllGateways = it },
+                    colors = CheckboxDefaults.colors(checkedColor = BrandPurple)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Apply to all gateways (bKash, Nagad, Rocket, Upay)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.DarkGray
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
                     if (number.isNotEmpty()) {
-                        viewModel.addMerchantNumber(number, selectedMethod, selectedType, qrCodeUrl.ifBlank { null })
+                        val qr = qrCodeUrl.ifBlank { null }
+                        if (applyToAllGateways) {
+                            listOf("bKash", "Nagad", "Rocket", "Upay").forEach { m ->
+                                viewModel.addMerchantNumber(number, m, selectedType, qr)
+                            }
+                        } else {
+                            viewModel.addMerchantNumber(number, selectedMethod, selectedType, qr)
+                        }
                         onDismiss()
                     }
                 },

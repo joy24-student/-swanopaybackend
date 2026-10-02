@@ -147,7 +147,14 @@ export class ShopService {
     if (dependencies.pool) {
       this.pool = dependencies.pool
     } else if (config.connectionString) {
-      this.pool = new Pool({ connectionString: config.connectionString, max: 6, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 })
+      const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(config.connectionString) || Boolean(config.sslmode && config.sslmode !== 'disable')
+      this.pool = new Pool({
+        connectionString: config.connectionString,
+        max: 6,
+        connectionTimeoutMillis: 8000,
+        idleTimeoutMillis: 30000,
+        ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
+      })
     } else if (config.useEmbedded) {
       const dbPath = path.resolve(config.runtime, 'shop-db')
       let dbInstance = null
@@ -262,7 +269,14 @@ export class ShopService {
     if (resolved.connectionString && resolved.connectionString !== this.config.connectionString) {
       let pool = this.tenantPools.get(resolved.connectionString)
       if (!pool) {
-        pool = new Pool({ connectionString: resolved.connectionString, max: 4, connectionTimeoutMillis: 8000, idleTimeoutMillis: 30000 })
+        const isSsl = /sslmode=require|supabase|amazonaws|pooler/i.test(resolved.connectionString) || Boolean(resolved.sslmode && resolved.sslmode !== 'disable')
+        pool = new Pool({
+          connectionString: resolved.connectionString,
+          max: 4,
+          connectionTimeoutMillis: 8000,
+          idleTimeoutMillis: 30000,
+          ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {})
+        })
         this.tenantPools.set(resolved.connectionString, pool)
       }
       return pool
@@ -522,13 +536,16 @@ export class ShopService {
         await dbClient.query(`SET LOCAL search_path TO ${quoted},pg_catalog`)
         await dbClient.query(await fs.readFile(schemaFile,'utf8'))
         try {
+          await dbClient.query('SAVEPOINT role_sp')
           const role = await dbClient.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[schema])
           if (!role.rowCount) await dbClient.query(`CREATE ROLE ${quoted} LOGIN PASSWORD ${sqlLiteral(secrets.dbPassword)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION`)
           await dbClient.query(`ALTER ROLE ${quoted} SET search_path TO ${quoted},pg_catalog;
             GRANT USAGE ON SCHEMA ${quoted} TO ${quoted};
             GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${quoted} TO ${quoted};
             GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA ${quoted} TO ${quoted};`)
+          await dbClient.query('RELEASE SAVEPOINT role_sp')
         } catch (roleErr) {
+          await dbClient.query('ROLLBACK TO SAVEPOINT role_sp').catch(() => {})
           console.warn('[shop/provision] Role creation notice:', roleErr.message)
         }
       } else if (useSeparateTenantDb) {

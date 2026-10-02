@@ -1146,6 +1146,15 @@
             <rect x="276" y="222" width="28" height="66" rx="14" fill="#0c0c0e" opacity="0.65"/>
             <rect x="260" y="204" width="60" height="24" rx="12" fill="url(#sheenGrad)" opacity="0.5"/>
           </svg>
+
+          <!-- Generic Product Package SVG Placeholder (when no photo is uploaded for custom merchant product) -->
+          <svg class="art" id="genericArt" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:none; width:65%; margin:auto;" aria-label="Product Showcase">
+            <rect x="70" y="90" width="260" height="230" rx="28" fill="var(--soft)" stroke="var(--line-strong)" stroke-width="6"/>
+            <path d="M70 170 L330 170" stroke="var(--line-strong)" stroke-width="5" stroke-dasharray="10 8"/>
+            <circle cx="200" cy="245" r="42" fill="var(--line)" opacity="0.6"/>
+            <path d="M200 227 L200 263 M182 245 L218 245" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/>
+            <path d="M140 90 L140 60 C140 48 150 38 162 38 L238 38 C250 38 260 48 260 60 L260 90" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+          </svg>
         </div>
       </div>
 
@@ -1369,6 +1378,7 @@
   const siteHeader = document.getElementById('siteHeader');
   const stage = document.getElementById('stage');
   const mainArt = document.getElementById('mainArt');
+  const genericArt = document.getElementById('genericArt');
   const mainProductImage = document.getElementById('mainProductImage');
   const thumbsList = document.getElementById('thumbsList');
   const brandNameText = document.getElementById('brandNameText');
@@ -1629,6 +1639,8 @@
     errorState.style.display = 'none';
     productContent.style.display = 'grid';
 
+    const isDemo = (!config || config.id === 'aura-pro-demo' || config.slug === 'pay-aura-pro' || (!config.merchant_id && (!config.products || config.products.length === 0)));
+
     const theme = (config.theme_config && typeof config.theme_config === 'object')
       ? config.theme_config
       : (config.theme && typeof config.theme === 'object' ? config.theme : {});
@@ -1648,10 +1660,12 @@
       brandLogoSlot.textContent = brandName.charAt(0).toUpperCase();
     }
 
-    const brandBadge = theme.brand_badge || theme.brandBadge || 'PRO';
+    const brandBadge = theme.brand_badge || theme.brandBadge || (isDemo ? 'PRO' : '');
     if (brandBadge) {
       brandBadgeText.textContent = brandBadge;
       brandBadgeText.style.display = 'inline-block';
+    } else {
+      brandBadgeText.style.display = 'none';
     }
 
     if (theme.hide_header === true || theme.hideHeader === true) {
@@ -1659,16 +1673,17 @@
     }
 
     // 2. Product Title & Subtitle
-    productTitle.textContent = config.title || 'Aura Pro Wireless Headphones';
-    if (config.description) {
-      productSubtitle.textContent = config.description;
+    productTitle.textContent = config.title || (isDemo ? 'Aura Pro Wireless Headphones' : 'Flagship Product');
+    const subtitleText = config.description || (Array.isArray(config.products) && config.products[0]?.description) || '';
+    if (subtitleText) {
+      productSubtitle.textContent = subtitleText;
       productSubtitle.style.display = 'block';
     } else {
       productSubtitle.style.display = 'none';
     }
 
     // 3. Category / Eyebrow
-    const category = theme.eyebrow_text || theme.eyebrowText || config.category || '';
+    const category = theme.eyebrow_text || theme.eyebrowText || config.category || (isDemo ? 'Acoustic Reference Series' : '');
     if (category && !theme.hide_eyebrow && !theme.hideEyebrow) {
       eyebrowText.textContent = category;
       eyebrowRow.style.display = 'inline-flex';
@@ -1677,7 +1692,7 @@
     }
 
     // 4. Badge Tag
-    const bTag = theme.badge_text || theme.badgeText || '';
+    const bTag = theme.badge_text || theme.badgeText || (isDemo ? 'Flagship Series' : '');
     if (bTag && !theme.hide_price && !theme.hidePrice) {
       badgeTag.textContent = bTag;
       badgeTag.style.display = 'block';
@@ -1689,13 +1704,13 @@
     currencySymbol = (theme.currency_code === 'USD' || config.currency === 'USD') ? '$' : '৳';
 
     const firstProduct = (Array.isArray(config.products) && config.products[0]) ? config.products[0] : null;
-    basePrice = parseFloat(config.amount) || parseFloat(firstProduct?.price) || 2490;
-    wasPriceVal = parseFloat(theme.was_price || theme.wasPrice || firstProduct?.salePrice || 3290);
+    basePrice = parseFloat(config.amount) || parseFloat(firstProduct?.price) || (isDemo ? 2490 : 0);
+    wasPriceVal = parseFloat(theme.was_price || theme.wasPrice || firstProduct?.sale_price || firstProduct?.salePrice || (isDemo ? 3290 : 0));
 
     // 6. Rating
-    const rScore = theme.rating_score || 4.9;
-    const rCount = theme.rating_count || 248;
-    if (!theme.hide_rating && !theme.hideRating) {
+    const rScore = theme.rating_score || (isDemo ? 4.9 : 5.0);
+    const rCount = theme.rating_count || (isDemo ? 248 : 0);
+    if (!theme.hide_rating && !theme.hideRating && (isDemo || rCount > 0)) {
       document.getElementById('ratingScore').textContent = rScore;
       document.getElementById('ratingCount').textContent = `${rCount} verified reviews`;
       ratingRow.style.display = 'flex';
@@ -1704,22 +1719,35 @@
     }
 
     // 7. Product Images & Gallery
-    const rawMainImg = config.image_url || theme.product_image_url || firstProduct?.imageUrl || '';
+    const rawMainImg = config.image_url || config.imageUrl || theme.product_image_url || theme.productImageUrl || firstProduct?.image_url || firstProduct?.imageUrl || '';
     const mainImg = sanitizeImageUrl(rawMainImg);
-    const rawGallery = theme.gallery_urls || firstProduct?.galleryUrls || [];
+    const rawGallery = theme.gallery_urls || theme.galleryUrls || firstProduct?.gallery_urls || firstProduct?.galleryUrls || [];
     const gallery = (Array.isArray(rawGallery) ? rawGallery : []).map(sanitizeImageUrl).filter(Boolean);
 
     if (mainImg) {
       mainProductImage.src = mainImg;
       mainProductImage.style.display = 'block';
       mainArt.style.display = 'none';
+      if (genericArt) genericArt.style.display = 'none';
       mainProductImage.onerror = () => {
         mainProductImage.style.display = 'none';
-        mainArt.style.display = 'block';
+        if (isDemo) {
+          mainArt.style.display = 'block';
+          if (genericArt) genericArt.style.display = 'none';
+        } else if (genericArt) {
+          genericArt.style.display = 'block';
+          mainArt.style.display = 'none';
+        }
       };
     } else {
       mainProductImage.style.display = 'none';
-      mainArt.style.display = 'block';
+      if (isDemo) {
+        mainArt.style.display = 'block';
+        if (genericArt) genericArt.style.display = 'none';
+      } else {
+        mainArt.style.display = 'none';
+        if (genericArt) genericArt.style.display = 'block';
+      }
     }
 
     thumbsList.innerHTML = '';
@@ -1736,13 +1764,14 @@
           mainProductImage.src = sUrl;
           mainProductImage.style.display = 'block';
           mainArt.style.display = 'none';
+          if (genericArt) genericArt.style.display = 'none';
           thumbsList.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
           btn.classList.add('active');
         });
         thumbsList.appendChild(btn);
       });
       thumbsList.style.display = 'grid';
-    } else {
+    } else if (isDemo) {
       const anglePresets = [
         { label: 'Front view', rot: 0, scale: 1, bg: '#f5f6f8' },
         { label: 'Perspective view', rot: -12, scale: 1.05, bg: '#edf0f5' },
@@ -1774,6 +1803,8 @@
         thumbsList.appendChild(btn);
       });
       thumbsList.style.display = 'grid';
+    } else {
+      thumbsList.style.display = 'none';
     }
 
     // 8. Delivery Info & Charges (Inside / Outside City)
@@ -1806,7 +1837,8 @@
       { name: 'Graphite Grey', hex: '#777b83', bodyStart: '#989ca5', bodyMid: '#686c75', bodyEnd: '#3f4248', cushionStart: '#9da2ad', cushionEnd: '#555861' }
     ];
 
-    const colorVariants = rawVariants ? rawVariants.map((v, idx) => {
+    const hasExplicitVariants = Boolean(rawVariants && rawVariants.length > 0);
+    const colorVariants = hasExplicitVariants ? rawVariants.map((v, idx) => {
       const def = defaultColors[idx % defaultColors.length];
       const hex = v.color_hex || v.colorHex || v.hex || def.hex;
       return {
@@ -1822,7 +1854,7 @@
         sku: v.sku || '',
         imageUrl: v.image_url || v.imageUrl || ''
       };
-    }) : defaultColors;
+    }) : (isDemo ? defaultColors : []);
 
     if (!theme.hide_swatches && !theme.hideSwatches && Array.isArray(colorVariants) && colorVariants.length > 0) {
       swatchesContainer.innerHTML = '';
@@ -1877,7 +1909,8 @@
             mainProductImage.src = sw.imageUrl;
             mainProductImage.style.display = 'block';
             mainArt.style.display = 'none';
-          } else {
+            if (genericArt) genericArt.style.display = 'none';
+          } else if (isDemo) {
             if (gradStop1) {
               const bStart = sw.bodyStart || hex;
               const bMid = sw.bodyMid || hex;
@@ -2027,10 +2060,10 @@
           });
           specTableHtml += '</table>';
           specs.push({
-            title: theme.spec_title || 'Acoustic Specifications',
+            title: theme.spec_title || 'Specifications',
             content: specTableHtml
           });
-        } else if (!theme.hide_specs && !theme.hideSpecs) {
+        } else if (isDemo && !theme.hide_specs && !theme.hideSpecs) {
           specs.push({
             title: 'Acoustic Specifications',
             content: '<ul><li>Custom 40 mm beryllium-coated dynamic drivers for ultra-low distortion</li><li>Hybrid adaptive noise cancellation with 4 external beamforming microphones</li><li>Up to 42 hours continuous battery life (30 hours with ANC enabled)</li><li>High-res wireless audio codec support: LDAC, aptX Adaptive, AAC, SBC</li><li>USB-C rapid charge: 5 minutes provides 4 hours of playback</li></ul>'
@@ -2038,20 +2071,23 @@
         }
 
         if (!theme.hide_delivery && !theme.hideDelivery) {
-          const delHtml = `
-            <div style="line-height:1.7; font-size:13px;">
-              <p style="margin:0 0 6px 0;"><strong>Inside Dhaka / City (${currencySymbol}${insideCharge}):</strong> Express dispatch in ${timeInside}.</p>
-              <p style="margin:0 0 6px 0;"><strong>Outside Dhaka / Nationwide (${currencySymbol}${outsideCharge}):</strong> Standard delivery in ${timeOutside}.</p>
-              <p style="margin:0 0 6px 0;"><strong>Payment Option:</strong> ${codAvailable ? 'Cash on Delivery (COD) is supported nationwide.' : 'Prepayment required before dispatch.'}</p>
-              <p style="margin:0 0 6px 0;"><strong>Return Guarantee:</strong> ${escapeHtml(returnPolicy)}</p>
-              <p style="margin:0 0 6px 0;"><strong>Official Warranty:</strong> ${escapeHtml(warranty)}</p>
-              ${deliveryNotes ? `<p style="margin:8px 0 0 0; padding:8px 10px; background:rgba(0,0,0,0.04); border-left:3px solid var(--ink); border-radius:4px; font-size:12px;"><strong>Notice:</strong> ${escapeHtml(deliveryNotes)}</p>` : ''}
-            </div>
-          `;
-          specs.push({
-            title: 'Delivery & Complimentary Returns',
-            content: delHtml
-          });
+          const hasDeliveryInfo = Boolean(delInfo.inside_charge || delInfo.outside_charge || delInfo.notes || isDemo);
+          if (hasDeliveryInfo) {
+            const delHtml = `
+              <div style="line-height:1.7; font-size:13px;">
+                <p style="margin:0 0 6px 0;"><strong>Inside City (${currencySymbol}${insideCharge}):</strong> Express dispatch in ${timeInside}.</p>
+                <p style="margin:0 0 6px 0;"><strong>Outside City / Nationwide (${currencySymbol}${outsideCharge}):</strong> Standard delivery in ${timeOutside}.</p>
+                <p style="margin:0 0 6px 0;"><strong>Payment Option:</strong> ${codAvailable ? 'Cash on Delivery (COD) is supported nationwide.' : 'Prepayment required before dispatch.'}</p>
+                <p style="margin:0 0 6px 0;"><strong>Return Guarantee:</strong> ${escapeHtml(returnPolicy)}</p>
+                <p style="margin:0 0 6px 0;"><strong>Official Warranty:</strong> ${escapeHtml(warranty)}</p>
+                ${deliveryNotes ? `<p style="margin:8px 0 0 0; padding:8px 10px; background:rgba(0,0,0,0.04); border-left:3px solid var(--ink); border-radius:4px; font-size:12px;"><strong>Notice:</strong> ${escapeHtml(deliveryNotes)}</p>` : ''}
+              </div>
+            `;
+            specs.push({
+              title: 'Delivery & Complimentary Returns',
+              content: delHtml
+            });
+          }
         }
 
         if (Array.isArray(firstProduct?.custom_sections) && firstProduct.custom_sections.length > 0) {
@@ -2061,7 +2097,7 @@
               content: `<div style="white-space:pre-line; line-height:1.7; font-size:13px;">${escapeHtml(cs.content || '')}</div>`
             });
           });
-        } else {
+        } else if (isDemo) {
           specs.push({
             title: 'What is Included',
             content: `${escapeHtml(config.title || 'Aura Pro wireless headphones')}, hard travel case, braided USB-C cable, auxiliary cord, and quick setup guide.`
@@ -2069,17 +2105,21 @@
         }
       }
 
-      detailsList.innerHTML = '';
-      specs.forEach((item, idx) => {
-        const det = document.createElement('details');
-        if (idx === 0) det.open = true;
-        det.innerHTML = `
-          <summary>${escapeHtml(item.title || 'Details')}</summary>
-          <div class="details-content">${item.content || item.description || ''}</div>
-        `;
-        detailsList.appendChild(det);
-      });
-      detailsList.style.display = 'block';
+      if (specs.length > 0) {
+        detailsList.innerHTML = '';
+        specs.forEach((item, idx) => {
+          const det = document.createElement('details');
+          if (idx === 0) det.open = true;
+          det.innerHTML = `
+            <summary>${escapeHtml(item.title || 'Details')}</summary>
+            <div class="details-content">${item.content || item.description || ''}</div>
+          `;
+          detailsList.appendChild(det);
+        });
+        detailsList.style.display = 'block';
+      } else {
+        detailsList.style.display = 'none';
+      }
     }
 
     if (theme.hide_summary === true || theme.hideSummary === true) {

@@ -22,27 +22,30 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProductInventoryTest {
     @Test
-    fun `all website fields survive a local save and image updates preserve stock`() = runBlocking {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        try {
-            val details = ProductStorefrontDetails(oldPrice = 200.0, topCategory = "Clothing", midCategory = "Adult", endCategory = "Shirts", description = "Cotton", shortDescription = "Soft shirt", features = "Washable", condition = "New", returnPolicy = "Seven days", videoUrl = "https://youtu.be/abcdefghijk", sizes = listOf("M", "L"), colors = listOf("Blue"), featuredImage = ProductMedia("file:///draft.jpg"), gallery = listOf(ProductMedia("file:///gallery.jpg")), isFeatured = true, isActive = false)
-            details.validate()
-            val dao = db.appDao()
-            dao.insertProduct(ProductItemEntity("p1", "merchant-a", "Shirt", stockQuantity = 8.0, storefrontDetailsJson = details.json().toString()))
-            val saved = requireNotNull(dao.getProductById("p1", "merchant-a"))
-            assertEquals(details, ProductStorefrontDetails.parse(saved.storefrontDetailsJson))
-            assertEquals(0, dao.updateProductMedia("p1", "merchant-b", null, "{}", saved.storefrontDetailsJson))
-            assertEquals(0, dao.updateProductMedia("p1", "merchant-a", null, "{}", "stale draft"))
-            assertEquals(1, dao.updateProductMedia("p1", "merchant-a", "https://store.example/photo.jpg", "{}", saved.storefrontDetailsJson))
-            assertEquals(8.0, requireNotNull(dao.getProductById("p1", "merchant-a")).stockQuantity, 0.0)
-            assertThrows(IllegalArgumentException::class.java) { details.copy(oldPrice = Double.NaN).validate() }
-            assertThrows(IllegalArgumentException::class.java) { details.copy(videoUrl = "javascript:alert(1)").validate() }
-        } finally { db.close() }
+    fun `all website fields survive a local save and image updates preserve stock`() {
+        runBlocking {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+            try {
+                val details = ProductStorefrontDetails(oldPrice = 200.0, topCategory = "Clothing", midCategory = "Adult", endCategory = "Shirts", description = "Cotton", shortDescription = "Soft shirt", features = "Washable", condition = "New", returnPolicy = "Seven days", videoUrl = "https://youtu.be/abcdefghijk", sizes = listOf("M", "L"), colors = listOf("Blue"), featuredImage = ProductMedia("file:///draft.jpg"), gallery = listOf(ProductMedia("file:///gallery.jpg")), isFeatured = true, isActive = false)
+                details.validate()
+                val dao = db.appDao()
+                dao.insertProduct(ProductItemEntity("p1", "merchant-a", "Shirt", stockQuantity = 8.0, storefrontDetailsJson = details.json().toString()))
+                val saved = requireNotNull(dao.getProductById("p1", "merchant-a"))
+                assertEquals(details, ProductStorefrontDetails.parse(saved.storefrontDetailsJson))
+                assertEquals(0, dao.updateProductMedia("p1", "merchant-b", null, "{}", saved.storefrontDetailsJson))
+                assertEquals(0, dao.updateProductMedia("p1", "merchant-a", null, "{}", "stale draft"))
+                assertEquals(1, dao.updateProductMedia("p1", "merchant-a", "https://store.example/photo.jpg", "{}", saved.storefrontDetailsJson))
+                assertEquals(8.0, requireNotNull(dao.getProductById("p1", "merchant-a")).stockQuantity, 0.0)
+                assertThrows(IllegalArgumentException::class.java) { details.copy(oldPrice = Double.NaN).validate() }
+                assertThrows(IllegalArgumentException::class.java) { details.copy(videoUrl = "javascript:alert(1)").validate() }
+            } finally { db.close() }
+        }
     }
 
     @Test
-    fun `photo compression bounds bytes and dimensions and removes EXIF`() = runBlocking {
+    fun `photo compression bounds bytes and dimensions and removes EXIF`() {
+        runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val source = File(context.cacheDir, "large-product.jpg")
         val bitmap = Bitmap.createBitmap(3000, 1600, Bitmap.Config.ARGB_8888)
@@ -68,5 +71,6 @@ class ProductInventoryTest {
                 assertThrows(IllegalArgumentException::class.java) { ProductImageCompressor.readUpload(context, Uri.fromFile(source).toString()) }
             } finally { file.delete() }
         } finally { source.delete() }
+        }
     }
 }

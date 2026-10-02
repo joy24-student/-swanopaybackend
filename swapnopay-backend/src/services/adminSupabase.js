@@ -226,6 +226,8 @@ export async function getMerchantCredentials(merchantId) {
     })
   }
   const mStatus = merchantRow?.status || 'ACTIVE'
+  const effectiveName = data?.merchant_name || merchantRow?.business_name || memSettings?.merchant_name || null
+  const effectiveLogo = data?.merchant_logo_url || merchantRow?.photo_url || memSettings?.merchant_logo_url || null
 
   const effectiveSupabaseUrl = data?.supabase_url || merchantRow?.supabase_url || memSettings?.supabase_url || null
   const effectiveSupabaseAnonKey = data?.supabase_anon_key || merchantRow?.supabase_anon_key || memSettings?.supabase_anon_key || null

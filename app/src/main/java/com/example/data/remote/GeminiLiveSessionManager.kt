@@ -265,6 +265,110 @@ class GeminiLiveSessionManager {
     private fun buildToolDeclarations(): JSONArray {
         return JSONArray().apply {
             put(JSONObject().apply {
+                put("name", "add_customer")
+                put("description", "নতুন কাস্টমার বা খরিদ্দার খাতায় যোগ করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("name", JSONObject().put("type", "STRING").put("description", "কাস্টমারের নাম"))
+                        put("phone", JSONObject().put("type", "STRING").put("description", "১১ ডিজিটের মোবাইল নম্বর"))
+                        put("initial_balance", JSONObject().put("type", "NUMBER").put("description", "পূর্বের বকেয়া বা ব্যালেন্স"))
+                        put("address", JSONObject().put("type", "STRING").put("description", "ঠিকানা"))
+                    })
+                    put("required", JSONArray().put("name"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "add_supplier")
+                put("description", "নতুন মহাজন বা সাপ্লায়ার খাতায় যোগ করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("name", JSONObject().put("type", "STRING").put("description", "মহাজন বা কোম্পানির নাম"))
+                        put("phone", JSONObject().put("type", "STRING").put("description", "মোবাইল নম্বর"))
+                        put("address", JSONObject().put("type", "STRING").put("description", "ঠিকানা"))
+                        put("initial_balance", JSONObject().put("type", "NUMBER").put("description", "পূর্বের পাওনা বা ব্যালেন্স"))
+                    })
+                    put("required", JSONArray().put("name"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "add_product")
+                put("description", "দোকানের ক্যাটালগে নতুন পণ্য বা মাল যোগ করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("name", JSONObject().put("type", "STRING").put("description", "পণ্যের নাম"))
+                        put("sale_price", JSONObject().put("type", "NUMBER").put("description", "বিক্রয় মূল্য"))
+                        put("purchase_price", JSONObject().put("type", "NUMBER").put("description", "কেনা মূল্য"))
+                        put("stock", JSONObject().put("type", "NUMBER").put("description", "মালের স্টক বা সংখ্যা"))
+                        put("unit", JSONObject().put("type", "STRING").put("description", "পরিমাপের একক যেমন pcs, kg, liter"))
+                        put("category", JSONObject().put("type", "STRING").put("description", "পণ্যের ক্যাটাগরি"))
+                    })
+                    put("required", JSONArray().put("name").put("sale_price"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "add_inventory")
+                put("description", "পণ্যের স্টক বৃদ্ধি বা মাল ইনভেন্টরিতে যোগ (restock) করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("product_name", JSONObject().put("type", "STRING").put("description", "পণ্যের নাম"))
+                        put("quantity", JSONObject().put("type", "NUMBER").put("description", "মালের পরিমাণ"))
+                        put("type", JSONObject().put("type", "STRING").put("description", "in অথবা out"))
+                        put("price", JSONObject().put("type", "NUMBER").put("description", "দর বা কেনা দাম"))
+                    })
+                    put("required", JSONArray().put("product_name").put("quantity"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "complete_sale")
+                put("description", "দোকানের নতুন বিক্রয় বা POS সেল সম্পন্ন করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("product_name", JSONObject().put("type", "STRING").put("description", "পণ্যের নাম"))
+                        put("amount", JSONObject().put("type", "NUMBER").put("description", "মোট বিক্রয় মূল্য বা টাকা"))
+                        put("quantity", JSONObject().put("type", "NUMBER").put("description", "পরিমাণ"))
+                        put("customer_name", JSONObject().put("type", "STRING").put("description", "কাস্টমারের নাম"))
+                        put("customer_phone", JSONObject().put("type", "STRING").put("description", "কাস্টমারের ফোন"))
+                        put("payment_type", JSONObject().put("type", "STRING").put("description", "Cash, MFS, অথবা Due"))
+                        put("discount", JSONObject().put("type", "NUMBER").put("description", "ছাড়ের টাকা"))
+                    })
+                    put("required", JSONArray().put("product_name").put("amount"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "send_sms")
+                put("description", "কাস্টমারকে বকেয়া তাগাদা (due reminder), অফার (offer) বা বার্তা এসএমএস পাঠানোর ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("phone", JSONObject().put("type", "STRING").put("description", "মোবাইল নম্বর"))
+                        put("customer_name", JSONObject().put("type", "STRING").put("description", "কাস্টমারের নাম"))
+                        put("message", JSONObject().put("type", "STRING").put("description", "এসএমএস এর মূল বার্তা"))
+                        put("type", JSONObject().put("type", "STRING").put("description", "due, offer, অথবা individual"))
+                        put("amount", JSONObject().put("type", "NUMBER").put("description", "বকেয়ার পরিমাণ"))
+                    })
+                    put("required", JSONArray().put("phone"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "resolve_appeal")
+                put("description", "পেমেন্ট ভেরিফিকেশন আপিল বিশ্লেষণ করে অনুমোদন (approve) বা বাতিল (reject) করে গ্রাহককে ইমেইল পাঠানোর ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("appeal_id", JSONObject().put("type", "STRING").put("description", "আপিল আইডি বা ট্রানজেকশন আইডি"))
+                        put("status", JSONObject().put("type", "STRING").put("description", "APPROVED অথবা REJECTED"))
+                        put("note", JSONObject().put("type", "STRING").put("description", "সিদ্ধান্তের কারণ বা বিবরণ"))
+                        put("send_email", JSONObject().put("type", "BOOLEAN").put("description", "গ্রাহককে ইমেইল পাঠানো"))
+                    })
+                    put("required", JSONArray().put("status"))
+                })
+            })
+            put(JSONObject().apply {
                 put("name", "add_customer_credit")
                 put("description", "কাস্টমারের খাতায় বাকি বা বকেয়া (credit/due) যোগ করার ফাংশন।")
                 put("parameters", JSONObject().apply {
@@ -289,6 +393,32 @@ class GeminiLiveSessionManager {
                         put("note", JSONObject().put("type", "STRING").put("description", "বিবরণ বা নোট"))
                     })
                     put("required", JSONArray().put("customer_name").put("amount"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "add_supplier_credit")
+                put("description", "মহাজন বা সাপ্লায়ারের কাছ থেকে বাকি কেনাকাটা (due purchase) যোগ করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("supplier_name", JSONObject().put("type", "STRING").put("description", "মহাজনের নাম"))
+                        put("amount", JSONObject().put("type", "NUMBER").put("description", "টাকার পরিমাণ"))
+                        put("note", JSONObject().put("type", "STRING").put("description", "বিবরণ বা নোট"))
+                    })
+                    put("required", JSONArray().put("supplier_name").put("amount"))
+                })
+            })
+            put(JSONObject().apply {
+                put("name", "add_supplier_payment")
+                put("description", "মহাজন বা সাপ্লায়ারকে বাকি টাকা পরিশোধ বা জমা (payment paid) যোগ করার ফাংশন।")
+                put("parameters", JSONObject().apply {
+                    put("type", "OBJECT")
+                    put("properties", JSONObject().apply {
+                        put("supplier_name", JSONObject().put("type", "STRING").put("description", "মহাজনের নাম"))
+                        put("amount", JSONObject().put("type", "NUMBER").put("description", "টাকার পরিমাণ"))
+                        put("note", JSONObject().put("type", "STRING").put("description", "বিবরণ বা নোট"))
+                    })
+                    put("required", JSONArray().put("supplier_name").put("amount"))
                 })
             })
             put(JSONObject().apply {

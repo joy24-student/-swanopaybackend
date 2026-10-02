@@ -13,36 +13,57 @@ let _fromName = ''
  * Call this at startup.
  */
 export function initMailer() {
-  const clientId = process.env.GMAIL_CLIENT_ID
-  const clientSecret = process.env.GMAIL_CLIENT_SECRET
-  const refreshToken = process.env.GMAIL_REFRESH_TOKEN
-  const fromEmail = process.env.GMAIL_FROM_EMAIL
-  const fromName = process.env.GMAIL_FROM_NAME || 'SwapnoPay Payments'
+  const fromEmail = (process.env.SMTP_USER || process.env.GMAIL_FROM_EMAIL || process.env.EMAIL_FROM || 'payment@swapnopay.top').trim().toLowerCase()
+  const fromName = process.env.GMAIL_FROM_NAME || process.env.EMAIL_FROM_NAME || 'SwapnoPay'
+  const appPassword = (process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_APP_PASSWORD || '').replace(/\s+/g, '')
 
-  if (!clientId || !clientSecret || !refreshToken || !fromEmail) {
-    console.warn('[mailer] Gmail OAuth2 credentials not fully set — email receipts disabled.')
-    console.warn('[mailer] Set: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_FROM_EMAIL')
+  _fromEmail = fromEmail
+  _fromName = fromName
+
+  // 1. Prefer App Password / SMTP if provided
+  if (appPassword) {
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com'
+    const port = Number(process.env.SMTP_PORT) || 465
+    const secure = process.env.SMTP_SECURE !== 'false'
+
+    _transporter = nodemailer.createTransport({
+      service: host.includes('gmail') ? 'gmail' : undefined,
+      host,
+      port,
+      secure,
+      auth: {
+        user: _fromEmail,
+        pass: appPassword,
+      },
+    })
+    console.log('[mailer] SMTP transporter ready with App Password. Sending from:', _fromEmail)
     return
   }
 
-  _fromEmail = fromEmail.trim().toLowerCase()
-  _fromName = fromName
+  // 2. Fall back to Gmail OAuth2 if credentials are provided
+  const clientId = process.env.GMAIL_CLIENT_ID
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET
+  const refreshToken = process.env.GMAIL_REFRESH_TOKEN
 
-  _transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: _fromEmail,
-      clientId,
-      clientSecret,
-      refreshToken,
-    },
-  })
+  if (clientId && clientSecret && refreshToken) {
+    _transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: _fromEmail,
+        clientId,
+        clientSecret,
+        refreshToken,
+      },
+    })
+    console.log('[mailer] Gmail OAuth2 transporter ready. Sending from:', _fromEmail)
+    return
+  }
 
-  console.log('[mailer] Gmail OAuth2 transporter ready. Sending from:', _fromEmail)
+  console.warn('[mailer] Email credentials not fully set -- email receipts disabled.')
+  console.warn('[mailer] Set GMAIL_APP_PASSWORD (or SMTP_PASS) or GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN.')
 }
 
-/** Returns true if the mailer is configured and ready */
 export function isMailerReady() {
   return _transporter !== null
 }

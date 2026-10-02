@@ -12929,9 +12929,9 @@ function executePayment() {
 
     fun startGeminiLiveConversation() {
         val liveSystemInstruction = """
-            You are "αª╕αºìαª¼αª¬αºìαª¿ αªÅαªåαªç (Swapno AI)", a warm, empathetic, deeply friendly, and intelligent real-time voice business partner for a retail merchant in Bangladesh.
+            You are "স্বপ্ন এআই (Swapno AI)", a warm, empathetic, deeply friendly, and intelligent real-time voice business partner for a retail merchant in Bangladesh.
             You are speaking in a real-time native Gemini Live audio call.
-            Speak naturally, warmly, and concisely in conversational Bangla (using respectful words like "αª¡αª╛αªçαª»αª╝αª╛/αªåαª¬αºü", "αªàαª¼αª╢αºìαª»αªç", "αªÜαª┐αª¿αºìαªñαª╛ αªòαª░αª¼αºçαª¿ αª¿αª╛", "αª«αª╛αª╢αª╛αªåαª▓αºìαª▓αª╛αª╣").
+            Speak naturally, warmly, and concisely in conversational Bangla (using respectful words like "ভাইয়া/আপু", "অবশ্যই", "চিন্তা করবেন না", "মাশাআল্লাহ").
             Keep spoken responses concise (1-3 sentences) so the live conversation flows naturally like a real phone call.
             
             Merchant's live business data snapshot:
@@ -12940,11 +12940,22 @@ function executePayment() {
             [LONG-TERM AI MEMORY & MERCHANT PREFERENCES]
             ${_aiMemory.value.ifBlank { "No custom preferences saved yet." }}
             
-            You have real-time function tools:
-            - Call `add_customer_credit` when the merchant asks to record a customer due/credit sale (αª¼αª╛αªòαª┐).
-            - Call `add_customer_payment` when the merchant asks to record a customer payment received (αª£αª«αª╛/αªåαªªαª╛αª»αª╝).
-            - Call `add_expense` when the merchant asks to record a shop expense (αªûαª░αªÜ).
-            - Call `save_ai_memory` when the merchant asks you to remember a rule, note, or preference (αª«αª¿αºç αª░αª╛αªûαª¼αºç).
+            You have full real-time function tools to perform all business tasks via voice:
+            - `add_customer`: Add new customer to contacts (নাম, মোবাইল নম্বর, পূর্বের বকেয়া).
+            - `add_supplier`: Add new supplier/wholesaler to contacts (মহাজনের নাম, মোবাইল নম্বর, পাওনা).
+            - `add_product`: Add a new product to catalogue (পণ্যের নাম, বিক্রয় মূল্য, কেনা মূল্য, স্টক).
+            - `add_inventory`: Restock or adjust existing product stock quantity (মালের পরিমাণ, দর).
+            - `complete_sale`: Record a retail checkout or POS sale (পণ্য, পরিমাণ, টাকা, ক্যাশ/বাকি).
+            - `send_sms`: Send due reminder, offer, or custom SMS to customer.
+            - `resolve_appeal`: Approve or reject pending payment verification appeal and auto-send confirmation email.
+            - `add_customer_credit`: Record customer credit sale / due (বাকি).
+            - `add_customer_payment`: Record customer payment received / dues collection (জমা/আদায়).
+            - `add_supplier_credit`: Record supplier due / credit purchase (মহাজন বাকি).
+            - `add_supplier_payment`: Record supplier payment paid (মহাজন জমা).
+            - `add_expense`: Record shop business expense (দোকানের খরচ/ভাড়া/বিল).
+            - `save_ai_memory`: Remember a business preference, rule, or note (মনে রাখবে).
+            
+            Always execute the matching function tool immediately when the merchant instructs you to perform any of these actions.
         """.trimIndent()
 
         geminiLiveSession.startSession(
@@ -12956,35 +12967,35 @@ function executePayment() {
                         val fact = args.optString("memory_fact", "").trim()
                         if (fact.isNotBlank()) {
                             addAiMemoryItem(fact)
-                            val msg = "≡ƒºá αª«αºçαª«αºïαª░αª┐αªñαºç αª╕αºçαª¡ αª╣αºƒαºçαª¢αºç: $fact"
+                            val msg = "🧠 মেমোরিতে সেভ হয়েছে: $fact"
                             val updated = _aiChatHistory.value.toMutableList()
-                            updated.add(mapOf("role" to "assistant", "content" to "Γ£à [Gemini Live] $msg"))
+                            updated.add(mapOf("role" to "assistant", "content" to "✅ [Gemini Live] $msg"))
                             _aiChatHistory.value = updated
                             saveOrUpdateCurrentChatSession()
                             onResult(msg)
                         } else {
-                            onResult("αª«αºçαª«αºïαª░αª┐ αªûαª╛αª▓αª┐ αª¢αª┐αª▓")
+                            onResult("মেমোরি খালি ছিল")
                         }
                     }
-                    "add_customer_credit", "add_customer_payment", "add_expense" -> {
+                    else -> {
                         val actionJson = JSONObject().apply {
                             put("action", fnName)
                             put("parameters", args)
                         }.toString()
                         executeCopilotAction(actionJson) { status ->
-                            val msg = "Γ£à $status"
+                            val msg = "✅ $status"
                             val updated = _aiChatHistory.value.toMutableList()
-                            updated.add(mapOf("role" to "assistant", "content" to "≡ƒÄÖ∩╕Å [Gemini Live αªÅαª¿αºìαªƒαºìαª░αª┐] $status"))
+                            updated.add(mapOf("role" to "assistant", "content" to "🎙️ [Gemini Live এন্ট্রি] $status"))
                             _aiChatHistory.value = updated
                             saveOrUpdateCurrentChatSession()
                             onResult(msg)
                         }
                     }
-                    else -> onResult("Unknown tool: $fnName")
                 }
             }
         )
     }
+
 
     fun stopGeminiLiveConversation() {
         geminiLiveSession.stopSession(resetLogs = false)
@@ -14197,7 +14208,7 @@ function executePayment() {
         val overdueCustomers = cList.filter { it.currentBalance > 0 }.mapNotNull { cust ->
             val custTx = txList.filter { it.customerId == cust.id }.minByOrNull { it.date }
             if (custTx != null && (System.currentTimeMillis() - custTx.date > 45L * 24 * 60 * 60 * 1000)) {
-                "${cust.name} (αº│${cust.currentBalance}, last unpaid transaction ${((System.currentTimeMillis() - custTx.date) / (24L * 60 * 60 * 1000)).toInt()} days ago)"
+                "${cust.name} (৳${cust.currentBalance}, last unpaid transaction ${((System.currentTimeMillis() - custTx.date) / (24L * 60 * 60 * 1000)).toInt()} days ago)"
             } else null
         }
 
@@ -14210,21 +14221,62 @@ function executePayment() {
             "- ${prod.name}: Stock: ${prod.stockQuantity} ${prod.unit}, Status: $runoutText, Action: $recommendReorder"
         }.joinToString("\n")
 
+        val supList = suppliers.value
+        val supplierSummary = if (supList.isEmpty()) "No suppliers registered." else supList.take(6).joinToString(", ") { "${it.name} (Balance: ৳${it.currentBalance})" }
+
+        val hForms = hostedFormsList.value
+        val subsList = formSubmissions.value
+        val formSummary = if (hForms.isEmpty() && subsList.isEmpty()) "No custom forms created." else {
+            val formsDesc = if (hForms.isNotEmpty()) {
+                hForms.take(4).joinToString("; ") { hf ->
+                    val count = subsList.count { it.optString("form_id") == hf.id || it.optString("form_slug") == hf.slug }
+                    "${hf.title} (Slug: ${hf.slug}, Submissions: $count)"
+                }
+            } else ""
+            val recentSubsDesc = if (subsList.isNotEmpty()) {
+                "Recent submissions: " + subsList.take(3).joinToString("; ") { sub ->
+                    val cName = sub.optString("customer_name", sub.optString("name", "Guest"))
+                    val cPhone = sub.optString("customer_phone", sub.optString("phone", ""))
+                    val amt = sub.optDouble("amount", 0.0)
+                    "$cName ($cPhone) ৳$amt"
+                }
+            } else ""
+            listOf(formsDesc, recentSubsDesc).filter { it.isNotBlank() }.joinToString(". ")
+        }
+
+        val appList = appeals.value
+        val appealSummary = if (appList.isEmpty()) "No pending or resolved payment appeals." else appList.take(5).joinToString("; ") {
+            "Appeal #${it.id.take(8)} (${it.status}): ৳${it.amount} trx=${it.trxId} customer=${it.customerName} (${it.customerPhone}) order=${it.orderId}"
+        }
+
+        val recentTxSummary = if (txList.isEmpty()) "No recent transactions recorded." else txList.sortedByDescending { it.date }.take(8).joinToString("; ") {
+            val partyName = cList.find { c -> c.id == it.customerId }?.name ?: supList.find { s -> s.id == it.supplierId }?.name ?: "General"
+            "${it.type.uppercase()} ৳${it.amount} with $partyName (${it.note ?: ""})"
+        }
+
         return """
             [BUSINESS DATA SNAPSHOT]
-            1. Customer Debts: Total Outstanding is αº│$totalOutstanding BDT. Highest Debtor: $highestDebtor.
-            2. Best-Selling Products (Last 30 Days): ${bestSellers.ifEmpty { "None recorded" }}.
-            3. Financial Totals (Last 30 Days): Sales Revenue: αº│$salesRevenue30Days, Purchase Costs: αº│$purchaseCost30Days, Expenses: αº│$totalExpense (Breakdown: $expenseSummary). Net Profit estimate: αº│$thisMonthProfit.
-            4. Profit Trend vs Last Month: $profitTrend (This month: αº│$thisMonthProfit vs Last month: αº│$lastMonthProfit).
-            5. Anomalies & Alerts:
+            1. Customer Debts: Total Outstanding is ৳$totalOutstanding BDT. Highest Debtor: $highestDebtor.
+            2. Customer Recent Transaction History:
+               $recentTxSummary
+            3. Registered Suppliers:
+               $supplierSummary
+            4. Forms & Submissions:
+               $formSummary
+            5. Payment Verification Appeals:
+               $appealSummary
+            6. Best-Selling Products (Last 30 Days): ${bestSellers.ifEmpty { "None recorded" }}.
+            7. Financial Totals (Last 30 Days): Sales Revenue: ৳$salesRevenue30Days, Purchase Costs: ৳$purchaseCost30Days, Expenses: ৳$totalExpense (Breakdown: $expenseSummary). Net Profit estimate: ৳$thisMonthProfit.
+            8. Profit Trend vs Last Month: $profitTrend (This month: ৳$thisMonthProfit vs Last month: ৳$lastMonthProfit).
+            9. Anomalies & Alerts:
                ${expenseAnomaly ?: "No expense anomalies detected."}
                ${if (overdueCustomers.isEmpty()) "No customer balances overdue > 45 days." else "Overdue customers: " + overdueCustomers.joinToString(", ")}
-            6. Inventory Levels & Reorders:
+            10. Inventory Levels & Reorders:
             $inventoryStatus
         """.trimIndent()
     }
 
-    // AI Conversational Chat Engine with multimodal, memory & voice chat support
+
     fun sendOpenRouterCopilotMessage(
         userInput: String,
         imageBase64: String? = null,
@@ -14299,11 +14351,48 @@ function executePayment() {
                 [ACTION_END]
                 
                 Supported actions are:
+                - `add_customer` (params: name, phone, address, initial_balance, status)
+                - `add_supplier` (params: name, phone, address, initial_balance)
+                - `add_product` (params: name, sale_price, purchase_price, stock, unit, category, code)
+                - `add_inventory` (params: product_name, quantity, type ["in"|"out"], price)
+                - `complete_sale` (params: customer_name, customer_phone, product_name, amount, quantity, payment_type ["Cash"|"MFS"|"Due"], discount)
+                - `send_sms` (params: phone, customer_name, message, type ["due"|"offer"|"individual"], amount)
+                - `resolve_appeal` (params: appeal_id, status ["APPROVED"|"REJECTED"], note, send_email)
+                - `add_expense` (params: expense_category, amount, description)
                 - `add_customer_credit` (params: customer_name, amount, product_name, quantity, unit, note)
                 - `add_customer_payment` (params: customer_name, amount, note)
                 - `add_supplier_credit` (params: supplier_name, amount, note)
                 - `add_supplier_payment` (params: supplier_name, amount, note)
-                - `add_expense` (params: expense_category, amount, description)
+                
+                Examples:
+                - Add customer:
+                  [ACTION_START]
+                  {"action": "add_customer", "parameters": {"name": "Karim", "phone": "017XXXXXXXX", "address": "", "initial_balance": 0.0, "status": "VIP"}}
+                  [ACTION_END]
+                - Add supplier:
+                  [ACTION_START]
+                  {"action": "add_supplier", "parameters": {"name": "Pran Foods", "phone": "015XXXXXXXX", "address": "Dhaka", "initial_balance": 0.0}}
+                  [ACTION_END]
+                - Add product / inventory:
+                  [ACTION_START]
+                  {"action": "add_product", "parameters": {"name": "Sugar (চিনি)", "sale_price": 150.0, "purchase_price": 130.0, "stock": 50.0, "unit": "kg", "category": "Grocery"}}
+                  [ACTION_END]
+                - Complete POS sale:
+                  [ACTION_START]
+                  {"action": "complete_sale", "parameters": {"customer_name": "Rahim", "product_name": "Sugar (চিনি)", "amount": 300.0, "quantity": 2.0, "payment_type": "Cash", "discount": 0.0}}
+                  [ACTION_END]
+                - Send SMS to customer (Due reminder, Offer, or Individual):
+                  [ACTION_START]
+                  {"action": "send_sms", "parameters": {"phone": "017XXXXXXXX", "customer_name": "Rahim", "message": "প্রিয় রহিম ভাই, আপনার বকেয়া ৫০০ টাকা পরিশোধ করার অনুরোধ রইল।", "type": "due", "amount": 500.0}}
+                  [ACTION_END]
+                - Resolve Payment Appeal (Auto analysis & customer email notification):
+                  [ACTION_START]
+                  {"action": "resolve_appeal", "parameters": {"appeal_id": "appeal_uuid_here", "status": "APPROVED", "note": "Verified payment proof", "send_email": true}}
+                  [ACTION_END]
+                - Add expense:
+                  [ACTION_START]
+                  {"action": "add_expense", "parameters": {"expense_category": "Rent (দোকান ভাড়া)", "amount": 5000.0, "description": "দোকান ভাড়া পরিশোধ"}}
+                  [ACTION_END]
                 
                 Ensure the JSON is strictly valid, and do not put any text inside the [ACTION_START] and [ACTION_END] tags except the raw JSON.
                 Respond in warm, natural Bangla (or English if the user writes in English).
@@ -14449,8 +14538,322 @@ function executePayment() {
                 val params = obj.optJSONObject("parameters") ?: JSONObject()
                 
                 when (action) {
+                    "add_customer" -> {
+                        val name = params.optString("name", params.optString("customer_name")).trim()
+                        val rawPhone = params.optString("phone", params.optString("customer_phone", "01700000000")).trim()
+                        val bengaliDigits = "০১২৩৪৫৬৭৮৯"
+                        var phone = rawPhone
+                        for (i in 0..9) {
+                            phone = phone.replace(bengaliDigits[i], ('0' + i))
+                        }
+                        phone = phone.filter { it.isDigit() }.ifBlank { "01700000000" }
+                        val address = params.optString("address", "").ifBlank { null }
+                        val initialBalance = params.optDouble("initial_balance", params.optDouble("amount", 0.0))
+                        val status = params.optString("status", "VIP")
+                        if (name.isNotBlank()) {
+                            addCustomer(
+                                name = name,
+                                phone = phone,
+                                initialBalance = initialBalance,
+                                status = status,
+                                address = address
+                            )
+                            appendToAiMemory("Added customer: $name ($phone), balance: ৳$initialBalance.")
+                            onComplete("কাস্টমার '$name' (ফোন: $phone, পূর্বের বকেয়া: ৳$initialBalance) সফলভাবে খাতায় যোগ করা হয়েছে।")
+                        } else {
+                            onComplete("কাস্টমারের নাম পাওয়া যায়নি।")
+                        }
+                    }
+                    "add_supplier" -> {
+                        val name = params.optString("name", params.optString("supplier_name")).trim()
+                        val rawPhone = params.optString("phone", "01500000000").trim()
+                        val bengaliDigits = "০১২৩৪৫৬৭৮৯"
+                        var phone = rawPhone
+                        for (i in 0..9) {
+                            phone = phone.replace(bengaliDigits[i], ('0' + i))
+                        }
+                        phone = phone.filter { it.isDigit() }.ifBlank { "01500000000" }
+                        val address = params.optString("address", "").trim()
+                        val initialBalance = params.optDouble("initial_balance", params.optDouble("amount", 0.0))
+                        if (name.isNotBlank()) {
+                            addSupplier(name = name, phone = phone, address = address, openingBalance = initialBalance)
+                            appendToAiMemory("Added supplier: $name ($phone).")
+                            onComplete("সাপ্লায়ার/মহাজন '$name' (ফোন: $phone) সফলভাবে যোগ করা হয়েছে।")
+                        } else {
+                            onComplete("সাপ্লায়ারের নাম পাওয়া যায়নি।")
+                        }
+                    }
+                    "add_product" -> {
+                        val name = params.optString("name", params.optString("product_name")).trim()
+                        val salePrice = params.optDouble("sale_price", params.optDouble("price", 0.0))
+                        val purchasePrice = params.optDouble("purchase_price", if (salePrice > 0.0) salePrice * 0.8 else 0.0)
+                        val stock = params.optDouble("stock", params.optDouble("quantity", 0.0))
+                        val unit = params.optString("unit", "pcs").ifBlank { "pcs" }
+                        val category = params.optString("category", "General").ifBlank { "General" }
+                        val code = params.optString("code", "").ifBlank { null }
+                        if (name.isNotBlank()) {
+                            addProduct(
+                                name = name,
+                                code = code,
+                                category = category,
+                                purchasePrice = purchasePrice,
+                                salePrice = salePrice,
+                                stock = stock,
+                                unit = unit
+                            ) { success, msg ->
+                                appendToAiMemory("Added product: $name (Stock: $stock $unit, Price: ৳$salePrice).")
+                            }
+                            onComplete("পণ্য '$name' সফলভাবে যোগ করা হয়েছে (স্টক: $stock $unit, বিক্রয় মূল্য: ৳$salePrice)।")
+                        } else {
+                            onComplete("পণ্যের নাম পাওয়া যায়নি।")
+                        }
+                    }
+                    "add_inventory", "update_inventory", "record_stock" -> {
+                        val prodName = params.optString("product_name", params.optString("name")).trim()
+                        val qty = params.optDouble("quantity", params.optDouble("stock", 0.0))
+                        val type = params.optString("type", "in").lowercase()
+                        val price = params.optDouble("price", 0.0)
+                        val matched = products.value.find { it.name.equals(prodName, ignoreCase = true) }
+                        if (matched != null) {
+                            recordStockChangeInternal(matched.id, if (type == "out") "out" else "in", qty, if (price > 0.0) price else matched.purchasePrice)
+                            appendToAiMemory("Updated inventory: $prodName $type $qty ${matched.unit}.")
+                            onComplete("ইনভেন্টরি আপডেট সম্পন্ন: $prodName ($type $qty ${matched.unit})।")
+                        } else if (prodName.isNotBlank()) {
+                            addProduct(
+                                name = prodName,
+                                code = null,
+                                category = "General",
+                                purchasePrice = price,
+                                salePrice = if (price > 0.0) price * 1.25 else 0.0,
+                                stock = qty,
+                                unit = "pcs"
+                            )
+                            appendToAiMemory("Added new product to inventory: $prodName (Stock: $qty pcs).")
+                            onComplete("নতুন পণ্য '$prodName' যোগ করে ইনভেন্টরিতে $qty pcs স্টক রেকর্ড করা হয়েছে।")
+                        } else {
+                            onComplete("ইনভেন্টরির জন্য পণ্যের নাম পাওয়া যায়নি।")
+                        }
+                    }
+                    "complete_sale", "create_sale", "new_sale" -> {
+                        val custName = params.optString("customer_name", "").trim()
+                        val rawCustPhone = params.optString("customer_phone", "01700000000").trim()
+                        val bengaliDigits = "০১২৩৪৫৬৭৮৯"
+                        var custPhone = rawCustPhone
+                        for (i in 0..9) {
+                            custPhone = custPhone.replace(bengaliDigits[i], ('0' + i))
+                        }
+                        custPhone = custPhone.filter { it.isDigit() }.ifBlank { "01700000000" }
+                        val prodName = params.optString("product_name", "General Sale").trim()
+                        val amount = params.optDouble("amount", params.optDouble("price", 0.0))
+                        val qty = params.optDouble("quantity", 1.0)
+                        val paymentType = params.optString("payment_type", "Cash").trim()
+                        val discount = params.optDouble("discount", 0.0)
+                        val effectiveAmount = (amount - discount).coerceAtLeast(0.0)
+
+                        val matchedCust = if (custName.isNotBlank()) customers.value.find { it.name.equals(custName, ignoreCase = true) } else null
+                        val customerId = if (matchedCust != null) {
+                            matchedCust.id
+                        } else if (custName.isNotBlank()) {
+                            val newId = java.util.UUID.randomUUID().toString()
+                            addCustomer(
+                                name = custName,
+                                phone = custPhone,
+                                initialBalance = 0.0,
+                                status = "VIP",
+                                id = newId
+                            )
+                            newId
+                        } else null
+
+                        val matchedProd = products.value.find { it.name.equals(prodName, ignoreCase = true) }
+                        val prodId = matchedProd?.id ?: java.util.UUID.randomUUID().toString()
+                        val unitPrice = if (qty > 0) effectiveAmount / qty else effectiveAmount
+
+                        val orderId = java.util.UUID.randomUUID().toString()
+                        val invoiceNo = "INV-${java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())}-${orderId.take(6).uppercase()}"
+
+                        val cartJson = org.json.JSONArray().apply {
+                            put(org.json.JSONObject().apply {
+                                put("product_id", prodId)
+                                put("name", prodName)
+                                put("quantity", qty)
+                                put("unit_price", unitPrice)
+                                put("line_total", effectiveAmount)
+                            })
+                        }
+
+                        val normalizedMethod = when {
+                            paymentType.equals("Due", ignoreCase = true) || paymentType.equals("CustomerCredit", ignoreCase = true) -> "Due"
+                            paymentType.equals("MFS", ignoreCase = true) -> "MFS"
+                            paymentType.equals("Card", ignoreCase = true) -> "Card"
+                            else -> "Cash"
+                        }
+
+                        val sale = PosSaleEntity(
+                            id = orderId,
+                            merchantId = activeProfile.value.id,
+                            invoiceNo = invoiceNo,
+                            customerId = customerId,
+                            customerName = custName.ifBlank { "Walk-in Customer" },
+                            customerPhone = custPhone,
+                            subtotal = amount,
+                            discount = discount,
+                            netTotal = effectiveAmount,
+                            cashReceived = if (normalizedMethod == "Due") 0.0 else effectiveAmount,
+                            changeDue = 0.0,
+                            paymentMethod = normalizedMethod,
+                            paymentStatus = if (normalizedMethod == "Due") "DUE" else "PAID",
+                            itemCount = qty.toInt().coerceAtLeast(1),
+                            cartItemsJson = cartJson.toString(),
+                            timestamp = System.currentTimeMillis(),
+                            isSynced = false
+                        )
+
+                        val movements = if (matchedProd != null) listOf(
+                            StockTransactionEntity(
+                                id = java.util.UUID.randomUUID().toString(),
+                                merchantId = activeProfile.value.id,
+                                productId = matchedProd.id,
+                                variantId = null,
+                                type = "out",
+                                quantity = qty,
+                                price = unitPrice,
+                                customerId = customerId,
+                                supplierId = null,
+                                referenceNote = "POS $invoiceNo"
+                            )
+                        ) else emptyList()
+
+                        val creditEntry = if (normalizedMethod == "Due" && customerId != null) {
+                            LedgerTransactionEntity(
+                                id = java.util.UUID.randomUUID().toString(),
+                                merchantId = activeProfile.value.id,
+                                customerId = customerId,
+                                supplierId = null,
+                                type = "credit",
+                                amount = effectiveAmount,
+                                note = "POS credit sale: $prodName ($invoiceNo)",
+                                productDetailsJson = cartJson.toString(),
+                                paymentMethod = "Due",
+                                invoiceNo = invoiceNo
+                            )
+                        } else null
+
+                        try {
+                            repository.checkoutPosSale(sale, movements, creditEntry)
+                            if (normalizedMethod != "Due" && customerId != null) {
+                                addLedgerTransaction(customerId, null, "payment", effectiveAmount, "POS Sale Paid ($normalizedMethod): $prodName", isVoice = false)
+                            }
+                        } catch (e: Exception) {
+                            repository.insertPosSale(sale)
+                        }
+
+                        appendToAiMemory("Recorded POS sale: $prodName (৳$effectiveAmount, $paymentType).")
+                        onComplete("নতুন বিক্রয় (Sale) সম্পন্ন হয়েছে: $prodName - ৳$effectiveAmount ($paymentType, ইনভয়েস: $invoiceNo)।")
+                    }
+                    "send_sms", "send_due_sms", "send_offer_sms" -> {
+                        val rawPhone = params.optString("phone", params.optString("recipient_phone", "")).trim()
+                        val custName = params.optString("customer_name", "").trim()
+                        val smsType = params.optString("type", "individual").lowercase()
+                        var amount = params.optDouble("amount", 0.0)
+                        
+                        val matchedCust = if (custName.isNotBlank()) customers.value.find { it.name.equals(custName, ignoreCase = true) } else null
+                        val rawRecipient = if (rawPhone.isNotBlank()) {
+                            rawPhone
+                        } else {
+                            matchedCust?.phone ?: ""
+                        }
+                        
+                        val bengaliDigits = "০১২৩৪৫৬৭৮৯"
+                        var phone = rawRecipient
+                        for (i in 0..9) {
+                            phone = phone.replace(bengaliDigits[i], ('0' + i))
+                        }
+                        phone = phone.filter { it.isDigit() }
+
+                        if (amount <= 0.0 && matchedCust != null && matchedCust.currentBalance > 0.0) {
+                            amount = matchedCust.currentBalance
+                        }
+
+                        var msg = params.optString("message", params.optString("sms_text", "")).trim()
+                        if (msg.isBlank()) {
+                            val businessTitle = activeProfile.value.businessName.ifBlank { "আমাদের দোকান" }
+                            val defaultDueMsg = "প্রিয় " + (if (custName.isNotBlank()) custName else "গ্রাহক") + ", আপনার দোকানে বকেয়া টাকার পরিমাণ ৳" + String.format("%.2f", amount) + "। অনুগ্রহ করে বকেয়া পরিশোধ করুন। ধন্যবাদ - " + businessTitle
+                            val defaultOfferMsg = "প্রিয় " + (if (custName.isNotBlank()) custName else "গ্রাহক") + ", আমাদের দোকানে চলছে বিশেষ অফার! আকর্ষণীয় ছাড়ে কেনাকাটা করতে আজই চলে আসুন। - " + businessTitle
+                            val defaultGeneralMsg = "প্রিয় গ্রাহক, আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ। - " + businessTitle
+                            msg = when (smsType) {
+                                "due" -> defaultDueMsg
+                                "offer" -> defaultOfferMsg
+                                else -> defaultGeneralMsg
+                            }
+                        }
+
+                        if (phone.isNotBlank()) {
+                            try {
+                                com.example.service.SmsGatewayEngine.sendDirectSms(
+                                    context = getApplication(),
+                                    recipientPhone = phone,
+                                    message = msg,
+                                    simSlot = 0
+                                ) { success, err ->
+                                    if (success) {
+                                        logFirebaseStatus("Copilot SMS sent to $phone")
+                                    } else {
+                                        logFirebaseStatus("Copilot SMS dispatch notice: $err")
+                                    }
+                                }
+                                appendToAiMemory("Sent $smsType SMS to $phone: $msg")
+                                onComplete("গ্রাহক $phone-এ এসএমএস সফলভাবে পাঠানো হয়েছে: '$msg'")
+                            } catch (e: Exception) {
+                                onComplete("এসএমএস পাঠাতে সমস্যা হয়েছে: ${e.message}")
+                            }
+                        } else {
+                            onComplete("গ্রাহকের সঠিক মোবাইল নম্বর পাওয়া যায়নি।")
+                        }
+                    }
+                    "resolve_appeal", "approve_appeal", "reject_appeal" -> {
+                        val appealId = params.optString("appeal_id").trim()
+                        val appealStatus = if (action == "reject_appeal" || params.optString("status").uppercase() == "REJECTED") "REJECTED" else "APPROVED"
+                        val note = params.optString("note", params.optString("reason", "Verified via AI Copilot Analysis"))
+                        val matchedAppeal = (if (appealId.isNotBlank() && appealId != "latest") {
+                            appeals.value.find { it.id == appealId || it.trxId.equals(appealId, ignoreCase = true) || it.orderId.equals(appealId, ignoreCase = true) }
+                        } else null) ?: appeals.value.find { it.status.contains("PENDING", ignoreCase = true) } ?: appeals.value.firstOrNull()
+                        
+                        if (matchedAppeal != null) {
+                            resolveAppeal(matchedAppeal.id, appealStatus)
+                            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val client = okhttp3.OkHttpClient()
+                                    val payload = org.json.JSONObject().apply {
+                                        put("appeal_id", matchedAppeal.id)
+                                        put("order_id", matchedAppeal.orderId)
+                                        put("status", appealStatus)
+                                        put("trx_id", matchedAppeal.trxId)
+                                        put("amount", matchedAppeal.amount)
+                                        put("customer_name", matchedAppeal.customerName)
+                                        put("customer_phone", matchedAppeal.customerPhone)
+                                        put("merchant_id", activeProfile.value.id)
+                                        put("note", note)
+                                        put("send_email", params.optBoolean("send_email", true))
+                                    }
+                                    val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                                    val req = okhttp3.Request.Builder()
+                                        .url("https://api.swapnopay.top/v1/payment/resolve-appeal")
+                                        .post(body)
+                                        .build()
+                                    client.newCall(req).execute().close()
+                                } catch (e: Exception) {
+                                    Log.w("AppViewModel", "Appeal email backend notify error: ${e.message}")
+                                }
+                            }
+                            appendToAiMemory("Appeal ${matchedAppeal.id} ($appealStatus). Customer notified.")
+                            onComplete("আপিল (${matchedAppeal.orderId}) $appealStatus হিসেবে আপডেট করা হয়েছে এবং গ্রাহককে ইমেইল/বিজ্ঞপ্তি পাঠানোর অনুরোধ সম্পন্ন হয়েছে।")
+                        } else {
+                            onComplete("কোনো আপিল খুঁজে পাওয়া যায়নি।")
+                        }
+                    }
                     "add_customer_credit", "add_customer_payment" -> {
-                        val name = params.optString("customer_name")
+                        val name = params.optString("customer_name", params.optString("name")).trim()
                         val amount = params.optDouble("amount", 0.0)
                         val type = if (action == "add_customer_credit") "credit" else "payment"
                         val product = params.optString("product_name", "General")
@@ -14486,11 +14889,11 @@ function executePayment() {
                                 recordStockChangeInternal(matchedProd.id, "out", qty.toDoubleOrNull() ?: 1.0, matchedProd.salePrice)
                             }
                         }
-                        appendToAiMemory("Recorded customer transaction: $name αº│$amount ($type).")
-                        onComplete("Logged customer $type for $name: αº│$amount.")
+                        appendToAiMemory("Recorded customer transaction: $name ৳$amount ($type).")
+                        onComplete("কাস্টমার $name-এর খাতায় $type সফলভাবে রেকর্ড করা হয়েছে: ৳$amount।")
                     }
                     "add_supplier_credit", "add_supplier_payment" -> {
-                        val name = params.optString("supplier_name")
+                        val name = params.optString("supplier_name", params.optString("name")).trim()
                         val amount = params.optDouble("amount", 0.0)
                         val type = if (action == "add_supplier_credit") "credit" else "payment"
                         val note = params.optString("note", "Supplier transaction")
@@ -14515,19 +14918,25 @@ function executePayment() {
                             newId
                         }
                         addLedgerTransaction(null, supplierId, type, amount, note, isVoice = false)
-                        appendToAiMemory("Recorded supplier transaction: $name αº│$amount ($type).")
-                        onComplete("Logged supplier $type for $name: αº│$amount.")
+                        appendToAiMemory("Recorded supplier transaction: $name ৳$amount ($type).")
+                        onComplete("সাপ্লায়ার $name-এর খাতায় $type সফলভাবে রেকর্ড করা হয়েছে: ৳$amount।")
                     }
                     "add_expense" -> {
-                        val category = params.optString("expense_category", "Others")
+                        val rawCategory = params.optString("expense_category", params.optString("category", "Others")).trim()
+                        val category = if (rawCategory.isBlank()) "Others" else rawCategory
                         val amount = params.optDouble("amount", 0.0)
-                        val description = params.optString("description", "Recorded via AI Copilot")
-                        addExpense(category, amount, description)
-                        appendToAiMemory("Recorded expense: αº│$amount in $category.")
-                        onComplete("Logged expense of αº│$amount in category $category.")
+                        val description = params.optString("description", params.optString("note", "Recorded via AI Copilot")).trim()
+                        if (amount > 0.0) {
+                            addExpense(category, amount, description)
+                            appendToAiMemory("Recorded expense: ৳$amount in $category ($description).")
+                            onComplete("খরচ সফলভাবে যোগ করা হয়েছে: ৳$amount ($category - $description)।")
+                        } else {
+                            onComplete("খরচের টাকার সঠিক পরিমাণ পাওয়া যায়নি।")
+                        }
                     }
-                    else -> onComplete("Action not recognized.")
+                    else -> onComplete("Action not recognized: $action")
                 }
+
             } catch (e: Exception) {
                 Log.e("AppViewModel", "Action execution error", e)
                 onComplete("Failed to execute action: ${e.message}")

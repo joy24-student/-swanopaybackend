@@ -2029,46 +2029,7 @@
     <div class="ui-card rounded-3xl p-6 md:p-8 space-y-6">
       <div class="text-center space-y-2">
         <h3 class="text-2xl font-black text-black font-heading"><i class="fa-solid fa-headset text-amber-600 mr-2"></i><span data-en="Let's" data-bn="আমাদের সাথে">Let's</span> <span class="gold-gradient-text" data-en="Talk" data-bn="কথা বলুন">Talk</span></h3>
-        <p class="text-xs text-black font-medium" data-en="Have questions or need enterprise partnership support? Reach out directly or send us a message." data-bn="কোনো প্রশ্ন বা এন্টারপ্রাইজ সাপোর্টের প্রয়োজন হলে সরাসরি যোগাযোগ করুন অথবা মেসেজ পাঠান।">Have questions or need enterprise partnership support? Reach out directly or send us a message.</p>
-      </div>
-
-      <!-- Live Contact Channels Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <a id="contact-hotline-link" href="tel:+8801700000000" class="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 hover:border-amber-400 transition-all flex flex-col gap-1.5 shadow-sm group">
-          <div class="flex items-center gap-2 text-amber-600 font-extrabold">
-            <i class="fa-solid fa-phone text-sm"></i>
-            <span>Official Hotline</span>
-          </div>
-          <span id="contact-hotline-val" class="font-bold text-black text-xs md:text-sm group-hover:text-amber-700 transition-colors">+880 1700-000000</span>
-          <span class="text-[10px] text-slate-500 font-medium">Tap to call directly</span>
-        </a>
-
-        <a id="contact-whatsapp-link" href="https://wa.me/8801700000000" target="_blank" rel="noreferrer" class="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 hover:border-emerald-400 transition-all flex flex-col gap-1.5 shadow-sm group">
-          <div class="flex items-center gap-2 text-emerald-600 font-extrabold">
-            <i class="fa-brands fa-whatsapp text-base"></i>
-            <span>WhatsApp Live</span>
-          </div>
-          <span id="contact-whatsapp-val" class="font-bold text-black text-xs md:text-sm group-hover:text-emerald-700 transition-colors">+880 1700-000000</span>
-          <span class="text-[10px] text-slate-500 font-medium">Instant chat assistance</span>
-        </a>
-
-        <a id="contact-email-link" href="mailto:support@swapnopay.top" class="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 hover:border-blue-400 transition-all flex flex-col gap-1.5 shadow-sm group">
-          <div class="flex items-center gap-2 text-blue-600 font-extrabold">
-            <i class="fa-solid fa-envelope text-sm"></i>
-            <span>Support Email</span>
-          </div>
-          <span id="contact-email-val" class="font-bold text-black text-xs md:text-sm truncate group-hover:text-blue-700 transition-colors">support@swapnopay.top</span>
-          <span class="text-[10px] text-slate-500 font-medium">Inquiries & billing</span>
-        </a>
-
-        <div class="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 flex flex-col gap-1.5 shadow-sm">
-          <div class="flex items-center gap-2 text-purple-600 font-extrabold">
-            <i class="fa-solid fa-location-dot text-sm"></i>
-            <span>Headquarters</span>
-          </div>
-          <span id="contact-address-val" class="font-bold text-black text-[11px] leading-tight">Level 14, Banani Tower, Dhaka, Bangladesh</span>
-          <span id="contact-hours-val" class="text-[10px] text-purple-700 font-semibold mt-auto">24/7 Support</span>
-        </div>
+        <p class="text-xs text-black font-medium" data-en="Have questions or need enterprise partnership support? Send us a message." data-bn="কোনো প্রশ্ন বা এন্টারপ্রাইজ সাপোর্টের প্রয়োজন হলে আমাদের মেসেজ পাঠান।">Have questions or need enterprise partnership support? Send us a message.</p>
       </div>
 
       <form onsubmit="handleContactSubmit(event)" class="space-y-4 text-xs">
@@ -2134,9 +2095,9 @@
       <div class="space-y-3">
         <h4 class="font-extrabold text-black uppercase text-[11px] tracking-wider">CONTACT</h4>
         <ul class="space-y-2 text-black font-medium">
-          <li class="flex items-start gap-2"><i class="fa-solid fa-location-dot text-amber-600 mt-1"></i><span id="footer-address">Level 14, Banani Tower, Dhaka, Bangladesh</span></li>
-          <li class="flex items-center gap-2"><i class="fa-solid fa-phone text-amber-600"></i><a id="footer-phone-link" href="tel:+8801700000000" class="hover:text-amber-700 transition-colors"><span id="footer-phone">+880 1700-000000</span></a></li>
-          <li class="flex items-center gap-2"><i class="fa-solid fa-envelope text-amber-600"></i><a id="footer-email-link" href="mailto:support@swapnopay.top" class="hover:text-amber-700 transition-colors"><span id="footer-email">support@swapnopay.top</span></a></li>
+          <li class="flex items-start gap-2"><i class="fa-solid fa-location-dot text-amber-600 mt-1"></i><span>House 12, Road 5, Dhanmondi, Dhaka 1205</span></li>
+          <li class="flex items-center gap-2"><i class="fa-solid fa-phone text-amber-600"></i><span>+880 1234-567890</span></li>
+          <li class="flex items-center gap-2"><i class="fa-solid fa-envelope text-amber-600"></i><span>hello@swapnopay.top</span></li>
         </ul>
       </div>
 
@@ -2863,101 +2824,6 @@
             const json = await res.json();
             if (json && json.config) {
               applySubscriptionConfig(json.config);
-              break;
-            }
-          }
-        } catch (_) {}
-      }
-    })();
-
-    // ── Official Platform Contact Details Synchronization (Landing Page & Mobile App) ──
-    function applySystemContactConfig(conf) {
-      if (!conf) return;
-      const phone = conf.support_hotline || conf.support_helpline || '+880 1700-000000';
-      const email = conf.support_email || 'support@swapnopay.top';
-      const whatsapp = conf.support_whatsapp || phone;
-      const address = conf.support_address || 'Level 14, Banani Tower, Dhaka, Bangladesh';
-      const hours = conf.support_hours || '24/7 Support';
-
-      // Update footer
-      const footerAddr = document.getElementById('footer-address');
-      if (footerAddr) footerAddr.textContent = address;
-
-      const footerPhone = document.getElementById('footer-phone');
-      if (footerPhone) footerPhone.textContent = phone;
-      const footerPhoneLink = document.getElementById('footer-phone-link');
-      if (footerPhoneLink) footerPhoneLink.href = 'tel:' + phone.replace(/[^0-9+]/g, '');
-
-      const footerEmail = document.getElementById('footer-email');
-      if (footerEmail) footerEmail.textContent = email;
-      const footerEmailLink = document.getElementById('footer-email-link');
-      if (footerEmailLink) footerEmailLink.href = 'mailto:' + email;
-
-      // Update contact section cards
-      const secHotline = document.getElementById('contact-hotline-val');
-      if (secHotline) secHotline.textContent = phone;
-      const secHotlineLink = document.getElementById('contact-hotline-link');
-      if (secHotlineLink) secHotlineLink.href = 'tel:' + phone.replace(/[^0-9+]/g, '');
-
-      const secWa = document.getElementById('contact-whatsapp-val');
-      if (secWa) secWa.textContent = whatsapp;
-      const secWaLink = document.getElementById('contact-whatsapp-link');
-      if (secWaLink) {
-        const cleanWa = whatsapp.replace(/[^0-9]/g, '');
-        secWaLink.href = whatsapp.startsWith('http') ? whatsapp : ('https://wa.me/' + cleanWa);
-      }
-
-      const secEmail = document.getElementById('contact-email-val');
-      if (secEmail) secEmail.textContent = email;
-      const secEmailLink = document.getElementById('contact-email-link');
-      if (secEmailLink) secEmailLink.href = 'mailto:' + email;
-
-      const secAddr = document.getElementById('contact-address-val');
-      if (secAddr) secAddr.textContent = address;
-
-      const secHours = document.getElementById('contact-hours-val');
-      if (secHours) secHours.textContent = hours;
-    }
-
-    (async function loadRemoteSystemContactConfig() {
-      // 1. Supabase Realtime subscription
-      if (radymateSupabase) {
-        try {
-          const { data } = await radymateSupabase
-            .from('showcase_config')
-            .select('value')
-            .eq('key', 'system_config')
-            .maybeSingle();
-          if (data && data.value) {
-            applySystemContactConfig(data.value);
-          }
-
-          radymateSupabase
-            .channel('realtime_landing_system_config')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'showcase_config', filter: 'key=eq.system_config' }, (payload) => {
-              if (payload?.new?.value) {
-                applySystemContactConfig(payload.new.value);
-              }
-            })
-            .subscribe();
-        } catch (_) {}
-      }
-
-      // 2. Query backend API endpoints
-      const endpoints = [
-        '/v1/merchant/system-config',
-        'https://api.swapnopay.top/v1/merchant/system-config',
-        '/v1/admin/showcase?key=system_config',
-        'https://api.swapnopay.top/v1/admin/showcase?key=system_config'
-      ];
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep);
-          if (res.ok) {
-            const json = await res.json();
-            const conf = json.config || json.value;
-            if (conf && (conf.support_hotline || conf.support_email || conf.support_address)) {
-              applySystemContactConfig(conf);
               break;
             }
           }
