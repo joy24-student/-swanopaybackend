@@ -489,7 +489,42 @@ export async function getOrderFromMerchantDB(merchantId, orderIdOrTranId) {
     console.error(`[merchant-db] getOrderFromMerchantDB failed:`, err.message)
   }
 
-  // Fallback: check admin DB payment_events
+  // Fallback 1: check admin DB orders table
+  try {
+    const admin = getAdminClient()
+    if (admin) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderIdOrTranId)
+      let ordQ = admin.from('orders').select('*')
+      if (targetMerchantId) ordQ = ordQ.eq('merchant_id', targetMerchantId)
+      if (isUuid) {
+        ordQ = ordQ.or(`id.eq.${orderIdOrTranId},tran_id.eq.${orderIdOrTranId}`)
+      } else {
+        ordQ = ordQ.eq('tran_id', orderIdOrTranId)
+      }
+      const { data: ord } = await ordQ.limit(1).maybeSingle()
+      if (ord) {
+        return {
+          id: ord.id,
+          tran_id: ord.tran_id,
+          amount: ord.amount,
+          status: ord.status,
+          cus_name: ord.cus_name,
+          cus_phone: ord.cus_phone || ord.sender_number,
+          cus_email: ord.cus_email,
+          product_name: ord.product_name,
+          payment_method: ord.payment_method,
+          matched_trx_id: ord.matched_trx_id || ord.trx_id,
+          sender_number: ord.sender_number || ord.cus_phone,
+          paid_at: ord.paid_at,
+          created_at: ord.created_at,
+          merchant_id: ord.merchant_id || targetMerchantId,
+          merchant_name: ord.merchant_name || null,
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Fallback 2: check admin DB payment_events
   try {
     const admin = getAdminClient()
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderIdOrTranId)

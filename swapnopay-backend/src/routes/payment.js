@@ -1009,7 +1009,30 @@ export function paymentRouter(io, heartbeatMap = new Map()) {
     }
 
     try {
-      const order = await getOrderFromMerchantDB(merchantId, orderId)
+      let order = await getOrderFromMerchantDB(merchantId, orderId)
+      if (!order) {
+        try {
+          const { getFormOrderSubmission } = await import('./form.js')
+          const formSub = getFormOrderSubmission(orderId)
+          if (formSub) {
+            order = {
+              id: formSub.order_id || formSub.id,
+              tran_id: formSub.tran_id,
+              amount: formSub.amount,
+              status: formSub.payment_status || 'PENDING',
+              cus_name: formSub.customer_name,
+              cus_phone: formSub.customer_phone,
+              cus_email: formSub.customer_email,
+              product_name: formSub.answers?.product_title || formSub.product_name || 'Product Order',
+              payment_method: formSub.payment_method || 'bKash',
+              merchant_id: formSub.merchant_id || merchantId,
+              merchant_name: formSub.merchant_name || null,
+              created_at: formSub.created_at
+            }
+          }
+        } catch (_) {}
+      }
+
       if (!order) {
         return res.status(404).json({ ok: false, error: 'Order not found' })
       }

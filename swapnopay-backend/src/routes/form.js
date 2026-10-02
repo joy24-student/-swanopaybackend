@@ -1996,6 +1996,44 @@ export function formRouter(io = null) {
 }
 
 /**
+ * Looks up a form submission by order_id, tran_id, or submission_id across in-memory cache and disk persistence
+ */
+export function getFormOrderSubmission(orderIdOrTranId) {
+  if (!orderIdOrTranId) return null
+  const cleanId = String(orderIdOrTranId).trim()
+
+  // 1. Direct in-memory order-to-submission mapping
+  const mapping = orderToFormSubmissionMap.get(cleanId) || orderToFormSubmissionMap.get(cleanId.toLowerCase())
+  if (mapping) {
+    const list = formSubmissionsMemory.get(mapping.form_id) || formSubmissionsMemory.get(mapping.form_slug) || []
+    const sub = list.find(s => s.order_id === cleanId || s.id === cleanId || s.submission_id === cleanId || s.tran_id === cleanId)
+    if (sub) return sub
+  }
+
+  // 2. Scan all in-memory submissions
+  for (const [_, submissions] of formSubmissionsMemory.entries()) {
+    if (Array.isArray(submissions)) {
+      const match = submissions.find(s => s.order_id === cleanId || s.id === cleanId || s.submission_id === cleanId || s.tran_id === cleanId)
+      if (match) return match
+    }
+  }
+
+  // 3. Scan disk persistence
+  try {
+    if (fs.existsSync(SUBMISSIONS_FILE)) {
+      const raw = fs.readFileSync(SUBMISSIONS_FILE, 'utf8')
+      const items = JSON.parse(raw || '[]')
+      if (Array.isArray(items)) {
+        const match = items.find(s => s.order_id === cleanId || s.id === cleanId || s.submission_id === cleanId || s.tran_id === cleanId)
+        if (match) return match
+      }
+    }
+  } catch (_) {}
+
+  return null
+}
+
+/**
  * Updates form submission and payment_forms stats when an order is verified as PAID
  */
 export async function handleFormPaymentPaid(orderId, trxId, amount, io = null) {
